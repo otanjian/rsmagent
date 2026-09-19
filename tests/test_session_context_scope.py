@@ -105,13 +105,18 @@ def _member(app, username, agents):
     return app.member(username, [role["code"]])
 
 
-def _seed(app, agent_id, session_id, owner_id, *, channel_type="web"):
+def _seed(app, agent_id, session_id, owner_id, *, channel_type="web",
+          tenant_id=None):
     """Write a real session row through the Agent's bound ``ConversationStore``.
 
     ``get_conversation_store`` resolves the *storage* Agent key from the
     workspace (``''`` for the default Agent), which is the key the endpoints
     match on — seeding through the same handle is what makes the test read the
     row production would write.
+
+    ``tenant_id`` overrides the stamp (default: the app's tenant). ``""`` is the
+    shape a row written by an entry point that never stamped the tenancy
+    dimension has, which is the case the empty-bucket tolerance exists for.
     """
     store = get_conversation_store(app.agent_workspace(agent_id))
     messages = [
@@ -119,7 +124,8 @@ def _seed(app, agent_id, session_id, owner_id, *, channel_type="web"):
         {"role": "assistant", "content": [{"type": "text", "text": "hi"}]},
     ]
     identity = RuntimeIdentity(
-        agent_id=agent_id, user_id=owner_id, tenant_id=app.tenant_id)
+        agent_id=agent_id, user_id=owner_id,
+        tenant_id=app.tenant_id if tenant_id is None else tenant_id)
     with use_identity(identity):
         # A web session carrying a durable owner row is the shape the endpoints
         # require; a machine session without one is refused (see below).
@@ -264,6 +270,63 @@ def test_reading_another_members_session_is_hidden(web_app):
         body = app.json(response)
         assert body["status"] == "error"
         assert body["code"] == "session_not_found"
+
+
+def test_the_callers_own_session_without_a_tenant_stamp_is_still_theirs(web_app):
+    """The empty tenancy bucket is admitted *because the owner matches*.
+
+    The Web composer claims a session on a path that historically did not stamp
+    ``tenant_id``, and only the boot-time backfill repairs that — so for the
+    lifetime of a running server an exact-tenant match answered 404 for
+    conversations the caller had just created (the defect the R1 acceptance
+    found: the panel said "no live context" for a session that had history, and
+    a restart was the only recovery). Both endpoints have to serve that row.
+    """
+    with _context_open():
+        app = web_app("usage-unstamped-owner")
+        app.add_agent("agent-a")
+        _member(app, "alice", agents=("agent-a",))
+        _seed(app, "agent-a", "sess-legacy", app.user_id("alice"), tenant_id="")
+        token = app.login("alice")
+
+        with _roster(app):
+            usage = app.get(
+                "/api/sessions/sess-legacy/context_usage?agent_id=agent-a",
+                token=token)
+            compact = app.post(
+                "/api/sessions/sess-legacy/compact_context",
+                {"agent_id": "agent-a"}, token=token)
+
+        assert _status(usage) == 200, usage.data[:200]
+        assert app.json(usage)["status"] == "success"
+        # No live runtime: the honest read, not a 404.
+        assert app.json(usage)["available"] is False
+        assert _status(compact) in (200, 409), compact.data[:200]
+
+
+def test_an_unstamped_row_owned_by_another_member_stays_hidden(web_app):
+    """The tolerance is the *owner* term, so a foreign row is still no row.
+
+    Without this half, "admit the empty bucket" could be read as "admit
+    anything without a tenant" — which would hand one member another member's
+    conversation. The owner predicate is what keeps the two apart, so it is
+    asserted here rather than assumed.
+    """
+    with _context_open():
+        app = web_app("usage-unstamped-foreign")
+        app.add_agent("agent-a")
+        _member(app, "alice", agents=("agent-a",))
+        _member(app, "bob", agents=("agent-a",))
+        _seed(app, "agent-a", "bob-legacy", app.user_id("bob"), tenant_id="")
+        alice_token = app.login("alice")
+
+        with _roster(app):
+            response = app.get(
+                "/api/sessions/bob-legacy/context_usage?agent_id=agent-a",
+                token=alice_token)
+
+        assert _status(response) == 404
+        assert app.json(response)["code"] == "session_not_found"
 
 
 def test_an_agent_bound_to_another_tenant_is_refused(web_app):

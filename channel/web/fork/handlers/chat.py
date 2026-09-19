@@ -119,12 +119,22 @@ def _authorize_chat_session(ctx, session_id, agent_id, *, create=False) -> str:
                     _require_agent_action(ctx, agent_id, "use", "agent.use")
                     if create:
                         now = int(time.time())
+                        # ``tenant_id`` is stamped here, at claim time, so the
+                        # row a Web composer just created is complete. Leaving
+                        # it out made every newly composed conversation
+                        # owner-less in the tenancy dimension until the next
+                        # boot backfill, which the context endpoints (and any
+                        # other exact-tenant reader) read as "not this caller's
+                        # row". ``INSERT OR IGNORE`` keeps an existing row --
+                        # including a legacy one that carries ``''`` -- exactly
+                        # as it is.
                         con.execute(
                             "INSERT OR IGNORE INTO sessions "
-                            "(agent_id, session_id, channel_type, owner, created_at, "
-                            " last_active, msg_count) "
-                            "VALUES (?, ?, 'web', ?, ?, ?, 0)",
-                            (scope_agent, session_id, ctx.user_id, now, now),
+                            "(agent_id, session_id, channel_type, owner, tenant_id,"
+                            " created_at, last_active, msg_count) "
+                            "VALUES (?, ?, 'web', ?, ?, ?, ?, 0)",
+                            (scope_agent, session_id, ctx.user_id,
+                             getattr(ctx, "tenant_id", "") or "", now, now),
                         )
                         # Two callers may race to claim the same new key; only
                         # the winner's owner survives the IGNORE above.

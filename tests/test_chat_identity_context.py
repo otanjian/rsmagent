@@ -200,6 +200,56 @@ class ChatIdentityContextTests(unittest.TestCase):
         worker.return_value.start.assert_called_once()
         channel.produce.assert_not_called()  # no real model run in this test
 
+    def test_the_claimed_session_row_carries_the_callers_tenant(self):
+        """The claim path stamps ``tenant_id``; a restart is not the repair.
+
+        The Web composer is where every browser conversation is born, and the
+        row it writes is what the context endpoints (and every other reader that
+        matches the tenancy dimension exactly) resolve against. Leaving the
+        stamp to the boot-time backfill made a freshly created conversation
+        invisible to its own owner for the lifetime of the running server -- the
+        defect the R1 real acceptance found. Dispatched through the real channel
+        so the real ``_authorize_chat_session`` runs.
+        """
+        import sqlite3
+
+        from agent.memory import get_conversation_store
+        from agent.registry import get_agent_registry
+
+        channel = object.__new__(WEB_CHANNEL_CLASS)
+        channel.msg_id_counter = 0
+        channel.session_queues = {}
+        channel.request_to_session = {}
+        channel.request_to_agent = {}
+        channel.request_owners = {}
+        channel.sse_streams = {}
+        channel._sse_streams_lock = threading.RLock()
+        channel._compose_context = lambda ctype, prompt, **kwargs: Context(ctype, prompt)
+        channel.produce = Mock()
+        bridge = SimpleNamespace(agent_router=Mock(), agent_registry=get_agent_registry())
+        with patch.object(web_channel, "WebChannel", return_value=channel), \
+                patch.object(web_channel, "_session_roster", return_value=[]), \
+                patch("bridge.bridge.Bridge", return_value=SimpleNamespace(get_agent_bridge=lambda: bridge)), \
+                patch.object(web_channel.threading, "Thread"):
+            response = self._send(token=self.token, tenant=self.tenant_id)
+        self.assertEqual(response.status, "200 OK", response.data)
+
+        store = get_conversation_store(
+            get_agent_registry().get("chat-agent").workspace)
+        con = sqlite3.connect(store._db_path)
+        try:
+            row = con.execute(
+                "SELECT owner, tenant_id, channel_type FROM sessions"
+                " WHERE session_id=? AND agent_id=?",
+                ("chat-test", store._agent_id)).fetchone()
+        finally:
+            con.close()
+        self.assertIsNotNone(row, "the claim did not write a session row")
+        self.assertEqual(row[0], self.user_id)
+        self.assertEqual(row[1], self.tenant_id,
+                         "a freshly claimed session must carry the caller's tenant")
+        self.assertEqual(row[2], "web")
+
     def test_nonmember_tenant_returns_json_403_without_dispatching_chat(self):
         response = self._send(token=self.token, tenant=self.other_tenant_id)
         self._assert_error(response, 403, "forbidden")

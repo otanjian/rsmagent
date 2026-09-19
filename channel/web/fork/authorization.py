@@ -716,9 +716,20 @@ def _owned_context_target(ctx: "Optional[RequestContext]", session_id: str,
        and the (deepened) non-exclusive owner probe, and resolves the real Agent;
        the store is opened from that Agent's workspace in the registry.
     2. The ``sessions`` row must then match the store's storage Agent key, the
-       caller's tenant, the caller's user id and ``channel_type='web'`` exactly.
-       No row is a 404: existence stays hidden, and a same-named session owned by
-       another Agent (or another member) can never satisfy the match.
+       caller's user id and ``channel_type='web'`` exactly, in the caller's
+       tenant **or in the empty bucket** — see below. No row is a 404: existence
+       stays hidden, and a same-named session owned by another Agent (or another
+       member) can never satisfy the match.
+
+    The tenant predicate admits ``''`` for the same reason
+    :func:`_require_owned_session` does, and it is not a weakening here: the
+    ``owner=?`` term is what establishes ownership, and a row with someone
+    else's owner is still *no row*. Without the empty bucket this guard refused
+    sessions the caller had just created: the Web composer's claim inserts the
+    row without a tenant stamp, and only the boot-time backfill repairs it, so
+    for the lifetime of a running server every newly composed conversation was
+    a 404 to both endpoints (the defect the R1 acceptance found). Another
+    tenant's real id remains excluded.
     """
     from agent.registry import get_agent_registry
     from agent.memory import get_conversation_store
@@ -741,7 +752,8 @@ def _owned_context_target(ctx: "Optional[RequestContext]", session_id: str,
         try:
             row = con.execute(
                 "SELECT owner FROM sessions"
-                " WHERE session_id=? AND agent_id=? AND tenant_id=?"
+                " WHERE session_id=? AND agent_id=?"
+                " AND (tenant_id=? OR tenant_id='')"
                 " AND owner=? AND channel_type='web'",
                 (session_id, _storage_agent_key(store), ctx.tenant_id, ctx.user_id),
             ).fetchone()
