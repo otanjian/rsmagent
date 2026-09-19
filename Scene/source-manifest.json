@@ -757,17 +757,23 @@
     {
       "path": "quality_traceability/skills/quality-trace/SKILL.md",
       "source": "skills/quality-trace/SKILL.md",
-      "sha256": "65e46ebf1eb9445fc1a320f75a5f4c2aa162f364dffc317102b24ca9be799d05"
+      "sha256": "c3c4b55c6502e1a5eee2411a0b8106d795b37a54f50255b7b6639a7261ad3f52",
+      "adapted": "scene-skills: the migration copied OneAgent's live webhook endpoints and tokens verbatim; the three URLs are redacted back to <your-airbag-webhook-url>, matching the sanitised scenes/skills copy and the capability's 'no OneAgent credentials' rule",
+      "provenance": "rewritten"
     },
     {
       "path": "quality_traceability/skills/quality-trace/references/api_spec.md",
       "source": "skills/quality-trace/references/api_spec.md",
-      "sha256": "f8eb941d95ca293a22b72118af8555ca22bcd01a880973622b7679e54243e2fa"
+      "sha256": "cbd6ffb5449b4259828528765bc93cf18437bbde136731bb9be3279ec11765d3",
+      "adapted": "scene-skills: the migration copied OneAgent's live webhook endpoints and tokens verbatim; the three URLs are redacted back to <your-airbag-webhook-url>, matching the sanitised scenes/skills copy and the capability's 'no OneAgent credentials' rule",
+      "provenance": "rewritten"
     },
     {
       "path": "quality_traceability/skills/quality-trace/scripts/trace_query.py",
       "source": "skills/quality-trace/scripts/trace_query.py",
-      "sha256": "925b5a3fb80b6ab82cebf383b6db6a6ecfb4e99f5e010b349ef2e2d074e1e2af"
+      "sha256": "f5e16114476786e9c259e57f44b8a0785c45844fd9d98d04c921495111d538f1",
+      "adapted": "scene-skills: the migration copied OneAgent's live webhook endpoints and tokens verbatim; the three URL defaults are redacted back to <your-airbag-webhook-url>, matching the sanitised scenes/skills copy and the capability's 'no OneAgent credentials' rule",
+      "provenance": "rewritten"
     },
     {
       "path": "sap_data_analysis/skills/sap-integration/SKILL.md",

@@ -21,7 +21,7 @@
 | HTTP方法     | POST                                                                                                 |
 | Content-Type | application/json                                                                                     |
 | 认证方式     | 无认证                                                                                               |
-| 调用地址     | `http://192.168.111.155/api/v1/orchestrations/webhook/h9MaIyjKZpEiwg9O71hk0IKmnstoDg5f8-h69DNi6_w` |
+| 调用地址     | `<your-airbag-webhook-url>` |
 
 ### 请求参数
 
@@ -46,7 +46,7 @@
 ### 调用示例 (curl)
 
 ```bash
-curl -X POST "http://192.168.111.155/api/v1/orchestrations/webhook/h9MaIyjKZpEiwg9O71hk0IKmnstoDg5f8-h69DNi6_w" \
+curl -X POST "<your-airbag-webhook-url>" \
   -H "Content-Type: application/json" \
   -d '{"box_no": "", "p_line": "", "barcode_no": ""}'
 ```
@@ -74,7 +74,7 @@ curl -X POST "http://192.168.111.155/api/v1/orchestrations/webhook/h9MaIyjKZpEiw
 | HTTP方法     | POST                                                                                                 |
 | Content-Type | application/json                                                                                     |
 | 认证方式     | 无认证                                                                                               |
-| 调用地址     | `http://192.168.111.155/api/v1/orchestrations/webhook/-vCOsZMn0Cv1pi6B5joAqi7TjACRohcYU-ELcvrVXBA` |
+| 调用地址     | `<your-airbag-webhook-url>` |
 
 ### 请求参数
 
@@ -95,7 +95,7 @@ curl -X POST "http://192.168.111.155/api/v1/orchestrations/webhook/h9MaIyjKZpEiw
 ### 调用示例 (curl)
 
 ```bash
-curl -X POST "http://192.168.111.155/api/v1/orchestrations/webhook/-vCOsZMn0Cv1pi6B5joAqi7TjACRohcYU-ELcvrVXBA" \
+curl -X POST "<your-airbag-webhook-url>" \
   -H "Content-Type: application/json" \
   -d '{"f_lot": ""}'
 ```
@@ -123,7 +123,7 @@ curl -X POST "http://192.168.111.155/api/v1/orchestrations/webhook/-vCOsZMn0Cv1p
 | HTTP方法     | POST                                                                                                 |
 | Content-Type | application/json                                                                                     |
 | 认证方式     | 无认证                                                                                               |
-| 调用地址     | `http://192.168.111.155/api/v1/orchestrations/webhook/EUMG7baCZqp4iC3Vir9sYEh_p8QEe750fx0YHDlgjcw` |
+| 调用地址     | `<your-airbag-webhook-url>` |
 
 ### 请求参数
 
@@ -149,7 +149,7 @@ curl -X POST "http://192.168.111.155/api/v1/orchestrations/webhook/-vCOsZMn0Cv1p
 ### 调用示例 (curl)
 
 ```bash
-curl -X POST "http://192.168.111.155/api/v1/orchestrations/webhook/EUMG7baCZqp4iC3Vir9sYEh_p8QEe750fx0YHDlgjcw" \
+curl -X POST "<your-airbag-webhook-url>" \
   -H "Content-Type: application/json" \
   -d '{"header_id": "", "cut_version": "", "sew_version": ""}'
 ```
@@ -186,13 +186,13 @@ curl -X POST "http://192.168.111.155/api/v1/orchestrations/webhook/EUMG7baCZqp4i
 
 ```env
 # 气袋总查询Webhook地址
-AIRBAG_WEBHOOK_URL=http://192.168.111.155/api/v1/orchestrations/webhook/h9MaIyjKZpEiwg9O71hk0IKmnstoDg5f8-h69DNi6_w
+AIRBAG_WEBHOOK_URL=<your-airbag-webhook-url>
 
 # 气袋明细查询(面料LOT)Webhook地址
-AIRBAG_DETAIL_WEBHOOK_URL=http://192.168.111.155/api/v1/orchestrations/webhook/-vCOsZMn0Cv1pi6B5joAqi7TjACRohcYU-ELcvrVXBA
+AIRBAG_DETAIL_WEBHOOK_URL=<your-airbag-webhook-url>
 
 # 气袋原料追溯查询Webhook地址
-AIRBAG_MATERIAL_WEBHOOK_URL=http://192.168.111.155/api/v1/orchestrations/webhook/EUMG7baCZqp4iC3Vir9sYEh_p8QEe750fx0YHDlgjcw
+AIRBAG_MATERIAL_WEBHOOK_URL=<your-airbag-webhook-url>
 ```
 
 ## Python调用示例

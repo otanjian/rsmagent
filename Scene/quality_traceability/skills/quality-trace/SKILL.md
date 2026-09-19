@@ -14,15 +14,15 @@ requires:
 config:
   airbag_webhook_url:
     type: string
-    default: "http://192.168.111.155/api/v1/orchestrations/webhook/h9MaIyjKZpEiwg9O71hk0IKmnstoDg5f8-h69DNi6_w"
+    default: "<your-airbag-webhook-url>"
     description: "气袋总查询Webhook地址"
   airbag_detail_webhook_url:
     type: string
-    default: "http://192.168.111.155/api/v1/orchestrations/webhook/-vCOsZMn0Cv1pi6B5joAqi7TjACRohcYU-ELcvrVXBA"
+    default: "<your-airbag-webhook-url>"
     description: "气袋明细查询(面料LOT)Webhook地址"
   airbag_material_webhook_url:
     type: string
-    default: "http://192.168.111.155/api/v1/orchestrations/webhook/EUMG7baCZqp4iC3Vir9sYEh_p8QEe750fx0YHDlgjcw"
+    default: "<your-airbag-webhook-url>"
     description: "气袋原料追溯查询Webhook地址"
 metadata:
   openclaw:

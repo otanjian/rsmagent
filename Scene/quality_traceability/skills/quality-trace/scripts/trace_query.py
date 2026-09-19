@@ -16,7 +16,7 @@ class AirbagQuery:
     def __init__(self):
         self.webhook_url = os.getenv(
             'AIRBAG_WEBHOOK_URL',
-            'http://192.168.111.155/api/v1/orchestrations/webhook/h9MaIyjKZpEiwg9O71hk0IKmnstoDg5f8-h69DNi6_w'
+            '<your-airbag-webhook-url>'
         )
 
     def _get_headers(self):
@@ -125,7 +125,7 @@ class AirbagDetailQuery:
     def __init__(self):
         self.webhook_url = os.getenv(
             'AIRBAG_DETAIL_WEBHOOK_URL',
-            'http://192.168.111.155/api/v1/orchestrations/webhook/-vCOsZMn0Cv1pi6B5joAqi7TjACRohcYU-ELcvrVXBA'
+            '<your-airbag-webhook-url>'
         )
 
     def _get_headers(self):
@@ -225,7 +225,7 @@ class AirbagMaterialQuery:
     def __init__(self):
         self.webhook_url = os.getenv(
             'AIRBAG_MATERIAL_WEBHOOK_URL',
-            'http://192.168.111.155/api/v1/orchestrations/webhook/EUMG7baCZqp4iC3Vir9sYEh_p8QEe750fx0YHDlgjcw'
+            '<your-airbag-webhook-url>'
         )
         self._airbag_query = AirbagQuery()
 
