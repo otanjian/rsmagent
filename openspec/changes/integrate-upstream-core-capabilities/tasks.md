@@ -19,6 +19,12 @@
 - [x] 3.4 实现 test_session_context_scope.py 和 test_context_compaction_concurrency.py，覆盖非 owner、跨租户、非法 Origin、新消息、双压缩和死锁。
 - [x] 3.5 新增 Web functional-context 并接现有会话生命周期。
 - [ ] 3.6 实现 Web UI 测试和真实会话验收，替换这两项旧缺口断言；证据通过后才开放 usage/compact。
+      真实验收已执行（`evidence/acceptance.md` §13，30 项 25 PASS / 5 FAIL 跨三个缺陷）：
+      本 change 引入的 DEF-1（Web 输入框新建的会话被自己的 owner 判 404）已修（`cca39b28`，
+      单元级两条新用例在撤掉修复后失败）；DEF-2 的语义已在规范中写明（`2148573e`），
+      验收口径改为断言「压缩不丢正文 + 重启后正文完整」；DEF-3 是预存在的响应形状，
+      客户端已按其契约把 200+`status:error` 当失败。**修复后在 `2148573e` 上的复测尚未回到全绿，
+      故本项与其后的 4.5 保持未勾选**，usage/compact 继续关闭。
 
 ## 4. P3 模型编辑与 R1 验收
 
@@ -27,6 +33,11 @@
 - [x] 4.3 接 openChatFallbackModal 和 provider 卡片，登记静态资产，补三语言文案与平台权限入口。
 - [x] 4.4 实现 test_functional_models.cjs，复跑既有模型 API/回退链/搜索 provider 测试。
 - [ ] 4.5 完成 R1 真实验收、旧版兼容、关闭重启与回退演练；记录证据后交付 R1，R2 保持关闭。
+      已完成的部分（`evidence/acceptance.md` §13）：真实部署上的 4.5.1–4.5.10 复测；
+      旧版兼容与关闭重启/回退演练已在 §10 / §11 的真实演练中覆盖（关闭态 503 + 数据零改动，
+      代码回退到基线二进制后既有数据逐项不变）；模型目录/回退链的真实读写与跨重启持久性为 PASS。
+      未完成：4.5.4a/b 的拒绝口径（改为「被拒 + 无写入 + 客户端视为失败」，见 §13.3）与
+      DEF-1 修复后的整批复测，**未回到全绿前本项不勾选**，R1 两个动作继续 `open={}` / `accepted=False`。
 
 ## 5. P4 调度目标与创建
 

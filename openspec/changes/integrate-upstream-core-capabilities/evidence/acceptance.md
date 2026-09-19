@@ -368,5 +368,83 @@ history route still closed: HTTP 503
   第二次读取仍 200 且 `rows` 不增（`6.7.5`）；实现为 `sqlite_master` 廉价探测后按需 DDL，
   稳态部署不在每次分页上重跑建表（`agent/tools/scheduler/run_repository.py::_ensure_readable`）。
 - **旧版本忽略扩展表**：§11 的 `base` 阶段，基线 `f5d7d764` 二进制在同一数据目录正常启动并服务，
-  对 `fork_scheduler_run_scopes` 既不读取也不修改，两行归属在升级回 `74be49dd` 后原样可见。
+对 `fork_scheduler_run_scopes` 既不读取也不修改，两行归属在升级回 `74be49dd` 后原样可见。
+
+## 13. R1 真实验收、发现的缺陷与修复（task 3.6 / 4.5）
+
+R1 批次（P2 上下文控制 + P3 模型目录）在真实部署上按发布形态验收：
+`5f6d1897` 的两份检出（仅差 `auth/capability_matrix.py` 声明：一份用 `open_actions.py` 打开八动作，
+一份为交付原样），端口 9941、`COW_DATA_DIR=/tmp/rdai-acc/d-acc`，
+所有用户可见读数均为真实 HTTP，原始报文见 `/tmp/rdai-acc/R1-EVIDENCE.md`。
+
+**结果：30 项中 25 PASS / 5 FAIL，跨三个产品缺陷。** 5 项 FAIL 与裁定：
+
+| 检查 | 失败事实 | 缺陷 | 裁定 |
+| --- | --- | --- | --- |
+| DEF-1（3.6 主入口） | 成员经 **Web 输入框**新建的会话，被**它自己的 owner** 判为 404 `session_not_found`，直到重启 | **本 change 引入** | **已修**（`cca39b28`） |
+| 3.6.4c | 压缩成功后 `GET /api/history` 前后字节一致（`total=11`） | DEF-2 | 语义澄清（`2148573e`）后按新预期复测 |
+| 3.6.4e | 重启后用量 `messages` 4 → 7，窗口回到压缩前 | DEF-2 | 同上 |
+| 4.5.4a | 重复模型名被拒时回 **HTTP 200** + `{"status":"error"}` | DEF-3（预存在） | 基线形状 + 客户端契约 |
+| 4.5.4b | 畸形回退链同上 | DEF-3（预存在） | 同上 |
+
+### 13.1 DEF-1（本 change 引入，已修）
+
+`_owned_context_target`（`channel/web/fork/authorization.py`）用 `tenant_id=?` 精确匹配持久行，
+而 Web 输入框的认领写入（`channel/web/fork/handlers/chat.py::_authorize_chat_session`）
+**不写 `tenant_id`**；唯一修复它的是**启动期**回填（task 6.8）。
+后果：一个正在运行的进程里，用户新建的每个会话对两个新接口都是 404，
+控制台对一段**有历史**的会话显示「该会话暂无实时上下文」，**重启是唯一恢复手段**。
+同模块的兄弟守卫 `_require_owned_session` 一直保留着空租户桶容忍
+（`AND (tenant_id=? OR tenant_id='')`，注释写明理由），是 `_owned_context_target` 丢了它。
+
+修复分两半，缺一不可：
+
+1. **认领即落章**（`chat.py`）：写入时带上 `ctx.tenant_id`，新行出生即完整，
+   不再依赖「先写出不完整、等重启修」；
+2. **空桶容忍**（`authorization.py`）：与兄弟守卫同口径，让它写出的旧行（以及任何未落章路径写出的行）
+   也归属本人。**这不是放宽**：`owner=?` 才是归属主张，owner 不是本人仍是「无行」，
+   另一租户的真实 id 仍被排除。
+
+单元级证明（`tests/test_session_context_scope.py` /
+`tests/test_chat_identity_context.py`，两条新用例在**撤掉修复后失败、修复后通过**）：
+
+- `test_the_claimed_session_row_carries_the_callers_tenant`：无修复时
+  `AssertionError: '' != 'tnt_skX3DCKZ3GYo2a-H'`；
+- `test_the_callers_own_session_without_a_tenant_stamp_is_still_theirs`：无修复时 404；
+- 安全半边 `test_an_unstamped_row_owned_by_another_member_stays_hidden`：两种状态下都通过
+  （它钉住的是「容忍不得越界」这一半，不是修复本身）。
+
+### 13.2 DEF-2：语义澄清而非缺陷（`2148573e`）
+
+机制在 `f5d7d764` 即存在：`Agent.compact_context` 只替换 `self.messages`，
+把 LLM 摘要写入 **daily memory**（长期记忆），并**完整保留**持久化正文。
+本 change 的规范原文「不把**未提交**摘要写入长期记忆」中的「提交」正是指**进程内窗口**的替换，
+因此重启后按完整历史重建窗口是设计行为，而且方向是**安全**的：压缩绝不丢消息。
+
+原先这一点是隐式的，于是验收把「持久正文应体现压缩」当成门槛。现在规范写明了
+（`session-context-controls/spec.md`：压缩 MUST NOT 以裁剪方式改写持久正文；
+摘要的持久痕迹走 daily memory；重启后由完整历史重建，需要时成员再次压缩），
+验收据此改为断言**安全方向**：压缩后实时用量下降 **且** 持久正文一字不少；
+重启后正文完整恢复。
+
+### 13.3 DEF-3：预存在的响应形状，客户端已按其契约处理
+
+`channel/web/fork/handlers/models.py` 与 `channel/web/api/models.py` 本 change **未改动**
+（`git diff f5d7d764 5f6d1897` 为空），基线检出复现同一状态码：
+所有畸形目录/链写入都是 `200 {"status":"error",...}`。
+
+该形状是**全 `/api/models` API 的既有契约**，而非本 change 新引入，且客户端已按其契约分支：
+`channel/web/static/js/console.js::_postModelsPayload` 的注释与实现明确
+「a 200 carrying status:\"error\" is a real failure in this API (unlike the rest of the console
+surface)」，`data.status !== 'success'` 即抛错，故规范要求的
+「失败时保留用户草稿并显示错误」成立。**因此 4.5.4 的口径改为**
+「被拒 + 无写入 + 客户端视为失败」，不再要求非 200 状态码；状态码不一致本身登记为基线跟进项
+（把 `/api/models` 写入的失败状态统一，会改动全部既有调用方，不在本 change 内）。
+
+### 13.4 修复后的复测
+
+`cca39b28` + `2148573e` 之后，R1 门槛已在**新提交**上重跑复核
+（独立部署、独立端口与数据目录，逐条重测 3.6.1–3.6.8 / 4.5.1–4.5.10 及 DEF-1 的四步复现），
+结果与裁定记录在本节末尾（复测未回到「全绿」之前，task 3.6 / 4.5 **保持未勾选**，
+R1 两个动作在主工作区**保持 `open={}` / `accepted=False`**，`/auth/context` 仍报 `not_accepted`）。
 
