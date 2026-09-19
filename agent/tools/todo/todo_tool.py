@@ -47,6 +47,30 @@ def _todo_enabled() -> bool:
     return default_enabled()
 
 
+def _audit_recorder(identity_service, actor):
+    """Write delegation events to the identity audit store.
+
+    Mirrors the Web wiring: the audit is written *before* the todo write and a
+    failure refuses the action, so a delegation can never exist without its
+    record. Reads ``identity_service._audit`` so both sides are guaranteed to be
+    the same database the session was resolved against.
+    """
+
+    def record(event: dict) -> None:
+        identity_service._audit.record(
+            actor_user_id=actor.owner_id,
+            actor_username=actor.username,
+            tenant_id=actor.scope_id,
+            target_tenant_id=actor.scope_id,
+            action=str(event.get("action", "")),
+            target=str(event.get("target", "")),
+            redacted_changes=event.get("changes") or {},
+            result=str(event.get("result", "success")),
+        )
+
+    return record
+
+
 class TodoTool(BaseTool):
     name: str = "todo"
     # Personal todos are the caller's own data; _service() resolves the trusted
@@ -60,16 +84,23 @@ class TodoTool(BaseTool):
         "支持动作：\n"
         "- create：为用户保存一条待办（title 必填；description、kind、priority、due_at 可选）\n"
         "- list：列出用户当前未完成的待办\n"
-        "- get：查询某一条待办详情（todo_id 必填）\n\n"
+        "- get：查询某一条待办详情（todo_id 必填）\n"
+        "- assign：把用户本人的一条待办指派给同租户同事（todo_id、assignee 必填）\n\n"
+        "assign 的严格前置条件（不满足时必须拒绝并请用户补充，不得代替用户决定）：\n"
+        "1. 接收人必须由用户在本轮对话中明确点名；\n"
+        "2. 不得扫描会话参与方、成员目录、通讯录或历史记录来推断接收人；\n"
+        "3. 一次至多一个接收人；用户要求同时指派多人时，逐条确认后分次调用；\n"
+        "4. 不得因为「任务看起来该由谁负责」而自行选择接收人。\n\n"
         "注意：不会自动完成、取消或编辑待办；完成与取消必须由用户显式操作。"
+        "不支持收回、退回或转交：这些由用户在待办工作台自行操作。"
     )
     params: dict = {
         "type": "object",
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["create", "list", "get"],
-                "description": "操作类型: create(创建), list(列表), get(查询详情)",
+                "enum": ["create", "list", "get", "assign"],
+                "description": "操作类型: create(创建), list(列表), get(查询详情), assign(指派给同事)",
             },
             "title": {
                 "type": "string",
@@ -99,7 +130,11 @@ class TodoTool(BaseTool):
             },
             "todo_id": {
                 "type": "string",
-                "description": "待办 ID（用于 get）",
+                "description": "待办 ID（用于 get / assign）",
+            },
+            "assignee": {
+                "type": "string",
+                "description": "接收人的登录名（仅 assign 使用）。必须是用户在本轮对话中明确点名的同租户同事；不得为多个接收人。",
             },
         },
         "required": ["action"],
@@ -130,6 +165,8 @@ class TodoTool(BaseTool):
                 return self._list(params)
             if action == "get":
                 return self._get(params)
+            if action == "assign":
+                return self._assign(params)
             return ToolResult.fail(f"未知操作: {action}")
         except Exception as e:
             logger.error(f"[TodoTool] error: {e}")
@@ -257,6 +294,11 @@ class TodoTool(BaseTool):
         return TodoService(
             actor, enabled_fn=_todo_enabled,
             app_data_root=str(tenant_app_data_root(ident.tenant_id, identity_service=svc)),
+            # Receiver resolution stays inside the acting tenant, and the audit
+            # is written before the todo write.
+            member_resolver=lambda username: svc.resolve_assignable_member(
+                ident.tenant_id, username),
+            audit_recorder=_audit_recorder(svc, actor),
         )
 
     def _create(self, params: dict) -> ToolResult:
@@ -331,6 +373,77 @@ class TodoTool(BaseTool):
         return ToolResult.success(
             {"status": "ok", "items": items, "total": data["total"]},
             display="\n".join(lines),
+        )
+
+    def _assign(self, params: dict) -> ToolResult:
+        """Hand the user's own todo to a colleague the user named.
+
+        The order matters: build the service first (which revalidates the trusted
+        Web delegation, the account, the session, the tenant, the membership and
+        the feature switch), then check ``todo.assign``, and only then look the
+        receiver up. Resolving before those checks would turn this tool into a
+        membership oracle for a context that is not allowed to delegate at all.
+        """
+        todo_id = params.get("todo_id")
+        if not todo_id:
+            return ToolResult.fail("错误: 缺少待办ID (todo_id)")
+        assignee = params.get("assignee")
+        if not isinstance(assignee, str) or not assignee.strip():
+            return ToolResult.fail(
+                "错误: 缺少接收人 (assignee)。请让用户在本轮明确指名一位同租户同事，"
+                "不要自行推断或代选。")
+
+        from common.runtime_identity import current_identity
+        from auth.service import get_identity_service
+        ident = current_identity()
+        username = assignee.strip()
+
+        svc = self._service()
+        if not svc.actor.has("todo.assign"):
+            return ToolResult.fail("委派失败: 无待办委派权限")
+
+        target = get_identity_service().resolve_assignable_member(
+            ident.tenant_id, username)
+        if not target:
+            # Same message whether the name does not exist or belongs to another
+            # tenant, so this cannot be used to probe membership.
+            return ToolResult.fail(
+                f"委派失败: 「{username}」不是本租户的有效成员")
+
+        try:
+            current = svc.get(todo_id)
+        except Exception as e:
+            return ToolResult.fail(f"委派失败: {e}")
+
+        # The Agent is not given a version to carry: it reads the current one and
+        # the store still applies compare-and-set, so a change that lands in
+        # between is refused rather than overwritten.
+        version = params.get("expected_version")
+        if not isinstance(version, int):
+            version = current["version"]
+
+        try:
+            moved = svc.assign(
+                todo_id, target_username=username, expected_version=version,
+                operator_id=ident.agent_id or "",
+            )
+        except Exception as e:
+            return ToolResult.fail(f"委派失败: {e}")
+
+        return ToolResult.success(
+            {
+                "status": "assigned",
+                "todo_id": moved["id"],
+                "title": moved["title"],
+                "assignee": target["display_name"],
+                "assignee_username": target["username"],
+                "owner_id": moved["owner_id"],
+                "version": moved["version"],
+            },
+            display=(
+                f"✅ 已把待办「{moved['title']}」指派给 {target['display_name']}"
+                f"（{target['username']}）。在他完成前，这条事项由他处理，你仍可查看与收回。"
+            ),
         )
 
     def _get(self, params: dict) -> ToolResult:

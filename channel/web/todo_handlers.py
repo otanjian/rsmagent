@@ -92,11 +92,13 @@ def _member_resolver_for(tenant_id: str):
     The delegation target is resolved server-side inside the acting tenant, so a
     login name from another tenant is simply not found — the todo module never
     queries identity data itself, and the caller cannot name a tenant.
-    """
-    identity = _get_identity_service()
 
+    Constructed per call rather than per service: building the service must not
+    open the identity database, or a tenant with the todo feature switched off
+    would get its private data directory created just by asking for a summary.
+    """
     def resolve(username: str):
-        return identity.resolve_assignable_member(tenant_id, username)
+        return _get_identity_service().resolve_assignable_member(tenant_id, username)
 
     return resolve
 
@@ -109,11 +111,9 @@ def _audit_recorder_for(actor: TodoActor):
     *before* the todo write and refuses the action if it fails, which is the
     direction that cannot produce an unaudited delegation.
     """
-    from auth.audit import AuditStore
-    audit = AuditStore(_identity_db_path())
-
     def record(event: dict) -> None:
-        audit.record(
+        from auth.audit import AuditStore
+        AuditStore(_identity_db_path()).record(
             actor_user_id=actor.owner_id,
             actor_username=actor.username,
             tenant_id=actor.scope_id,
