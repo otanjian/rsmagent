@@ -1,0 +1,75 @@
+{
+  "change": "add-todo-bell-badge-polling",
+  "capturedAt": "2026-09-19",
+  "instance": "http://localhost:9899/chat",
+  "profile": "unauthenticated (login overlay up; window.requestAuthGatedStart undefined)",
+  "intervalMs": 30000,
+  "runs": [
+    {
+      "id": "signed-out-parked",
+      "what": "page reloaded, left idle for 82s with no interaction",
+      "source": "performance.getEntriesByType('resource')",
+      "reads": [
+        { "url": "/api/todos/summary?agent_id=default", "startMs": 308 }
+      ],
+      "listRequests": 0,
+      "conclusion": "the cadence stays parked with no session: only the page-load read, which predates this change"
+    },
+    {
+      "id": "refusal-classification",
+      "what": "window.fetch hook recording caller stack and response body, taken before the park condition was widened",
+      "source": "Runtime.evaluate",
+      "reads": [
+        {
+          "atMs": 6479,
+          "status": 400,
+          "body": { "status": "error", "message": "tenant selection required", "code": "missing_tenant" },
+          "frames": "window.fetch < apiFetch < refreshSummary < pollSummary"
+        },
+        {
+          "atMs": 12495,
+          "status": 400,
+          "body": { "status": "error", "message": "tenant selection required", "code": "missing_tenant" },
+          "frames": "window.fetch < apiFetch < refreshSummary < HTMLDocument.onSummaryVisibility"
+        }
+      ],
+      "conclusion": "the no-session refusal is 400 missing_tenant, not 401; and a visible->visible event used to spend a read"
+    },
+    {
+      "id": "activity-probe-throttle",
+      "what": "four keydown/pointerdown events, then one more event after a full interval",
+      "source": "performance.getEntriesByType('resource')",
+      "reads": [308, 87599, 138129],
+      "listRequests": 0,
+      "conclusion": "a typed burst probes once; the next interval allows one more probe"
+    },
+    {
+      "id": "revived-cadence",
+      "what": "activity probe hitting a fulfilled 200 summary response (no session in this profile), then left alone for two intervals",
+      "source": "window.fetch hook recording Date.now()/performance.now()",
+      "reads": [
+        { "wallMs": 78469, "perfMs": 226312 },
+        { "wallMs": 108658, "perfMs": 256501 },
+        { "wallMs": 139656, "perfMs": 287499 }
+      ],
+      "deltasMs": [30189, 30998],
+      "badge": "3",
+      "badgeHidden": false,
+      "listRequests": 0,
+      "conclusion": "a successful probe restores the fixed interval (never shorter than 30s) and repaints the count"
+    },
+    {
+      "id": "cadence-earlier-run",
+      "what": "same wiring, measured before the park/revive work landed",
+      "source": "window.fetch hook recording performance.now()",
+      "reads": [200281, 230285, 260287],
+      "deltasMs": [30004, 30002],
+      "listRequests": 0
+    }
+  ],
+  "notCovered": [
+    "30s cadence against the real backend in a signed-in session (the automation profile has no session)",
+    "zero requests while the tab is hidden (tab switching does not change Chromium visibility in this harness; document.visibilityState is a non-configurable own accessor)",
+    "badge 0 / 99+ / capability-hidden and transient-failure semantics on live data (archived change 2026-09-19-add-todo-header-bell covers them)"
+  ]
+}

@@ -165,6 +165,85 @@
         setBellOffered(!(summary && (summary.enabled === false || summary.bound === false)));
     }
 
+    // ---- summary cadence --------------------------------------------------
+    // The bell is the only way into the todo list, so its count has to age out
+    // on its own: a todo an Agent creates in another session — or one handled
+    // in another tab — never touches this page's refresh points. A fixed
+    // interval read of the same summary closes that gap (todo-workbench: 本人
+    // 角标按固定间隔与明确刷新点更新). No second count source, no SSE or push.
+    const SUMMARY_POLL_MS = 30000;   // spec floor: never shorter than 30 seconds
+    let _summaryTimer = null;
+    let _summaryInFlight = false;
+    let _summaryGen = 0;
+    let _summaryPollStarted = false;
+    let _summaryPollPaused = false;  // set by a refusal that says "no session"
+    let _summaryLastVisible = true;
+    let _summaryReviveAt = 0;
+
+    function summaryVisible() {
+        return document.visibilityState !== 'hidden';
+    }
+
+    function clearSummaryPoll() {
+        if (_summaryTimer === null) return;
+        clearTimeout(_summaryTimer);
+        _summaryTimer = null;
+    }
+
+    function scheduleSummaryPoll() {
+        clearSummaryPoll();
+        if (!_summaryPollStarted || _summaryPollPaused || !summaryVisible()) return;
+        _summaryTimer = setTimeout(pollSummary, SUMMARY_POLL_MS);
+    }
+
+    // The tick arms the next one before it reads, so the cadence survives a read
+    // that hangs: a hung read leaves _summaryInFlight set, later ticks skip it,
+    // and the schedule keeps running instead of stalling on an unresolved
+    // promise. That is also what keeps two polls from stacking.
+    function pollSummary() {
+        _summaryTimer = null;
+        if (_summaryPollPaused || !summaryVisible()) return;
+        scheduleSummaryPoll();
+        if (!_summaryInFlight) refreshSummary();
+    }
+
+    function startSummaryPolling() {
+        _summaryPollStarted = true;
+        scheduleSummaryPoll();
+    }
+
+    function onSummaryVisibility() {
+        const nowVisible = summaryVisible();
+        const resumed = nowVisible && !_summaryLastVisible;
+        _summaryLastVisible = nowVisible;
+        if (!nowVisible) { clearSummaryPoll(); return; }
+        if (!_summaryPollStarted || !resumed) return;
+        // Resume on the spot: the user is looking at the count again, so the
+        // interval that elapsed while hidden must not be waited out first. Only
+        // a hidden -> visible transition counts, so an event that arrives while
+        // the tab was visible all along cannot spend a read.
+        //
+        // This deliberately runs even while the cadence is parked by a refusal
+        // (see reviveSummaryPoll): looking at the shell again is cheap evidence
+        // that the session may be back, and a good read restarts the cadence.
+        refreshSummary();
+        if (!_summaryPollPaused) scheduleSummaryPoll();
+    }
+
+    // A parked cadence arms no timer, so nothing would ever notice that the
+    // session came back on its own. Activity is the cheapest such signal, and
+    // the login overlay — where a parked cadence normally waits — is exactly
+    // where the user is active. The throttle keeps a typed password from
+    // turning into a burst of refusals; one probe per interval is the same
+    // upper bound a running cadence has.
+    function reviveSummaryPoll() {
+        if (!_summaryPollStarted || !_summaryPollPaused || !summaryVisible()) return;
+        const now = Date.now();
+        if (now - _summaryReviveAt < SUMMARY_POLL_MS) return;
+        _summaryReviveAt = now;
+        refreshSummary();
+    }
+
     // A status that means the server judged this identity, as opposed to a read
     // that merely failed. 401/403 say the identity may not read todos at all;
     // the feature-off 404 says the deployment withdrew the capability.
@@ -174,18 +253,46 @@
         return err.code === 'todo_disabled';
     }
 
+    // A refusal that says "this page has no session to read with", as opposed to
+    // one about this identity: the login overlay and the tenant picker both
+    // answer 400 missing_tenant, and a lost session answers 401. Reading either
+    // one again on a timer only repeats the same refusal, so the cadence parks
+    // until something (activity, focus, a visible transition, a todo write) reads
+    // successfully again.
+    function summaryNoSession(err) {
+        if (!err) return false;
+        return err.status === 401 || err.code === 'missing_tenant';
+    }
+
     async function refreshSummary() {
+        // Newest read wins: a response landing after a later one was issued
+        // (focus, write, poll) must not repaint the count with an older value.
+        const gen = ++_summaryGen;
+        _summaryInFlight = true;
         try {
             const data = await apiFetch('/api/todos/summary');
+            if (gen !== _summaryGen) return null;
+            _summaryPollPaused = false;   // a good read is how the cadence resumes
             applySummaryBadge(data);
             return data;
         } catch (e) {
+            if (gen !== _summaryGen) return null;
             // Unknown, not "off": clear the count but keep the entry, so one
             // transient failure cannot erase the way in. An authoritative
             // denial still withholds the entry.
             applySummaryBadge(null);
             if (summaryDenied(e)) setBellOffered(false);
+            // A session-less page leaves the login overlay up; polling it would
+            // only repeat the same refusal with no cookie to offer.
+            if (summaryNoSession(e)) _summaryPollPaused = true;
             return null;
+        } finally {
+            if (gen === _summaryGen) {
+                _summaryInFlight = false;
+                // Every explicit refresh point re-times the cadence, so a read
+                // the user just triggered is not repeated a moment later.
+                scheduleSummaryPoll();
+            }
         }
     }
 
@@ -852,14 +959,31 @@
             if (e.target === e.currentTarget) closeTodoDetail();
         });
 
-        // The bell is the cross-view entry, so it is mounted once here, gets a
-        // count without waiting for a visit to the todo page, and refreshes on
-        // window focus. No interval/SSE/push: these are the refresh points
-        // todo-workbench allows.
+        // The bell is the cross-view entry, so it is mounted once here and gets
+        // a count without waiting for a visit to the todo page. Besides the
+        // explicit refresh points (page load, window focus, entering the todo
+        // page, a confirmed write) the count is kept fresh by a fixed-interval
+        // read while the tab is visible — a todo created by an Agent in another
+        // session has no other way to surface (todo-workbench: 本人角标按固定
+        // 间隔与明确刷新点更新). No SSE, no push channel, no second source.
         mountTodoBell();
         refreshSummary();
         if (typeof window.addEventListener === 'function') {
             window.addEventListener('focus', function () { refreshSummary(); });
+        }
+        if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+            document.addEventListener('visibilitychange', onSummaryVisibility);
+            // Capture-phase: the revive probe must run even if a handler on the
+            // way down stops propagation.
+            document.addEventListener('pointerdown', reviveSummaryPoll, true);
+            document.addEventListener('keydown', reviveSummaryPoll, true);
+        }
+        // Park the cadence behind the login gate like the other background
+        // pollers, so a signed-out tab never fires cookie-less requests.
+        if (typeof window.requestAuthGatedStart === 'function') {
+            window.requestAuthGatedStart(startSummaryPolling);
+        } else {
+            startSummaryPolling();
         }
     }
 

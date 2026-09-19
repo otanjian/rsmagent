@@ -67,6 +67,47 @@ function response(data, status = 200) {
 // module mounts its entry, or the idempotency guard would skip mounting.
 const BELL_IDS = new Set(['todo-bell-btn', 'todo-bell-badge']);
 
+// The badge's polling interval, per todo-workbench: no shorter than 30 seconds.
+const POLL_MS = 30000;
+
+// Yield to the microtask queue so an in-flight async refresh can settle.
+const flush = () => new Promise(resolve => setImmediate(resolve));
+
+// A hand-cranked clock: the module's cadence has to be observable without
+// sleeping. It flushes pending work before and after each timer it runs, so a
+// tick that fires an async read settles before the next one is looked for.
+function fakeClock() {
+    let now = 0;
+    let seq = 0;
+    let timers = [];
+    return {
+        setTimeout(fn, ms) {
+            const handle = ++seq;
+            timers.push({ handle, fn, due: now + (Number(ms) || 0) });
+            return handle;
+        },
+        clearTimeout(handle) {
+            timers = timers.filter(timer => timer.handle !== handle);
+        },
+        get pending() { return timers.length; },
+        // The crank is also the module's wall clock (see the Date shim below),
+        // so a throttled probe can be tested without waiting a real interval.
+        get now() { return now; },
+        async advance(ms) {
+            now += ms;
+            await flush();
+            for (let guard = 0; guard < 20; guard++) {
+                const at = timers.findIndex(timer => timer.due <= now);
+                if (at < 0) return;
+                const [timer] = timers.splice(at, 1);
+                timer.fn();
+                await flush();
+            }
+            throw new Error('timers kept rescheduling without making progress');
+        },
+    };
+}
+
 function setup(responses, options = {}) {
     const nodes = new Map();
     const creations = [];
@@ -74,6 +115,29 @@ function setup(responses, options = {}) {
     const selectors = new Map();
     const focusListeners = [];
     const navigations = [];
+    const clock = fakeClock();
+    // The cadence is driven by the hand-cranked clock, but the module throttles
+    // its revive probe on wall-clock time. Fold the crank into Date.now() so
+    // both advance together; everything else about Date stays real (the module
+    // also formats due dates with it).
+    const RealDate = Date;
+    function FakeDate(...args) {
+        return args.length ? new RealDate(...args) : new RealDate();
+    }
+    FakeDate.now = () => RealDate.now() + clock.now;
+    FakeDate.parse = RealDate.parse;
+    FakeDate.UTC = RealDate.UTC;
+    // Listener registries keyed by event type: the module now watches both
+    // window focus and document visibility.
+    const documentListeners = new Map();
+    const windowListeners = new Map();
+    const collect = (registry, type, fn) => {
+        if (!registry.has(type)) registry.set(type, []);
+        registry.get(type).push(fn);
+    };
+    const fire = (registry, type) => (registry.get(type) || []).forEach(fn => fn());
+    // A start parked behind the login gate, released via releaseAuthGate().
+    const gatedStarts = [];
 
     if (options.mountBell) {
         // The workbench header with the tenant selector as the anchor the bell
@@ -125,8 +189,10 @@ function setup(responses, options = {}) {
     const ctx = {
         URLSearchParams,
         I18N: { zh: messages },
+        Date: FakeDate,
         document: {
             readyState: 'complete',
+            visibilityState: 'visible',
             getElementById: id => {
                 const hit = findById(id);
                 if (hit) return hit;
@@ -135,14 +201,24 @@ function setup(responses, options = {}) {
             },
             querySelector: sel => selectors.get(sel) || null,
             querySelectorAll: () => [],
-            addEventListener() {},
+            addEventListener(type, fn) { collect(documentListeners, type, fn); },
             createElement: tag => {
                 const el = element(tag);
                 creations.push(el);
                 return el;
             },
         },
-        addEventListener(type, fn) { if (type === 'focus') focusListeners.push(fn); },
+        addEventListener(type, fn) {
+            collect(windowListeners, type, fn);
+            if (type === 'focus') focusListeners.push(fn);
+        },
+        setTimeout: (fn, ms) => clock.setTimeout(fn, ms),
+        clearTimeout: handle => clock.clearTimeout(handle),
+        requestAuthGatedStart: fn => {
+            if (options.authGate === 'closed') { gatedStarts.push(fn); return; }
+            if (options.authGate === 'absent') return;   // no helper in this host
+            fn();
+        },
         fetch: async (url, opts) => {
             requests.push({ url, options: opts });
             if (url === '/api/todos/summary') return summaryReply();
@@ -153,6 +229,8 @@ function setup(responses, options = {}) {
         },
     };
     ctx.window = ctx;
+    // The absent-gate host must not even see the helper.
+    if (options.authGate === 'absent') delete ctx.requestAuthGatedStart;
     if (options.navigateTo) ctx.navigateTo = (...args) => navigations.push(args);
 
     vm.runInNewContext(source, ctx, { filename: 'todos.js' });
@@ -165,6 +243,17 @@ function setup(responses, options = {}) {
         hidden: id => node(id).classList.contains('hidden'),
         fireFocus: () => focusListeners.forEach(fn => fn()),
         navigations,
+        advance: ms => clock.advance(ms),
+        pendingTimers: () => clock.pending,
+        setVisibility: state => {
+            ctx.document.visibilityState = state;
+            fire(documentListeners, 'visibilitychange');
+            fire(windowListeners, 'visibilitychange');
+        },
+        // Activity on the shell (a click or a keystroke) is the module's cheap
+        // signal that a parked cadence may be worth reviving.
+        fireDocument: type => fire(documentListeners, type),
+        releaseAuthGate: () => gatedStarts.splice(0).forEach(fn => fn()),
     };
 }
 
@@ -364,4 +453,229 @@ test('the summary drives the bell badge only, never a sidebar badge', async () =
         'nothing reveals the sidebar badge');
     assert.equal(h.findById('todo-bell-badge').textContent, '3',
         'the bell is the only place a count appears');
+});
+
+// ---------------------------------------------------------------------------
+// Bell badge polling (change add-todo-bell-badge-polling)
+// ---------------------------------------------------------------------------
+
+const OPEN_SUMMARY = { status: 'success', enabled: true, bound: true, open: 3, overdue: 0 };
+
+test('the bell count refreshes one interval at a time without pulling the list', async () => {
+    const h = setup([], { mountBell: true, absent: BELL_IDS, summary: OPEN_SUMMARY });
+    await flush();                                   // the page-load read lands
+    const initial = h.summaryRequests().length;
+    await h.advance(POLL_MS - 1);
+    assert.equal(h.summaryRequests().length, initial, 'nothing fires before the interval elapses');
+    await h.advance(1);
+    assert.equal(h.summaryRequests().length, initial + 1, 'one poll fires at the interval');
+    assert.equal(h.listRequests().length, 0, 'polling must never pull the todo list');
+    assert.equal(h.findById('todo-bell-badge').textContent, '3', 'the poll repaints the count');
+});
+
+test('polling pauses while the tab is hidden and refreshes when it returns', async () => {
+    const h = setup([], { mountBell: true, absent: BELL_IDS, summary: OPEN_SUMMARY });
+    await flush();
+    const initial = h.summaryRequests().length;
+
+    h.setVisibility('hidden');
+    await h.advance(POLL_MS);
+    await h.advance(POLL_MS);
+    assert.equal(h.summaryRequests().length, initial, 'a hidden tab sends nothing');
+    assert.equal(h.pendingTimers(), 0, 'and leaves no tick armed behind it');
+
+    h.setVisibility('visible');
+    await flush();
+    assert.equal(h.summaryRequests().length, initial + 1, 'becoming visible re-reads immediately');
+    await h.advance(POLL_MS - 1);
+    assert.equal(h.summaryRequests().length, initial + 1, 'the interval restarts from the resume');
+    await h.advance(1);
+    assert.equal(h.summaryRequests().length, initial + 2, 'and the cadence continues');
+});
+
+test('polling stays parked until the login gate opens', async () => {
+    const h = setup([], {
+        mountBell: true, absent: BELL_IDS, authGate: 'closed', summary: OPEN_SUMMARY,
+    });
+    const parked = h.summaryRequests().length;
+    await h.advance(POLL_MS);
+    await h.advance(POLL_MS);
+    assert.equal(h.summaryRequests().length, parked, 'the cadence waits behind the gate');
+    h.releaseAuthGate();
+    await h.advance(POLL_MS);
+    assert.equal(h.summaryRequests().length, parked + 1, 'the cadence runs once the gate opens');
+
+    const gated = setup([], {
+        mountBell: true, absent: BELL_IDS, authGate: 'absent', summary: OPEN_SUMMARY,
+    });
+    await flush();                                    // the page-load read lands first
+    const before = gated.summaryRequests().length;
+    await gated.advance(POLL_MS);
+    assert.equal(gated.summaryRequests().length, before + 1,
+        'a host without the gate helper still polls');
+});
+
+test('an explicit refresh restarts the interval instead of stacking a poll', async () => {
+    const h = setup([], { mountBell: true, absent: BELL_IDS, summary: OPEN_SUMMARY });
+    await flush();
+    const initial = h.summaryRequests().length;
+
+    await h.advance(POLL_MS / 2);
+    h.fireFocus();
+    await flush();
+    assert.equal(h.summaryRequests().length, initial + 1, 'focus still refreshes the count');
+
+    await h.advance(POLL_MS - 1);
+    assert.equal(h.summaryRequests().length, initial + 1, 'the interval restarts from the refresh');
+    await h.advance(1);
+    assert.equal(h.summaryRequests().length, initial + 2, 'the next poll lands one full interval later');
+});
+
+test('a slow summary read never stacks a second request', async () => {
+    const resolvers = [];
+    const h = setup([], {
+        mountBell: true, absent: BELL_IDS,
+        summary: () => new Promise(resolve => resolvers.push(resolve)),
+    });
+    const inFlight = h.summaryRequests().length;      // the page-load read, still pending
+    await h.advance(POLL_MS);
+    assert.equal(h.summaryRequests().length, inFlight, 'the tick skips while a read is in flight');
+
+    resolvers[0](response({ status: 'success', enabled: true, bound: true, open: 5, overdue: 0 }));
+    await flush();
+    assert.equal(h.findById('todo-bell-badge').textContent, '5');
+    await h.advance(POLL_MS);
+    assert.equal(h.summaryRequests().length, inFlight + 1,
+        'the next tick reads once the slow read has settled');
+});
+
+test('a superseded summary response never paints over a newer one', async () => {
+    const resolvers = [];
+    const h = setup([], {
+        mountBell: true, absent: BELL_IDS,
+        summary: () => new Promise(resolve => resolvers.push(resolve)),
+    });
+    h.fireFocus();                                    // supersedes the page-load read
+    assert.equal(resolvers.length, 2, 'the later refresh issues its own read');
+
+    resolvers[1](response({ status: 'success', enabled: true, bound: true, open: 9, overdue: 0 }));
+    await flush();
+    assert.equal(h.findById('todo-bell-badge').textContent, '9');
+
+    resolvers[0](response({ status: 'success', enabled: true, bound: true, open: 1, overdue: 0 }));
+    await flush();
+    assert.equal(h.findById('todo-bell-badge').textContent, '9',
+        'the late response from the previous context is dropped');
+});
+
+test('a lost session stops the cadence instead of polling with no cookie', async () => {
+    let lost = false;
+    const h = setup([], {
+        mountBell: true, absent: BELL_IDS,
+        summary: () => (lost
+            ? response({ status: 'error', code: 'unauthorized', message: 'nope' }, 401)
+            : response(OPEN_SUMMARY)),
+    });
+    await flush();                                    // the page-load read succeeds
+    await h.advance(POLL_MS);
+    assert.equal(h.summaryRequests().length, 2, 'the cadence runs while the session is alive');
+
+    lost = true;
+    await h.advance(POLL_MS);
+    assert.equal(h.summaryRequests().length, 3, 'the poll that meets the 401 still reads once');
+    assert.equal(h.findById('todo-bell-btn').classList.contains('hidden'), true,
+        'a lost session is an authoritative denial');
+
+    await h.advance(POLL_MS);
+    await h.advance(POLL_MS);
+    assert.equal(h.summaryRequests().length, 3, 'and then nothing: no reads without a cookie');
+});
+
+test('a restored session resumes the cadence at the next refresh point', async () => {
+    let lost = true;
+    const h = setup([], {
+        mountBell: true, absent: BELL_IDS,
+        summary: () => (lost
+            ? response({ status: 'error', code: 'unauthorized', message: 'nope' }, 401)
+            : response(OPEN_SUMMARY)),
+    });
+    await flush();                                    // the page-load read 401s
+    const parked = h.summaryRequests().length;
+
+    lost = false;                                     // the user signs back in
+    h.setVisibility('hidden');
+    h.setVisibility('visible');                       // the shell is looked at again
+    await flush();
+    assert.equal(h.summaryRequests().length, parked + 1,
+        'becoming visible re-reads even while the cadence is parked');
+
+    await h.advance(POLL_MS);
+    assert.equal(h.summaryRequests().length, parked + 2,
+        'a good read restarts the cadence');
+});
+
+test('a tab with no tenant context parks the cadence instead of reading every interval', async () => {
+    // The login overlay answers summary with 400 missing_tenant rather than 401,
+    // so the park has to cover that refusal too: reading it every interval would
+    // be exactly the cookie-less polling the login gate exists to prevent.
+    const h = setup([], {
+        mountBell: true, absent: BELL_IDS,
+        summary: () => response({
+            status: 'error', code: 'missing_tenant', message: 'tenant selection required',
+        }, 400),
+    });
+    await flush();                                    // the page-load read is refused
+    const parked = h.summaryRequests().length;
+
+    await h.advance(POLL_MS);
+    await h.advance(POLL_MS);
+    assert.equal(h.summaryRequests().length, parked,
+        'no reads while the shell has no tenant context');
+});
+
+test('user activity revives a parked cadence, at most once per interval', async () => {
+    let signedOut = true;
+    const h = setup([], {
+        mountBell: true, absent: BELL_IDS,
+        summary: () => (signedOut
+            ? response({ status: 'error', code: 'missing_tenant', message: 'no tenant' }, 400)
+            : response(OPEN_SUMMARY)),
+    });
+    await flush();
+    const parked = h.summaryRequests().length;
+
+    h.fireDocument('keydown');                        // the user types at the login form
+    h.fireDocument('keydown');
+    h.fireDocument('pointerdown');
+    await flush();
+    assert.equal(h.summaryRequests().length, parked + 1,
+        'one typed burst probes at most once, so a password cannot spray requests');
+
+    signedOut = false;                                // the session comes back
+    await h.advance(POLL_MS);
+    h.fireDocument('keydown');                        // the next activity probes again
+    await flush();
+    assert.equal(h.summaryRequests().length, parked + 2, 'activity probes once the interval passed');
+    assert.equal(h.findById('todo-bell-badge').textContent, '3',
+        'the probe that succeeds paints the count again');
+
+    await h.advance(POLL_MS);
+    assert.equal(h.summaryRequests().length, parked + 3,
+        'a successful probe restarts the fixed-interval cadence');
+});
+
+test('a visibilitychange that is not a resume does not read', async () => {
+    // Only a hidden -> visible transition is the resume the spec asks for; an
+    // event that arrives while the tab is already visible must not spend a read.
+    const h = setup([], { mountBell: true, absent: BELL_IDS, summary: OPEN_SUMMARY });
+    await flush();
+    const initial = h.summaryRequests().length;
+
+    h.setVisibility('visible');
+    await flush();
+    assert.equal(h.summaryRequests().length, initial,
+        'no read without a hidden -> visible transition');
+
+    await h.advance(POLL_MS);
+    assert.equal(h.summaryRequests().length, initial + 1, 'the interval is untouched');
 });
