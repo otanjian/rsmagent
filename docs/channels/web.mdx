@@ -258,6 +258,21 @@ What the Agent may reach into files and commands is governed by the permission m
 
 - **Management → Agent Configuration (management mode)**: fully editable CRUD for Agents (name, responsibilities, avatar, model, knowledge base, core files, etc.), backed by the same data source as Workbench → Agents. Here you can edit; the usage page is read-only. Concurrent edits are detected via the roster revision and surfaced as a conflict rather than silently overwritten.
 
+### Todos and Delegation
+
+**Workbench → Todos** is a personal todo list with create, edit, start/complete/cancel, reopen, and a processing history. A todo always belongs to whoever created it: delegating moves only the **current handler**, never the ownership.
+
+- **Two sections**: "My todos" lists what you are currently handling; "Delegated by me" lists what you created and somebody else is handling now. The counts and totals are kept separate, and only "My todos" feeds the top-bar badge.
+- **Assign**: hand one of your own todos to a colleague in the same tenant. It leaves "My todos" and appears under "Delegated by me".
+- **Transfer / Reject**: the current handler can pass the item to a third person (multi-hop is supported) or reject it back to the creator. Rejecting is not assigning: use "Reject" to hand it back to the creator.
+- **Recall**: the creator can always take the item back, with no approval from the handler.
+- **Who may act**: only the current handler can edit the content, complete it, or cancel it. While an item is delegated, the creator can still read it and recall it, but cannot process it on the handler's behalf. Delegating never changes the due date, category, priority, or notes.
+- **Status boundary**: only an open (pending) item can be delegated. A completed or cancelled item must be reopened first.
+- **Visibility**: delegation stays inside the tenant and only reaches active members. Cross-tenant targets are always refused, and "not a member of this tenant" returns the same answer as "does not exist", so it cannot be used to probe whether an account exists in another tenant.
+- **Trail**: assign, transfer, recall, and reject all append to the processing history with the actor, the receiver, and the time, and are written to the audit log (successful actions as `todo.assign` / `todo.transfer` / `todo.recall` / `todo.reject`, refusals as `result=denied`).
+- **Permission**: delegation is gated by "Delegate todos" (`todo.assign`), granted to Member and Tenant Admin by default and adjustable under Management → Roles. Without it the UI withholds the receiver picker and says so, while every other todo action keeps working. The receiver list returns only the username and display name of delegatable members in the same tenant — never roles, departments, or contact details.
+- **In conversation**: you can ask the Agent to assign a todo for you, but only when you **name the receiver explicitly in that turn**. The Agent will not infer a person from the participants of the conversation, the member directory, or history, and will not assign to several people at once.
+
 ### Model Management
 
 Manage text, image, voice, and embedding model configurations for different providers online — no need to edit config files manually:

@@ -76,8 +76,8 @@
 
 ## 8. 迁移、文档与发布验收
 
-- [ ] 8.1 在既有库上执行完整升级路径（`user_version` 1 → 2 与 `_migration_31`），记录迁移前后行数与关键字段一致性
-- [ ] 8.2 确认回滚只需关闭前端入口与工具动作，数据层不回退，且行为与迁移前等价
-- [ ] 8.3 更新待办相关用户文档与权限说明，写清委派语义、可收回边界与跨租户拒绝口径
-- [ ] 8.4 按设计 D6 的四项门槛逐项留存证据，不得以接口占位或模拟实现通过门槛
-- [ ] 8.5 运行 `openspec validate add-todo-delegation --strict` 并确认通过
+- [x] 8.1 在既有库上执行完整升级路径（`user_version` 1 → 2 与 `_migration_31`），记录迁移前后行数与关键字段一致性（证据见 `evidence/acceptance.md` §3 与 `evidence/migration_drill.py`；todo 库演练、身份库为真实库副本）
+- [x] 8.2 确认回滚只需关闭前端入口与工具动作，数据层不回退，且行为与迁移前等价（证据见 `evidence/acceptance.md` §4）
+- [x] 8.3 更新待办相关用户文档与权限说明，写清委派语义、可收回边界与跨租户拒绝口径（`docs/channels/web.mdx`、`docs/zh/channels/web.mdx`、`docs/ja/channels/web.mdx` 新增待办与委派小节；权限说明落在 `PERMISSION_METADATA` 与角色编辑器）
+- [x] 8.4 按设计 D6 的四项门槛逐项留存证据，不得以接口占位或模拟实现通过门槛（`evidence/acceptance.md` §1–§2，含逐条命令与计数；环境限制项单列 NOT RUN）
+- [x] 8.5 运行 `openspec validate add-todo-delegation --strict` 并确认通过（`Change 'add-todo-delegation' is valid`）
