@@ -44,7 +44,11 @@
 - [x] 6.4 新增 RunAccessService，复用 TaskAccessService.decide 的 owner/public 语义，逐请求重验身份和绑定。
 - [x] 6.5 实现事务删除与 running 冲突，删除两表元数据且保留 messages，补审计。
 - [x] 6.6 实现 test_scheduler_run_scope.py，用真实 SQLite 验证分页、默认 Agent、改绑、任务删除、历史隔离、故障和事务恢复。
-- [ ] 6.7 在历史功能仍关闭时执行真实测试任务，核对新增 run/scope；记录建表重复执行和旧版本忽略扩展表证据。
+- [x] 6.7 在历史功能仍关闭时执行真实测试任务，核对新增 run/scope；记录建表重复执行和旧版本忽略扩展表证据。
+      → 部署持六个 deny 键（历史三路投影 `disabled_by_deployment`、路由 503）时，
+      `POST /api/scheduler/run` 仍 200 并写出第三条归属行（run 与 task 逐字对应），
+      历史路由保持 503；建表重复执行（首读物化、二读 200 不增行）见 `evidence/acceptance.md` §7.0a / §12，
+      旧版本忽略扩展表的证据见 §11 的 `base` 阶段。
 
 ## 7. P6 调度历史与客户端
 
@@ -57,8 +61,24 @@
 
 - [x] 8.1 按当前规范裁定已知外部连接权限失败，真实授权缺陷必须修复；独立处理旧前端/菜单/source-manifest 基线问题并保留未开放渠道证据。
 - [x] 8.2 仅替换本 change 已交付八接口的缺口断言；保留未交付更新接口关闭检查，验证 fork 来源和 api/core 边界。
-- [ ] 8.3 完成 R2 真实渠道创建/执行/历史/删除，以及共享 Agent 双用户、跨租户、管理员和权限撤销验收。
-- [ ] 8.4 在干净隔离检出运行完整回归并记录计数/失败裁定；新增能力失败或授权失败阻断发布。
-- [ ] 8.5 核对 implemented/accepted/open 与证据，分批移除部署 deny 键并重启；验证前端投影与路由一致。
-- [ ] 8.6 演练先关闭再代码回退，验证扩展表保留、原任务/会话/模型配置可用；补齐版本与数据恢复记录。
+- [x] 8.3 完成 R2 真实渠道创建/执行/历史/删除，以及共享 Agent 双用户、跨租户、管理员和权限撤销验收。
+      → 真实部署 32/32 PASS（`evidence/acceptance.md` §8；原始报文 `/tmp/rdai-acc/R2-EVIDENCE.md`）。
+      本轮发现两项缺陷：详情扣留正文回 404+success **已修**（`5f6d1897`）；空 `agent_id` 的裸 Python 错误
+      经基线复现判定为**预存在**，登记独立跟进。未验证项：真实渠道投递落地（缺凭据）。
+- [x] 8.4 在干净隔离检出运行完整回归并记录计数/失败裁定；新增能力失败或授权失败阻断发布。
+      → `74be49dd` 干净检出：27 failed / 5899 passed / 31 skipped / 416 subtests passed
+      （RC 冻结 `5f6d1897` 为 5896 passed，差值即 8.5 新增的三条关停开关用例，失败数未变）。
+      27 项全部取下基线对照（`f5d7d764` 同五文件 26 failed / 88 passed，失败集合逐项一致；
+      scene source-hash 在新鲜检出同样 SUBFAILED），**新增能力失败 0、授权失败 0**，不阻断发布
+      （`evidence/acceptance.md` §9）。
+- [x] 8.5 核对 implemented/accepted/open 与证据，分批移除部署 deny 键并重启；验证前端投影与路由一致。
+      → 第一批（R2 六动作）已按真实验收证据翻转为 `accepted=True` + `open`；R1 两动作保持关闭，
+      待 3.6 / 4.5 的真实会话验收后再翻。真实服务两阶段演练（持键关闭 → 移除重启）投影与门禁
+      **8/8 一致**；deny 键错拼拒启动；客户端资产 200 且一致性套件 11 passed；
+      `close_capability_actions` 把「关停只关目标」钉进回归（`evidence/acceptance.md` §10）。
+- [x] 8.6 演练先关闭再代码回退，验证扩展表保留、原任务/会话/模型配置可用；补齐版本与数据恢复记录。
+      → open / closed / base(`f5d7d764` 代码回退) / restored 四阶段实测：扩展表
+      `fork_scheduler_run_scopes` 与任务、会话（含消息体）、模型目录、接收者、渠道实例
+      **四阶段逐项不变**；旧二进制对扩展表无感知且正常服务同一数据；恢复口径与三段版本
+      （`f5d7d764` / `5f6d1897` / `74be49dd`）见 `evidence/acceptance.md` §11。
 - [ ] 8.7 更新 source-map 和后续前端迁移记录，运行 OpenSpec 严格校验；所有任务和真实门槛完成后再提出归档。
