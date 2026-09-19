@@ -1834,6 +1834,54 @@ def _migration_30(con: sqlite3.Connection) -> None:
 _migrations.append(_migration_30)
 
 
+def _migration_31(con: sqlite3.Connection) -> None:
+    """Backfill ``todo.assign`` onto the built-in roles.
+
+    Change ``add-todo-delegation`` adds the catalogue id, and new tenants pick it
+    up from ``MEMBER_DEFAULT_PERMISSIONS`` / ``TENANT_ADMIN_DEFAULT_PERMISSIONS``.
+    An already-provisioned tenant needs this one-shot backfill or its members can
+    never hand a todo to a colleague — the delegation entry stays refused for
+    every existing role.
+
+    Scope is deliberately narrow:
+
+    * only the built-in ``member`` / ``tenant_admin`` rows;
+    * union, never replace — an administrator's existing edits survive;
+    * a role that already holds the id is skipped, so a re-run is a no-op and
+      does not keep bumping ``version``;
+    * **nothing else is granted.** ``tenant.members.read`` in particular stays
+      off ``member``: the delegation receiver picker reads its own narrow
+      projection, so this migration must not double as a member-directory
+      widening.
+
+    Custom roles are never touched: an administrator who never granted
+    delegation keeps that decision.
+    """
+    import json as _json
+
+    needed = ("todo.assign",)
+    for row in con.execute(
+            "SELECT id, code, permissions_json FROM roles"
+            " WHERE builtin=1 AND code IN ('member', 'tenant_admin')"
+            ).fetchall():
+        try:
+            perms = _json.loads(row["permissions_json"] or "[]")
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(perms, list):
+            continue
+        missing = [p for p in needed if p not in perms]
+        if not missing:
+            continue
+        con.execute(
+            "UPDATE roles SET permissions_json=?, version=version+1 WHERE id=?",
+            (_json.dumps(sorted(set(perms) | set(missing))), row["id"]),
+        )
+
+
+_migrations.append(_migration_31)
+
+
 class IdentityStoreError(RuntimeError):
     """Raised when the identity store cannot be opened or migrated."""
 

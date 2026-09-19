@@ -37,7 +37,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from common.log import logger
 
@@ -46,7 +46,7 @@ from common.log import logger
 # Schema
 # --------------------------------------------------------------------------- #
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 KIND_VALUES = ("general", "input_required", "confirmation", "review")
 PRIORITY_VALUES = ("low", "normal", "high")
@@ -65,9 +65,15 @@ def _now() -> int:
     return int(time.time())
 
 
-# Migration list is ordered by user_version. Each entry is a SQL script that
-# advances the schema from the previous version to the next.
-_MIGRATIONS: Dict[int, str] = {
+# Migration list is ordered by user_version. Each entry advances the schema
+# from the previous version to the next: either a SQL script, or a callable
+# taking the connection when the step needs a guard SQLite cannot express
+# (there is no ``ADD COLUMN IF NOT EXISTS``).
+#
+#: One migration step: a SQL script or a ``callable(connection)``.
+MigrationStep = Union[str, Callable[["sqlite3.Connection"], None]]
+
+_MIGRATIONS: Dict[int, MigrationStep] = {
     1: """
 CREATE TABLE IF NOT EXISTS todo_items (
     id                   TEXT    PRIMARY KEY,
@@ -123,6 +129,34 @@ CREATE INDEX IF NOT EXISTS idx_todo_events_owner
 }
 
 
+def _migration_2_assignee(conn: "sqlite3.Connection") -> None:
+    """Add ``assignee_id`` and make every existing row its own assignee.
+
+    Split from the v1 script rather than folded into it because SQLite has no
+    ``ADD COLUMN IF NOT EXISTS``: the column check is what makes an upgrade that
+    was interrupted before ``PRAGMA user_version`` advanced a no-op on re-run
+    instead of a "duplicate column name" failure.
+
+    The backfill is the compatibility half. ``owner_id`` is the delegator and
+    stays immutable; ``assignee_id`` is the current handler. Setting the two
+    equal for pre-change rows means every visibility rule introduced with
+    delegation degrades to exactly the behaviour those rows had before.
+    """
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(todo_items)")}
+    if "assignee_id" not in cols:
+        conn.execute(
+            "ALTER TABLE todo_items ADD COLUMN assignee_id TEXT NOT NULL DEFAULT ''"
+        )
+    conn.execute("UPDATE todo_items SET assignee_id = owner_id WHERE assignee_id = ''")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_todo_items_assignee_status"
+        " ON todo_items (scope_id, assignee_id, status)"
+    )
+
+
+_MIGRATIONS[2] = _migration_2_assignee
+
+
 class TodoStoreError(RuntimeError):
     """Base storage error."""
 
@@ -163,7 +197,11 @@ class TodoStore:
         for version in sorted(_MIGRATIONS):
             if version <= current:
                 continue
-            conn.executescript(_MIGRATIONS[version])
+            step = _MIGRATIONS[version]
+            if callable(step):
+                step(conn)
+            else:
+                conn.executescript(step)
             conn.execute(f"PRAGMA user_version = {version}")
             conn.commit()
         if current < SCHEMA_VERSION:
@@ -215,12 +253,40 @@ class TodoStore:
     # ------------------------------------------------------------------ #
     # Read
     # ------------------------------------------------------------------ #
-    def get_item(self, scope_id: str, owner_id: str, item_id: str) -> Optional[Dict[str, Any]]:
+    def get_item(
+        self, scope_id: str, participant_id: str, item_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Return an item this participant may read, else ``None``.
+
+        A participant is either the current handler (``assignee_id``) or the
+        delegator who created the item (``owner_id``). The delegator keeps read
+        access to whatever they handed out — that is what makes recall possible —
+        and nothing outside that pair is visible. Visibility and non-existence
+        are the same answer here, so a caller cannot probe for others' ids.
+        """
         conn = self._connect()
         try:
             row = conn.execute(
-                "SELECT * FROM todo_items WHERE id=? AND scope_id=? AND owner_id=?",
-                (item_id, scope_id, owner_id),
+                "SELECT * FROM todo_items WHERE id=? AND scope_id=?"
+                " AND (assignee_id=? OR owner_id=?)",
+                (item_id, scope_id, participant_id, participant_id),
+            ).fetchone()
+            return self._row_to_item(row) if row else None
+        finally:
+            conn.close()
+
+    def _get_scoped(self, scope_id: str, item_id: str) -> Optional[Dict[str, Any]]:
+        """Read by scope + id with no participant predicate.
+
+        For internal use by writes that have already established the caller's
+        authority over this specific row (``set_assignee``); never expose it as a
+        read path.
+        """
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT * FROM todo_items WHERE id=? AND scope_id=?",
+                (item_id, scope_id),
             ).fetchone()
             return self._row_to_item(row) if row else None
         finally:
@@ -229,6 +295,13 @@ class TodoStore:
     def get_item_by_create_key(
         self, scope_id: str, owner_id: str, create_key: str
     ) -> Optional[Dict[str, Any]]:
+        """Look up a create-key retry.
+
+        Stays keyed on the *owner*, not the handler: the dedup window belongs to
+        whoever issued the creation, and delegation does not move that. Using the
+        handler here would let a delegated-away item be re-created under the same
+        key by its new holder.
+        """
         conn = self._connect()
         try:
             row = conn.execute(
@@ -239,48 +312,39 @@ class TodoStore:
         finally:
             conn.close()
 
-    def list_items(
+    def _list_where(
         self,
         scope_id: str,
-        owner_id: str,
         *,
+        assignee_id: Optional[str] = None,
+        delegator_id: Optional[str] = None,
         status: Optional[str] = None,
         q: Optional[str] = None,
         overdue: bool = False,
-        page: int = 1,
-        page_size: int = PAGE_SIZE_DEFAULT,
-    ) -> Tuple[List[Dict[str, Any]], int]:
-        """Return ``(items, total)`` with a fixed ordering.
+    ) -> Optional[Tuple[str, List[Any]]]:
+        """Build the shared ``(where_sql, params)`` for both list views.
 
-        Ordering (per design): overdue first, then priority desc, due asc with
-        nulls last, created desc, id asc. ``overdue`` only includes active
-        (pending/in_progress) items whose due_at is in the past; it is applied
-        as a filter, and the combined stable sort keeps the ordering.
-
-        ``status`` accepts a single exact status OR the pseudo-values
-        ``open`` (pending+in_progress) / ``all``.
+        ``assignee_id`` selects "what I currently handle"; ``delegator_id``
+        selects "what I handed to somebody else" (``owner_id`` is me and the
+        handler is not). Returns ``None`` for an unrecognised status so the
+        caller yields nothing rather than leaking rows.
         """
-        page = max(1, page)
-        page_size = max(1, min(int(page_size), PAGE_SIZE_MAX))
-
-        where = ["scope_id=? AND owner_id=?"]
-        params: List[Any] = [scope_id, owner_id]
+        if assignee_id is not None:
+            where = ["scope_id=? AND assignee_id=?"]
+            params: List[Any] = [scope_id, assignee_id]
+        else:
+            where = ["scope_id=? AND owner_id=? AND assignee_id<>owner_id"]
+            params = [scope_id, delegator_id]
 
         if status in (None, "", "open"):
-            if status == "open":
-                where.append("status IN ('pending','in_progress')")
-            # None / "" => open (未完成) is the default per design; but a caller
-            # that explicitly wants everything passes "all".
-            if status is None or status == "":
-                where.append("status IN ('pending','in_progress')")
+            where.append("status IN ('pending','in_progress')")
         elif status == "all":
             pass
         elif status in STATUS_VALUES:
             where.append("status = ?")
             params.append(status)
         else:
-            # Unknown status: return nothing rather than leaking other rows.
-            return [], 0
+            return None
 
         if q:
             where.append("(title LIKE ? OR description LIKE ?)")
@@ -292,8 +356,12 @@ class TodoStore:
             where.append("due_at IS NOT NULL AND due_at < ?")
             params.append(_now())
 
-        where_sql = " AND ".join(where)
+        return " AND ".join(where), params
 
+    def _list_page(
+        self, where_sql: str, params: List[Any], page: int, page_size: int
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """Run the count + ordered page for a prepared filter."""
         conn = self._connect()
         try:
             total = conn.execute(
@@ -318,26 +386,88 @@ class TodoStore:
         finally:
             conn.close()
 
-    def count_open(self, scope_id: str, owner_id: str) -> int:
+    def list_items(
+        self,
+        scope_id: str,
+        assignee_id: str,
+        *,
+        status: Optional[str] = None,
+        q: Optional[str] = None,
+        overdue: bool = False,
+        page: int = 1,
+        page_size: int = PAGE_SIZE_DEFAULT,
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """Return ``(items, total)`` for what ``assignee_id`` currently handles.
+
+        Ordering (per design): overdue first, then priority desc, due asc with
+        nulls last, created desc, id asc. ``overdue`` only includes active
+        (pending/in_progress) items whose due_at is in the past; it is applied
+        as a filter, and the combined stable sort keeps the ordering.
+
+        ``status`` accepts a single exact status OR the pseudo-values
+        ``open`` (pending+in_progress) / ``all``.
+        """
+        page = max(1, page)
+        page_size = max(1, min(int(page_size), PAGE_SIZE_MAX))
+        built = self._list_where(
+            scope_id, assignee_id=assignee_id, status=status, q=q, overdue=overdue
+        )
+        if built is None:
+            return [], 0
+        return self._list_page(*built, page, page_size)
+
+    def list_delegated(
+        self,
+        scope_id: str,
+        delegator_id: str,
+        *,
+        status: Optional[str] = None,
+        q: Optional[str] = None,
+        overdue: bool = False,
+        page: int = 1,
+        page_size: int = PAGE_SIZE_DEFAULT,
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """Return ``(items, total)`` for what ``delegator_id`` handed out.
+
+        Same filtering and ordering as :meth:`list_items`, but the base predicate
+        is "I am the owner and somebody else currently handles it". Items the
+        delegator still holds are deliberately excluded — they are already in
+        their own list, and counting them twice would inflate both views.
+        """
+        page = max(1, page)
+        page_size = max(1, min(int(page_size), PAGE_SIZE_MAX))
+        built = self._list_where(
+            scope_id, delegator_id=delegator_id, status=status, q=q, overdue=overdue
+        )
+        if built is None:
+            return [], 0
+        return self._list_page(*built, page, page_size)
+
+    def count_open(self, scope_id: str, assignee_id: str) -> int:
+        """Count what ``assignee_id`` still has to handle.
+
+        Scoped to the handler, so an item handed to somebody else stops counting
+        toward the delegator's badge the moment it moves.
+        """
         conn = self._connect()
         try:
             row = conn.execute(
                 "SELECT COUNT(*) FROM todo_items"
-                " WHERE scope_id=? AND owner_id=? AND status IN ('pending','in_progress')",
-                (scope_id, owner_id),
+                " WHERE scope_id=? AND assignee_id=? AND status IN ('pending','in_progress')",
+                (scope_id, assignee_id),
             ).fetchone()
             return int(row[0])
         finally:
             conn.close()
 
-    def count_overdue(self, scope_id: str, owner_id: str) -> int:
+    def count_overdue(self, scope_id: str, assignee_id: str) -> int:
         conn = self._connect()
         try:
             row = conn.execute(
                 "SELECT COUNT(*) FROM todo_items"
-                " WHERE scope_id=? AND owner_id=? AND status IN ('pending','in_progress')"
+                " WHERE scope_id=? AND assignee_id=? AND status IN ('pending','in_progress')"
                 " AND due_at IS NOT NULL AND due_at < ?",
-                (scope_id, owner_id, _now()),
+                (scope_id, assignee_id, _now()),
             ).fetchone()
             return int(row[0])
         finally:
@@ -381,18 +511,18 @@ class TodoStore:
                     conn.execute(
                         """
                         INSERT INTO todo_items (
-                            id, scope_id, owner_id, title, description, kind,
-                            priority, status, due_at, timezone, source, agent_id,
-                            session_id, message_seq, created_by, created_at,
-                            updated_at, completed_at, version, create_key,
-                            create_payload_hash
-                        ) VALUES (?,?,?,?,?,?,?, 'pending', ?,?,?,?,?,?,?,?,?,NULL,1,?,?)
+                            id, scope_id, owner_id, assignee_id, title, description,
+                            kind, priority, status, due_at, timezone, source,
+                            agent_id, session_id, message_seq, created_by,
+                            created_at, updated_at, completed_at, version,
+                            create_key, create_payload_hash
+                        ) VALUES (?,?,?,?,?,?,?,?, 'pending', ?,?,?,?,?,?,?,?,?,NULL,1,?,?)
                         """,
                         (
-                            item_id, scope_id, owner_id, title, description, kind,
-                            priority, due_at, timezone, source, agent_id, session_id,
-                            message_seq, created_by, now, now, create_key,
-                            create_payload_hash,
+                            item_id, scope_id, owner_id, owner_id, title,
+                            description, kind, priority, due_at, timezone, source,
+                            agent_id, session_id, message_seq, created_by, now,
+                            now, create_key, create_payload_hash,
                         ),
                     )
                 except sqlite3.IntegrityError:
@@ -416,7 +546,7 @@ class TodoStore:
     def update_item(
         self,
         scope_id: str,
-        owner_id: str,
+        assignee_id: str,
         item_id: str,
         *,
         expected_version: int,
@@ -428,6 +558,16 @@ class TodoStore:
         changed: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Apply an edit or state transition with a version compare.
+
+        Keyed on the current *handler*, not the owner: an item handed to somebody
+        else is no longer writable by its delegator, so a delegator passing their
+        own id here gets ``TodoNotFound`` — the same answer as an unknown id.
+        ``assignee_id`` is never in ``fields``, so no ordinary write can move it;
+        only :meth:`set_assignee` can.
+
+        The appended event still records the item's *owner* in
+        ``todo_events.owner_id`` (a stable value), so the delegation chain reads
+        the same from either side.
 
         ``fields`` are the columns to write (never owner/source/audit columns).
         The item's ``version`` is advanced, the current time bump applied and an
@@ -449,8 +589,8 @@ class TodoStore:
         try:
             with conn:
                 row = conn.execute(
-                    "SELECT * FROM todo_items WHERE id=? AND scope_id=? AND owner_id=?",
-                    (item_id, scope_id, owner_id),
+                    "SELECT * FROM todo_items WHERE id=? AND scope_id=? AND assignee_id=?",
+                    (item_id, scope_id, assignee_id),
                 ).fetchone()
                 if row is None:
                     raise TodoNotFound("todo not found")
@@ -480,8 +620,8 @@ class TodoStore:
                 values += [row["version"] + 1, now, item_id]
                 conn.execute(
                     f"UPDATE todo_items SET {set_sql}, version=?, updated_at=? "
-                    "WHERE id=? AND scope_id=? AND owner_id=?",
-                    tuple(values + [scope_id, owner_id]),
+                    "WHERE id=? AND scope_id=? AND assignee_id=?",
+                    tuple(values + [scope_id, assignee_id]),
                 )
                 conn.execute(
                     """
@@ -491,15 +631,94 @@ class TodoStore:
                     ) VALUES (?,?,?,?,?,?,?,?,?,?)
                     """,
                     (
-                        item_id, scope_id, owner_id, row["version"] + 1,
+                        item_id, scope_id, row["owner_id"], row["version"] + 1,
                         operator_id, operator_kind, action,
                         json.dumps(changed or clean, ensure_ascii=False),
                         note, now,
                     ),
                 )
-            return self.get_item(scope_id, owner_id, item_id)  # type: ignore[return-value]
+            return self.get_item(scope_id, assignee_id, item_id)  # type: ignore[return-value]
         finally:
             conn.close()
+
+    def set_assignee(
+        self,
+        scope_id: str,
+        item_id: str,
+        *,
+        expected_version: int,
+        from_assignee: str,
+        to_assignee: str,
+        operator_id: str,
+        operator_kind: str,
+        action: str,
+        note: str = "",
+    ) -> Dict[str, Any]:
+        """Move the handler — the only write path that touches ``assignee_id``.
+
+        Guarded three ways, all inside one transaction so a delegation cannot
+        race another writer:
+
+        * ``expected_version`` — the caller's view is current (409 otherwise);
+        * ``from_assignee`` — the handler is still the one the caller saw, which
+          stops two delegators from both "winning" a recall;
+        * ``status = 'pending'`` — delegation is refused on terminal items, which
+          keeps completion irreversible without a reopen.
+
+        ``owner_id`` is deliberately absent from the ``UPDATE``: delegation never
+        rewrites ownership, which is what makes recall, the create-key dedup
+        window and the "owner is immutable" rule all keep holding.
+
+        The event records the item's owner (not the actor) in
+        ``todo_events.owner_id`` and carries both ends of the move in
+        ``changed``, so a multi-hop chain can be replayed from the events alone.
+        """
+        now = _now()
+        conn = self._connect()
+        try:
+            with conn:
+                row = conn.execute(
+                    "SELECT * FROM todo_items WHERE id=? AND scope_id=?",
+                    (item_id, scope_id),
+                ).fetchone()
+                if row is None:
+                    raise TodoNotFound("todo not found")
+                if row["version"] != expected_version:
+                    raise TodoConflict("stale version")
+                if row["assignee_id"] != from_assignee:
+                    raise TodoConflict("assignee changed")
+                if row["status"] != "pending":
+                    raise TodoConflict("only pending todos can be delegated")
+
+                next_version = row["version"] + 1
+                conn.execute(
+                    "UPDATE todo_items SET assignee_id=?, version=?, updated_at=?"
+                    " WHERE id=? AND scope_id=?",
+                    (to_assignee, next_version, now, item_id, scope_id),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO todo_events (
+                        item_id, scope_id, owner_id, version, operator_id,
+                        operator_kind, action, changed, note, created_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        item_id, scope_id, row["owner_id"], next_version,
+                        operator_id, operator_kind, action,
+                        json.dumps(
+                            {"from_assignee": from_assignee, "to_assignee": to_assignee},
+                            ensure_ascii=False,
+                        ),
+                        note, now,
+                    ),
+                )
+        finally:
+            conn.close()
+        item = self._get_scoped(scope_id, item_id)
+        if item is None:  # pragma: no cover - the row cannot vanish mid-call
+            raise TodoNotFound("todo not found")
+        return item
 
     @staticmethod
     def _assert_status_transition(current: str, target: str, with_edit: bool) -> None:
@@ -520,25 +739,41 @@ class TodoStore:
     def list_events(
         self,
         scope_id: str,
-        owner_id: str,
+        participant_id: str,
         item_id: str,
         *,
         page: int = 1,
         page_size: int = PAGE_SIZE_DEFAULT,
     ) -> Tuple[List[Dict[str, Any]], int]:
+        """Return the processing history for one item.
+
+        ``todo_events.owner_id`` is the delegator (a stable value, not the
+        actor), so history for an item that changed hands is still found by
+        looking it up under the *owner*. Both the delegator and the current
+        handler may read it, which is why this accepts either and filters on the
+        owner side first.
+        """
         page = max(1, page)
         page_size = max(1, min(int(page_size), PAGE_SIZE_MAX))
         conn = self._connect()
         try:
+            owned = conn.execute(
+                "SELECT owner_id FROM todo_items WHERE id=? AND scope_id=?"
+                " AND (assignee_id=? OR owner_id=?)",
+                (item_id, scope_id, participant_id, participant_id),
+            ).fetchone()
+            if owned is None:
+                return [], 0
+            item_owner = owned["owner_id"]
             total = conn.execute(
                 "SELECT COUNT(*) FROM todo_events WHERE scope_id=? AND owner_id=? AND item_id=?",
-                (scope_id, owner_id, item_id),
+                (scope_id, item_owner, item_id),
             ).fetchone()[0]
             rows = conn.execute(
                 "SELECT * FROM todo_events"
                 " WHERE scope_id=? AND owner_id=? AND item_id=?"
                 " ORDER BY version DESC, id DESC LIMIT ? OFFSET ?",
-                (scope_id, owner_id, item_id, page_size, (page - 1) * page_size),
+                (scope_id, item_owner, item_id, page_size, (page - 1) * page_size),
             ).fetchall()
             events = []
             for r in rows:

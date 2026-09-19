@@ -36,6 +36,7 @@ PERMISSION_CATALOG: Tuple[str, ...] = (
     "memory.read",  # read personal memory
     "todo.read",  # read own personal todos
     "todo.write",  # create/update own personal todos
+    "todo.assign",  # delegate own todos within the tenant (assign/turn over/recall)
     # -- resource-authorization additions (task 1.4) ---------------------
     "skill.read",  # read skill directory / content
     "skill.use",  # assemble/load a skill at runtime
@@ -104,6 +105,11 @@ PERMISSION_METADATA: Dict[str, Dict[str, object]] = {
     "todo.write": {
         "group": "待办", "label": "管理待办",
         "description": "创建/更新本人个人待办",
+        "scope": "personal", "assignable": True,
+    },
+    "todo.assign": {
+        "group": "待办", "label": "委派待办",
+        "description": "把本人待办指派/转交给同租户成员并收回",
         "scope": "personal", "assignable": True,
     },
     "skill.read": {
@@ -207,6 +213,7 @@ MEMBER_DEFAULT_PERMISSIONS: Tuple[str, ...] = (
     "memory.read",
     "todo.read",
     "todo.write",
+    "todo.assign",
     "skill.read",
     "skill.use",
     "skill.edit",
@@ -238,6 +245,7 @@ TENANT_ADMIN_DEFAULT_PERMISSIONS: Tuple[str, ...] = (
     "memory.read",
     "todo.read",
     "todo.write",
+    "todo.assign",
     "skill.read",
     "skill.use",
     "skill.edit",

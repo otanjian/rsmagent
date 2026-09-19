@@ -84,10 +84,15 @@ def reassign_empty_owner_todos(
     updated = 0
     con = store._connect()  # noqa: SLF001 — migration helper
     try:
+        # The handler moves with the owner, but only when it still points at the
+        # legacy value: after ``assignee_id`` exists a row could in principle be
+        # delegated, and that decision must survive this bootstrap.
         cur = con.execute(
-            "UPDATE todo_items SET owner_id=?, scope_id=?"
+            "UPDATE todo_items SET owner_id=?, scope_id=?,"
+            " assignee_id = CASE WHEN assignee_id IN ('', ?) OR assignee_id IS NULL"
+            "                    THEN ? ELSE assignee_id END"
             " WHERE owner_id IN ('', ?) OR owner_id IS NULL",
-            (owner_id, scope_id, LEGACY_OWNER),
+            (owner_id, scope_id, LEGACY_OWNER, owner_id, LEGACY_OWNER),
         )
         updated += cur.rowcount or 0
         con.execute(

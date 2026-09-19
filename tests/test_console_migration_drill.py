@@ -258,7 +258,11 @@ class MenuGrantMappingDrill(_DrillBase):
                 self.assertEqual(member.count("nav:" + page), 1,
                                  "映射目标必须恰好一条(多对一不得重复): %s" % page)
             self.assertIn("nav:workbench.history", member, "原有正式页不得被收走")
-            self.assertEqual(_role_version(con, "r_member"), 8)
+            # 内置角色的版本只能断言「相对基线确有自增」:链条上随后注册的版本
+            # 也会为内置角色追加授权(27 补 nav:admin.models、30 补外部系统接入、
+            # 31 补 todo.assign),绝对值会随链尾增长而过期 —— 这正是上面注释说的
+            # 「加法健壮」。自增的幂等性由 re-open 与 crash 两个用例逐字段覆盖。
+            self.assertGreater(_role_version(con, "r_member"), 7)
             tools = con.execute(
                 "SELECT COUNT(*) AS c FROM role_resource_grants"
                 " WHERE role_id='r_member' AND resource_kind='tool'"
@@ -268,12 +272,14 @@ class MenuGrantMappingDrill(_DrillBase):
             admin = _menu_grants(con, "r_admin")
             self.assertEqual([g for g in admin if g.startswith("nav:personal.")], [])
             self.assertIn("nav:admin.channels", admin)
-            self.assertEqual(_role_version(con, "r_admin"), 4)
+            self.assertGreater(_role_version(con, "r_admin"), 3)
 
             # 自定义角色:已手工持有的正式页不会重复插入,其它授权不动。
             self.assertEqual(
                 _menu_grants(con, "r_custom"),
                 ["nav:admin.agents", "nav:admin.memory", "nav:workbench.chat"])
+            # 自定义角色不受任何内置角色补授迁移影响,所以这里可以钉绝对值:
+            # 它恰好证明了「自定义角色一个都没被动过」。
             self.assertEqual(_role_version(con, "r_custom"), 3)
 
             # 没有旧 id 的角色:版本不动、没有任何被迁移的痕迹。

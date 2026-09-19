@@ -24,7 +24,7 @@
 
 1. `owner_id` 必须保持不可变（既有规范明文要求），因此委派不能靠改写 `owner_id` 实现。
 2. 成员默认权限集是**显式枚举**的，新增 catalogue 权限不会自动生效，必须显式加入默认集并回填既有租户。
-3. `todo.assign` 的载体不能扩大成员目录授权：`tenant.members.read` 同时把关 `/api/tenant/members`、`/api/tenant/members/<id>/external-identities`（成员外部身份绑定）与 `/api/tenant/roles`，把它加进成员默认集会一次性放开这三者，并使 `tests/test_builtin_role_editing.py:52-54` 的既有断言失效。
+3. `todo.assign` 的载体不应扩大成员目录授权：`tenant.members.read` 是 `/api/tenant/members`、`/api/tenant/members/<id>/external-identities`（成员外部身份绑定）与 `/api/tenant/roles` 的必要条件，而这三个接口**同时**要求租户管理员资格（`_require_tenant_admin` 判 `ctx.is_tenant_admin`，与权限独立）。因此单独授予该权限并不会打开这些数据面；真正的代价是让每个成员持有一项「管理面必要但不充分条件」的权限，而项目有意把它排除在成员默认集之外——`tests/test_builtin_role_editing.py:52-54` 把这一姿态写成了显式断言。另需注意 `list_members` 返回完整成员记录（角色、部门、状态），而选择器只需要用户名与显示名。
 4. 审计（`audit-log`）是委派留痕与跨租户告警的前置能力，须按能力名引用，不等整份消费者 change 完成。
 
 ## Goals / Non-Goals
@@ -78,7 +78,7 @@
 - 新增 `_migration_31` 按 `_migration_30` 范式回填既有内置 `member` / `tenant_admin`：仅并集补入 `todo.assign`，幂等，`version+1`，自定义角色与未持有 menu 授权的角色不受影响。**只补 `todo.assign` 一项**。
 - 接收人选择走受 `todo.assign` 控制的窄投影来源，只返回用户名与显示名。
 
-备选「给成员默认加上 `tenant.members.read`」被否：如 Context 约束 3 所述，该权限的实际把关面远大于成员名单，且会推翻一条既有的显式安全断言。窄投影来源能以更小授权面满足同一功能目标。
+备选「给成员默认加上 `tenant.members.read`」被否：该权限是成员目录相关接口的必要条件，其准入面大于选择器所需（见 Context 约束 3），而 `list_members` 返回完整成员记录、选择器只需用户名与显示名。更关键的是，成员默认权限集刻意不含它，且这一姿态由 `tests/test_builtin_role_editing.py` 的显式断言记录；放宽它属于一次应当单独论证的授权扩张，不应夹带在委派变更里。窄投影来源能以更小授权面满足同一功能目标，且不改动任何既有权限姿态。
 
 ### D5 Agent 工具新增 `assign`，接收人由服务端解析且必须由用户明确点名
 

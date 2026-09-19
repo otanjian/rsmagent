@@ -1,20 +1,20 @@
 ## 1. 前置门槛与证据
 
-- [ ] 1.1 核对 `audit-log` 能力的切片验收证据，确认委派留痕与跨租户尝试告警已有真实落点；未取得证据前不进入第 3 组
-- [ ] 1.2 核对 `todo-management`、`todo-workbench`、`todo-conversation-integration` 三个 MODIFIED delta 与既有主规范的对应关系，确认无遗漏的禁止性条文
-- [ ] 1.3 记录本变更的分阶段门槛清单（设计 D6 的四项）并在实施中逐项勾验，不以接口占位或模拟实现代替门槛
+- [x] 1.1 核对 `audit-log` 能力的切片验收证据，确认委派留痕与跨租户尝试告警已有真实落点；未取得证据前不进入第 3 组
+- [x] 1.2 核对 `todo-management`、`todo-workbench`、`todo-conversation-integration` 三个 MODIFIED delta 与既有主规范的对应关系，确认无遗漏的禁止性条文
+- [x] 1.3 记录本变更的分阶段门槛清单（设计 D6 的四项）并在实施中逐项勾验，不以接口占位或模拟实现代替门槛
 
 ## 2. 数据层迁移与存储访问
 
-- [ ] 2.1 在 `agent/todo/store.py` 将 `SCHEMA_VERSION` 由 1 提升为 2，并新增对应版本的 `_MIGRATIONS` 脚本：`todo_items` 增加 `assignee_id TEXT NOT NULL DEFAULT ''`
-- [ ] 2.2 在同一迁移脚本内回填 `assignee_id = owner_id`（限定 `assignee_id = ''`），并确认重复执行无副作用
-- [ ] 2.3 新增索引 `(scope_id, assignee_id, status)`；确认既有 `idx_todo_items_owner_status`、`idx_todo_items_owner_due` 保留不动
-- [ ] 2.4 新增以处理人为键的读取方法（按处理人取事项、取详情、翻页处理记录），与既有 `(scope_id, owner_id, …)` 方法并存
-- [ ] 2.5 新增「本人相关」读取方法，实现 `scope_id = :scope AND (assignee_id = :actor OR owner_id = :actor)`
-- [ ] 2.6 把 `count_open` / `count_overdue` 改为按处理人维度统计，作为 summary 与角标口径
-- [ ] 2.7 测试：既有库（`user_version = 1`）升级到 2 后，全部既有事项的 `assignee_id` 等于 `owner_id`，且可见行为与迁移前一致
-- [ ] 2.8 测试：迁移脚本重复执行幂等，`user_version` 未推进时不留下部分写入
-- [ ] 2.9 测试：写入路径（创建、字段编辑、状态更新、重新打开）均不改变 `assignee_id`
+- [x] 2.1 在 `agent/todo/store.py` 将 `SCHEMA_VERSION` 由 1 提升为 2，并新增对应版本的 `_MIGRATIONS` 脚本：`todo_items` 增加 `assignee_id TEXT NOT NULL DEFAULT ''`
+- [x] 2.2 在同一迁移脚本内回填 `assignee_id = owner_id`（限定 `assignee_id = ''`），并确认重复执行无副作用
+- [x] 2.3 新增索引 `(scope_id, assignee_id, status)`；确认既有 `idx_todo_items_owner_status`、`idx_todo_items_owner_due` 保留不动
+- [x] 2.4 新增以处理人为键的读取方法（按处理人取事项、取详情、翻页处理记录），与既有 `(scope_id, owner_id, …)` 方法并存
+- [x] 2.5 新增「本人相关」读取方法，实现 `scope_id = :scope AND (assignee_id = :actor OR owner_id = :actor)`
+- [x] 2.6 把 `count_open` / `count_overdue` 改为按处理人维度统计，作为 summary 与角标口径
+- [x] 2.7 测试：既有库（`user_version = 1`）升级到 2 后，全部既有事项的 `assignee_id` 等于 `owner_id`，且可见行为与迁移前一致
+- [x] 2.8 测试：迁移脚本重复执行幂等，`user_version` 未推进时不留下部分写入
+- [x] 2.9 测试：写入路径（创建、字段编辑、状态更新、重新打开）均不改变 `assignee_id`
 
 ## 3. 服务层读写授权与委派动作
 

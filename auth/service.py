@@ -6070,6 +6070,71 @@ class IdentityService:
         )
         return [dict(r) for r in rows]
 
+    # ------------------------------------------------------------------ #
+    # Delegation receiver projection (todo-delegation)
+    # ------------------------------------------------------------------ #
+    #: The only fields the delegation receiver picker may see. Login name is the
+    #: key the caller submits back; display name is for the human reading the
+    #: list. Roles, department, position, status and external identity bindings
+    #: are all deliberately absent.
+    ASSIGNABLE_MEMBER_FIELDS = ("username", "display_name")
+
+    @staticmethod
+    def _assignable_member_where() -> str:
+        """The "usable delegation target" predicate.
+
+        A member is assignable only while all three of membership, account and
+        tenant are active — the same triple the delegation action re-checks
+        server-side, so the picker cannot offer a target the action would refuse.
+        """
+        return ("m.active=1 AND u.active=1 AND t.active=1")
+
+    def list_assignable_members(self, tenant_id: str) -> List[Dict[str, Any]]:
+        """Read-only projection of the members a tenant member may delegate to.
+
+        Returns ``username`` and ``display_name`` only. This is intentionally not
+        :meth:`list_members`: that one carries roles, department, position and
+        status, and belongs to the tenant-administration surface. Reading it
+        would need ``tenant.members.read``, which the member default set
+        deliberately excludes, so the delegation picker has its own minimal
+        source instead of relaxing that posture.
+        """
+        rows = self._store.execute(
+            "SELECT u.username, m.display_name"
+            " FROM memberships m"
+            " JOIN users u ON u.id=m.user_id"
+            " JOIN tenants t ON t.id=m.tenant_id"
+            f" WHERE m.tenant_id=? AND {self._assignable_member_where()}"
+            " ORDER BY u.username",
+            (tenant_id,),
+        )
+        return [
+            {k: r[k] for k in self.ASSIGNABLE_MEMBER_FIELDS} for r in rows
+        ]
+
+    def resolve_assignable_member(
+        self, tenant_id: str, username: str
+    ) -> Optional[Dict[str, Any]]:
+        """Resolve one delegation target by login name inside one tenant.
+
+        Confined to ``tenant_id`` by the query, so a name from another tenant is
+        simply not found — the same answer as a name that does not exist, which
+        is what keeps this from reporting membership across tenants.
+        """
+        if not username:
+            return None
+        rows = self._store.execute(
+            "SELECT u.username, m.display_name"
+            " FROM memberships m"
+            " JOIN users u ON u.id=m.user_id"
+            " JOIN tenants t ON t.id=m.tenant_id"
+            f" WHERE m.tenant_id=? AND u.username=? AND {self._assignable_member_where()}",
+            (tenant_id, username),
+        )
+        if not rows:
+            return None
+        return {k: rows[0][k] for k in self.ASSIGNABLE_MEMBER_FIELDS}
+
     def create_member(
         self,
         *,
