@@ -105,6 +105,21 @@ def _run_http_error(code: str, status: int, message: str = ""):
                     "message": message or code}, ensure_ascii=False))
 
 
+def _restore_response_state(status_before, headers_before: int) -> None:
+    """Undo the response side effects of a *swallowed* ``web.HTTPError``.
+
+    ``web.HTTPError.__init__`` writes ``web.ctx.status`` and appends to
+    ``web.ctx.headers`` the moment it is constructed, so a probe that reads the
+    refusal as "no data" (rather than as its own failure) has to put the
+    response back exactly as it found it.
+    """
+    if status_before is not None:
+        web.ctx.status = status_before
+    headers = getattr(web.ctx, "headers", None)
+    if isinstance(headers, list) and len(headers) > headers_before:
+        del headers[headers_before:]
+
+
 def _scheduler_run_body(ctx, run: dict) -> Optional[str]:
     """The delivered text of one run, or ``None`` when it cannot be proven.
 
@@ -114,54 +129,67 @@ def _scheduler_run_body(ctx, run: dict) -> Optional[str]:
     id) **and** the messages must carry this run's id. Anything less -- a
     non-web session, an ambiguous match, a session the caller cannot read --
     degrades to the preview rather than guessing from timestamps or neighbours.
+
+    Withholding a body is *not* a failed detail read: the run itself stays
+    visible and the answer is ``200``. ``_require_session_scope`` refuses by
+    constructing a ``web.HTTPError``, which stamps the live response as a
+    side effect that catching cannot undo, so the response state is restored on
+    every exit path -- otherwise a caller who may read the run but not its
+    transcript would get ``404 Not Found`` carrying a ``{"status": "success"}``
+    body.
     """
     from channel.web.fork.authorization import _require_session_scope, _storage_agent_key
     from agent.registry import get_agent_registry
 
-    session_id = str(run.get("session_id") or "").strip()
-    agent_id = str(run.get("agent_id") or "").strip()
-    run_id = str(run.get("run_id") or "").strip()
-    if not session_id or not agent_id or not run_id:
-        return None
+    status_before = getattr(web.ctx, "status", None)
+    headers_before = len(getattr(web.ctx, "headers", None) or ())
     try:
-        resolved = _require_session_scope(ctx, session_id, agent_id)
-        profile = get_agent_registry().get(resolved)
-    except Exception:
-        # A refusal here is expected (a public run whose session is private);
-        # the detail itself stays readable, only the body is withheld.
-        return None
-    try:
-        store = _scheduler_run_store()
-    except Exception:
-        return None
-    storage_key = _storage_agent_key(store)
-    try:
-        with store._lock:
-            con = store._connect()
-            try:
-                rows = con.execute(
-                    "SELECT content FROM messages"
-                    " WHERE tenant_id=? AND owner=? AND session_id=?"
-                    " AND agent_id=? AND run_id=? AND role='assistant'"
-                    " ORDER BY seq",
-                    (ctx.tenant_id, ctx.user_id, session_id, storage_key, run_id),
-                ).fetchall()
-            finally:
-                con.close()
-    except Exception as error:
-        logger.debug("[WebChannel] scheduler run body read failed: %s",
-                     type(error).__name__)
-        return None
-    if not rows:
-        return None
-    parts = []
-    for row in rows:
-        # The store's connections have no ``row_factory``: rows are plain
-        # tuples, so the single selected column is index 0.
-        text = _message_text(row[0])
-        if text:
-            parts.append(text)
-    return "\n".join(parts) if parts else None
+        session_id = str(run.get("session_id") or "").strip()
+        agent_id = str(run.get("agent_id") or "").strip()
+        run_id = str(run.get("run_id") or "").strip()
+        if not session_id or not agent_id or not run_id:
+            return None
+        try:
+            resolved = _require_session_scope(ctx, session_id, agent_id)
+            get_agent_registry().get(resolved)
+        except Exception:
+            # A refusal here is expected (a public run whose session is private);
+            # the detail itself stays readable, only the body is withheld.
+            return None
+        try:
+            store = _scheduler_run_store()
+        except Exception:
+            return None
+        storage_key = _storage_agent_key(store)
+        try:
+            with store._lock:
+                con = store._connect()
+                try:
+                    rows = con.execute(
+                        "SELECT content FROM messages"
+                        " WHERE tenant_id=? AND owner=? AND session_id=?"
+                        " AND agent_id=? AND run_id=? AND role='assistant'"
+                        " ORDER BY seq",
+                        (ctx.tenant_id, ctx.user_id, session_id, storage_key, run_id),
+                    ).fetchall()
+                finally:
+                    con.close()
+        except Exception as error:
+            logger.debug("[WebChannel] scheduler run body read failed: %s",
+                         type(error).__name__)
+            return None
+        if not rows:
+            return None
+        parts = []
+        for row in rows:
+            # The store's connections have no ``row_factory``: rows are plain
+            # tuples, so the single selected column is index 0.
+            text = _message_text(row[0])
+            if text:
+                parts.append(text)
+        return "\n".join(parts) if parts else None
+    finally:
+        _restore_response_state(status_before, headers_before)
 
 
 def _message_text(content) -> str:

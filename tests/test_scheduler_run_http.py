@@ -20,6 +20,8 @@ Two rules the tests below fix in place:
 
 from __future__ import annotations
 
+import io
+import json
 import sqlite3
 from contextlib import contextmanager
 
@@ -207,6 +209,44 @@ def _get_detail(web, token, run_id):
     return response, WebAppHarness.json(response)
 
 
+def _raw_detail(web, token, run_id):
+    """``GET /api/scheduler/runs/detail`` straight off the WSGI app.
+
+    ``web.application.request`` hands back a ``dict`` of headers, which cannot
+    show a header that was appended twice; the refusal paths under test stamp
+    ``web.ctx`` directly, so the status line and the header *list* the server
+    would really send are the only faithful evidence.
+    """
+    environ = {
+        "REQUEST_METHOD": "GET",
+        "PATH_INFO": "/api/scheduler/runs/detail",
+        "QUERY_STRING": "run_id=" + run_id,
+        "HTTP_HOST": web.HOST,
+        "HTTP_ORIGIN": web.BASE,
+        "HTTP_COOKIE": "cow_session=" + token,
+        "HTTP_X_TENANT_ID": web.tenant_id,
+        "SERVER_NAME": "localhost",
+        "SERVER_PORT": "9899",
+        "SERVER_PROTOCOL": "HTTP/1.1",
+        "wsgi.version": (1, 0),
+        "wsgi.url_scheme": "http",
+        "wsgi.input": io.BytesIO(b""),
+        "wsgi.errors": io.StringIO(),
+        "wsgi.multithread": False,
+        "wsgi.multiprocess": False,
+        "wsgi.run_once": False,
+    }
+    captured = {}
+
+    def start_response(status, headers, exc_info=None):
+        captured["status"] = status
+        captured["headers"] = headers
+        return lambda _chunk: None
+
+    body = b"".join(web.app.wsgifunc()(environ, start_response))
+    return captured, json.loads(body.decode("utf-8"))
+
+
 def _scope_row_count(store, run_id):
     conn = sqlite3.connect(str(store._db_path))
     try:
@@ -362,8 +402,18 @@ def test_detail_withholds_the_body_when_the_session_is_not_the_callers(tmp_path)
         _add_message(web, "private-session", "public-foreign",
                      "the private transcript", owner=web.user_id("bob"),
                      tenant=web.tenant_id)
-        _response, body = _get_detail(web, web.login("alice"), "public-foreign")
+        captured, body = _raw_detail(web, web.login("alice"), "public-foreign")
 
+    # Withholding the transcript is not a failed read: the run itself is visible,
+    # so the answer is a success. The refusal raised deep inside the body probe
+    # builds a ``web.HTTPError``, whose constructor stamps the live response as a
+    # side effect that catching cannot undo -- without the restore the status
+    # would come back "404 Not Found" while this body says success, and the
+    # appended ``Content-Type`` would be sent to the client twice.
+    assert captured["status"] == "200 OK"
+    assert [v for k, v in captured["headers"] if k.lower() == "content-type"] == [
+        "application/json; charset=utf-8"]
+    assert body["status"] == "success"
     assert body["run"]["run_id"] == "public-foreign"
     # The preview survives; only the transcript is withheld.
     assert body["run"]["full_output"] is None
