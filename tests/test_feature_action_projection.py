@@ -27,11 +27,12 @@ from auth import capability_matrix
 #: from the registry -- a test that derives it from the declaration would agree
 #: with any declaration, including a wrong one. The R2 batch (scheduler targets,
 #: create and history) is accepted by the real-channel acceptance of tasks
-#: 6.7 / 8.3; the R1 batch (context controls) waits for its own real session
-#: acceptance (tasks 3.6 / 4.5). Opening a batch is exactly this edit plus the
-#: matching one in ``auth/capability_matrix.py``; everything below fails until
-#: the two agree.
+#: 6.7 / 8.3; the R1 batch (context controls) by the real session acceptance of
+#: tasks 3.6 / 4.5. Opening a batch is exactly this edit plus the matching one in
+#: ``auth/capability_matrix.py``; everything below fails until the two agree.
 ACCEPTED = frozenset({
+    "session_context.usage",
+    "session_context.compact",
     "scheduler.instances",
     "scheduler.recipients",
     "scheduler.create",
@@ -40,11 +41,11 @@ ACCEPTED = frozenset({
     "scheduler.runs.delete",
 })
 
-#: Registered, implemented, deliberately not served yet.
-UNACCEPTED = frozenset({
-    "session_context.usage",
-    "session_context.compact",
-})
+#: Registered, implemented, deliberately not served yet. Empty while both
+#: batches are accepted -- kept as the named set so the next registration has an
+#: obvious place to wait, and so ``test_the_batch_state_covers_every_action``
+#: keeps proving the two sets still partition the eight.
+UNACCEPTED: frozenset = frozenset()
 
 
 class ProjectionDeclarationTest(unittest.TestCase):

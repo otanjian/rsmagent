@@ -22,8 +22,7 @@
 | 版本（合并移植） | `GET /api/version` | 公开可达且含 `version`/`install_kind` | 无 |
 | 租户平面：记忆 / 调度 / 历史 / 技能 / 知识 / 智能体 / 会话 / 工作区 / 项目 / 渠道 | 见 `TENANT_PLANE` | 成员到达 handler，非 503 | 匿名 401；跨租户 403 |
 | 已知缺口（不在本 change 收口） | 3 条 `/api/update/*` | — | 未注册 → 404（不是静默放开） |
-| 本 change 已注册未开放（2 条 R1 动作） | `DECLARED_WHILE_CLOSED` | 开放后由各自验收用例正向覆盖 | 关闭 → 503 网关拒绝，与 `/auth/context.feature_actions` 同一份声明 |
-| 本 change 已验收并开放（6 条 R2 动作） | `ACCEPTED_ACTIONS` | 真实渠道验收（task 6.7 / 8.3）后声明开放 | 网关不再 closed，投影 `available=true`，同一份声明 |
+| 本 change 已注册动作（8 条，全部已验收并开放） | `ACCEPTED_ACTIONS` | R2 六条经真实渠道验收（task 6.7 / 8.3），R1 两条经真实会话验收（task 3.6 / 4.5）后声明开放 | 网关不再 closed，投影 `available=true`，同一份声明；`DECLARED_WHILE_CLOSED` 已空，故本文件同时断言**没有任何路由处于关闭态** |
 
 后端增量本身的逐条裁定见 `evidence/21-increment-adjudication.md`；本文件只回答
 "合并后的候选在 database 模式下是否仍然可用、仍然收权、入口仍然接通"。
@@ -35,7 +34,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from tests._helpers import IdentityStack, WebAppHarness
+from tests._helpers import IdentityStack, WebAppHarness, close_capability_actions
 
 ACME_AGENT = "acme-agent"
 GLOBEX_AGENT = "globex-agent"
@@ -86,26 +85,28 @@ UNROUTED = (
 )
 
 #: The eight actions of `integrate-upstream-core-capabilities` in their batch
-#: state (task 8.5). ``DECLARED_WHILE_CLOSED`` is the half whose real acceptance
-#: has not landed: the route exists, the gate refuses it with 503 before any
-#: handler runs, and `/auth/context.feature_actions` reports ``not_accepted``
-#: from the same declaration (`auth/capability_matrix.py`).
-#:
-#: Only the R1 context controls are left here -- the R2 batch (the six scheduler
-#: actions) is accepted by the real-channel acceptance of tasks 6.7 / 8.3 and is
-#: asserted positively in ``ACCEPTED_ACTIONS`` below.
+#: state (task 8.5). Both batches are now accepted, so
+#: ``DECLARED_WHILE_CLOSED`` is empty by design -- and the emptiness is a real
+#: assertion, not a placeholder: ``test_the_closed_gate_serves_exactly_the_declared_set``
+#: compares it against every ``closed`` policy in the derived route table, so an
+#: empty tuple here means *no route is closed*, which is exactly what a fully
+#: accepted registry must look like. (While the R1 context controls waited for
+#: their real acceptance, they lived here: the route existed, the gate refused it
+#: with 503 before any handler ran, and ``/auth/context.feature_actions``
+#: reported ``not_accepted`` from the same declaration.)
 #:
 #: Pattern, verb and the capability action each one projects.
-DECLARED_WHILE_CLOSED = (
-    ("/api/sessions/(.*)/context_usage", "GET", "session_context.usage"),
-    ("/api/sessions/(.*)/compact_context", "POST", "session_context.compact"),
-)
+DECLARED_WHILE_CLOSED: tuple = ()
 
 #: The accepted half: declared open, so the gate must *not* refuse it and the
 #: projection must read available from the same declaration. A route that stayed
 #: ``closed`` here would be the "registered but never switched on" symptom this
-#: file exists to catch.
+#: file exists to catch. The six scheduler actions are accepted by the
+#: real-channel acceptance of tasks 6.7 / 8.3, the two context controls by the
+#: real session acceptance of tasks 3.6 / 4.5.
 ACCEPTED_ACTIONS = (
+    ("/api/sessions/(.*)/context_usage", "GET", "session_context.usage"),
+    ("/api/sessions/(.*)/compact_context", "POST", "session_context.compact"),
     ("/api/scheduler/instances", "GET", "scheduler.instances"),
     ("/api/scheduler/recipients", "GET", "scheduler.recipients"),
     ("/api/scheduler/create", "POST", "scheduler.create"),
@@ -622,23 +623,43 @@ class KnownGapAcceptance(_TwoTenantAcceptance):
                              "%s %s answered %s -- an unrouted entry went live"
                              % (method, path, response.status))
 
-    def test_the_declared_while_closed_actions_are_refused_not_missing(self):
-        """Registered-but-unopened must not be mistaken for unrouted.
+    def test_a_registered_but_unserved_action_is_refused_not_missing(self):
+        """Registered-but-unserved must not be mistaken for unrouted.
 
         503 is the gate's own refusal, produced before any handler runs, and it
         is what makes the capability projection and the route agree. A 404 or
         405 here would mean the route was never registered (the projection would
         then be advertising nothing) or the catch-all swallowed it.
+
+        The unserved state is now produced by the *deployment* switch rather
+        than by the declaration: both batches are accepted, so
+        ``DECLARED_WHILE_CLOSED`` is empty and iterating it would assert nothing
+        at all. Closing one action through the operator path exercises the same
+        invariant on a live route -- and it is the state a rollback actually
+        creates -- so the guard keeps its teeth now that no slice ships
+        unopened. The gate reads ``auth.http_policy.ROUTE_POLICY``, which is
+        derived at import; ``close_capability_actions`` republishes it, which is
+        what the boot-time ``finalize`` does for a real process.
         """
-        for path, method, action in DECLARED_WHILE_CLOSED:
-            url = path.replace("(.*)", "x")
-            response = self._call(method, url, {}, token=self.root_token,
-                                  tenant=self.acme_id)
-            self.assertEqual(
-                _status(response), 503,
-                "%s %s answered %s while %s is unopened -- a registered action "
-                "must be refused by the gate, never reported as missing"
-                % (method, url, response.status, action))
+        with close_capability_actions("session_context.compact"):
+            for path, method, action in ACCEPTED_ACTIONS:
+                url = path.replace("(.*)", "x")
+                response = self._call(method, url, {}, token=self.root_token,
+                                      tenant=self.acme_id)
+                if action == "session_context.compact":
+                    self.assertEqual(
+                        _status(response), 503,
+                        "%s %s answered %s while %s is closed by deployment -- "
+                        "a registered action must be refused by the gate, never "
+                        "reported as missing"
+                        % (method, url, response.status, action))
+                else:
+                    self.assertNotEqual(
+                        _status(response), 503,
+                        "%s %s answered 503 although only "
+                        "session_context.compact was closed -- the deployment "
+                        "switch must close one action, not its neighbours"
+                        % (method, url))
 
 
 def tearDownModule():

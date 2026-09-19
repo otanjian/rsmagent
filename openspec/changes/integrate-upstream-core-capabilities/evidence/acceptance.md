@@ -54,8 +54,9 @@
   - `channel/web/static/js/functional-context.js` 挂载进 `#context-usage-host`，随现有会话生命周期
     装载/卸载；`chat.html`、`console.js`、`i18n/core.js` 同步接入。
   - 命令与结果（本机，仓库根）：`node --test tests/test_functional_context.cjs` → passed
-- 真实门槛（未完成，未开放）：Web 真机上的真实会话压缩演练（`session_context.usage` /
-  `session_context.compact` 保持 `open={}`，投影为 `not_accepted`）。
+- 真实门槛（**已于 §13 完成**）：Web 真机上的真实会话压缩演练与实时数字渲染；
+  `session_context.usage` / `session_context.compact` 在 R2 交付时保持 `open={}` / `not_accepted`，
+  由 §13 的复测全绿后翻转开放。
 
 ## 3. P3 模型目录与回退链
 
@@ -116,10 +117,11 @@
 
 ## 7. 发布门禁与真实渠道验收（tasks §8）
 
-（Web 端真实门槛执行中。
+（Web 端与真实渠道门槛均已执行完毕：R1 见 §13，R2 见 §8 / §11。
 真实渠道创建/执行/历史/删除、共享 Agent 双用户、跨租户、管理员与权限撤销验收
-必须在具备真实测试渠道的环境执行；未完成前八个动作在主工作区保持 `open={}`，`/auth/context` 报告
-`not_accepted`，客户端不请求。）
+已在具备真实测试渠道的环境执行；八个动作现已全部 `accepted=True` 并开放，
+`/auth/context` 逐项报告 `available=true`。任何部署仍可用 `RDAI_DISABLED_ACTIONS`
+在启动时只关不开，投影相应转为 `disabled_by_deployment`。）
 
 ### 7.0a 真实验收中发现的缺陷（已修复，task 6.7 / 8.4 输入）
 
@@ -238,11 +240,18 @@ cd /tmp/rdai-acc/rc-final && .venv/bin/python -m pytest -q tests/
 | 批次 | slice | 声明 |
 | --- | --- | --- |
 | **R2 已验收** | `scheduler_instances` / `scheduler_recipients` / `scheduler_create` / `scheduler_runs_list` / `scheduler_runs_detail` / `scheduler_runs_delete` | `accepted=True`，`open={动作: ACCESS_READ/EXECUTE}` |
-| **R1 待验收** | `session_context_usage` / `session_context_compact` | `accepted=False`，`open={}` |
+| **R1 已验收**（§13 复测 31/31） | `session_context_usage` / `session_context_compact` | `accepted=True`，`open={usage: ACCESS_READ}` / `{compact: ACCESS_EXECUTE}` |
+
+本节以下（10.2 / 10.3）记录的是 task 8.5 当时的现场：R2 六动作已开放、R1 两动作尚未，
+因此那些读数里 R1 两键为 `not_accepted` + 503 是**当时**的正确状态，保留为历史证据；
+两个批次的最终状态以本表与 §13 为准。
 
 `tests/test_feature_action_projection.py` 用 `ACCEPTED` / `UNACCEPTED` 两个集合钉住该边界：
 投影、路由门禁两个方向都对着**同一份声明**断言，并新增
 `test_the_batch_state_covers_every_action_exactly_once` 防止两集合漏项或重叠。
+R1 翻转后 `UNACCEPTED` 为空集，而「空」本身仍是被断言的：该用例要求两集合恰好分割八个键，
+`test_web_database_capability_acceptance.py` 则要求 `DECLARED_WHILE_CLOSED` 与派生路由表中
+**全部** `closed` 策略相等，因此「没有任何路由处于关闭态」是可证伪的结论而非默认。
 
 ### 10.2 前端投影与路由一致（真实服务，`/tmp/rdai-acc/drill_85.py`）
 
@@ -332,12 +341,14 @@ instance_rows              1        # tenant_channel_instances
 | 实施基线 | `f5d7d764` | task 1.1/1.2 记录的起点；本演练的**代码回退目标** |
 | RC 冻结（含缺陷 1 修复） | `5f6d1897` | 六动作仍 `open={}`、`accepted=False`；全量回归在此提交记录 |
 | 交付（task 8.5 批次开放） | `74be49dd` | 六动作 `accepted=True` + `open`；R1 两键保持关闭 |
+| R1 验收与第二批翻转 | `2148573e` 之后（§13 复测提交） | 八动作全部 `accepted=True` + `open`；本演练的四阶段结论不随声明翻转而变（它量的是数据与旧二进制兼容，不是门禁） |
 
 **恢复口径**：若要回退到 `f5d7d764`，只需把代码切回该提交并重启，**无需回滚数据**——
 扩展表与 `scheduler/tasks.json`、`system/models.json`、`memory/long-term/index.db` 均为**新增或兼容写入**，
 旧二进制不读扩展表即可正常服务；再次升级到 `74be49dd` 时历史运行与归属自动可见（本演练 `restored` 阶段实测）。
-若事故中需要先止血，优先用 `RDAI_DISABLED_ACTIONS` 关闭六个动作并重启
-（§10 两阶段实测：投影与门禁同步收窄，数据零改动），**不必回退代码**。
+若事故中需要先止血，优先用 `RDAI_DISABLED_ACTIONS` 关闭需要止血的动作并重启
+（本节演练关的是六个调度动作；R1 翻转后两个上下文动作同样可关，
+§10 两阶段实测：投影与门禁同步收窄，数据零改动），**不必回退代码**。
 
 ## 12. 历史功能关闭时的真实执行与扩展表（task 6.7）
 
@@ -441,10 +452,42 @@ surface)」，`data.status !== 'success'` 即抛错，故规范要求的
 「被拒 + 无写入 + 客户端视为失败」，不再要求非 200 状态码；状态码不一致本身登记为基线跟进项
 （把 `/api/models` 写入的失败状态统一，会改动全部既有调用方，不在本 change 内）。
 
-### 13.4 修复后的复测
+### 13.4 修复后的复测：31 项 31 PASS
 
-`cca39b28` + `2148573e` 之后，R1 门槛已在**新提交**上重跑复核
-（独立部署、独立端口与数据目录，逐条重测 3.6.1–3.6.8 / 4.5.1–4.5.10 及 DEF-1 的四步复现），
-结果与裁定记录在本节末尾（复测未回到「全绿」之前，task 3.6 / 4.5 **保持未勾选**，
-R1 两个动作在主工作区**保持 `open={}` / `accepted=False`**，`/auth/context` 仍报 `not_accepted`）。
+`cca39b28` + `2148573e` 之后，R1 门槛在**新提交**上重跑复核（独立部署、独立端口 9945 与数据目录
+`/tmp/rdai-acc/d-r1v2`、仅打开两个 R1 动作，逐条重测 3.6.1–3.6.8 / 4.5.1–4.5.10），
+原始报文见 `/tmp/rdai-acc/R1-EVIDENCE-V2.md`：**31 PASS / 0 FAIL**，首轮 5 项 FAIL 全部清零。
+
+- **DEF-1 关闭**（最有力的一对报文，服务自会话创建前就在运行、中间**无重启**）：
+
+  ```
+  POST /message {"session_id":"session_r1v2_defect_…","agent_id":"acc-agent-b"} → 200 {"status":"success"}
+  GET  /api/sessions/session_r1v2_defect_…/context_usage?agent_id=acc-agent-b → 200
+       {"available":true,"message":0,"used":12914,"status":"success"}   （首轮：404 session_not_found）
+  ```
+
+  `sessions` 行在**认领时**即带 `owner=usr_… tenant_id=tnt_…`；另一成员 404、跨租户 404、
+  伪造 `X-Tenant-ID` 403；刻意播种的空租户行对本人可见、对他人隐藏；重启后仍 200，
+  且启动期回填日志只认领了 1 条播种遗留行（2 条消息），证明新行不再依赖回填。
+
+- **DEF-2 按澄清后的预期 PASS**：压缩后实时 `messages` 6→4 而持久 `total` 8→8（不丢消息）；
+  重启后正文完整（`total` 7，再发一轮 8），窗口由**完整历史**重建（实时 4→7）。
+- **DEF-3 按改判后的口径 PASS**：重复名 / 畸形链被拒（记录到状态码为 **200** + `status:"error"`，
+  未断言非 200）、目录重读未变（无写入）、客户端把 `status:"error"` 判为失败
+  （`console.js::_postModelsPayload`，node 7/7、11/11）。
+- **3.6.8 实时数字渲染**：真实浏览器里点开面板后发出
+  `GET …/context_usage?agent_id=acc-agent-b`（200，`used=12963 limit=128000 messages=11`），
+  面板渲染 `12963 / 128000` 与 `11 条消息 · 估算值`，与服务端载荷逐项一致
+  （截图 `/tmp/rdai-acc/r1v2-context-panel-live.png`）。首轮观察到的「该会话暂无实时上下文」
+  是**驱动假象**：模块按设计在会话尚无持久记录时保持静默（`_contextNewSession` / `#welcome-screen`），
+  已用同一页面的「新建对话」反向对照确定性复现；恢复持久会话后重新点开即发请求并渲染数字。
+
+**新发现 P-1（预存在，非本 change）**：复合 Agent 迁移的重建 `INSERT … SELECT` 漏掉
+`owner`/`tenant_id`，使在第二个 Agent 加入前落章的行失去租户归属
+（`git diff f5d7d764 2148573e -- agent/memory/conversation_store.py` 为空）。不阻塞 R1，登记为跟进项。
+
+**结论：3.6 / 4.5 完成，`session_context.usage` / `session_context.compact` 翻转为
+`accepted=True` 且 `open={usage: read}` / `{compact: execute}`**（task 8.5 的第二批；
+`tests/test_feature_action_projection.py` 的 `ACCEPTED` 集合与 `auth/capability_matrix.py`
+同批改动，两处必须一致，否则门禁与投影会打架）。
 

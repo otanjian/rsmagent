@@ -15,8 +15,9 @@
 
 ## 交付批次状态（task 8.5 定格；复核时以此为准）
 
-`auth/capability_matrix.py` 的八个动作键分两批，批次边界由
-`tests/test_feature_action_projection.py` 的 `ACCEPTED` / `UNACCEPTED` 集合钉住：
+`auth/capability_matrix.py` 的八个动作键分两批，两批**均已验收开放**，批次边界由
+`tests/test_feature_action_projection.py` 的 `ACCEPTED` / `UNACCEPTED` 集合钉住
+（当前 `UNACCEPTED` 为空集，两个集合仍必须恰好分割这八个键）：
 
 | 动作键 | slice | 批次 | 声明 | 门禁回答 | 证据 |
 | --- | --- | --- | --- | --- | --- |
@@ -26,8 +27,8 @@
 | `scheduler.runs.list` | `scheduler_runs_list` | R2 已验收 | `accepted=True`，`open={list: ACCESS_READ}` | 已放行 | 同上 + §12 |
 | `scheduler.runs.detail` | `scheduler_runs_detail` | R2 已验收 | `accepted=True`，`open={detail: ACCESS_READ}` | 已放行 | 同上 |
 | `scheduler.runs.delete` | `scheduler_runs_delete` | R2 已验收 | `accepted=True`，`open={delete: ACCESS_EXECUTE}` | 已放行 | 同上 |
-| `session_context.usage` | `session_context_usage` | **R1 待验收** | `accepted=False`，`open={}` | `not_accepted` → 503 | `evidence/acceptance.md` §13（真实验收已执行：30 项 25 PASS / 5 FAIL 跨三缺陷；DEF-1 已修，复测未回全绿） |
-| `session_context.compact` | `session_context_compact` | **R1 待验收** | `accepted=False`，`open={}` | `not_accepted` → 503 | 同上 |
+| `session_context.usage` | `session_context_usage` | **R1 已验收** | `accepted=True`，`open={usage: ACCESS_READ}` | 已放行（未开放时为 503） | `evidence/acceptance.md` §13（31 项 31 PASS；实时数字渲染已在真实浏览器量到） |
+| `session_context.compact` | `session_context_compact` | **R1 已验收** | `accepted=True`，`open={compact: ACCESS_EXECUTE}` | 已放行 | 同上 |
 
 任何部署都可以用 `RDAI_DISABLED_ACTIONS=<逗号分隔动作键>` **只关不开**已 accepted 的动作；
 拼写未知键在启动时即拒绝（`CapabilityConfigurationError`），因此不存在「关错了却静默放行」。
@@ -39,9 +40,11 @@
 ## 后续前端迁移记录（不在本 change 内）
 
 - **R1 上下文控制的前端开放**：`functional-context.js` 与 `functional-capabilities.js` 已交付，
-  但 `session_context.usage` / `session_context.compact` 两个动作在声明层仍关闭，
-  等 task 3.6 / 4.5 的真实会话验收后再执行 8.5 的第二批翻转（改 `auth/capability_matrix.py`
-  与 `tests/test_feature_action_projection.py` 的 `ACCEPTED` 集合，两处必须同批）。
+  `session_context.usage` / `session_context.compact` 两个动作已随 task 3.6 / 4.5 的
+  真实会话验收完成 8.5 的第二批翻转（`auth/capability_matrix.py` 与
+  `tests/test_feature_action_projection.py` 的 `ACCEPTED` 集合同批改动）。
+  面板按设计**惰性读取**：只在会话有服务端记录、且用户点开时才发请求；
+  新建对话仍显示「该会话暂无实时上下文」，这是正确语义而非缺口（见 `acceptance.md` §13.4）。
 - **Desktop 客户端**：`channel/web/fork/handlers/pages.py` 的发现式静态资产登记与
   `functional-*.js` 三模块对 Desktop 侧复用是**留待独立变更**的范围，本 change 不含 Desktop
   代码与其测试（已按用户指示移出）；`channel/web/static/js/console.js` 的能力门禁读取点可供其直接复用。

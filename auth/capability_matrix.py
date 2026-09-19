@@ -466,9 +466,13 @@ SLICES: Tuple[Slice, ...] = (
     #        of tasks 6.7 / 8.3 (create / execute / history / detail / delete on
     #        a real deployment, plus the shared-Agent, cross-tenant, admin and
     #        revocation matrix). Declared open below.
-    #   R1 -- ``session_context_usage`` / ``session_context_compact``: still
-    #        ``open={}``; task 3.6 opens them only after its own real session
-    #        acceptance (task 4.5).
+    #   R1 -- ``session_context_usage`` / ``session_context_compact``: accepted
+    #        by the real session acceptance of tasks 3.6 / 4.5 (31 checks on a
+    #        real deployment: the ownership matrix, the concurrency conflict, the
+    #        refusal set, the live-number render in a real browser, and the
+    #        closed/rollback drill). Declared open below; the read and the write
+    #        stay separate actions so a deployment may offer usage without
+    #        compaction.
     #
     # The consumer name is the slice id, not a shared label: the declaration
     # requires one consumer per slice (``test_slice_ids_and_consumers_are_unique``),
@@ -480,9 +484,12 @@ SLICES: Tuple[Slice, ...] = (
         consumer="session_context_usage",
         page=None,
         scope=frozenset({"personal"}),
-        open={},
+        # Read: the live window of the caller's own session. Nothing is created
+        # and no model is called; the authorization is the durable owner match,
+        # not a role permission (``permission=""`` in the route table).
+        open={"usage": ACCESS_READ},
         implemented=True,
-        accepted=False,
+        accepted=True,
         reason="",
         policy=DEFAULT_POLICY,
     ),
@@ -492,9 +499,12 @@ SLICES: Tuple[Slice, ...] = (
         consumer="session_context_compact",
         page=None,
         scope=frozenset({"personal"}),
-        open={},
+        # Execute: the only write entry. It replaces the in-process window of the
+        # caller's own session and writes the summary to daily memory; it never
+        # trims the durable transcript.
+        open={"compact": ACCESS_EXECUTE},
         implemented=True,
-        accepted=False,
+        accepted=True,
         reason="",
         policy=DEFAULT_POLICY,
     ),
