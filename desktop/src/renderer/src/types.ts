@@ -585,6 +585,24 @@ export interface HistoryPage {
   context_start_seq?: number
 }
 
+// ============================================================
+// Per-action capability projection (/auth/context.feature_actions)
+// ============================================================
+
+/**
+ * One entry of `/auth/context.feature_actions` (design D2). `available` only
+ * describes the service: it never grants a caller rights, and every request is
+ * still authorized server-side. A missing field on an older server is treated
+ * as "closed", never as available.
+ */
+export interface FeatureActionEntry {
+  available?: boolean
+  reason?: string
+}
+
+/** The eight declared action keys mapped to their projection entry. */
+export type FeatureActionMap = Record<string, FeatureActionEntry>
+
 /** Heuristic breakdown of what is occupying the session's context window.
  *  `available` is false when the session has no live agent yet (fresh session,
  *  or one just cleared) — the other fields are then absent. */
@@ -1142,6 +1160,15 @@ export interface SchedulerRun {
 // which case the UI falls back to output_preview.
 export interface SchedulerRunDetail extends SchedulerRun {
   full_output?: string | null
+}
+
+// One page of GET /api/scheduler/runs. `history_scope` is fixed to
+// "attributed_only": the server only returns runs whose execution-time
+// attribution it can prove, and old unattributed rows are deliberately hidden.
+// New clients state the scope so the page never implies the full ledger.
+export interface SchedulerRunPage {
+  runs: SchedulerRun[]
+  history_scope: 'attributed_only'
 }
 
 // A channel instance the console can deliver a scheduled task through. The

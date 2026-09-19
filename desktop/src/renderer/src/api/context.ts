@@ -4,7 +4,14 @@ import type {
   BrokerSessionReply,
   BrokerSessionWire,
   BrokerStatusReply,
+  FeatureActionMap,
 } from '../types'
+import {
+  FeatureUnavailableError,
+  featureReason,
+  isFeatureAvailable,
+  type FeatureActionContext,
+} from './features'
 
 /**
  * The Desktop request context: one authoritative identity/tenant/epoch state and
@@ -72,6 +79,22 @@ export interface ContextSnapshot {
   identityMode: string
   /** True when the backend itself cannot be reached / resolved. */
   probeFailed: boolean
+  /**
+   * Per-action service availability from `/auth/context` (design D2). `null`
+   * means "not resolved yet" (or cleared by an identity/tenant/reconnect
+   * invalidation): every gated action stays closed until it arrives, so an old
+   * server that omits the field never opens a new capability.
+   *
+   * Deliberately NOT persisted to localStorage: it belongs to the current
+   * identity/tenant/epoch and must be re-fetched after any of them move.
+   */
+  featureActions: FeatureActionMap | null
+  /**
+   * Monotonic revision of the capability/context projection. Bumped whenever
+   * the identity, tenant, broker epoch or connection is invalidated; an
+   * in-flight response captured under an older revision must be discarded.
+   */
+  featureRevision: number
 }
 
 type Listener = () => void
@@ -94,6 +117,15 @@ interface RequestPlan {
   epoch: number
 }
 
+/**
+ * Whether two projections describe the same identity/tenant/epoch. Any change
+ * (or a sign-in/sign-out) makes the cached capability projection invalid.
+ */
+function sameIdentity(a: BrokerSessionWire | null, b: BrokerSessionWire | null): boolean {
+  if (!a || !b) return a === b
+  return a.userId === b.userId && a.tenantId === b.tenantId && a.epoch === b.epoch
+}
+
 export class DesktopContext {
   private state: ContextSnapshot = {
     gate: 'checking',
@@ -102,11 +134,17 @@ export class DesktopContext {
     lastError: null,
     identityMode: '',
     probeFailed: false,
+    featureActions: null,
+    featureRevision: 0,
   }
 
   private listeners = new Set<Listener>()
   private baseUrl = 'http://127.0.0.1:9876'
   private probing: Promise<void> | null = null
+  // Guards the capability projection: every clear advances the seq so a late
+  // `/auth/context` answer from a previous identity can never be applied.
+  private capabilitySeq = 0
+  private capabilityInFlight: { seq: number; promise: Promise<FeatureActionMap | null> } | null = null
 
   // ----------------------------------------------------------------------- //
   // Observable state
@@ -169,12 +207,132 @@ export class DesktopContext {
   }
 
   private applySession(session: BrokerSessionWire | null, blockedReason = ''): void {
-    this.emit({
+    // A new account, a new tenant or a new broker epoch invalidates the cached
+    // capability projection: clear it first, then refresh under the new
+    // identity so a late answer from the old one cannot reopen a closed action.
+    const identityChanged = !sameIdentity(this.state.session, session)
+    const patch: Partial<ContextSnapshot> = {
       session,
       blockedReason,
       gate: this.gateFor(session, blockedReason, this.state.probeFailed),
       lastError: null,
+    }
+    if (identityChanged) {
+      patch.featureActions = null
+      patch.featureRevision = this.state.featureRevision + 1
+      this.capabilitySeq += 1
+    }
+    this.emit(patch)
+    if (identityChanged && session) void this.refreshCapabilities()
+  }
+
+  // ----------------------------------------------------------------------- //
+  // Capability projection (design D2)
+  // ----------------------------------------------------------------------- //
+
+  /** The context shape the pure `isFeatureAvailable` predicate reads. */
+  featureContext(): FeatureActionContext {
+    return {
+      status: this.state.featureActions ? 'success' : 'error',
+      feature_actions: this.state.featureActions,
+    }
+  }
+
+  isFeatureAvailable(key: string): boolean {
+    return isFeatureAvailable(this.featureContext(), key)
+  }
+
+  featureReason(key: string): string {
+    return featureReason(this.featureContext(), key)
+  }
+
+  /**
+   * Drop the cached projection and advance the revision. Logout, tenant switch,
+   * reconnect and every identity change call this BEFORE refreshing, so a
+   * consumer that captured the old revision discards its in-flight result even
+   * if the refresh has not finished yet.
+   */
+  invalidateCapabilities(): void {
+    this.capabilitySeq += 1
+    this.emit({
+      featureActions: null,
+      featureRevision: this.state.featureRevision + 1,
     })
+  }
+
+  /**
+   * Fetch `/auth/context` through the broker and cache `feature_actions`.
+   *
+   * The request goes through the same decorator as every business call, so the
+   * main process attaches the credential and the renderer never holds one. An
+   * answer is only applied when the seq, epoch and identity it started under
+   * are all still current; otherwise it is dropped.
+   */
+  refreshCapabilities(): Promise<FeatureActionMap | null> {
+    const seq = this.capabilitySeq
+    if (this.capabilityInFlight && this.capabilityInFlight.seq === seq) {
+      return this.capabilityInFlight.promise
+    }
+    const session = this.state.session
+    if (!session || this.state.blockedReason) {
+      return Promise.resolve(this.state.featureActions)
+    }
+    const epoch = this.epoch
+    const identity = { userId: session.userId, tenantId: session.tenantId }
+    const promise = (async (): Promise<FeatureActionMap | null> => {
+      try {
+        const reply = await this.send<{ status?: string; feature_actions?: FeatureActionMap }>(
+          this.plan('/auth/context'),
+          (r) => JSON.parse(r.body || '{}') as { status?: string; feature_actions?: FeatureActionMap },
+        )
+        if (seq !== this.capabilitySeq) return null
+        if (this.epoch !== epoch) return null
+        const current = this.state.session
+        if (!current || current.userId !== identity.userId || current.tenantId !== identity.tenantId) {
+          return null
+        }
+        const actions =
+          reply && reply.status === 'success' && reply.feature_actions ? reply.feature_actions : null
+        if (actions) this.emit({ featureActions: actions })
+        return actions
+      } catch {
+        // Fail closed: a failed projection read leaves every gated action
+        // closed. The send() failure mapping has already moved the gate when
+        // the session/tenant died, so the shell shows that concrete state.
+        return null
+      } finally {
+        if (this.capabilityInFlight?.seq === seq) this.capabilityInFlight = null
+      }
+    })()
+    this.capabilityInFlight = { seq, promise }
+    return promise
+  }
+
+  /**
+   * Resolve the projection, fetching it once if it has not been loaded yet.
+   * Returns null when there is no session (or traffic is stopped), which the
+   * callers treat as "closed".
+   */
+  async ensureCapabilities(): Promise<FeatureActionMap | null> {
+    if (this.state.featureActions !== null) return this.state.featureActions
+    if (!this.state.session || this.state.blockedReason) return null
+    return this.refreshCapabilities()
+  }
+
+  /**
+   * Gate one business call. Waits for the projection, then throws
+   * `FeatureUnavailableError` before any request is issued when the action is
+   * closed — the caller must surface the state, not retry.
+   */
+  async requireFeature(key: string): Promise<void> {
+    const actions = await this.ensureCapabilities()
+    const context: FeatureActionContext = {
+      status: actions ? 'success' : 'error',
+      feature_actions: actions,
+    }
+    if (!isFeatureAvailable(context, key)) {
+      throw new FeatureUnavailableError(key, featureReason(context, key))
+    }
   }
 
   private fail(kind: ContextFailureKind, code: string, message: string, status = 0): never {
@@ -222,6 +380,10 @@ export class DesktopContext {
         const probe: BrokerProbe = await window.electronAPI!.desktopAuthProbe!()
         const status: BrokerStatusReply = await window.electronAPI!.desktopAuthStatus!()
         const session = status.session ?? null
+        // A probe is the reconnect boundary: clear the cached capability
+        // projection before applying the fresh authoritative one, so a stale
+        // answer from before the reconnect can never reopen an action.
+        this.invalidateCapabilities()
         this.emit({
           identityMode: probe.identityMode || status.identityMode || '',
           probeFailed: !probe.ok,
@@ -233,6 +395,7 @@ export class DesktopContext {
         } else {
           this.emit({ gate: 'need_login', session: null })
         }
+        if (session) void this.refreshCapabilities()
       } catch {
         // A failed probe is never "no login required": a down identity store
         // must not open the app.

@@ -10,7 +10,11 @@ import LoginGate, { BlockedGate, PasswordChangeGate, TenantSelectGate } from './
 import { useBackend } from './hooks/useBackend'
 import { usePlatform } from './hooks/usePlatform'
 import { usePushPoll } from './hooks/usePushPoll'
-import { useSchedulerNotifyPoll } from './hooks/useSchedulerNotifyPoll'
+import {
+  useSchedulerNotifyPoll,
+  getSchedulerNotifyState,
+  subscribeSchedulerNotify,
+} from './hooks/useSchedulerNotifyPoll'
 import { useUIStore } from './store/uiStore'
 import { useSessionStore } from './store/sessionStore'
 import { useWorkspaceStore } from './store/workspaceStore'
@@ -52,6 +56,9 @@ const App: React.FC = () => {
   // every surface -- chat, upload, stream, preview, settings -- sees the same
   // identity and the same tenant. The renderer holds no credential.
   const context = useSyncExternalStore(desktopContext.subscribe, desktopContext.getSnapshot)
+  // Why the scheduler notification poll is stopped (permission/service error).
+  // The hook clears it once a fresh capability projection reopens the action.
+  const notifyState = useSyncExternalStore(subscribeSchedulerNotify, getSchedulerNotifyState)
   const authState: 'checking' | 'need_login' | 'ok' =
     context.gate === 'checking'
       ? 'checking'
@@ -286,6 +293,20 @@ const App: React.FC = () => {
           )}
           {isWin && <WindowControls />}
         </header>
+
+        {notifyState.paused && (
+          // The scheduler notification poll stopped on a permission/service
+          // error (design D2/P6). It is never silently swallowed: the banner
+          // states why, and the hook clears it only after the capability
+          // projection is re-fetched and the action is open again.
+          <div
+            role="status"
+            title={notifyState.reason}
+            className="flex-shrink-0 px-3 py-1.5 text-[11px] bg-danger-soft text-danger border-b border-danger-border"
+          >
+            {t('scheduler_notify_paused')}
+          </div>
+        )}
 
         {/* Content */}
         <div className="flex-1 flex min-h-0 overflow-hidden bg-base">

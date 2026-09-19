@@ -33,16 +33,30 @@ function loadTypeScript() {
 /** Transpile a .ts source and evaluate it with a controlled sandbox. */
 function loadTs(relativePath, sandbox = {}) {
     const ts = loadTypeScript();
-    const source = read(relativePath);
+    const absPath = path.join(root, relativePath);
+    const source = fs.readFileSync(absPath, 'utf8');
     const { outputText } = ts.transpileModule(source, {
         compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
         fileName: relativePath,
     });
     const module = { exports: {} };
+    // A relative import is another shipped .ts module (e.g. `api/context.ts`
+    // imports `./features`), so resolve it through this same loader instead of
+    // Node's resolver, which only knows about .js files.
+    const baseDir = path.dirname(absPath);
+    const resolveImport = (id) => {
+        if (id.startsWith('.')) {
+            const base = path.resolve(baseDir, id);
+            for (const ext of ['.ts', '.tsx', '.js']) {
+                if (fs.existsSync(base + ext)) return loadTs(path.relative(root, base + ext), sandbox);
+            }
+        }
+        return require(id);
+    };
     const context = vm.createContext({
         module,
         exports: module.exports,
-        require,
+        require: resolveImport,
         console,
         process,
         setTimeout,

@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import apiClient from '../api/client'
+import { ContextError } from '../api/context'
+import { FeatureUnavailableError } from '../api/features'
 import { useWorkspaceStore } from './workspaceStore'
 import { sessionOwner } from './sessionStore'
 import { cfgFor } from './sessionSettingsStore'
@@ -10,12 +12,16 @@ import { t } from '../i18n'
 import type { Artifact, ChatMessage, MessageStep, Attachment, StreamEvent, HistoryMessage, AgentBadge, ContextUsage } from '../types'
 
 // Result of a synchronous context compaction (mirrors the backend payload).
+// `errorKind` lets the popover distinguish "closed in this deployment" from a
+// 409 conflict, a 403 refusal or a service error instead of one generic toast.
 export interface CompactResult {
   ok: boolean
   noop: boolean
   before: number
   after: number
   usage: ContextUsage | null
+  errorKind?: string
+  errorMessage?: string
 }
 
 /**
@@ -751,8 +757,16 @@ export const useChatStore = create<ChatState>((set, get) => {
           ])
         }
         return { ok, noop: !ok, before, after, usage: data.usage ?? null }
-      } catch {
-        return fail
+      } catch (e) {
+        // Never replay a failed compaction: the popover surfaces the concrete
+        // reason (closed / conflict / denied / unavailable) with no retry here.
+        if (e instanceof FeatureUnavailableError) {
+          return { ...fail, errorKind: 'feature_unavailable', errorMessage: e.reason }
+        }
+        if (e instanceof ContextError) {
+          return { ...fail, errorKind: e.kind, errorMessage: e.message }
+        }
+        return { ...fail, errorKind: 'error', errorMessage: e instanceof Error ? e.message : '' }
       }
     },
 
