@@ -6120,11 +6120,17 @@ class IdentityService:
         Confined to ``tenant_id`` by the query, so a name from another tenant is
         simply not found — the same answer as a name that does not exist, which
         is what keeps this from reporting membership across tenants.
+
+        Unlike :meth:`list_assignable_members` this also returns ``user_id``: the
+        assignee is stored as a user id, because that is what ``owner_id`` holds
+        and the two must be comparable. This method is server-internal — the
+        picker sends a login name and reads the projection above, so the id never
+        travels to the client.
         """
         if not username:
             return None
         rows = self._store.execute(
-            "SELECT u.username, m.display_name"
+            "SELECT u.id AS user_id, u.username, m.display_name"
             " FROM memberships m"
             " JOIN users u ON u.id=m.user_id"
             " JOIN tenants t ON t.id=m.tenant_id"
@@ -6133,7 +6139,7 @@ class IdentityService:
         )
         if not rows:
             return None
-        return {k: rows[0][k] for k in self.ASSIGNABLE_MEMBER_FIELDS}
+        return dict(rows[0])
 
     def create_member(
         self,

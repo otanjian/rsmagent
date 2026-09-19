@@ -202,7 +202,12 @@ class AssignableMemberProjectionTests(_TenantFixture):
         found = self.svc.resolve_assignable_member(self.ta, "alice")
         self.assertIsNotNone(found)
         self.assertEqual(found["username"], "alice")
-        self.assertNotIn("user_id", found)
+        # The resolver is server-internal and must carry the id the assignee is
+        # stored under (``owner_id`` holds a user id, so the two must be
+        # comparable). The *picker* projection is the one that withholds it.
+        self.assertEqual(found["user_id"], self._user_id("alice"))
+        for row in self.svc.list_assignable_members(self.ta):
+            self.assertNotIn("user_id", row)
 
         # A different tenant has no such member, and a missing name is the same
         # answer as an invisible one.

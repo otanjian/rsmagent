@@ -387,10 +387,24 @@ class TodoService:
         enabled_fn=None,
         db_path: Optional[str] = None,
         app_data_root: Optional[str] = None,
+        member_resolver=None,
+        audit_recorder=None,
     ):
         self.actor = actor
         self._enabled_fn = enabled_fn or default_enabled
         self._app_data_root = app_data_root
+        # Delegation collaborators. Both are optional so every existing caller
+        # (and every read-only path) keeps working; the delegation actions refuse
+        # rather than guess when one is absent.
+        #
+        # ``member_resolver(username) -> {"user_id", "username", "display_name"}``
+        # resolves a delegation target *inside this actor's tenant*, so the todo
+        # module never queries identity data itself.
+        self._member_resolver = member_resolver
+        # ``audit_recorder(event) -> None`` writes one audit event. It is called
+        # *before* the store write, because an action whose audit record failed
+        # must not exist at all (see ``_audit_or_raise``).
+        self._audit_recorder = audit_recorder
         # The DB is only opened once we know the actor is bound and the feature
         # is on; opening it lazily avoids creating files for disabled reads.
         self._store_instance: Optional[TodoStore] = None
@@ -437,6 +451,29 @@ class TodoService:
         if not self.actor.has("todo.write"):
             raise TodoPermissionDenied("无待办写入权限")
 
+    def _require_assign(self) -> None:
+        """Delegation needs its own permission, on top of read/write.
+
+        Deliberately separate: handing work to a colleague is a different
+        authority from managing your own list, so a member role that never
+        granted it must not reach the actions (nor see the affordances — see
+        ``_project``).
+        """
+        self._require_enabled()
+        self._require_bound()
+        if not self.actor.has("todo.assign"):
+            raise TodoPermissionDenied("无待办委派权限")
+
+    @property
+    def _me(self) -> str:
+        """This actor's user id.
+
+        The same value serves as ``owner_id`` (when they created the item) and as
+        ``assignee_id`` (when they hold it), which is why both identities are one
+        column value rather than two.
+        """
+        return self.actor.owner_id
+
     @property
     def disabled_reason(self) -> str:
         """Human-readable reason for a disabled/blocked feature (for summary)."""
@@ -460,13 +497,27 @@ class TodoService:
 
     # -- projection ----------------------------------------------------------- #
     def _project(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        """Project a stored item for the API, including derived fields."""
+        """Project a stored item for the API, including derived fields.
+
+        The derived flags are the *server's* answer about what this actor may do,
+        not a client-side guess. ``can_edit`` / ``can_operate`` are scoped to the
+        current handler, so a delegator reading an item they handed out sees
+        read-only facts rather than affordances that would be refused.
+        """
         now = int(datetime.datetime.now().timestamp())
         due = item.get("due_at")
+        assignee_id = item.get("assignee_id") or item.get("owner_id")
+        owner_id = item.get("owner_id")
+        i_hold_it = assignee_id == self._me
+        i_delegated_it = owner_id == self._me and assignee_id != self._me
+        may_delegate = self.actor.has("todo.assign")
+        active = item.get("status") in ("pending", "in_progress")
+        pending = item.get("status") == "pending"
         return {
             "id": item["id"],
             "scope_id": item["scope_id"],
-            "owner_id": item["owner_id"],
+            "owner_id": owner_id,
+            "assignee_id": assignee_id,
             "title": item["title"],
             "description": item.get("description", ""),
             "kind": item.get("kind", "general"),
@@ -487,8 +538,19 @@ class TodoService:
             "updated_at": item.get("updated_at"),
             "completed_at": item.get("completed_at"),
             "version": item.get("version", 1),
-            "can_edit": item.get("status") in ("pending", "in_progress"),
-            "can_operate": self._available_status_actions(item.get("status", "pending")),
+            "mine": i_hold_it,
+            "delegated_by_me": i_delegated_it,
+            "can_edit": bool(active and i_hold_it),
+            "can_operate": {
+                action: bool(enabled and i_hold_it)
+                for action, enabled in self._available_status_actions(
+                    item.get("status", "pending")).items()
+            },
+            # Handing it on (指派 when I own it, 转交 when I received it).
+            "can_delegate": bool(may_delegate and pending and i_hold_it),
+            # Taking back what I handed out. The delegator is the only one who
+            # may recall, and never the current holder.
+            "can_recall": bool(may_delegate and pending and i_delegated_it),
         }
 
     @staticmethod
@@ -507,6 +569,31 @@ class TodoService:
         store = self._db()
         items, total = store.list_items(
             self.actor.scope_id, self.actor.owner_id,
+            status=status, q=q, overdue=overdue, page=page, page_size=page_size,
+        )
+        projected = [self._project(i) for i in items]
+        return {
+            "items": projected,
+            "total": total,
+            "page": page,
+            "page_size": len(projected),
+            "has_more": (page - 1) * page_size + len(projected) < total,
+        }
+
+    def delegated(self, *, status: str = "open", q: Optional[str] = None,
+                  overdue: bool = False, page: int = 1,
+                  page_size: int = 20) -> Dict[str, Any]:
+        """Return what this actor handed to somebody else.
+
+        Kept separate from :meth:`list`: an item I no longer hold is not mine to
+        work, so mixing it into the personal list would offer actions that get
+        refused. The two views are disjoint by construction (the underlying
+        predicate is ``assignee_id <> owner_id``).
+        """
+        self._require_read()
+        store = self._db()
+        items, total = store.list_delegated(
+            self.actor.scope_id, self._me,
             status=status, q=q, overdue=overdue, page=page, page_size=page_size,
         )
         projected = [self._project(i) for i in items]
@@ -765,9 +852,235 @@ class TodoService:
             raise TodoConflictError(str(e)) from e
         except TodoFieldError as e:
             raise TodoFieldValidationError(str(e)) from e
+        except TodoNotFound as e:
+            # Reached when the item was delegated away between the read above and
+            # this write. It must look exactly like an unknown id: reporting a
+            # distinct error here would tell the delegator the item still exists
+            # and is merely held by somebody else.
+            raise TodoNotFoundError() from e
         except TodoStoreError as e:
             raise TodoUnavailable(str(e)) from e
         return self._project(updated)
+
+    # -- write: delegation ----------------------------------------------------- #
+    #
+    # Ownership (``owner_id``) and handling (``assignee_id``) are separate. The
+    # delegator stays the owner forever — that is what makes recall, the
+    # create-key dedup window and "owner is immutable" all keep holding — while
+    # the handler moves. Only the holder may act on the content; only the owner
+    # may recall.
+    #
+    # Every action follows the same order: authorize, then audit, then write.
+    # The audit comes first because a delegation whose audit record failed must
+    # not exist at all; the cost is that a write failing after a successful audit
+    # leaves an "attempted" record, which is the harmless direction (an audited
+    # non-event, never an unaudited change).
+
+    #: Processing-history verb -> audit action. The two vocabularies differ on
+    #: purpose (see ``_apply_delegation``).
+    _DELEGATION_AUDIT_ACTIONS = {
+        "assign": "todo.assign",
+        "transfer": "todo.transfer",
+        "recall": "todo.recall",
+        "reject": "todo.reject",
+    }
+
+    def _audit_or_raise(self, action: str, item_id: str,
+                        changes: Dict[str, Any], result: str = "success") -> None:
+        """Record one delegation event, refusing the action if it cannot land.
+
+        No recorder is configured (a read-only wiring): nothing to write, so the
+        action proceeds unaudited rather than failing. Wiring audit in is the
+        caller's job; silently degrading a *configured* recorder is not.
+        """
+        if self._audit_recorder is None:
+            return
+        try:
+            self._audit_recorder({
+                "action": action,
+                "target": item_id,
+                "result": result,
+                "changes": changes,
+            })
+        except Exception as e:
+            from common.log import logger
+            logger.error("[TodoService] delegation audit failed: %s", e)
+            raise TodoUnavailable("审计不可用，委派未生效") from e
+
+    @staticmethod
+    def _audit_best_effort(audit_recorder, action: str, item_id: str,
+                           changes: Dict[str, Any], result: str = "denied") -> None:
+        """Record a refusal without letting a broken audit change the answer.
+
+        A rejection already happened; the audit-log rule is that a failed write
+        must not turn a "denied" into something else.
+        """
+        if audit_recorder is None:
+            return
+        try:
+            audit_recorder({
+                "action": action,
+                "target": item_id,
+                "result": result,
+                "changes": changes,
+            })
+        except Exception as e:  # pragma: no cover - depends on a broken store
+            from common.log import logger
+            logger.error("[TodoService] delegation denial audit failed: %s", e)
+
+    def _load_for_delegation(self, item_id: str, expected_version: int) -> Dict[str, Any]:
+        """Load an item the actor participates in and check it is delegatable."""
+        store = self._db()
+        item = store.get_item(self.actor.scope_id, self._me, item_id)
+        if item is None:
+            raise TodoNotFoundError()
+        if item.get("version") != expected_version:
+            raise TodoConflictError("旧版本重试被拒绝")
+        if item.get("status") != "pending":
+            raise TodoConflictError("终态事项需先重新打开再委派")
+        return item
+
+    def _resolve_target(self, item: Dict[str, Any], target_username: Any,
+                        *, forbid_owner: bool) -> Dict[str, Any]:
+        """Resolve + validate one receiver inside the actor's tenant."""
+        if not target_username or not str(target_username).strip():
+            raise TodoFieldValidationError("需要指定接收人", field="assignee")
+        if self._member_resolver is None:
+            raise TodoUnavailable("委派目标解析不可用")
+        try:
+            target = self._member_resolver(str(target_username).strip())
+        except Exception as e:
+            from common.log import logger
+            logger.error("[TodoService] member resolution failed: %s", e)
+            raise TodoUnavailable("委派目标解析不可用") from e
+        if not target or not target.get("user_id"):
+            # "Not a valid member of this tenant" and "belongs to another tenant"
+            # are the same answer, so this cannot be used to probe membership.
+            raise TodoFieldValidationError("接收人不可用", field="assignee")
+        target_id = target["user_id"]
+        if target_id == self._me:
+            raise TodoFieldValidationError("不能委派给本人", field="assignee")
+        if forbid_owner and target_id == item.get("owner_id"):
+            # Handing it back to the delegator is 退回, a different action with a
+            # different meaning in the chain.
+            raise TodoFieldValidationError("交回委托人请使用退回", field="assignee")
+        return target
+
+    def _apply_delegation(self, item: Dict[str, Any], *, verb: str,
+                          to_assignee: str, expected_version: int,
+                          note: str,
+                          operator_id: Optional[str] = None) -> Dict[str, Any]:
+        """Audit then move the handler, mapping store errors to API semantics.
+
+        Two vocabularies, on purpose: the processing-history event carries the
+        bare verb (``assign``/``transfer``/``recall``/``reject``), matching the
+        existing ``create``/``edit``/``start`` rows, while the audit event carries
+        the namespaced ``todo.*`` action the audit query filters on.
+        """
+        changes = {"from_assignee": item["assignee_id"], "to_assignee": to_assignee}
+        self._audit_or_raise(self._DELEGATION_AUDIT_ACTIONS[verb], item["id"], changes)
+        # Same subject rule as every other write: whoever acts is the operator,
+        # and an operator other than the account owner is an Agent acting for
+        # them. Derived rather than passed, so the two can never disagree.
+        operator = operator_id or self._me
+        store = self._db()
+        try:
+            moved = store.set_assignee(
+                self.actor.scope_id, item["id"],
+                expected_version=expected_version,
+                from_assignee=item["assignee_id"],
+                to_assignee=to_assignee,
+                operator_id=operator,
+                operator_kind="human" if operator == self.actor.owner_id else "agent",
+                action=verb,
+                note=_validate_note(note),
+            )
+        except TodoConflict as e:
+            raise TodoConflictError(str(e)) from e
+        except TodoNotFound as e:
+            raise TodoNotFoundError() from e
+        except TodoStoreError as e:
+            raise TodoUnavailable(str(e)) from e
+        return self._project(moved)
+
+    def _refuse(self, item_id: str, action: str, message: str, *,
+                changes: Optional[Dict[str, Any]] = None,
+                field: str = "assignee", audit: bool = True):
+        """Record the refusal, then raise the error the caller should see."""
+        if audit:
+            self._audit_best_effort(self._audit_recorder, action, item_id,
+                                    changes or {})
+        return TodoFieldValidationError(message, field=field)
+
+    def assign(self, item_id: str, *, target_username: Any,
+               expected_version: int, note: str = "",
+               operator_id: Optional[str] = None) -> Dict[str, Any]:
+        """指派：hand one of my own todos to a colleague.
+
+        The actor must both own it and currently hold it; an item somebody else
+        is already holding is theirs to move on (转交), not mine.
+        """
+        self._require_assign()
+        item = self._load_for_delegation(item_id, expected_version)
+        if item["assignee_id"] != self._me:
+            raise TodoConflictError("当前处理人不是本人，无法指派")
+        try:
+            target = self._resolve_target(item, target_username, forbid_owner=False)
+        except TodoFieldValidationError as e:
+            raise self._refuse(item_id, "todo.assign", str(e)) from e
+        return self._apply_delegation(
+            item, verb="assign", to_assignee=target["user_id"],
+            expected_version=expected_version, note=note, operator_id=operator_id,
+        )
+
+    def transfer(self, item_id: str, *, target_username: Any,
+                 expected_version: int, note: str = "",
+                 operator_id: Optional[str] = None) -> Dict[str, Any]:
+        """转交：the current holder hands it to a third party.
+
+        Refused when the actor is also the owner (that is 指派) and when the
+        target is the owner (that is 退回), so each action keeps one meaning.
+        """
+        self._require_assign()
+        item = self._load_for_delegation(item_id, expected_version)
+        if item["assignee_id"] != self._me or item["owner_id"] == self._me:
+            raise TodoConflictError("本人未被委派该事项，无法转交")
+        try:
+            target = self._resolve_target(item, target_username, forbid_owner=True)
+        except TodoFieldValidationError as e:
+            raise self._refuse(item_id, "todo.transfer", str(e)) from e
+        return self._apply_delegation(
+            item, verb="transfer", to_assignee=target["user_id"],
+            expected_version=expected_version, note=note, operator_id=operator_id,
+        )
+
+    def recall(self, item_id: str, *, expected_version: int,
+               note: str = "",
+               operator_id: Optional[str] = None) -> Dict[str, Any]:
+        """收回：the delegator takes back an item they handed out."""
+        self._require_assign()
+        item = self._load_for_delegation(item_id, expected_version)
+        if item["owner_id"] != self._me:
+            raise TodoConflictError("非本人创建的事项，无法收回")
+        if item["assignee_id"] == self._me:
+            raise TodoConflictError("事项已在本人名下，无需收回")
+        return self._apply_delegation(
+            item, verb="recall", to_assignee=self._me,
+            expected_version=expected_version, note=note, operator_id=operator_id,
+        )
+
+    def reject(self, item_id: str, *, expected_version: int,
+               note: str = "",
+               operator_id: Optional[str] = None) -> Dict[str, Any]:
+        """退回：the current holder returns it to the delegator."""
+        self._require_assign()
+        item = self._load_for_delegation(item_id, expected_version)
+        if item["assignee_id"] != self._me or item["owner_id"] == self._me:
+            raise TodoConflictError("本人未被委派该事项，无法退回")
+        return self._apply_delegation(
+            item, verb="reject", to_assignee=item["owner_id"],
+            expected_version=expected_version, note=note, operator_id=operator_id,
+        )
 
 
 SOURCES = ("manual", "conversation")

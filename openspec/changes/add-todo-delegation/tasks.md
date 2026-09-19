@@ -18,33 +18,33 @@
 
 ## 3. 服务层读写授权与委派动作
 
-- [ ] 3.1 在 `agent/todo/service.py` 收敛读判定为 D2 的集中表达式，并逐点改造现有 `(scope_id, owner_id, …)` 调用点（约 404、464、504、533、534、540、549、553、572、650、692 行）
-- [ ] 3.2 收敛写判定为「仅当前处理人」，并在编辑、状态更新、重新打开、完成、取消路径上统一使用
-- [ ] 3.3 实现指派动作：把本人事项交给同租户有效成员，接收人解析限制在同一 `scope_id` 内
-- [ ] 3.4 实现转交动作：当前处理人把事项交给第三人，支持多跳
-- [ ] 3.5 实现收回动作：委托人把事项还原给自己
-- [ ] 3.6 实现退回动作：接收人把事项归还给委托人
-- [ ] 3.7 四个动作统一限制为 `pending` 状态；终态拒绝并要求先重新打开；动作不改动状态、截止、分类、优先级、说明与创建键
-- [ ] 3.8 委派动作写入 `todo_events`：action 为 `assign` / `recall` / `reject`，`changed` 记录 `from_assignee` 与 `to_assignee`，并**显式**传入 `operator_kind`
-- [ ] 3.9 目标校验：跨租户硬拒、目标用户/成员/租户失效拒绝、指派给自己拒绝、不可见与不存在返回一致
-- [ ] 3.10 委派动作接入 `audit-log`：成功与拒绝两类均留痕；审计写入失败时不放行委派
-- [ ] 3.11 测试：接收人可读可写；委托人可读且可收回，但代为编辑/完成/取消被拒绝
-- [ ] 3.12 测试：跨租户委派被拒绝且不泄露目标存在性
-- [ ] 3.13 测试：多跳转交后可由处理记录还原完整链路；收回与退回同样入链且不改写历史
-- [ ] 3.14 测试：审计失败时委派不生效，且不虚报成功
-- [ ] 3.15 测试：Agent 代用户委派时事件主体记为 agent，人工委派记为 human
+- [x] 3.1 在 `agent/todo/service.py` 收敛读判定为 D2 的集中表达式，并逐点改造现有 `(scope_id, owner_id, …)` 调用点（约 404、464、504、533、534、540、549、553、572、650、692 行）
+- [x] 3.2 收敛写判定为「仅当前处理人」，并在编辑、状态更新、重新打开、完成、取消路径上统一使用
+- [x] 3.3 实现指派动作：把本人事项交给同租户有效成员，接收人解析限制在同一 `scope_id` 内
+- [x] 3.4 实现转交动作：当前处理人把事项交给第三人，支持多跳
+- [x] 3.5 实现收回动作：委托人把事项还原给自己
+- [x] 3.6 实现退回动作：接收人把事项归还给委托人
+- [x] 3.7 四个动作统一限制为 `pending` 状态；终态拒绝并要求先重新打开；动作不改动状态、截止、分类、优先级、说明与创建键
+- [x] 3.8 委派动作写入 `todo_events`：action 为 `assign` / `recall` / `reject`，`changed` 记录 `from_assignee` 与 `to_assignee`，并**显式**传入 `operator_kind`
+- [x] 3.9 目标校验：跨租户硬拒、目标用户/成员/租户失效拒绝、指派给自己拒绝、不可见与不存在返回一致
+- [x] 3.10 委派动作接入 `audit-log`：成功与拒绝两类均留痕；审计写入失败时不放行委派
+- [x] 3.11 测试：接收人可读可写；委托人可读且可收回，但代为编辑/完成/取消被拒绝
+- [x] 3.12 测试：跨租户委派被拒绝且不泄露目标存在性
+- [x] 3.13 测试：多跳转交后可由处理记录还原完整链路；收回与退回同样入链且不改写历史
+- [x] 3.14 测试：审计失败时委派不生效，且不虚报成功
+- [x] 3.15 测试：Agent 代用户委派时事件主体记为 agent，人工委派记为 human
 
 ## 4. 权限、身份与成员投影
 
-- [ ] 4.1 在 `auth/policy.py` 的 `PERMISSION_CATALOG` 新增 `todo.assign`，并在 `PERMISSION_METADATA` 补充 group/label/description/scope/assignable
-- [ ] 4.2 将 `todo.assign` 显式加入 `MEMBER_DEFAULT_PERMISSIONS` 与 `TENANT_ADMIN_DEFAULT_PERMISSIONS`
-- [ ] 4.3 确认 `tenant.members.read` 未被加入成员默认集，`tests/test_builtin_role_editing.py` 既有断言保持通过
-- [ ] 4.4 在 `auth/store.py` 新增 `_migration_31`：对内置 `member` / `tenant_admin` 并集补入 `todo.assign`，幂等、`version+1`、自定义角色与无 menu 授权角色不受影响
-- [ ] 4.5 在 `auth/service.py` 补充委派能力的菜单/能力口径，确认 `workbench.todos` 的既有 `scope: self` 与 `todo.read` 把关不变
-- [ ] 4.6 实现受 `todo.assign` 控制的窄投影来源，仅返回同租户可委派成员的用户名与显示名
-- [ ] 4.7 测试：`_migration_31` 只补 `todo.assign`，重复执行幂等，自定义角色与既有修饰不被覆盖
-- [ ] 4.8 测试：窄投影来源不返回角色、权限、组织、外部身份绑定、邮箱或登录状态
-- [ ] 4.9 测试：无 `todo.assign` 时窄投影来源与委派动作均 fail-closed，且不代偿 `tenant.members.read`
+- [x] 4.1 在 `auth/policy.py` 的 `PERMISSION_CATALOG` 新增 `todo.assign`，并在 `PERMISSION_METADATA` 补充 group/label/description/scope/assignable
+- [x] 4.2 将 `todo.assign` 显式加入 `MEMBER_DEFAULT_PERMISSIONS` 与 `TENANT_ADMIN_DEFAULT_PERMISSIONS`
+- [x] 4.3 确认 `tenant.members.read` 未被加入成员默认集，`tests/test_builtin_role_editing.py` 既有断言保持通过
+- [x] 4.4 在 `auth/store.py` 新增 `_migration_31`：对内置 `member` / `tenant_admin` 并集补入 `todo.assign`，幂等、`version+1`、自定义角色与无 menu 授权角色不受影响
+- [x] 4.5 在 `auth/service.py` 补充委派能力的菜单/能力口径，确认 `workbench.todos` 的既有 `scope: self` 与 `todo.read` 把关不变
+- [x] 4.6 实现受 `todo.assign` 控制的窄投影来源，仅返回同租户可委派成员的用户名与显示名
+- [x] 4.7 测试：`_migration_31` 只补 `todo.assign`，重复执行幂等，自定义角色与既有修饰不被覆盖
+- [x] 4.8 测试：窄投影来源不返回角色、权限、组织、外部身份绑定、邮箱或登录状态
+- [x] 4.9 测试：无 `todo.assign` 时窄投影来源与委派动作均 fail-closed，且不代偿 `tenant.members.read`
 
 ## 5. Web 接口与路由
 
