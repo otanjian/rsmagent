@@ -28,7 +28,7 @@ from contextlib import contextmanager
 import pytest
 
 from agent.tools.scheduler.run_repository import RunScope, RunScopeRepository
-from tests._helpers import WebAppHarness, open_capability_actions
+from tests._helpers import WebAppHarness, close_capability_actions, open_capability_actions
 
 #: The three capability actions these endpoints sit behind; the production
 #: declaration opens them once the batch has acceptance evidence, so a test opens
@@ -564,28 +564,56 @@ def test_delete_on_a_fresh_deployment_is_not_found(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Still closed by default
+# The deployment shutdown switch (task 8.5)
 # ---------------------------------------------------------------------------
+#
+# The batch is accepted, so the *declaration* serves these actions. What is left
+# is the operator's half: ``RDAI_DISABLED_ACTIONS`` closes an already-accepted
+# action from the deployment side without touching the declaration, which is how
+# a batch is pulled back in the field without a code change. ``finalize`` is what
+# the server runs at import, so exercising it here is the state a restart with
+# the variable set produces.
 
 
-def test_history_is_unavailable_until_the_action_is_opened(tmp_path):
-    # No capability opened: the declaration keeps these slices closed until the
-    # batch has acceptance evidence, and a closed *action* must answer 503 rather
-    # than 404 (the route exists; the feature is not switched on).
-    with _history(tmp_path, open_actions=False) as (web, _store, _repository):
-        response = web.get("/api/scheduler/runs", token=web.login("alice"))
+def test_the_deployment_switch_closes_an_accepted_batch(tmp_path):
+    # No capability *opened* by the test: the actions are accepted in the
+    # declaration and closed by the deployment, so the refusal must be the gate's
+    # 503 rather than a 404 (the route exists; the switch turned the feature off).
+    with close_capability_actions("scheduler.runs.list"):
+        with _history(tmp_path, open_actions=False) as (web, _s, _r):
+            response = web.get("/api/scheduler/runs", token=web.login("alice"))
 
     assert response.status == "503 Service Unavailable"
 
 
-def test_closed_detail_and_delete_do_not_reach_the_handler(tmp_path):
-    with _history(tmp_path, open_actions=False) as (web, _store, _repository):
-        token = web.login("alice")
-        detail = web.get("/api/scheduler/runs/detail?run_id=bob-0", token=token)
-        delete = web.post("/api/scheduler/runs/delete", {"run_id": "bob-0"},
-                          token=token)
+def test_the_deployment_switch_does_not_reach_the_handler(tmp_path):
+    with close_capability_actions("scheduler.runs.detail",
+                                  "scheduler.runs.delete"):
+        with _history(tmp_path, open_actions=False) as (web, _s, _r):
+            token = web.login("alice")
+            detail = web.get("/api/scheduler/runs/detail?run_id=bob-0",
+                             token=token)
+            delete = web.post("/api/scheduler/runs/delete", {"run_id": "bob-0"},
+                              token=token)
 
     # Both 503, not 404/403: the refusal is the capability gate, and it happens
     # before any authorization question is asked.
     assert detail.status == "503 Service Unavailable"
     assert delete.status == "503 Service Unavailable"
+
+
+def test_a_sibling_action_stays_served_while_its_neighbour_is_closed(tmp_path):
+    """One switch per action: closing ``list`` must not close ``detail``.
+
+    The eight slices exist so a batch can be pulled back action by action; a
+    single shared switch would make this answer unobservable.
+    """
+    with close_capability_actions("scheduler.runs.list"):
+        with _history(tmp_path, open_actions=False) as (web, _s, _r):
+            token = web.login("alice")
+            listed = web.get("/api/scheduler/runs", token=token)
+            detail = web.get("/api/scheduler/runs/detail?run_id=alice-0",
+                             token=token)
+
+    assert listed.status == "503 Service Unavailable"
+    assert detail.status == "200 OK", detail.data[:200]

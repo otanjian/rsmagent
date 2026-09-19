@@ -656,7 +656,7 @@ class WebAppHarness:
 
 
 @contextmanager
-def open_capability_actions(mapping, routes=(), namespace=None):
+def open_capability_actions(mapping, routes=(), namespace=None, disabled=()):
     """Open capability-matrix actions for the duration of one test.
 
     Test-only. Production opens an action by editing ``auth/capability_matrix.py``
@@ -670,6 +670,12 @@ def open_capability_actions(mapping, routes=(), namespace=None):
     materialised as ``{"policy": "closed"}`` otherwise), and the two derived
     tables (``web_channel._WEB_URLS``, ``auth.http_policy.ROUTE_POLICY``) are
     republished before the app is built. Everything is restored on exit.
+
+    ``disabled`` is the *deployment* half of the same state: public action keys
+    applied through :func:`capability_matrix.finalize`, which is exactly what a
+    restart with ``RDAI_DISABLED_ACTIONS`` set computes. It can only narrow what
+    an accepted declaration serves, so passing keys here reproduces the operator
+    shutdown switch without editing the declaration.
 
     ``routes`` and ``namespace`` keep a phase's HTTP tests self-contained while
     its production route registration is still being wired: pass
@@ -691,6 +697,11 @@ def open_capability_actions(mapping, routes=(), namespace=None):
         saved_open[slice_id] = (dict(spec.open), dict(spec.declared_open))
         spec.declared_open.update(actions)
         spec.open.update(actions)
+
+    saved_disabled = capability_matrix.disabled_actions()
+    if disabled:
+        capability_matrix.finalize(capability_matrix.parse_disabled_actions(
+            ",".join(disabled)))
 
     saved_urls = web_channel._WEB_URLS
     saved_policy = http_policy.ROUTE_POLICY
@@ -724,6 +735,9 @@ def open_capability_actions(mapping, routes=(), namespace=None):
         http_policy.ROUTE_POLICY = route_registry.derive_route_policy()
         yield
     finally:
+        # The declaration is restored *before* the tables are rebuilt, so the
+        # reloaded registry describes the state the process is actually left in.
+        capability_matrix.finalize(saved_disabled)
         for slice_id, (open_map, declared) in saved_open.items():
             spec = capability_matrix.slice_for(slice_id)
             spec.open = dict(open_map)
@@ -736,6 +750,22 @@ def open_capability_actions(mapping, routes=(), namespace=None):
         _rebuild_route_registry()
         web_channel._WEB_URLS = saved_urls
         http_policy.ROUTE_POLICY = saved_policy
+
+
+@contextmanager
+def close_capability_actions(*keys, routes=(), namespace=None):
+    """Close *accepted* actions from the deployment side, for one test.
+
+    The mirror of :func:`open_capability_actions` and the state a restart with
+    ``RDAI_DISABLED_ACTIONS=<keys>`` produces. ``keys`` are the public action
+    keys (``scheduler.runs.list``) -- the same vocabulary the operator's variable
+    and the client both use -- and ``implemented``/``accepted`` are deliberately
+    left alone, so the projection reports ``disabled_by_deployment`` instead of
+    claiming the batch was never accepted.
+    """
+    with open_capability_actions({}, routes=routes, namespace=namespace,
+                                 disabled=keys):
+        yield
 
 
 class _Missing:

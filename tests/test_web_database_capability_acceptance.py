@@ -22,7 +22,8 @@
 | 版本（合并移植） | `GET /api/version` | 公开可达且含 `version`/`install_kind` | 无 |
 | 租户平面：记忆 / 调度 / 历史 / 技能 / 知识 / 智能体 / 会话 / 工作区 / 项目 / 渠道 | 见 `TENANT_PLANE` | 成员到达 handler，非 503 | 匿名 401；跨租户 403 |
 | 已知缺口（不在本 change 收口） | 3 条 `/api/update/*` | — | 未注册 → 404（不是静默放开） |
-| 本 change 已注册未开放（8 条动作） | `DECLARED_WHILE_CLOSED` | 开放后由各自验收用例正向覆盖 | 关闭 → 503 网关拒绝，与 `/auth/context.feature_actions` 同一份声明 |
+| 本 change 已注册未开放（2 条 R1 动作） | `DECLARED_WHILE_CLOSED` | 开放后由各自验收用例正向覆盖 | 关闭 → 503 网关拒绝，与 `/auth/context.feature_actions` 同一份声明 |
+| 本 change 已验收并开放（6 条 R2 动作） | `ACCEPTED_ACTIONS` | 真实渠道验收（task 6.7 / 8.3）后声明开放 | 网关不再 closed，投影 `available=true`，同一份声明 |
 
 后端增量本身的逐条裁定见 `evidence/21-increment-adjudication.md`；本文件只回答
 "合并后的候选在 database 模式下是否仍然可用、仍然收权、入口仍然接通"。
@@ -74,29 +75,43 @@ TENANT_PLANE = (
 #: The eight desktop interfaces this file used to list here are gone from this
 #: tuple: change `integrate-upstream-core-capabilities` registers them on
 #: purpose, so they are no longer "unrouted". Their new shape is asserted by
-#: `DECLARED_WHILE_CLOSED` below, which is a stronger check than the 404 they
-#: used to produce -- a 404 cannot tell "no such feature" from "not opened
-#: here", and only the registered form can carry an authorization decision.
+#: `DECLARED_WHILE_CLOSED` / `ACCEPTED_ACTIONS` below, which is a stronger check
+#: than the 404 they used to produce -- a 404 cannot tell "no such feature" from
+#: "not opened here", and only the registered form can carry an authorization
+#: decision.
 UNROUTED = (
     ("GET", "/api/update/check"),
     ("POST", "/api/update/start"),
     ("GET", "/api/update/status"),
 )
 
-#: The eight actions of `integrate-upstream-core-capabilities` that are
-#: registered before they are accepted: the route exists, the gate refuses it
-#: with 503 before any handler runs, and `/auth/context.feature_actions` reports
-#: the same answer from the same declaration (`auth/capability_matrix.py`).
+#: The eight actions of `integrate-upstream-core-capabilities` in their batch
+#: state (task 8.5). ``DECLARED_WHILE_CLOSED`` is the half whose real acceptance
+#: has not landed: the route exists, the gate refuses it with 503 before any
+#: handler runs, and `/auth/context.feature_actions` reports ``not_accepted``
+#: from the same declaration (`auth/capability_matrix.py`).
+#:
+#: Only the R1 context controls are left here -- the R2 batch (the six scheduler
+#: actions) is accepted by the real-channel acceptance of tasks 6.7 / 8.3 and is
+#: asserted positively in ``ACCEPTED_ACTIONS`` below.
+#:
 #: Pattern, verb and the capability action each one projects.
 DECLARED_WHILE_CLOSED = (
+    ("/api/sessions/(.*)/context_usage", "GET", "session_context.usage"),
+    ("/api/sessions/(.*)/compact_context", "POST", "session_context.compact"),
+)
+
+#: The accepted half: declared open, so the gate must *not* refuse it and the
+#: projection must read available from the same declaration. A route that stayed
+#: ``closed`` here would be the "registered but never switched on" symptom this
+#: file exists to catch.
+ACCEPTED_ACTIONS = (
     ("/api/scheduler/instances", "GET", "scheduler.instances"),
     ("/api/scheduler/recipients", "GET", "scheduler.recipients"),
     ("/api/scheduler/create", "POST", "scheduler.create"),
     ("/api/scheduler/runs", "GET", "scheduler.runs.list"),
     ("/api/scheduler/runs/detail", "GET", "scheduler.runs.detail"),
     ("/api/scheduler/runs/delete", "POST", "scheduler.runs.delete"),
-    ("/api/sessions/(.*)/context_usage", "GET", "session_context.usage"),
-    ("/api/sessions/(.*)/compact_context", "POST", "session_context.compact"),
 )
 
 
@@ -536,6 +551,30 @@ class TenantPlaneAcceptance(_TwoTenantAcceptance):
                 projection[action]["available"],
                 "%s is refused by the gate, so it cannot read as available"
                 % action)
+
+    def test_the_projection_agrees_with_the_open_gate(self):
+        """The other direction: an accepted action is served *and* projected.
+
+        A route left ``closed`` after its batch was accepted is the same defect
+        from the other side -- the console would hide a feature the server is
+        ready to serve -- so the accepted six are asserted positively against
+        the same declaration the gate reads.
+        """
+        from auth import capability_matrix
+        from channel.web.route_registry import derive_route_policy
+
+        policy = derive_route_policy()
+        projection = capability_matrix.feature_action_availability()
+        for path, method, action in ACCEPTED_ACTIONS:
+            entry = policy.get(path, {}).get(method)
+            self.assertIsNotNone(entry, "%s %s is not served" % (method, path))
+            self.assertNotEqual(
+                entry.get("policy"), "closed",
+                "%s %s is still closed after %s was accepted"
+                % (method, path, action))
+            self.assertIn(action, projection, "%s must be projected" % action)
+            self.assertEqual(projection[action],
+                             {"available": True, "reason": ""}, action)
 
     def test_an_anonymous_caller_is_refused_every_tenant_entry(self):
         for path, _ in TENANT_PLANE:

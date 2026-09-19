@@ -448,15 +448,27 @@ SLICES: Tuple[Slice, ...] = (
     # -- Functional integration (change integrate-upstream-core-capabilities) --
     #
     # Eight *independent* slices, one action each, so a batch can be opened
-    # action by action after its own real acceptance: the Web/Desktop context
-    # controls and the six scheduler target/history interfaces ship on different
-    # dates and MUST NOT share one switch (design D2, ``database-runtime-consumers``).
+    # action by action after its own real acceptance: the Web context controls
+    # and the six scheduler target/history interfaces ship on different dates and
+    # MUST NOT share one switch (design D2, ``database-runtime-consumers``).
     #
-    # They all start with ``open={}`` -- the code path exists, but the action is
-    # not served, so the route gate answers 503 and ``/auth/context`` reports the
-    # real reason. ``implemented=True, accepted=False`` is the honest state until
-    # the batch's real entry acceptance (``tasks.md`` §8) has been performed; the
-    # per-action projection is :func:`feature_action_availability`.
+    # A slice is opened only by the task that lands its implementation *and* its
+    # real entry acceptance (``tasks.md`` §8): until then ``open={}`` with
+    # ``accepted=False``, so the route gate answers 503 and ``/auth/context``
+    # reports the honest reason (``not_accepted``). Opening it is a declaration
+    # change, not a deployment one -- an operator can still close an already
+    # accepted action with ``RDAI_DISABLED_ACTIONS``, which reports
+    # ``disabled_by_deployment`` instead. The per-action projection is
+    # :func:`feature_action_availability`.
+    #
+    # Batch state (task 8.5):
+    #   R2 -- the six scheduler slices: accepted by the real-channel acceptance
+    #        of tasks 6.7 / 8.3 (create / execute / history / detail / delete on
+    #        a real deployment, plus the shared-Agent, cross-tenant, admin and
+    #        revocation matrix). Declared open below.
+    #   R1 -- ``session_context_usage`` / ``session_context_compact``: still
+    #        ``open={}``; task 3.6 opens them only after its own real session
+    #        acceptance (task 4.5).
     #
     # The consumer name is the slice id, not a shared label: the declaration
     # requires one consumer per slice (``test_slice_ids_and_consumers_are_unique``),
@@ -492,9 +504,10 @@ SLICES: Tuple[Slice, ...] = (
         consumer="scheduler_instances",
         page=None,
         scope=frozenset({"personal", "tenant"}),
-        open={},
+        # Read: naming the channels the caller may already schedule into.
+        open={"instances": ACCESS_READ},
         implemented=True,
-        accepted=False,
+        accepted=True,
         reason="",
         policy=DEFAULT_POLICY,
     ),
@@ -504,9 +517,10 @@ SLICES: Tuple[Slice, ...] = (
         consumer="scheduler_recipients",
         page=None,
         scope=frozenset({"personal", "tenant"}),
-        open={},
+        # Read: the trusted recipient catalogue of those same instances.
+        open={"recipients": ACCESS_READ},
         implemented=True,
-        accepted=False,
+        accepted=True,
         reason="",
         policy=DEFAULT_POLICY,
     ),
@@ -516,9 +530,11 @@ SLICES: Tuple[Slice, ...] = (
         consumer="scheduler_create",
         page=None,
         scope=frozenset({"personal", "tenant"}),
-        open={},
+        # Execute: the only write entry, and it runs through
+        # ``TaskAccessService.create_task`` (owner, quota, audit, re-validation).
+        open={"create": ACCESS_EXECUTE},
         implemented=True,
-        accepted=False,
+        accepted=True,
         reason="",
         policy=DEFAULT_POLICY,
     ),
@@ -528,9 +544,10 @@ SLICES: Tuple[Slice, ...] = (
         consumer="scheduler_runs_list",
         page=None,
         scope=frozenset({"personal", "tenant"}),
-        open={},
+        # Read: the attributed run ledger, scoped inside the SQL WHERE.
+        open={"list": ACCESS_READ},
         implemented=True,
-        accepted=False,
+        accepted=True,
         reason="",
         policy=DEFAULT_POLICY,
     ),
@@ -540,9 +557,11 @@ SLICES: Tuple[Slice, ...] = (
         consumer="scheduler_runs_detail",
         page=None,
         scope=frozenset({"personal", "tenant"}),
-        open={},
+        # Read: one run's ledger row; its transcript is a separate exact-session
+        # grant inside the handler, so this action cannot read a conversation.
+        open={"detail": ACCESS_READ},
         implemented=True,
-        accepted=False,
+        accepted=True,
         reason="",
         policy=DEFAULT_POLICY,
     ),
@@ -552,9 +571,11 @@ SLICES: Tuple[Slice, ...] = (
         consumer="scheduler_runs_delete",
         page=None,
         scope=frozenset({"personal", "tenant"}),
-        open={},
+        # Execute: removes the ledger row and its scope metadata in one
+        # transaction; the delivered messages are deliberately left alone.
+        open={"delete": ACCESS_EXECUTE},
         implemented=True,
-        accepted=False,
+        accepted=True,
         reason="",
         policy=DEFAULT_POLICY,
     ),
