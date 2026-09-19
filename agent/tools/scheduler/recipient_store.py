@@ -141,9 +141,33 @@ class RecipientStore:
             entry = self._load_unlocked().get(self._key(instance_id, receiver))
         return self._normalize(entry) if entry else None
 
-    def list(self) -> List[dict]:
+    def list(self, instance_ids: "set[str] | None" = None) -> List[dict]:
+        """Every remembered recipient, optionally narrowed to *instance_ids*.
+
+        The Web console must never receive the global directory and filter it
+        client-side: a recipient is only a legal delivery target on an instance
+        the caller is actually allowed to use (see
+        :class:`channel.web.fork.scheduler_targets.SchedulerTargetService`), so
+        the narrowing happens here, on the server, against the structured
+        ``instance_id`` field.
+
+        ``None`` keeps the historical no-argument call (every entry, for the
+        Agent tool and the legacy console); an **empty** set is the opposite
+        request -- "no instance is authorised" -- and returns ``[]`` rather than
+        the whole directory. Filtering happens before sorting, and the joined
+        on-disk key is never split: both an instance id and a receiver may carry
+        a colon, so only the structured field is trustworthy.
+        """
         with self._lock:
             entries = [self._normalize(item) for item in self._load_unlocked().values()]
+        if instance_ids is not None:
+            wanted = {str(value).strip() for value in instance_ids if str(value).strip()}
+            if not wanted:
+                return []
+            entries = [
+                item for item in entries
+                if (item.get("instance_id") or item.get("channel_type") or "") in wanted
+            ]
         return sorted(
             entries,
             key=lambda item: (item["channel_type"], item["name"], item["receiver"]),

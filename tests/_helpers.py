@@ -655,6 +655,96 @@ class WebAppHarness:
         return self.seed_task(agent_id, **task)
 
 
+@contextmanager
+def open_capability_actions(mapping, routes=(), namespace=None):
+    """Open capability-matrix actions for the duration of one test.
+
+    Test-only. Production opens an action by editing ``auth/capability_matrix.py``
+    once the batch it belongs to has real acceptance evidence
+    (``design.md`` D1/D2); this helper exists because a handler can only be
+    driven over the real WSGI app once its route is *not* ``closed``.
+
+    ``mapping`` is ``{slice_id: {action: access_class}}``. The declared ``open``
+    maps are mutated, ``channel.web.route_registry`` is re-executed (its
+    ``ROUTES`` entries are built from ``S(...)`` at import, so a closed action is
+    materialised as ``{"policy": "closed"}`` otherwise), and the two derived
+    tables (``web_channel._WEB_URLS``, ``auth.http_policy.ROUTE_POLICY``) are
+    republished before the app is built. Everything is restored on exit.
+
+    ``routes`` and ``namespace`` keep a phase's HTTP tests self-contained while
+    its production route registration is still being wired: pass
+    ``RouteEntry`` objects to register for the duration of the test and a
+    ``{class name: handler class}`` map to publish on ``web_channel`` (which is
+    what ``build_web_app`` resolves patterns against).
+    """
+    import importlib
+
+    from auth import capability_matrix, http_policy
+    from channel.web import route_registry, web_channel
+
+    saved_open = {}
+    for slice_id, actions in mapping.items():
+        spec = capability_matrix.slice_for(slice_id)
+        # Both maps: ``open`` is what the gate reads now, ``declared_open`` is
+        # the baseline ``finalize()`` recomputes from -- setting only ``open``
+        # would be undone by any ``finalize()`` call inside the test.
+        saved_open[slice_id] = (dict(spec.open), dict(spec.declared_open))
+        spec.declared_open.update(actions)
+        spec.open.update(actions)
+
+    saved_urls = web_channel._WEB_URLS
+    saved_policy = http_policy.ROUTE_POLICY
+    saved_attrs = {}
+    for name in (namespace or {}):
+        saved_attrs[name] = getattr(web_channel, name, _MISSING)
+    # ``importlib.reload`` re-executes the module body, so it rebinds
+    # ``CoverageViolation`` and ``RouteEntry`` to *new* objects. Tests that
+    # imported them at collection time (``test_upstream_drift_guards``,
+    # ``test_route_registry``, ``test_scheduler_create_scope``) keep the
+    # pre-reload identity, so ``assertRaises(CoverageViolation)`` would not
+    # recognise the class the validator actually raised -- a failure that has
+    # nothing to do with the test's subject. Pinning the two classes back makes
+    # the reload invisible to those callers while ``ROUTES`` and the derived
+    # tables are still genuinely rebuilt from the opened actions.
+    pinned = {name: getattr(route_registry, name)
+              for name in ("CoverageViolation", "RouteEntry")}
+
+    def _rebuild_route_registry():
+        importlib.reload(route_registry)
+        for name, value in pinned.items():
+            setattr(route_registry, name, value)
+
+    try:
+        _rebuild_route_registry()
+        if routes:
+            route_registry.register_fork_routes(*routes)
+        for name, value in (namespace or {}).items():
+            setattr(web_channel, name, value)
+        web_channel._WEB_URLS = route_registry.derive_web_urls()
+        http_policy.ROUTE_POLICY = route_registry.derive_route_policy()
+        yield
+    finally:
+        for slice_id, (open_map, declared) in saved_open.items():
+            spec = capability_matrix.slice_for(slice_id)
+            spec.open = dict(open_map)
+            spec.declared_open = dict(declared)
+        for name, value in saved_attrs.items():
+            if value is _MISSING:
+                delattr(web_channel, name)
+            else:
+                setattr(web_channel, name, value)
+        _rebuild_route_registry()
+        web_channel._WEB_URLS = saved_urls
+        http_policy.ROUTE_POLICY = saved_policy
+
+
+class _Missing:
+    """Sentinel for "the attribute did not exist before the test"."""
+
+
+_MISSING = _Missing()
+
+
 def _bootstrap_tenant(service, shared_root, *, tenant_code="acme"):
     root_dir = os.path.dirname(shared_root.rstrip("/")) or shared_root
     tenant = service.bootstrap(

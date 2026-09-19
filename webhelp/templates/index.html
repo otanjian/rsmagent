@@ -37,13 +37,6 @@ $for item in v.content('capabilities', []):
 <span class="eyebrow-pill">$:(v.icon('shield'))$(v.t('nav.enterprise'))</span>
 </div>
 $:(v.section_heading('enterprise.title', 'enterprise.subtitle'))
-<div class="enterprise-banner reveal">
-$:(v.icon('shield'))
-<div>
-<h3>$(v.t('enterprise.banner_title'))</h3>
-<p>$(v.t('enterprise.banner_desc'))</p>
-</div>
-</div>
 <div class="features-grid">
 $for item in v.content('enterprise', []):
     $:(v.enterprise_card(item))

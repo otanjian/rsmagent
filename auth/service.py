@@ -3298,9 +3298,24 @@ class IdentityService:
             "resource_actions": self._effective_resource_actions(permissions, grants, mode),
             "is_tenant_admin": is_admin,
             "consumers": self._consumer_availability(),
+            # Per-action service availability (design D2). Additive: an old
+            # client ignores it, and a new client treats a missing field as
+            # "every new capability is closed" rather than as available.
+            "feature_actions": self._feature_action_availability(),
             "console_pages": self._console_pages_projection(
                 user, tenant, permissions, role_codes, is_admin, grants, mode),
         }
+
+    @staticmethod
+    def _feature_action_availability() -> Dict[str, Dict[str, Any]]:
+        """The per-action service projection from :mod:`auth.capability_matrix`.
+
+        Imported lazily because the matrix itself is import-time data and the
+        service module is imported by the web entry point; a module-level import
+        would create the cycle the other matrix readers also avoid.
+        """
+        from auth.capability_matrix import feature_action_availability
+        return feature_action_availability()
 
     def _effective_resource_actions(self, permissions, grants, mode) -> Dict[str, List[str]]:
         """Report which resource actions are available per kind.

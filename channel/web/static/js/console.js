@@ -505,6 +505,26 @@ function _showAccountCheckGate() {
 function _enterAccountApp() {
     if (_accountAppVisible) return Promise.resolve();
     if (_accountEntryRequest) return _accountEntryRequest;
+    // Entering the app is exactly when the *tenant* may have changed (the
+    // picker and the one-shot `switch_tenant` link both land here). Drop the
+    // previous tenant's capability summary and bump the revision before any
+    // consumer starts, so a reply that was in flight when the tenant went away
+    // cannot be written into the new one.
+    _invalidateAuthContext();
+    // The scheduler console reads the run ledger, which is per-tenant. Its
+    // mounted handle is torn down here rather than left to the next Tasks visit:
+    // a detached module still holding the previous tenant's rows would be one
+    // stray repaint away from showing them under the new tenant. The handle is
+    // only bound once the Tasks console has mounted, so an entry point that
+    // never loads that section reaches the same outcome without the teardown.
+    if (typeof _tasksModuleHandle !== 'undefined' && _tasksModuleHandle) {
+        _tasksModuleHandle.dispose();
+        _tasksModuleHandle = null;
+    }
+    tasksLoaded = false;
+    // The context panel is session-scoped too; tear it down for the same reason
+    // (a detached module would still hold the previous tenant's usage).
+    if (typeof disposeContextModule === 'function') disposeContextModule();
     const epoch = _authEpoch;
     const current = () => epoch === _authEpoch && !_forcedPassword;
     _showAccountCheckGate();
@@ -571,6 +591,10 @@ function _enterAccountApp() {
                     }
                     if (typeof _bootAreaDefaultView === 'function') _bootAreaDefaultView();
                     if (typeof loadSidebarRecentSessions === 'function') loadSidebarRecentSessions();
+                    // The projection is known now: mount the context entry with
+                    // the authoritative per-action availability (a no-op without
+                    // the module, and hidden when both actions are closed).
+                    if (typeof mountContextModule === 'function') mountContextModule();
                 });
                 if (_identityMode() === 'database') _setupHeaderTenantSelector();
                 chatInput.focus();
@@ -1037,6 +1061,8 @@ function applyLanguage(next, writeToBackend) {
     } catch (_) { languageStorageFailed = true; }
     applyI18n();
     _applyInputTooltips();
+    // The context panel owns its own labels, so re-mount it to repaint them.
+    if (typeof mountContextModule === 'function') mountContextModule();
     // Keep the config-page language selector in sync (the personal preference
     // lives in the account menu's preferences dialog).
     try { updateLangControls(); } catch (e) {}
@@ -7206,6 +7232,11 @@ function sendMessage() {
         .then(data => {
             if (data.status === 'success') {
                 rememberLiveSpeaker(data);
+                // The turn has now persisted the session: the context entry can
+                // read a real row instead of the quiet pre-persistence state.
+                if (typeof _contextAfterSessionChange === 'function' && _contextNewSession) {
+                    _contextAfterSessionChange(true);
+                }
                 setLoadingSpeaker(loadingEl, data.request_id);
                 if (data.inline_reply) {
                     // Channel handled synchronously (e.g. /cancel fast-path);
@@ -8827,6 +8858,9 @@ function newChat(optimistic = true, inherit = true) {
         // The list is hidden; mark it dirty so the next visit re-reads it.
         _historyDirty = true;
     }
+    // A fresh session has no server-side context row yet: keep the usage entry
+    // quiet until the first turn persists it.
+    if (typeof _contextAfterSessionChange === 'function') _contextAfterSessionChange(false);
 }
 
 // =====================================================================
@@ -10306,6 +10340,9 @@ function switchSession(newSessionId, agentId) {
     if (currentView !== 'chat') navigateTo('chat');
     renderComposerIdentity();
     focusChatComposer();
+    // A session switch moves the context panel to a row the server has written,
+    // so re-mount it and let it re-read that session's usage.
+    if (typeof _contextAfterSessionChange === 'function') _contextAfterSessionChange(true);
 }
 
 // In-place rename a session title: replace the title <span> with an <input>,
@@ -13151,15 +13188,89 @@ function renderVendorChip(p) {
     const onclick = isCustomProviderCard(p)
         ? `openCustomProviderModal('${escapeHtml(p.custom_id)}')`
         : `openVendorModal('${escapeHtml(p.id)}')`;
+    // The catalogue entry is a sibling of the edit button, not nested inside it:
+    // a button inside a button is invalid markup and swallows the click. The
+    // card id is a server-provided provider key, escaped before it reaches the
+    // inline handler.
+    const catalogId = escapeHtml(p.id);
     return `
-        <button onclick="${onclick}"
-                class="group flex items-center gap-3 px-3 py-2.5 rounded-lg border border-slate-200 dark:border-white/10
-                       bg-slate-50 dark:bg-white/5 hover:border-primary-300 dark:hover:border-primary-500/50
-                       cursor-pointer transition-colors duration-150 text-left">
-            ${renderProviderLogo(p, 28)}
-            <span class="flex-1 min-w-0 text-sm font-medium text-slate-800 dark:text-slate-100 truncate">${escapeHtml(localizedLabel(p.label))}</span>
-            <i class="fas fa-pen-to-square text-[11px] text-slate-400 dark:text-slate-500 group-hover:text-primary-500 transition-colors"></i>
-        </button>`;
+        <div class="group flex items-center gap-1 px-3 py-2.5 rounded-lg border border-slate-200 dark:border-white/10
+                    bg-slate-50 dark:bg-white/5 hover:border-primary-300 dark:hover:border-primary-500/50
+                    transition-colors duration-150">
+            <button onclick="${onclick}" class="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer">
+                ${renderProviderLogo(p, 28)}
+                <span class="flex-1 min-w-0 text-sm font-medium text-slate-800 dark:text-slate-100 truncate">${escapeHtml(localizedLabel(p.label))}</span>
+                <i class="fas fa-pen-to-square text-[11px] text-slate-400 dark:text-slate-500 group-hover:text-primary-500 transition-colors"></i>
+            </button>
+            <button type="button" onclick="openModelCatalogModal('${catalogId}')"
+                    title="${escapeHtml(t('models_catalog_modal_title'))}"
+                    class="flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-400
+                           dark:text-slate-500 hover:text-primary-500 dark:hover:text-primary-400
+                           hover:bg-primary-50 dark:hover:bg-primary-900/30 cursor-pointer transition-colors">
+                <i class="fas fa-list-ul text-[11px]"></i>
+            </button>
+        </div>`;
+}
+
+// Per-provider model catalogue editor (P3). The provider card already carries
+// the editor's inputs -- `seed` (presets), `catalog` (the stored overrides) and
+// `hidden` (tombstones) -- so the draft is diffed against those rather than
+// against the effective list, which is what keeps un-edited presets following
+// the server instead of being frozen into an override on every save.
+function openModelCatalogModal(providerId) {
+    const existing = document.getElementById('model-catalog-modal-overlay');
+    if (existing) existing.remove();
+    const provider = (modelsState.providers || []).find(p => p.id === providerId);
+    if (!provider) return;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'model-catalog-modal-overlay';
+    overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4';
+    overlay.innerHTML = `
+        <div class="w-full max-w-lg max-h-[80vh] flex flex-col rounded-2xl bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-white/10 shadow-xl">
+            <div class="flex items-start gap-3 px-6 pt-6 pb-4 border-b border-slate-100 dark:border-white/5">
+                <div class="flex-1 min-w-0">
+                    <h3 class="font-semibold text-slate-800 dark:text-slate-100">${escapeHtml(t('models_catalog_modal_title'))}</h3>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">${escapeHtml(localizedLabel(provider.label))} · ${escapeHtml(t('models_catalog_context_window'))}</p>
+                </div>
+                <button type="button" onclick="closeModelCatalogModal()"
+                        class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer transition-colors flex-shrink-0">
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </div>
+            <div class="px-6 py-5 overflow-y-auto" data-catalog-body="1"></div>
+        </div>`;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModelCatalogModal(); });
+    document.body.appendChild(overlay);
+
+    const models = window.RdaiFunctionalModels;
+    const body = overlay.querySelector('[data-catalog-body="1"]');
+    if (!models || typeof models.mountCatalog !== 'function') {
+        // The module is `defer`-loaded ahead of console.js; a page served from a
+        // stale cache can still lack it, and a missing editor must say so rather
+        // than silently show an empty dialog.
+        body.innerHTML = `<p class="text-sm text-slate-500">${escapeHtml(t('models_save_failed'))}</p>`;
+        return;
+    }
+    overlay._rdaiCatalog = models.mountCatalog({
+        root: body,
+        provider: provider,
+        save: _postModelsPayload,
+        reload: () => _fetchModelsPayload().then(data =>
+            (data.providers || []).find(p => p.id === providerId) || provider),
+        t: t,
+    });
+}
+
+function closeModelCatalogModal() {
+    const overlay = document.getElementById('model-catalog-modal-overlay');
+    if (overlay) {
+        if (overlay._rdaiCatalog && typeof overlay._rdaiCatalog.dispose === 'function') {
+            overlay._rdaiCatalog.dispose();
+            overlay._rdaiCatalog = null;
+        }
+        overlay.remove();
+    }
 }
 
 // Render a uniformly-styled logo for a provider. Tries an SVG asset first; if
@@ -13292,12 +13403,70 @@ function openChatFallbackModal() {
 
     const cap = modelsState.capabilities.chat_fallback || {};
     const body = overlay.querySelector('[data-cap-body="chat_fallback"]');
+    // The ordered multi-node editor (change integrate-upstream-core-capabilities,
+    // P3) replaces the single-provider picker: one node per row, order is
+    // meaningful and the whole chain survives a disable. The legacy renderer
+    // stays as the fallback so an older cached page keeps working.
+    const models = window.RdaiFunctionalModels;
+    if (models && typeof models.mountFallback === 'function') {
+        try {
+            overlay._rdaiFallback = models.mountFallback({
+                root: body,
+                capability: cap,
+                save: _postModelsPayload,
+                reload: () => _fetchModelsPayload().then(data => (data.capabilities || {}).chat_fallback || {}),
+                t: t,
+            });
+            return;
+        } catch (err) {
+            console.warn('[Models] functional fallback editor unavailable', err);
+        }
+    }
     renderCapabilityBody(CHAT_FALLBACK_DEF, cap, body);
 }
 
 function closeChatFallbackModal() {
     const overlay = document.getElementById('chat-fallback-modal-overlay');
-    if (overlay) overlay.remove();
+    if (overlay) {
+        // Detach listeners/timers before the node goes away; a disposed editor
+        // also stops applying a save result to a modal that no longer exists.
+        if (overlay._rdaiFallback && typeof overlay._rdaiFallback.dispose === 'function') {
+            overlay._rdaiFallback.dispose();
+            overlay._rdaiFallback = null;
+        }
+        overlay.remove();
+    }
+}
+
+// POST one /api/models payload and resolve with the response body only when
+// both the HTTP status and body.status say success. A 200 carrying
+// status:"error" is a real failure in this API (unlike the rest of the console
+// surface), so callers must not treat "it did not throw" as saved.
+function _postModelsPayload(payload) {
+    return fetch('/api/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    }).then(resp => resp.json().then(data => {
+        if (!resp.ok || data.status !== 'success') {
+            throw new Error(data.message || data.code || ('HTTP ' + resp.status));
+        }
+        return data;
+    }));
+}
+
+// Re-read the whole models payload; used to re-seed an editor from the server
+// after a save so the surface shows what was actually stored, not what was
+// submitted.
+function _fetchModelsPayload() {
+    return fetch('/api/models', { credentials: 'same-origin', cache: 'no-store' })
+        .then(resp => resp.json())
+        .then(data => {
+            if (data.status !== 'success') throw new Error(data.message || 'load failed');
+            modelsState.providers = data.providers || modelsState.providers;
+            modelsState.capabilities = data.capabilities || modelsState.capabilities;
+            return data;
+        });
 }
 
 function _searchProviderLabel(cap, providerId) {
@@ -17078,9 +17247,124 @@ function connectFeishuAfterRegister(appId, appSecret) {
 }
 
 // =====================================================================
+// Context Usage View
+// =====================================================================
+// Session-scoped context usage + manual compaction (change
+// integrate-upstream-core-capabilities, P2). The module owns the rendering and
+// the request shape; this is only the seam: where it mounts, which identity it
+// reads, and how its request travels the console's authorization path.
+//
+// `_contextNewSession` separates "a session the server has never written" from
+// one that exists. A fresh chat has no context row to read, so the entry stays
+// quiet until the first turn persists it (implementation.md §4: 首次落库前不轮询).
+let _contextModuleHandle = null;
+let _contextNewSession = false;
+
+// The current session's durability, read at call time rather than captured:
+// switching while a read is in flight is exactly what the module's
+// capture/isCurrent check has to notice.
+function _contextSession() {
+    // The welcome screen is the console's own mark for "nothing persisted yet";
+    // a switch to an existing session clears it before loadHistory paints.
+    const fresh = _contextNewSession || !!document.getElementById('welcome-screen');
+    return {
+        agentId: activeAgentId || '',
+        sessionId: sessionId || '',
+        persisted: !!sessionId && !fresh,
+    };
+}
+
+// The module's own request seam. It resolves the parsed body and *rejects* on a
+// non-success envelope, because the context handlers answer a refusal as a real
+// HTTP status carrying `{status:'error', code}` -- so "it resolved" must mean
+// "it succeeded", and the server's code survives into the error the module maps.
+function _contextRequest(path, options) {
+    const opts = Object.assign({ credentials: 'same-origin', cache: 'no-store' },
+                               options || {});
+    if (opts.body !== undefined && typeof opts.body !== 'string') {
+        opts.headers = Object.assign({ 'Content-Type': 'application/json' },
+                                     opts.headers || {});
+        opts.body = JSON.stringify(opts.body);
+    }
+    return fetch(path, opts).then(resp => resp.json().catch(() => ({})).then(data => {
+        if (!resp.ok || data.status !== 'success') {
+            const error = new Error(data.message || data.code || ('HTTP ' + resp.status));
+            error.code = data.code || ('http_' + resp.status);
+            error.status = resp.status;
+            throw error;
+        }
+        return data;
+    }));
+}
+
+// Mount (or re-mount) the entry into the composer's host. Re-mounting on every
+// identity move is deliberate: it drops the previous session's in-flight
+// request and open panel instead of letting one repaint the other.
+function mountContextModule() {
+    const host = document.getElementById('context-usage-host');
+    if (!host) return;
+    const module = window.RdaiFunctionalContext;
+    if (!module || typeof module.mount !== 'function') return;
+    if (_contextModuleHandle) {
+        _contextModuleHandle.dispose();
+        _contextModuleHandle = null;
+    }
+    host.innerHTML = '';
+    // Either action opens the entry: the read and the write are separately
+    // gated, so a deployment may offer usage without compaction. Both closed
+    // hides the entry entirely and issues nothing.
+    const anyOpen = _featureAvailable('session_context.usage')
+        || _featureAvailable('session_context.compact');
+    host.classList.toggle('hidden', !anyOpen);
+    if (!anyOpen) return;
+    try {
+        _contextModuleHandle = module.mount({
+            root: host,
+            // Getters, not values: the projection is replaced (not mutated) when
+            // the tenant changes, so a captured Object would keep answering from
+            // the previous tenant's capabilities.
+            getContext: _baseAuthContext,
+            getContextRevision: () => _authContextSeq,
+            getSession: _contextSession,
+            request: _contextRequest,
+            t: t,
+        });
+    } catch (err) {
+        console.warn('[Context] console module unavailable', err);
+        _contextModuleHandle = null;
+    }
+}
+
+// Called after any identity/tenant/session/agent move. A previously mounted
+// panel is disposed here so a late reply for the old screen cannot repaint the
+// new one, and the fresh mount re-reads the current projection.
+function _contextAfterSessionChange(persisted) {
+    _contextNewSession = !persisted;
+    mountContextModule();
+}
+
+function disposeContextModule() {
+    if (_contextModuleHandle) {
+        _contextModuleHandle.dispose();
+        _contextModuleHandle = null;
+    }
+    _contextNewSession = false;
+}
+
+// =====================================================================
 // Scheduler View
 // =====================================================================
+// The scheduler console's view state. It stays declared here, beside the view
+// that owns it, because this line is also the marker console.js' own frontend
+// tests slice the scheduler section out of -- moving it would silently widen
+// those slices to the whole file.
+// `_enterAccountApp` reads the handle too: a `let` declared below that function
+// is still initialized long before any request runs, and tearing the mount down
+// on account entry is what keeps a previous tenant's rows from repainting under
+// the new one.
 let tasksLoaded = false;
+let _tasksModuleHandle = null;
+
 function refreshTasksView() {
     const btn = document.getElementById('task-refresh-btn');
     const icon = btn.querySelector('i');
@@ -17094,6 +17378,7 @@ function refreshTasksView() {
     listEl.innerHTML = '';
     
     loadTasksView();
+    if (_tasksModuleHandle) _tasksModuleHandle.refresh();
     
     // Restore button after animation ends
     setTimeout(() => {
@@ -17139,12 +17424,73 @@ function runTaskNow(task, button) {
     });
 }
 
+// Mount the scheduler console (authoring + run history) into its own container.
+// Built lazily so a page that never opens the Tasks view never pays for it, and
+// disposed with the view so its listeners and pending renders go with it.
+function mountTasksModule() {
+    const host = document.getElementById('tasks-history');
+    if (!host) return;
+    const module = window.RdaiFunctionalScheduler;
+    if (!module || typeof module.mount !== 'function') return;
+    if (_tasksModuleHandle) {
+        _tasksModuleHandle.dispose();
+        _tasksModuleHandle = null;
+    }
+    host.innerHTML = '';
+    const hasAny = _featureAvailable('scheduler.create')
+        || _featureAvailable('scheduler.runs.list');
+    host.classList.toggle('hidden', !hasAny);
+    if (!hasAny) return;
+    try {
+        _tasksModuleHandle = module.mount({
+            root: host,
+            // A getter, not the current object: the module re-reads the
+            // projection on every render decision, and the context is replaced
+            // (not mutated) on a tenant switch, so a captured value would keep
+            // answering from the previous tenant's capabilities.
+            getContext: _baseAuthContext,
+            request: _schedulerRequest,
+            t: t,
+        });
+        _tasksModuleHandle.refresh();
+    } catch (err) {
+        console.warn('[Scheduler] console module unavailable', err);
+        _tasksModuleHandle = null;
+    }
+}
+
+// The module's own request seam. It returns the parsed body and *rejects* on a
+// non-success envelope, because the scheduler handlers answer a refusal as a
+// real HTTP status (403/404/409/503) rather than as a 200 carrying
+// `status:'error'` -- so "it resolved" must mean "it succeeded".
+function _schedulerRequest(path, options) {
+    const opts = Object.assign({ credentials: 'same-origin', cache: 'no-store' },
+                               options || {});
+    if (opts.body !== undefined && typeof opts.body !== 'string') {
+        opts.headers = Object.assign({ 'Content-Type': 'application/json' },
+                                     opts.headers || {});
+        opts.body = JSON.stringify(opts.body);
+    }
+    return fetch(path, opts).then(resp => resp.json().catch(() => ({})).then(data => {
+        if (!resp.ok || data.status !== 'success') {
+            const error = new Error(data.message || data.code || ('HTTP ' + resp.status));
+            error.code = data.code || ('http_' + resp.status);
+            error.status = resp.status;
+            throw error;
+        }
+        return data;
+    }));
+}
+
 function loadTasksView() {
     if (tasksLoaded) return;
     // The list tags each task with an owning Agent; make sure the roster is in
     // hand first so findAgent()/multiAgentMode() can resolve the avatar + name.
     const rosterReady = agentCatalog.length ? Promise.resolve() : loadAgentCatalog();
     return rosterReady.then(() => {
+    // Mounted before the list resolves: the module fetches its own data, so
+    // holding it behind the list request would serialise two independent reads.
+    mountTasksModule();
     // Explicit empty agent_id so the global fetch wrapper doesn't inject the
     // active chat Agent: the task list is the whole team's schedule and must
     // NOT follow whichever Agent the conversation is currently on. The backend
@@ -18657,6 +19003,8 @@ function showLoginScreen() {
     if (typeof closeAppearancePreferences === 'function') closeAppearancePreferences(false);
     _invalidateAccountIdentity('unauthenticated');
     _accountAppVisible = false;
+    // Leaving the account app: the context panel belongs to a signed-in tenant.
+    if (typeof disposeContextModule === 'function') disposeContextModule();
     _resetHistorySearch();
     _accountState.authRequired = true;
     _accountState.authenticated = false;
@@ -19033,8 +19381,44 @@ async function _fetchTenantAuthorization() {
 // phase goes back to "unknown" with it: no summary is cached, so the next read
 // is a fresh check rather than a remembered verdict.
 function _invalidateAuthContext() {
+    // Bumping the sequence is what discards a late reply from the tenant that
+    // just went away: `_fetchTenantAuthorization`'s own `seq !== _authContextSeq`
+    // check then refuses to write it. Clearing the in-flight handle lets the
+    // next read start at once instead of awaiting a stale promise -- and the old
+    // request's `finally` only clears the handle while it still owns it
+    // (`_authContextRequest === request`), so it cannot cancel the new request.
+    ++_authContextSeq;
     _authContext = null;
+    _authContextRequest = null;
     _authContextPhase = 'unknown';
+}
+
+// Per-action service availability (change integrate-upstream-core-capabilities,
+// design D2). Delegates the strictness to functional-capabilities.js so Web and
+// Desktop answer "available?" the same way; a missing module (an old cached
+// page, or a build without the file) closes the feature instead of opening it.
+// This is a *service* gate, never a permission: every request is still
+// authorized server-side.
+function _featureAvailable(key) {
+    const api = window.RdaiFunctionalCapabilities;
+    if (!api || typeof api.available !== 'function') return false;
+    return api.available(_baseAuthContext(), key);
+}
+
+// Capture the identity a request starts under, and re-check it before applying
+// the result: any logout / tenant switch / reconnect bumps _authContextSeq, so a
+// captured revision that has moved on means the answer belongs to a screen that
+// no longer exists (and must not repaint the new one).
+function _featureCapture(agentId, sessionId) {
+    const api = window.RdaiFunctionalCapabilities;
+    if (!api || typeof api.capture !== 'function') return null;
+    return api.capture(_authContextSeq, agentId, sessionId);
+}
+
+function _featureCurrent(captured, agentId, sessionId) {
+    const api = window.RdaiFunctionalCapabilities;
+    if (!api || typeof api.isCurrent !== 'function') return false;
+    return api.isCurrent(captured, _authContextSeq, agentId, sessionId);
 }
 
 // Map a view id to its authoritative console_pages key (or '' if none). Server

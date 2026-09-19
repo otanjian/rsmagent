@@ -3019,6 +3019,53 @@ body.account-menu-sheet-open { overflow: hidden; }
     border-color: rgba(255, 255, 255, 0.1);
 }
 
+/* Session context usage + compaction entry
+   (change integrate-upstream-core-capabilities, P2). It sits with the composer
+   chips and opens upward like the other composer popovers, so it never covers
+   the transcript it describes. */
+.composer-context-host { position: relative; display: inline-flex; }
+.composer-context-host.hidden { display: none; }
+.rdai-context { position: relative; display: inline-flex; }
+.rdai-context-trigger {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 8px; border: 1px solid transparent; border-radius: 8px;
+    background: transparent; color: #64748b; font-size: 12px; line-height: 1.4;
+    cursor: pointer; max-width: 168px; white-space: nowrap;
+}
+.rdai-context-trigger:hover { background: #EDFDF3; color: #228547; }
+.dark .rdai-context-trigger { color: #94a3b8; }
+.dark .rdai-context-trigger:hover { background: rgba(74, 190, 110, 0.14); color: #6EE7A0; }
+.rdai-context-panel {
+    position: absolute; left: 0; bottom: calc(100% + 6px); width: 260px;
+    padding: 10px; border-radius: 12px; background: #fff;
+    border: 1px solid #e2e8f0; z-index: 60;
+    box-shadow: 0 8px 30px -6px rgba(0, 0, 0, 0.12), 0 2px 8px -2px rgba(0, 0, 0, 0.05);
+}
+.rdai-context-panel.hidden { display: none; }
+.dark .rdai-context-panel { background: #1A1A1A; border-color: rgba(255, 255, 255, 0.1); }
+.rdai-context-state { font-size: 12px; color: #64748b; }
+.rdai-context-state:empty { display: none; }
+.rdai-context-figure { margin: 6px 0 2px; }
+.rdai-context-figure.hidden { display: none; }
+.rdai-context-figure-main {
+    font-size: 14px; color: #334155; font-variant-numeric: tabular-nums;
+}
+.rdai-context-figure-meta { margin-top: 2px; font-size: 11px; color: #94a3b8; }
+.dark .rdai-context-figure-main { color: #e2e8f0; }
+.rdai-context-notice { margin-top: 6px; font-size: 12px; color: #228547; }
+.rdai-context-notice:empty { display: none; }
+.rdai-context-error { margin-top: 6px; font-size: 12px; color: #B45309; }
+.rdai-context-error:empty { display: none; }
+.rdai-context-actions { margin-top: 8px; }
+.rdai-context-actions.hidden { display: none; }
+.rdai-context-compact {
+    padding: 4px 10px; border: 1px solid #e2e8f0; border-radius: 8px;
+    background: transparent; color: #334155; font-size: 12px; cursor: pointer;
+}
+.rdai-context-compact:hover { background: #EDFDF3; color: #228547; }
+.rdai-context-compact:disabled { opacity: 0.6; cursor: default; }
+.rdai-context-compacting { margin-left: 6px; font-size: 11px; color: #94a3b8; }
+
 .composer-menu-title {
     padding: 6px 10px 4px;
     font-size: 11px;
@@ -5697,6 +5744,44 @@ button.composer-menu-item.joined:hover .joined-remove { display: inline; color: 
 #todo-overdue-toggle.active {
     background: rgba(245, 158, 11, 0.12);
 }
+
+/* Top-bar todo bell (change add-todo-header-bell). The entry is injected by
+   todos.js at a stable anchor in the workbench header; these rules only cover
+   the geometry the header does not already express and the count badge, whose
+   0 / value / 99+ semantics it shares with the sidebar badge. */
+.todo-bell-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+#todo-bell-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #e2e8f0;
+    color: #334155;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 18px;
+    text-align: center;
+    pointer-events: none;
+}
+.dark #todo-bell-badge {
+    background: rgba(255, 255, 255, 0.18);
+    color: #f1f5f9;
+}
+#todo-bell-badge.hidden { display: none; }
+#todo-bell-badge.todo-bell-badge-overdue {
+    background: #dc2626;
+    color: #ffffff;
+}
+
 #view-todo .view {
     display: flex;
     flex-direction: column;

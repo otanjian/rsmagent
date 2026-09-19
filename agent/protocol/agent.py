@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import re
@@ -883,6 +884,14 @@ class Agent:
         synchronously and runs on demand regardless of token usage — so the
         /compact command frees context immediately and consistently.
 
+        Concurrency (design D3): the snapshot is deep-copied under
+        ``messages_lock``, the summary is computed *outside* it, and the commit
+        re-checks ``self.messages`` against that snapshot in the same lock. A
+        message appended while the summary was being computed therefore cannot
+        be lost: the stale commit is abandoned with ``context_changed`` instead
+        of overwriting the new turn, and no uncommitted summary reaches
+        long-term memory.
+
         :param keep_recent_turns: How many most-recent turns to keep verbatim.
         :return: dict with keys: ok, reason, compacted_turns, before, after.
         """
@@ -893,9 +902,12 @@ class Agent:
             _extract_text_from_content,
         )
 
+        # Step 1: snapshot under the lock and split on the snapshot, so the
+        # live list is free to change while we summarize.
         with self.messages_lock:
-            before = len(self.messages)
-            turns = identify_complete_turns(self.messages)
+            snapshot = copy.deepcopy(self.messages)
+            before = len(snapshot)
+            turns = identify_complete_turns(snapshot)
 
             if len(turns) <= keep_recent_turns:
                 return {
@@ -912,11 +924,10 @@ class Agent:
             for turn in discarded_turns:
                 discarded_messages.extend(turn["messages"])
 
-        # Summarize discarded turns synchronously so the injected note is ready
-        # before we return. The SAME summary is reused for context injection and
-        # daily-memory persistence — one LLM call serves both (mirrors the
-        # context_summary_callback path used by automatic trimming, but sync).
-        # Falls back to a plain-text digest when no LLM is available.
+        # Step 2: summarize OUTSIDE the lock. Never hold messages_lock across a
+        # (possibly slow) LLM call — a concurrent turn would block, and the
+        # caller must not nest this method inside its own lock (Lock, not RLock).
+        # The summary is built purely from the snapshot.
         summary = ""
         llm_summary = False
         flush_mgr = None
@@ -938,47 +949,63 @@ class Agent:
                     fragments.append(f"{msg.get('role', '?')}: {text[:200]}")
             summary = "\n".join(fragments[-20:])
 
-        # Persist the same LLM summary to daily memory (no second LLM call).
-        # Skip when we only have the plain-text fallback — it isn't worth
-        # recording as long-term memory.
+        # Build the replacement from a *second* deep copy of the kept turns. The
+        # summary injection edits a user text block in place, so it must never
+        # touch `snapshot` (the list the commit compares against) or the live
+        # history.
+        turn_count = len(discarded_turns)
+        kept_copy = copy.deepcopy(kept_turns)
+        new_messages = []
+        for turn in kept_copy:
+            new_messages.extend(turn["messages"])
+
+        target_block = find_first_user_text_block(kept_copy)
+        if target_block is not None:
+            target_block["text"] = build_compaction_summary_text(
+                summary, turn_count, target_block.get("text", "")
+            )
+        else:
+            # Fallback: no injectable target, prepend a standalone note.
+            new_messages.insert(0, {
+                "role": "user",
+                "content": [{
+                    "type": "text",
+                    "text": build_compaction_summary_text(summary, turn_count, ""),
+                }],
+            })
+
+        # Step 3: commit only while the live history is still the snapshot. Any
+        # appended/edited message invalidates the summary computed from the old
+        # one; keep the new turn and report the conflict rather than overwriting.
+        with self.messages_lock:
+            if self.messages != snapshot:
+                logger.info(
+                    "[Agent] Manual compact abandoned: context changed during summary"
+                )
+                return {
+                    "ok": False,
+                    "reason": "context_changed",
+                    "compacted_turns": 0,
+                    "before": before,
+                    "after": before,
+                }
+            self.messages = new_messages
+            # The last provider usage described the pre-compaction history, so it
+            # is now stale. Clear it in the same lock as the swap so a reader can
+            # never observe the new history with the old usage.
+            self.last_usage = None
+            after = len(self.messages)
+
+        # Step 4: persist the LLM summary to daily memory only AFTER the
+        # compaction committed. A long-term-memory failure must not undo the
+        # in-context summary, so it is logged and swallowed. The plain-text
+        # fallback is not worth recording as long-term memory.
         if flush_mgr and llm_summary:
             try:
                 user_id = current_user_id()
                 flush_mgr.write_daily_summary(summary, user_id=user_id, reason="trim")
             except Exception as e:
                 logger.debug(f"[Agent] compact write_daily_summary skipped: {e}")
-
-        # Rebuild kept turns, injecting the summary into the first kept user
-        # text block (same as auto-trim) to avoid two adjacent user messages
-        # that would break strict user/assistant alternation on some providers.
-        turn_count = len(discarded_turns)
-        with self.messages_lock:
-            new_messages = []
-            for turn in kept_turns:
-                new_messages.extend(turn["messages"])
-
-            target_block = find_first_user_text_block(kept_turns)
-            if target_block is not None:
-                target_block["text"] = build_compaction_summary_text(
-                    summary, turn_count, target_block.get("text", "")
-                )
-            else:
-                # Fallback: no injectable target, prepend a standalone note.
-                new_messages.insert(0, {
-                    "role": "user",
-                    "content": [{
-                        "type": "text",
-                        "text": build_compaction_summary_text(summary, turn_count, ""),
-                    }],
-                })
-
-            self.messages = new_messages
-            after = len(self.messages)
-
-        # The last provider usage described the pre-compaction history, so it is
-        # now stale. Clear it so the context-usage indicator estimates the
-        # freshly compacted history until the next real turn reports usage.
-        self.last_usage = None
 
         logger.info(
             f"[Agent] Manual compact: {turn_count} turns summarized, "

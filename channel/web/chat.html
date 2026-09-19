@@ -218,12 +218,6 @@
                             <span data-i18n="menu_agents">智能体</span>
                         </a>
                         <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
-                           data-view="todo">
-                            <i class="fas fa-list-check item-icon text-xs w-5 text-center"></i>
-                            <span data-i18n="menu_todo">我的待办</span>
-                            <span class="nav-badge hidden ml-auto px-2 py-0.5 rounded-full text-xs bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400" title=""></span>
-                        </a>
-                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
                            data-view="tasks">
                             <i class="fas fa-clock item-icon text-xs w-5 text-center"></i>
                             <span data-i18n="menu_tasks">定时任务</span>
@@ -739,6 +733,11 @@
                                                 onclick="clearContext()">
                                             <i class="fas fa-trash-can"></i>
                                         </button>
+                                        <!-- Session context usage + compaction (change
+                                             integrate-upstream-core-capabilities, P2). Mounted by
+                                             console.js; stays hidden until the action is open and
+                                             the module is present. -->
+                                        <div id="context-usage-host" class="composer-context-host hidden"></div>
                                         <button id="attach-btn" type="button" class="composer-icon-btn"
                                                 onclick="toggleAttachMenu(event)">
                                             <i class="fas fa-paperclip"></i>
@@ -1916,6 +1915,13 @@
                                 <p class="text-slate-500 dark:text-slate-400 font-medium">Loading...</p>
                             </div>
                             <div id="tasks-list" class="grid gap-4 hidden"></div>
+                            <!-- Run history + authoring (change
+                                 integrate-upstream-core-capabilities, P6).
+                                 Mounted by console.js from the same view; the
+                                 module renders nothing when the server has not
+                                 opened the actions, so an empty div here is not
+                                 an empty state the user has to interpret. -->
+                            <div id="tasks-history" class="mt-8 hidden"></div>
                         </div>
                     </div>
                 </div>
@@ -2837,6 +2843,16 @@
          markup to window.ChannelWorkbench, so the module must be evaluated
          first; defer preserves this document order. -->
     <script defer src="assets/js/channel-workbench.js"></script>
+    <!-- Functional modules (change integrate-upstream-core-capabilities, P1-P6).
+         Load order is the dependency order: functional-capabilities.js is the
+         shared gate every other module reads, the three feature modules mount
+         their own surfaces, and console.js wires them in (so it must come
+         last). Each module attaches exactly one window namespace and touches
+         no DOM at load time, which is what makes the defer order safe. -->
+    <script defer src="assets/js/functional-capabilities.js"></script>
+    <script defer src="assets/js/functional-models.js"></script>
+    <script defer src="assets/js/functional-context.js"></script>
+    <script defer src="assets/js/functional-scheduler.js"></script>
     <script defer src="assets/js/console.js"></script>
     <script defer src="assets/js/scenes/index.js"></script>
     <script defer src="assets/js/workspace.js"></script>

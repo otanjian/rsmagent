@@ -190,32 +190,6 @@ html[data-web-palette] #sidebar .sidebar-item.active {
 html[data-web-palette] #sidebar .sidebar-item.active .item-icon { color: inherit; }
 html[data-web-palette="classic"] #sidebar .sidebar-item.active { color: #ffffff; }
 html[data-web-palette="classic"] #sidebar .sidebar-item.active .item-icon { color: #4abe6e; }
-/* Count pill for the sidebar rows. Palette-driven so it never lands as an
-   isolated light block on the near-black classic rail, a fixed red with white
-   text so the overdue count stays above 4.5:1 in both modes, and tabular digits
-   so the width does not jitter as the count changes. */
-html[data-web-palette] #sidebar .nav-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 20px;
-    height: 18px;
-    margin-left: auto;
-    padding: 0 6px;
-    border-radius: 999px;
-    background-color: var(--web-sidebar-hover);
-    color: var(--web-sidebar-title);
-    box-shadow: inset 0 0 0 1px var(--web-sidebar-border);
-    font-size: 11px;
-    font-weight: 600;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-}
-html[data-web-palette] #sidebar .nav-badge.hidden { display: none; }
-html[data-web-palette] #sidebar .nav-badge.bg-red-500 { background-color: #dc2626; color: #ffffff; box-shadow: none; }
-/* A collapsed rail shows icons only: the badge has no room, and the clipped
-   label rule would otherwise leave a 20px sliver behind. */
-#app.sidebar-collapsed #sidebar .nav-badge { display: none; }
 html[data-web-palette] #sidebar .sidebar-account-toggle { color: var(--web-sidebar-title); }
 /* The account card stays a compact single line per sidebar-account-menu: name
    only, with the @handle in the tooltip and the expanded menu. Hierarchy comes
