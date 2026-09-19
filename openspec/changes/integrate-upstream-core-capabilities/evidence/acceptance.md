@@ -212,12 +212,22 @@ cd /tmp/rdai-acc/rc-final && .venv/bin/python -m pytest -q tests/
 | --- | --- | --- |
 | RC 冻结（含缺陷 1 修复，六动作仍关闭） | `5f6d1897` | 27 failed, 5896 passed, 31 skipped, 416 subtests passed (820 s) |
 | **交付提交** | `74be49dd` | **27 failed, 5899 passed, 31 skipped, 416 subtests passed** (1408 s) |
+| R1 验收收口（DEF-1 修复 + 压缩语义澄清） | `7f69a02d` | **27 failed, 5902 passed, 31 skipped, 416 subtests passed** (1156 s)，`FAILED` 行集合与上一行**逐行相同**（`diff` 为空） |
+| R1 批次翻转（八动作全部开放） | `de30b533` | 见 `logs/regression-flip.txt`；翻转只改 `auth/capability_matrix.py` 的声明与两个把该声明写成预期的测试文件，其爆炸半径由下述定向套件另行覆盖 |
 
 两者相差的 3 项 passed 正是 task 8.5 新增的部署关停开关用例
 （`test_the_deployment_switch_closes_an_accepted_batch` /
 `test_the_deployment_switch_does_not_reach_the_handler` /
 `test_a_sibling_action_stays_served_while_its_neighbour_is_closed`），
 失败数**未变**。
+
+**主工作区不可用于回归（实测教训）**：同一提交在主工作区跑得到 **30 failed**，
+多出的 4 项全在 `tests/test_external_channel_propagation.py`——该文件**单独跑 10/10 全过**，
+且它在字母序上排在本次改动涉及的任何测试文件**之前**（新增用例按集合顺序都跑在它之后），
+`pytest-randomly` 未安装故两次顺序相同，工作区 `git status` 干净。
+在隔离检出 `7f69a02d` 上重跑即回到 27，且失败集合与 `74be49dd` 逐行相同，
+故那 4 项是**主工作区运行时状态**（真实应用与验收部署写入同一 `~/.cow` 运行时文件）
+导致的污染，与本 change 无关。回归证据必须来自隔离检出——这也正是 `RECIPE.md` 的硬规则。
 
 27 项失败全部落在与本次改动**无路径交集**的两族，且逐一取下基线对照：
 

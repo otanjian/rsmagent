@@ -83,10 +83,12 @@
       scene source-hash 在新鲜检出同样 SUBFAILED），**新增能力失败 0、授权失败 0**，不阻断发布
       （`evidence/acceptance.md` §9）。
 - [x] 8.5 核对 implemented/accepted/open 与证据，分批移除部署 deny 键并重启；验证前端投影与路由一致。
-      → 第一批（R2 六动作）已按真实验收证据翻转为 `accepted=True` + `open`；R1 两动作保持关闭，
-      待 3.6 / 4.5 的真实会话验收后再翻。真实服务两阶段演练（持键关闭 → 移除重启）投影与门禁
-      **8/8 一致**；deny 键错拼拒启动；客户端资产 200 且一致性套件 11 passed；
-      `close_capability_actions` 把「关停只关目标」钉进回归（`evidence/acceptance.md` §10）。
+      → 两批均已完成翻转。第一批（R2 六动作）按真实验收证据翻转为 `accepted=True` + `open`；
+      第二批（R1 两动作）在 3.6 / 4.5 复测 31/31 后同样翻转，八动作现全部开放。
+      真实服务两阶段演练（持键关闭 → 移除重启）投影与门禁**8/8 一致**；deny 键错拼拒启动；
+      客户端资产 200 且一致性套件 11 passed；`close_capability_actions` 把「关停只关目标」
+      钉进回归，R1 翻转后该守卫改为在**运行时关一个动作**上继续断言 503 与邻居不受影响
+      （`evidence/acceptance.md` §10 / §13.4）。
 - [x] 8.6 演练先关闭再代码回退，验证扩展表保留、原任务/会话/模型配置可用；补齐版本与数据恢复记录。
       → open / closed / base(`f5d7d764` 代码回退) / restored 四阶段实测：扩展表
       `fork_scheduler_run_scopes` 与任务、会话（含消息体）、模型目录、接收者、渠道实例

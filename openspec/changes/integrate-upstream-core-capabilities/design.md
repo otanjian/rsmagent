@@ -43,10 +43,13 @@ R1 为动作投影、上下文、模型编辑器；R2 为六个调度接口和 W
 在 `/auth/context` 原响应追加：
 
 ```json
-{"feature_actions":{"session_context.usage":{"available":true,"reason":""},"session_context.compact":{"available":false,"reason":"not_accepted"},"scheduler.create":{"available":false,"reason":"not_accepted"}}}
+{"feature_actions":{"session_context.usage":{"available":true,"reason":""},"session_context.compact":{"available":false,"reason":"disabled_by_deployment"},"scheduler.create":{"available":true,"reason":""}}}
 ```
 
 实际返回八个完整键；列表见 implementation.md。`available` 只描述服务功能，不描述具体对象授权。缺字段的旧服务端一律按新能力关闭处理。
+示例里的两个取值都取自终态可能出现的形状（本 change 交付时八键全部 `available:true`；
+`reason` 的三个取值 `not_implemented` / `not_accepted` / `disabled_by_deployment`
+在运营方用 `RDAI_DISABLED_ACTIONS` 关停时会真实出现）。
 
 在现有 capability matrix 中为新动作声明独立 slice，保留原 scheduler 五动作。前端投影与 `S(slice, action)` 路由策略读取同一 finalized slice；禁止前端自行从路由存在性推断可用。
 
