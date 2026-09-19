@@ -9,9 +9,29 @@ const source = fs.readFileSync(path.join(__dirname, '../channel/web/static/js/to
 const messages = {
     todo_load_failed: '加载失败，请稍后重试。',
     todo_empty_open: '暂无未完成的待办',
+    todo_empty_delegated: '暂无委派出去的事项',
     todo_disabled_banner: '待办功能未开启，可在配置中启用 todo_enabled。',
     todo_unauthorized_banner: '请先登录后再使用待办功能。',
     menu_todo: '我的待办',
+    todo_scope_mine: '我的待办',
+    todo_scope_delegated: '我委派的',
+    todo_action_recall: '收回',
+    todo_action_reject: '退回',
+    todo_action_assign: '指派',
+    todo_action_transfer: '转交',
+    todo_action_complete: '完成',
+    todo_action_cancel: '取消',
+    todo_action_edit: '编辑',
+    todo_field_assignee: '接收人',
+    todo_field_assignee_none: '留空（我自己跟进）',
+    todo_delegate_closed: '当前账号未开放委派，接收人不可选。',
+    todo_delegate_need_target: '请先选择一位接收人',
+    todo_delegated: '已委派',
+    todo_delegate_failed: '委派失败',
+    todo_recalled: '已收回',
+    todo_rejected: '已退回',
+    todo_delegatee_unknown: '未知成员',
+    todo_created: '已创建',
 };
 
 function element(tag = 'div') {
@@ -33,6 +53,11 @@ function element(tag = 'div') {
             add: (...names) => names.forEach(name => classes.add(name)),
             remove: (...names) => names.forEach(name => classes.delete(name)),
             contains: name => classes.has(name),
+            toggle(name, force) {
+                const on = force === undefined ? !classes.has(name) : !!force;
+                if (on) classes.add(name); else classes.delete(name);
+                return on;
+            },
         },
         setAttribute(name, value) {
             attrs.set(name, String(value));
@@ -53,6 +78,7 @@ function element(tag = 'div') {
             listeners.get(type).push(fn);
         },
         fire(type) { (listeners.get(type) || []).forEach(fn => fn()); },
+        focus() {},
         querySelector() { return null; },
         querySelectorAll() { return []; },
     };
@@ -193,6 +219,9 @@ function setup(responses, options = {}) {
         document: {
             readyState: 'complete',
             visibilityState: 'visible',
+            // The toast helper appends to the body; without one, every success
+            // path would throw inside its own try/catch and be misreported.
+            body: element('body'),
             getElementById: id => {
                 const hit = findById(id);
                 if (hit) return hit;
@@ -222,7 +251,24 @@ function setup(responses, options = {}) {
         fetch: async (url, opts) => {
             requests.push({ url, options: opts });
             if (url === '/api/todos/summary') return summaryReply();
-            assert.match(url, /^\/api\/todos\?/);
+            if (url === '/api/todos/assignees') {
+                // The receiver directory: a rejection is how the server says
+                // delegation is not open for this account.
+                if (typeof options.assignees === 'function') return options.assignees();
+                return response(options.assignees || { status: 'success', items: [] });
+            }
+            if (url === '/api/todos' && opts && opts.method === 'POST') {
+                assert.ok(options.creates && options.creates.length, 'unexpected create request');
+                const next = options.creates.shift();
+                return typeof next === 'function' ? next() : next;
+            }
+            if (/\/delegation$/.test(url)) {
+                assert.ok(options.delegations && options.delegations.length,
+                    'unexpected delegation request');
+                const next = options.delegations.shift();
+                return typeof next === 'function' ? next() : next;
+            }
+            assert.match(url, /^\/api\/todos(\/delegated)?\?/);
             assert.ok(responses.length, 'unexpected list request');
             const next = responses.shift();
             return typeof next === 'function' ? next() : next;
@@ -239,6 +285,8 @@ function setup(responses, options = {}) {
         header: selectors.get('.workbench-header') || null,
         sidebarBadge: selectors.get('.sidebar-item[data-view="todo"] .nav-badge') || null,
         listRequests: () => requests.filter(r => r.url.startsWith('/api/todos?')),
+        delegatedRequests: () => requests.filter(r => r.url.startsWith('/api/todos/delegated?')),
+        delegationPosts: () => requests.filter(r => /\/delegation$/.test(r.url)),
         summaryRequests: () => requests.filter(r => r.url === '/api/todos/summary'),
         hidden: id => node(id).classList.contains('hidden'),
         fireFocus: () => focusListeners.forEach(fn => fn()),
@@ -678,4 +726,208 @@ test('a visibilitychange that is not a resume does not read', async () => {
 
     await h.advance(POLL_MS);
     assert.equal(h.summaryRequests().length, initial + 1, 'the interval is untouched');
+});
+
+// ---------------------------------------------------------------------------
+// Delegation (change add-todo-delegation)
+// ---------------------------------------------------------------------------
+
+const HANDED_OUT = {
+    id: 'todo-hand', title: 'Send the report', status: 'pending',
+    status_label: '待处理', kind: 'general', kind_label: '普通事项',
+    priority: 'normal', priority_label: '普通', version: 3,
+    owner_id: 'user-me', assignee_id: 'user-bob',
+    assignee: { id: 'user-bob', username: 'bob', display_name: 'Bob' },
+    mine: false, delegated_by_me: true, can_edit: false,
+    can_operate: { start: false, complete: false, cancel: false, reopen: false },
+    can_assign: false, can_transfer: false, can_reject: false, can_recall: true,
+};
+
+const MY_OWN = {
+    id: 'todo-mine', title: 'My own task', status: 'pending',
+    status_label: '待处理', kind: 'general', kind_label: '普通事项',
+    priority: 'normal', priority_label: '普通', version: 1,
+    owner_id: 'user-me', assignee_id: 'user-me',
+    assignee: { id: 'user-me', username: 'me', display_name: '' },
+    mine: true, delegated_by_me: false, can_edit: true,
+    can_operate: { start: true, complete: true, cancel: true, reopen: false },
+    can_assign: true, can_transfer: false, can_reject: false, can_recall: false,
+};
+
+test('the delegated section reads its own feed and leaves the badge alone', async () => {
+    const h = setup([
+        response({ status: 'success', items: [MY_OWN], total: 1 }),
+        response({ status: 'success', items: [HANDED_OUT], total: 1 }),
+        response({ status: 'success', items: [MY_OWN], total: 1 }),
+    ], { mountBell: true, absent: BELL_IDS, summary: OPEN_SUMMARY });
+    await h.ctx.loadTodosView();
+    const summaries = h.summaryRequests().length;
+
+    await h.ctx.setTodoScope('delegated');
+    assert.equal(h.delegatedRequests().length, 1, 'the section has its own endpoint');
+    assert.equal(h.listRequests().length, 1, 'and does not re-read the personal list');
+    assert.equal(h.summaryRequests().length, summaries,
+        'handed-out work never triggers a badge recount of its own');
+    assert.match(h.node('todo-list').innerHTML, /Send the report/);
+
+    await h.ctx.setTodoScope('mine');
+    assert.equal(h.delegatedRequests().length, 1, 'coming back does not touch the other feed');
+    assert.equal(h.listRequests().length, 2);
+    assert.match(h.node('todo-list').innerHTML, /My own task/);
+    assert.doesNotMatch(h.node('todo-list').innerHTML, /Send the report/,
+        'the two sections are never mixed into one list');
+});
+
+test('a handed-out row names its handler and offers recall only', async () => {
+    const h = setup([
+        response({ status: 'success', items: [HANDED_OUT], total: 1 }),
+    ]);
+    await h.ctx.setTodoScope('delegated');
+
+    const html = h.node('todo-list').innerHTML;
+    assert.match(html, /Bob/, 'the current handler is shown');
+    assert.match(html, /recallTodo\('todo-hand',3\)/, 'recall is offered inline');
+    assert.doesNotMatch(html, /operateTodo/, 'no complete / cancel for somebody else\'s work');
+    assert.doesNotMatch(html, /openTodoEdit/, 'and no edit entry');
+});
+
+test('the empty delegated section says so instead of looking broken', async () => {
+    const h = setup([response({ status: 'success', items: [], total: 0 })]);
+    await h.ctx.setTodoScope('delegated');
+    assert.equal(h.hidden('todo-empty'), false);
+    assert.equal(h.node('todo-empty-text').textContent, messages.todo_empty_delegated);
+});
+
+test('the receiver picker is offered when the server allows delegation', async () => {
+    const h = setup([response({ status: 'success', items: [], total: 0 })], {
+        assignees: { status: 'success', items: [{ username: 'bob', display_name: 'Bob' }] },
+    });
+    await h.ctx.loadTodosView();
+    await flush();
+    h.ctx.openTodoCreate();
+    assert.equal(h.hidden('todo-edit-delegatee-field'), false);
+    assert.equal(h.hidden('todo-edit-delegatee-picker'), false);
+    assert.equal(h.hidden('todo-edit-delegatee-closed'), true);
+    const options = h.node('todo-edit-field-assignee').innerHTML;
+    assert.match(options, /value=""[^>]*>留空（我自己跟进）/, 'the empty choice is the default');
+    assert.match(options, /value="bob"[^>]*>Bob/, 'and the colleague is selectable by login name');
+});
+
+test('without todo.assign the picker is withheld and explained', async () => {
+    const h = setup([response({ status: 'success', items: [], total: 0 })], {
+        assignees: () => response({ status: 'error', code: 'forbidden', message: 'no' }, 403),
+    });
+    await h.ctx.loadTodosView();
+    await flush();
+    h.ctx.openTodoCreate();
+    assert.equal(h.hidden('todo-edit-delegatee-field'), false, 'the reason is shown where the control was');
+    assert.equal(h.hidden('todo-edit-delegatee-picker'), true, 'no selector is offered');
+    assert.equal(h.hidden('todo-edit-delegatee-closed'), false);
+    assert.equal(h.node('todo-edit-field-assignee').innerHTML, '', 'nothing to choose from');
+});
+
+test('the picker is not offered on an existing item', async () => {
+    const h = setup([response({ status: 'success', items: [MY_OWN], total: 1 })], {
+        assignees: { status: 'success', items: [{ username: 'bob', display_name: 'Bob' }] },
+    });
+    await h.ctx.loadTodosView();
+    await flush();
+    h.ctx.openTodoEdit('todo-mine');
+    assert.equal(h.hidden('todo-edit-delegatee-field'), true,
+        'an existing item changes hands through the drawer actions, not this form');
+});
+
+test('choosing a receiver creates the item and then hands it over', async () => {
+    const h = setup([
+        response({ status: 'success', items: [], total: 0 }),
+        response({ status: 'success', items: [], total: 0 }),
+    ], {
+        assignees: { status: 'success', items: [{ username: 'bob', display_name: 'Bob' }] },
+        creates: [response({ status: 'success', item: { id: 'todo-9', version: 1 } })],
+        delegations: [response({
+            status: 'success',
+            item: { id: 'todo-9', version: 2, assignee_id: 'user-bob' },
+        })],
+    });
+    await h.ctx.loadTodosView();
+    await flush();
+    h.ctx.openTodoCreate();
+    h.node('todo-edit-field-title').value = 'Hand this over';
+    h.node('todo-edit-field-assignee').value = 'bob';
+    await h.ctx.submitTodoEdit();
+
+    const post = h.delegationPosts();
+    assert.equal(post.length, 1, 'the handover is a second, explicit step');
+    assert.equal(post[0].url, '/api/todos/todo-9/delegation');
+    const body = JSON.parse(post[0].options.body);
+    assert.deepEqual(body, { action: 'assign', assignee: 'bob', expected_version: 1 });
+});
+
+test('with no receiver chosen nothing is handed over', async () => {
+    const h = setup([
+        response({ status: 'success', items: [], total: 0 }),
+        response({ status: 'success', items: [], total: 0 }),
+    ], {
+        assignees: { status: 'success', items: [{ username: 'bob', display_name: 'Bob' }] },
+        creates: [response({ status: 'success', item: { id: 'todo-9', version: 1 } })],
+    });
+    await h.ctx.loadTodosView();
+    await flush();
+    h.ctx.openTodoCreate();
+    h.node('todo-edit-field-title').value = 'Keep it';
+    h.node('todo-edit-field-assignee').value = '';
+    await h.ctx.submitTodoEdit();
+    assert.equal(h.delegationPosts().length, 0, 'no receiver, no delegation call');
+});
+
+test('a failed handover is reported instead of claiming success', async () => {
+    const h = setup([
+        response({ status: 'success', items: [], total: 0 }),
+        response({ status: 'success', items: [], total: 0 }),
+    ], {
+        assignees: { status: 'success', items: [{ username: 'bob', display_name: 'Bob' }] },
+        creates: [response({ status: 'success', item: { id: 'todo-9', version: 1 } })],
+        delegations: [response({ status: 'error', code: 'forbidden', message: 'nope' }, 403)],
+    });
+    h.ctx.confirm = () => true;
+    await h.ctx.loadTodosView();
+    await flush();
+    h.ctx.openTodoCreate();
+    h.node('todo-edit-field-title').value = 'Stays with me';
+    h.node('todo-edit-field-assignee').value = 'bob';
+    await h.ctx.submitTodoEdit();
+
+    assert.equal(h.delegationPosts().length, 1);
+    // The create succeeded, so the modal closes and the list is reloaded: the
+    // item exists and stays with the user. Only the handover is reported as
+    // failed (the toast), never as a delegation that landed.
+    assert.equal(h.hidden('todo-edit-overlay'), true, 'the created item is not rolled back');
+    assert.equal(h.listRequests().length, 2, 'the list reflects the item that does exist');
+});
+
+test('recall posts the verb with the version the row carried', async () => {
+    const h = setup([
+        response({ status: 'success', items: [HANDED_OUT], total: 1 }),
+        response({ status: 'success', items: [MY_OWN], total: 1 }),
+    ], {
+        delegations: [response({
+            status: 'success',
+            item: Object.assign({}, HANDED_OUT, { mine: true, can_recall: false, can_edit: true }),
+        })],
+    });
+    await h.ctx.setTodoScope('delegated');
+    h.ctx.confirm = () => true;
+    await h.ctx.recallTodo('todo-hand', 3);
+
+    const body = JSON.parse(h.delegationPosts()[0].options.body);
+    assert.deepEqual(body, { action: 'recall', expected_version: 3 });
+    assert.equal(h.delegatedRequests().length, 2, 'the section reloads after the recall');
+});
+
+test('a declined recall sends nothing', async () => {
+    const h = setup([response({ status: 'success', items: [HANDED_OUT], total: 1 })]);
+    await h.ctx.setTodoScope('delegated');
+    h.ctx.confirm = () => false;
+    await h.ctx.recallTodo('todo-hand', 3);
+    assert.equal(h.delegationPosts().length, 0, 'the user said no, so no request is made');
 });

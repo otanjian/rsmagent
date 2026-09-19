@@ -103,6 +103,19 @@ def _member_resolver_for(tenant_id: str):
     return resolve
 
 
+def _member_namer_for(tenant_id: str):
+    """Bind handler *naming* to one tenant.
+
+    Separate from :func:`_member_resolver_for` because the two answer different
+    questions: this one only labels a user id the caller already sees on an item
+    they delegated, so it does not require the target to still be assignable.
+    """
+    def name(user_id: str):
+        return _get_identity_service().describe_member(tenant_id, user_id)
+
+    return name
+
+
 def _audit_recorder_for(actor: TodoActor):
     """Write delegation events to the identity audit store.
 
@@ -192,6 +205,7 @@ def _build_service() -> TodoService:
         enabled_fn=default_enabled,
         app_data_root=app_data_root,
         member_resolver=_member_resolver_for(actor.scope_id),
+        member_namer=_member_namer_for(actor.scope_id),
         audit_recorder=_audit_recorder_for(actor),
     )
 

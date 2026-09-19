@@ -1852,6 +1852,15 @@
                                 </div>
                             </div>
 
+                            <!-- Scope switch: my own work vs what I handed out.
+                                 A separate section rather than a filter, because
+                                 the two lists are disjoint and the second one
+                                 never counts toward the bell badge. -->
+                            <div class="flex items-center bg-slate-100 dark:bg-white/10 rounded-lg p-0.5 w-max mb-3" id="todo-scope-switch">
+                                <button type="button" class="todo-scope-tab px-3 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors duration-150" data-scope="mine" data-i18n="todo_scope_mine">我的待办</button>
+                                <button type="button" class="todo-scope-tab px-3 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors duration-150" data-scope="delegated" data-i18n="todo_scope_delegated">我委派的</button>
+                            </div>
+
                             <!-- Filter bar -->
                             <div id="todo-filters" class="flex flex-wrap items-center gap-2 mb-5">
                                 <div class="flex items-center bg-slate-100 dark:bg-white/10 rounded-lg p-0.5 w-max">
@@ -2370,6 +2379,22 @@
                             <input type="datetime-local" id="todo-edit-field-due"
                                    class="flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500">
                             <button id="todo-edit-clear-due" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 text-xs hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer" data-i18n="todo_clear_due">清空</button>
+                        </div>
+                    </div>
+                    <!-- Receiver picker. Availability is the server's answer
+                         about todo.assign, never inferred from the fact that
+                         the user can edit their own item. Shown in create mode
+                         only: on an existing item the same choice is an action
+                         in the detail drawer, so it is never offered twice. -->
+                    <div id="todo-edit-delegatee-field" class="hidden">
+                        <div id="todo-edit-delegatee-picker" class="hidden">
+                            <label for="todo-edit-field-assignee" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5" data-i18n="todo_field_assignee">接收人</label>
+                            <select id="todo-edit-field-assignee" class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500"></select>
+                            <p class="mt-1 text-xs text-slate-400 dark:text-slate-500" data-i18n="todo_field_assignee_hint">留空则由你自己跟进；只能指派给一位同事。</p>
+                        </div>
+                        <div id="todo-edit-delegatee-closed" class="hidden">
+                            <label class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5" data-i18n="todo_field_assignee">接收人</label>
+                            <p class="text-xs text-amber-600 dark:text-amber-400" data-i18n="todo_delegate_closed">当前账号未开放委派，接收人不可选。</p>
                         </div>
                     </div>
                     <p id="todo-edit-error" class="hidden mt-2 text-xs text-red-500"></p>

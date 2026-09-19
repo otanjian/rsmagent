@@ -114,6 +114,13 @@
     const _pageSize = 20;
     let _total = 0;
     let _items = [];
+    // 'mine' = what I currently hold, 'delegated' = what I handed out. One
+    // scope is loaded at a time and the switch resets the paging state, so the
+    // two totals can never be added together by accident.
+    let _scope = 'mine';
+    // Receiver directory. null = not asked yet, [] = asked and empty,
+    // 'closed' = the server refused, so the picker is not offered at all.
+    let _assignees = null;
     let _editingItem = null;   // null = create mode
     let _dirty = false;        // unsaved edit modal changes
 
@@ -343,7 +350,8 @@
     // ---- list rendering ---------------------------------------------------
     function emptyText() {
         if (_q) return t('todo_empty_search');
-        if (_overdue) return t('todo_empty_overdue');
+        if (_overdue) return t(_scope === 'delegated' ? 'todo_empty_delegated' : 'todo_empty_overdue');
+        if (_scope === 'delegated') return t('todo_empty_delegated');
         if (_currentStatus === 'all') return t('todo_empty_all');
         if (_currentStatus === 'open') return t('todo_empty_open');
         if (_currentStatus === 'pending') return t('todo_empty_pending');
@@ -351,6 +359,43 @@
         if (_currentStatus === 'completed') return t('todo_empty_done');
         if (_currentStatus === 'cancelled') return t('todo_empty_cancel');
         return t('todo_empty_all');
+    }
+
+    // ---- receiver directory ----------------------------------------------
+    // Fetched once per view lifetime. The endpoint is gated by todo.assign, so
+    // a refusal is the server telling us delegation is not open for this
+    // account — the picker is then replaced by an explanation instead of an
+    // empty dropdown that would look broken.
+    async function loadAssignees(force) {
+        if (_assignees !== null && !force) return _assignees;
+        try {
+            const data = await apiFetch('/api/todos/assignees');
+            _assignees = data.items || [];
+        } catch (err) {
+            _assignees = 'closed';
+        }
+        return _assignees;
+    }
+
+    function assigneesOpen() {
+        return _assignees !== null && _assignees !== 'closed';
+    }
+
+    function handlerLabel(item) {
+        const who = item.assignee || {};
+        return who.display_name || who.username || t('todo_delegatee_unknown');
+    }
+
+    function receiverOptionsHtml(item) {
+        if (_assignees === 'closed' || _assignees === null) return '';
+        const taken = [item && item.assignee_id, item && item.owner_id];
+        return '<option value="">' + escapeHtml(t('todo_field_assignee_none')) + '</option>' +
+            _assignees.filter(function (m) {
+                return taken.indexOf(m.username) === -1;
+            }).map(function (m) {
+                return '<option value="' + escapeHtml(m.username) + '">' +
+                    escapeHtml(m.display_name || m.username) + '</option>';
+            }).join('');
     }
 
     function statusClass(status) {
@@ -401,6 +446,19 @@
                             : escapeHtml(formatDate(item.due_at)))
                 : t('todo_due_none');
             const titleCls = item.status === 'completed' || item.status === 'cancelled' ? ' line-through text-slate-400' : '';
+            // 「我委派的」 is read-and-recall only: the delegator is shown who
+            // holds the item and the one action they still own, never the
+            // complete/cancel/edit affordances that belong to the handler.
+            const holderStr = _scope === 'delegated'
+                ? '<span class="inline-flex items-center gap-1"><i class="fas fa-user-check"></i>' +
+                  escapeHtml(t('todo_field_assignee')) + '：' + escapeHtml(handlerLabel(item)) + '</span>'
+                : '';
+            const recallBtn = item.can_recall
+                ? '<button class="px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 text-[11px] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer"' +
+                  ' data-recall="' + escapeHtml(item.id) + '"' +
+                  ' onclick="event.stopPropagation();recallTodo(\'' + escapeHtml(item.id) + '\',' + item.version + ')">' +
+                  '<i class="fas fa-rotate-left mr-1"></i>' + escapeHtml(t('todo_action_recall')) + '</button>'
+                : '';
             return '<div class="bg-white dark:bg-[#1A1A1A] rounded-xl border ' + (overdue ? 'border-red-200 dark:border-red-500/30 ' : 'border-slate-200 dark:border-white/10 ') +
                 'p-4 hover:shadow-sm cursor-pointer transition-colors duration-150" data-id="' + escapeHtml(item.id) + '" onclick="openTodoDetail(\'' + escapeHtml(item.id) + '\')">' +
                 '<div class="flex items-start gap-3">' +
@@ -416,7 +474,10 @@
                 '<span class="inline-flex items-center gap-1"><i class="fas fa-clock"></i>' + dueStr + '</span>' +
                 '<span class="inline-flex items-center gap-1"><i class="fas fa-flag"></i>' + escapeHtml(item.priority_label) + '</span>' +
                 '<span class="inline-flex items-center gap-1"><i class="fas fa-tag"></i>' + escapeHtml(item.kind_label) + '</span>' +
-                '</div></div></div></div>';
+                holderStr +
+                '</div>' +
+                (recallBtn ? '<div class="mt-2">' + recallBtn + '</div>' : '') +
+                '</div></div></div>';
         }).join('');
 
         renderPagination();
@@ -442,6 +503,11 @@
         _loaded = false;
         const gen = ++_generation;
         showBanner('', '');
+        if (_scope === 'mine' && _assignees === null) {
+            // Fire and forget: the picker is only needed once a modal opens, and
+            // the answer is re-applied there if one already is.
+            loadAssignees().then(renderDelegateeField);
+        }
         const listEl = document.getElementById('todo-list');
         const emptyEl = document.getElementById('todo-empty');
         const emptyTextEl = document.getElementById('todo-empty-text');
@@ -458,13 +524,17 @@
             params.set('page_size', String(_pageSize));
             if (_q) params.set('q', _q);
             if (_overdue) params.set('overdue', 'true');
-            const data = await apiFetch('/api/todos?' + params.toString());
+            // Two endpoints, two totals. 「我委派的」 is its own feed rather than
+            // a filter on the personal list, which is what keeps the bell badge
+            // count (personal, unfinished) from ever including handed-out work.
+            const base = _scope === 'delegated' ? '/api/todos/delegated' : '/api/todos';
+            const data = await apiFetch(base + '?' + params.toString());
             if (gen !== _generation) return; // superseded by a newer load
             _total = data.total || 0;
             _items = data.items || [];
             renderList();
             _loaded = true;
-            refreshSummary();
+            if (_scope === 'mine') refreshSummary();
         } catch (err) {
             if (gen !== _generation) return;
             if (err.code === 'todo_disabled') {
@@ -508,6 +578,30 @@
         loadTodosView(true);
     }
 
+    function paintScopeTabs() {
+        document.querySelectorAll('.todo-scope-tab').forEach(function (tab) {
+            tab.classList.toggle('active', tab.dataset.scope === _scope);
+        });
+    }
+
+    async function setScope(scope) {
+        if (scope === _scope) return;
+        _scope = scope;
+        // Reset the paging state on the way across: the two sections must never
+        // share a total, and a stale page number would ask for rows that do not
+        // exist in the new section.
+        _page = 1;
+        _total = 0;
+        _items = [];
+        _loaded = false;
+        paintScopeTabs();
+        // The picker is only needed by the section that can delegate, and
+        // asking for it here keeps the refusal available before the first
+        // create modal opens.
+        await loadAssignees();
+        await loadTodosView(true);
+    }
+
     function setOverdue(on) {
         _overdue = on;
         _page = 1;
@@ -530,10 +624,58 @@
         fillKindSelect('general');
         fillPrioritySelect('normal');
         closeHiddenError();
+        renderDelegateeField();
+        // Ask once for the directory if nothing has yet; the answer decides
+        // whether the picker is offered or replaced by an explanation.
+        if (_assignees === null) loadAssignees().then(renderDelegateeField);
         document.getElementById('todo-edit-overlay').classList.remove('hidden');
         _lastCreateKey = makeCreateKey();
         const titleInput = document.getElementById('todo-edit-field-title');
         titleInput.focus();
+    }
+
+    // The receiver field exists only on create. An existing item changes hands
+    // through the delegation actions in the drawer, which are the only path the
+    // server accepts, so offering a second control here would be a form that
+    // silently does nothing.
+    function renderDelegateeField() {
+        const field = document.getElementById('todo-edit-delegatee-field');
+        if (!field) return;
+        const picker = document.getElementById('todo-edit-delegatee-picker');
+        const hint = document.getElementById('todo-edit-delegatee-closed');
+        const sel = document.getElementById('todo-edit-field-assignee');
+        const createMode = !_editingItem;
+        const open = assigneesOpen();
+        if (picker) picker.classList.toggle('hidden', !open);
+        if (hint) hint.classList.toggle('hidden', !(createMode && _assignees === 'closed'));
+        field.classList.toggle('hidden', !(createMode && (open || _assignees === 'closed')));
+        if (sel && open) sel.innerHTML = receiverOptionsHtml(null);
+    }
+
+    function selectedAssignee() {
+        const field = document.getElementById('todo-edit-delegatee-field');
+        if (!field || field.classList.contains('hidden')) return '';
+        const sel = document.getElementById('todo-edit-field-assignee');
+        return sel ? sel.value : '';
+    }
+
+    // Create, then hand over: ``assignee_id`` may only be set by a delegation
+    // action, so the receiver is applied as a second, explicit step. If that
+    // step fails the item stays with the user and the message says so, rather
+    // than reporting a handover that never happened.
+    async function assignAfterCreate(item, username) {
+        if (!item || !username) return item;
+        try {
+            const res = await apiFetch('/api/todos/' + encodeURIComponent(item.id) + '/delegation', {
+                method: 'POST',
+                body: { action: 'assign', assignee: username, expected_version: item.version },
+            });
+            toast(t('todo_delegated'));
+            return (res.item) || item;
+        } catch (err) {
+            toast((err.data && err.data.message) || err.message || t('todo_delegate_failed'));
+            return item;
+        }
     }
 
     function openTodoEdit(id) {
@@ -550,6 +692,7 @@
         fillKindSelect(item.kind);
         fillPrioritySelect(item.priority);
         closeHiddenError();
+        renderDelegateeField();
         document.getElementById('todo-edit-overlay').classList.remove('hidden');
         document.getElementById('todo-edit-field-title').focus();
     }
@@ -636,8 +779,12 @@
                     source: 'manual', create_key: createKey,
                 };
                 if (dueLocal) { body.due_at = fromLocalInput(dueLocal); body.timezone = localTimezone(); }
+                // Read the receiver before the modal closes; it is applied only
+                // once the item exists.
+                const receiver = selectedAssignee();
                 try {
                     const res = await apiFetch('/api/todos', { method: 'POST', body: body });
+                    await assignAfterCreate(res.item, receiver);
                     toast(t('todo_created'));
                     closeTodoEdit();
                     refreshTodosView();
@@ -647,6 +794,7 @@
                     if (err.status === 503) {
                         await new Promise(function (r) { setTimeout(r, 500); });
                         const res = await apiFetch('/api/todos', { method: 'POST', body: body });
+                        await assignAfterCreate(res.item, receiver);
                         toast(t('todo_created'));
                         closeTodoEdit();
                         refreshTodosView();
@@ -670,6 +818,7 @@
                     // Unknown result: don't assume failure — GET a fresh read.
                     const cur = await apiFetch('/api/todos?q=' + encodeURIComponent(title) + '&page_size=1');
                     if (cur.items && cur.items.length) {
+                        await assignAfterCreate(cur.items[0], receiver);
                         toast(t('todo_created'));
                         closeTodoEdit();
                         refreshTodosView();
@@ -773,7 +922,72 @@
         if (opts.cancel) buttons.push(detailActionBtn(item, 'cancel', 'todo_action_cancel', 'fa-xmark', 'cancelled'));
         if (opts.reopen) buttons.push(detailActionBtn(item, 'reopen', 'todo_action_reopen', 'fa-rotate-left', 'pending'));
         if (item.can_edit) buttons.push('<button class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer" onclick="openTodoEditFromDetail()">' + escapeHtml(t('todo_action_edit')) + '</button>');
+        // Delegation entries come from the server's per-action flags, so a
+        // delegator reading what they handed out gets 收回 only, and the holder
+        // gets 转交 / 退回 rather than a generic "delegate".
+        if (item.can_recall) buttons.push(detailDelegationBtn(item, 'recall', 'todo_action_recall', 'fa-rotate-left'));
+        if (item.can_reject) buttons.push(detailDelegationBtn(item, 'reject', 'todo_action_reject', 'fa-reply'));
+        if (item.can_assign || item.can_transfer) {
+            buttons.push(delegationPickerHtml(item));
+        }
         el.innerHTML = buttons.join(' ');
+    }
+
+    function detailDelegationBtn(item, verb, labelKey, icon) {
+        return '<button class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer"' +
+            ' onclick="submitDelegation(\'' + escapeHtml(item.id) + '\',' + item.version + ',\'' + verb + '\')">' +
+            '<i class="fas ' + icon + ' mr-1"></i>' + escapeHtml(t(labelKey)) + '</button>';
+    }
+
+    function delegationPickerHtml(item) {
+        const verb = item.can_assign ? 'assign' : 'transfer';
+        const labelKey = item.can_assign ? 'todo_action_assign' : 'todo_action_transfer';
+        if (!assigneesOpen()) {
+            // No todo.assign: say so instead of showing a control that would be
+            // refused. Every other action on the item stays available.
+            return '<span class="text-xs text-amber-600 dark:text-amber-400 self-center">' +
+                escapeHtml(t('todo_delegate_closed')) + '</span>';
+        }
+        return '<span class="flex items-center gap-2">' +
+            '<select id="todo-delegate-target" class="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-slate-100">' +
+            receiverOptionsHtml(item) + '</select>' +
+            '<button class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer"' +
+            ' onclick="submitDelegationFromPicker(\'' + escapeHtml(item.id) + '\',' + item.version + ',\'' + verb + '\')">' +
+            '<i class="fas fa-share mr-1"></i>' + escapeHtml(t(labelKey)) + '</button></span>';
+    }
+
+    function submitDelegationFromPicker(id, version, verb) {
+        const sel = document.getElementById('todo-delegate-target');
+        const username = sel ? sel.value : '';
+        if (!username) { toast(t('todo_delegate_need_target')); return; }
+        submitDelegation(id, version, verb, username);
+    }
+
+    // The list carries its own recall entry: a handed-out item may be taken
+    // back without opening the drawer.
+    function recallTodo(id, version) {
+        return submitDelegation(id, version, 'recall');
+    }
+
+    async function submitDelegation(id, version, verb, username) {
+        if (verb === 'recall' && !window.confirm(t('todo_confirm_recall'))) return;
+        if (verb === 'reject' && !window.confirm(t('todo_confirm_reject'))) return;
+        const body = { action: verb, expected_version: version };
+        if (username) body.assignee = username;
+        try {
+            const res = await apiFetch('/api/todos/' + encodeURIComponent(id) + '/delegation', {
+                method: 'POST',
+                body: body,
+            });
+            toast(t(verb === 'recall' ? 'todo_recalled'
+                : verb === 'reject' ? 'todo_rejected' : 'todo_delegated'));
+            _detailItem = (res.item && res.item.id === id) ? res.item : _detailItem;
+            _loaded = false;
+            await loadTodosView(true);
+            if (_detailItem) { renderDetail(); loadDetailEvents(); }
+        } catch (err) {
+            showBanner('error', (err.data && err.data.message) || err.message || t('todo_load_error'));
+        }
     }
 
     function detailActionBtn(item, action, labelKey, icon, targetStatus) {
@@ -796,6 +1010,7 @@
         fillKindSelect(item.kind);
         fillPrioritySelect(item.priority);
         closeHiddenError();
+        renderDelegateeField();
         document.getElementById('todo-edit-overlay').classList.remove('hidden');
         document.getElementById('todo-edit-field-title').focus();
     }
@@ -867,6 +1082,18 @@
         }
     }
 
+    const HISTORY_ACTIONS = {
+        create: ['fa-plus', 'todo_created'],
+        start: ['fa-play', 'todo_action_start'],
+        complete: ['fa-check', 'todo_action_complete'],
+        cancel: ['fa-xmark', 'todo_action_cancel'],
+        reopen: ['fa-rotate-left', 'todo_action_reopen'],
+        assign: ['fa-share', 'todo_history_assign'],
+        transfer: ['fa-share', 'todo_history_transfer'],
+        recall: ['fa-rotate-left', 'todo_action_recall'],
+        reject: ['fa-reply', 'todo_action_reject'],
+    };
+
     function renderHistory(data) {
         const body = document.getElementById('todo-detail-body');
         if (!body) return;
@@ -878,11 +1105,17 @@
             html += '<p class="text-sm text-slate-400 dark:text-slate-500">' + escapeHtml(t('todo_detail_history_empty')) + '</p>';
         } else {
             html += '<div class="space-y-3">' + items.map(function (ev) {
-                const icon = ev.action === 'create' ? 'fa-plus' : ev.action === 'complete' ? 'fa-check' : ev.action === 'cancel' ? 'fa-xmark' : ev.action === 'start' ? 'fa-play' : 'fa-pen';
-                const label = ev.action === 'create' ? t('todo_created') : ev.action === 'complete' ? t('todo_action_complete') : ev.action === 'cancel' ? t('todo_action_cancel') : ev.action === 'start' ? t('todo_action_start') : t('todo_action_edit');
+                const entry = HISTORY_ACTIONS[ev.action] || ['fa-pen', 'todo_action_edit'];
+                const icon = entry[0];
+                // A delegation record names both ends of the move, which is what
+                // lets the chain be read back from the history alone.
+                const moved = ev.changed && ev.changed.from_assignee
+                    ? ' · ' + escapeHtml(handlerNameOf(ev.changed.from_assignee)) + ' → ' +
+                      escapeHtml(handlerNameOf(ev.changed.to_assignee))
+                    : '';
                 return '<div class="flex gap-3">' +
                     '<div class="w-6 h-6 rounded-full bg-slate-100 dark:bg-white/10 flex items-center justify-center flex-shrink-0"><i class="fas ' + icon + ' text-xs text-slate-500"></i></div>' +
-                    '<div class="min-w-0 flex-1"><div class="text-xs text-slate-600 dark:text-slate-300">' + escapeHtml(label) + (ev.operator_kind === 'agent' ? ' · Agent' : '') + '</div>' +
+                    '<div class="min-w-0 flex-1"><div class="text-xs text-slate-600 dark:text-slate-300">' + escapeHtml(t(entry[1])) + moved + (ev.operator_kind === 'agent' ? ' · Agent' : '') + '</div>' +
                     '<div class="text-[11px] text-slate-400">' + escapeHtml(formatDate(ev.created_at)) + '</div>' +
                     (ev.note ? '<div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">' + escapeHtml(ev.note) + '</div>' : '') +
                     '</div></div>';
@@ -890,6 +1123,19 @@
         }
         html += '</div>';
         body.innerHTML = html;
+    }
+
+    // History carries user ids. The row can name the current handler — the
+    // server attaches that name only on the delegator's own rows — and itself;
+    // anything else is shown as the id rather than guessed at.
+    function handlerNameOf(userId) {
+        if (!userId) return t('todo_delegatee_none');
+        const item = _detailItem || {};
+        if (item.assignee && item.assignee.id === userId && item.assignee.display_name) {
+            return item.assignee.display_name;
+        }
+        if (item.mine && item.assignee_id === userId) return t('todo_delegator_me');
+        return userId;
     }
 
     // ---- wire up events ---------------------------------------------------
@@ -900,6 +1146,13 @@
                 setActiveFilter(tab.dataset.status);
             });
         });
+        // scope switch: 我的待办 / 我委派的
+        document.querySelectorAll('.todo-scope-tab').forEach(function (tab) {
+            tab.addEventListener('click', function () {
+                setScope(tab.dataset.scope);
+            });
+        });
+        paintScopeTabs();
         // overdue toggle
         const overdueBtn = document.getElementById('todo-overdue-toggle');
         if (overdueBtn) {
@@ -943,7 +1196,7 @@
         const submitBtn = document.getElementById('todo-edit-submit');
         if (submitBtn) submitBtn.addEventListener('click', submitTodoEdit);
         // edit modal dirty tracking
-        ['todo-edit-field-title', 'todo-edit-field-desc', 'todo-edit-field-kind', 'todo-edit-field-priority', 'todo-edit-field-due'].forEach(function (id) {
+        ['todo-edit-field-title', 'todo-edit-field-desc', 'todo-edit-field-kind', 'todo-edit-field-priority', 'todo-edit-field-due', 'todo-edit-field-assignee'].forEach(function (id) {
             const el = document.getElementById(id);
             if (el) el.addEventListener('input', function () { _dirty = true; });
         });
@@ -1007,6 +1260,13 @@
     window.operateTodo = operateTodo;
     window.closeTodoDetail = closeTodoDetail;
     window.closeTodoEdit = closeTodoEdit;
+    window.submitTodoEdit = submitTodoEdit;
+    // Delegation entries, referenced from the generated list rows and the
+    // drawer's action bar.
+    window.setTodoScope = setScope;
+    window.recallTodo = recallTodo;
+    window.submitDelegation = submitDelegation;
+    window.submitDelegationFromPicker = submitDelegationFromPicker;
 
     // init once DOM is ready (script is deferred, so DOM is parsed).
     if (document.readyState === 'loading') {

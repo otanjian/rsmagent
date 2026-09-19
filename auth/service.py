@@ -6141,6 +6141,33 @@ class IdentityService:
             return None
         return dict(rows[0])
 
+    def describe_member(
+        self, tenant_id: str, user_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Name one account inside one tenant, for display only.
+
+        Deliberately *not* :meth:`resolve_assignable_member`: that one answers
+        "may I hand work to this member right now" and therefore requires an
+        active membership, account and tenant. This one answers "who is this"
+        about somebody the caller can already see on their own item, so a member
+        deactivated after receiving work still gets named instead of appearing
+        as an unknown holder. It grants nothing and is not a membership test —
+        it returns a projection for a user id the caller already holds, and
+        still confines the lookup to ``tenant_id``.
+        """
+        if not user_id:
+            return None
+        rows = self._store.execute(
+            "SELECT u.id AS user_id, u.username, m.display_name"
+            " FROM memberships m"
+            " JOIN users u ON u.id=m.user_id"
+            " WHERE m.tenant_id=? AND u.id=?",
+            (tenant_id, user_id),
+        )
+        if not rows:
+            return None
+        return dict(rows[0])
+
     def create_member(
         self,
         *,

@@ -155,7 +155,12 @@ class TestAssignOverHttp:
         # The delegator sees read-only facts, not actions the server would refuse.
         view = delegated["items"][0]
         assert view["assignee_id"] == _user_id(api[1], "bob")
+        assert view["assignee"]["username"] == "bob"
+        assert view["assignee"]["display_name"] == "Bob"
         assert view["can_recall"] is True
+        assert view["can_assign"] is False
+        assert view["can_transfer"] is False
+        assert view["can_reject"] is False
         assert view["can_edit"] is False
         assert view["can_operate"]["complete"] is False
 

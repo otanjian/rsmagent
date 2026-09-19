@@ -37,6 +37,11 @@ MEMBERS = {
 }
 
 
+def _BY_ID(members):
+    """Index the fake directory by user id, mirroring ``describe_member``."""
+    return {m["user_id"]: m for m in members.values()}
+
+
 def _service(
     db_dir,
     *,
@@ -55,6 +60,7 @@ def _service(
         enabled_fn=lambda: True,
         db_path=str(Path(db_dir) / "todo" / "todos.db"),
         member_resolver=lambda username: members.get(username),
+        member_namer=lambda user_id: _BY_ID(members).get(user_id),
         audit_recorder=audit,
     )
 
@@ -340,30 +346,91 @@ class DelegationProjectionTests(_DelegationCase):
     def test_projection_reports_who_may_do_what(self):
         item = self.create()
         mine = self.svc.get(item["id"])
-        self.assertTrue(mine["can_delegate"])
+        # My own item: I may hand it on, and there is nobody to recall it from.
+        self.assertTrue(mine["can_assign"])
+        self.assertFalse(mine["can_transfer"])
+        self.assertFalse(mine["can_reject"])
         self.assertFalse(mine["can_recall"])
 
         moved = self.svc.assign(item["id"], target_username="peer",
                                 expected_version=item["version"])
-        # As the delegator I may read and recall, never act on the content.
+        # As the delegator I may read and recall, never act on the content, and
+        # never pass it on again — it is no longer mine to hand out.
         as_delegator = self.svc.get(item["id"])
         self.assertTrue(as_delegator["can_recall"])
-        self.assertFalse(as_delegator["can_delegate"])
+        self.assertFalse(as_delegator["can_assign"])
+        self.assertFalse(as_delegator["can_transfer"])
+        self.assertFalse(as_delegator["can_reject"])
         self.assertFalse(as_delegator["can_edit"])
         self.assertFalse(as_delegator["can_operate"]["complete"])
 
+        # Having received it, peer may do the work and both pass it on and hand
+        # it back — but recall is the delegator's move, not theirs.
         peer = self.peer_service()
         as_handler = peer.get(moved["id"])
         self.assertTrue(as_handler["can_edit"])
         self.assertTrue(as_handler["can_operate"]["complete"])
-        self.assertTrue(as_handler["can_delegate"])
+        self.assertTrue(as_handler["can_transfer"])
+        self.assertTrue(as_handler["can_reject"])
+        self.assertFalse(as_handler["can_assign"])
+        self.assertFalse(as_handler["can_recall"])
 
     def test_projection_withholds_delegation_without_the_permission(self):
         svc = _service(self.tmp, permissions=("todo.read", "todo.write"))
         item = svc.create(title="t", create_key="k1")
         view = svc.get(item["id"])
-        self.assertFalse(view["can_delegate"])
+        self.assertFalse(view["can_assign"])
+        self.assertFalse(view["can_transfer"])
+        self.assertFalse(view["can_reject"])
         self.assertFalse(view["can_recall"])
+
+    def test_the_delegator_is_told_who_holds_the_item(self):
+        item = self.create()
+        moved = self.svc.assign(item["id"], target_username="peer",
+                                expected_version=item["version"])
+        view = self.svc.get(moved["id"])
+        self.assertEqual(view["assignee_id"], PEER)
+        self.assertEqual(view["assignee"]["username"], "peer")
+        self.assertEqual(view["assignee"]["display_name"], "Peer")
+
+        # The handler gets no copy of their own name: nothing to display there.
+        as_handler = self.peer_service().get(moved["id"])
+        self.assertEqual(as_handler["assignee"]["display_name"], "")
+
+    def test_a_deactivated_handler_is_still_named(self):
+        """Naming is not a membership test.
+
+        ``member_resolver`` requires a live, assignable target and so would
+        return nothing here. The delegator still has to see who took the item
+        over, which is why naming uses its own lookup.
+        """
+        item = self.create()
+        moved = self.svc.assign(item["id"], target_username="peer",
+                                expected_version=item["version"])
+        gone = TodoService(
+            self.svc.actor, enabled_fn=lambda: True,
+            db_path=self.svc._db_path,
+            member_resolver=lambda username: None,
+            member_namer=lambda user_id: {"username": "peer",
+                                          "display_name": "Peer (former)"},
+        )
+        view = gone.get(moved["id"])
+        self.assertEqual(view["assignee"]["display_name"], "Peer (former)")
+
+    def test_naming_failure_degrades_to_the_id(self):
+        item = self.create()
+        moved = self.svc.assign(item["id"], target_username="peer",
+                                expected_version=item["version"])
+        broken = TodoService(
+            self.svc.actor, enabled_fn=lambda: True,
+            db_path=self.svc._db_path,
+            member_resolver=lambda username: MEMBERS.get(username),
+            member_namer=lambda user_id: (_ for _ in ()).throw(RuntimeError("no dir")),
+        )
+        view = broken.get(moved["id"])
+        # The read still succeeds; only the label falls back.
+        self.assertEqual(view["assignee"]["id"], PEER)
+        self.assertEqual(view["assignee"]["display_name"], "")
 
     def test_delegated_view_lists_what_i_handed_out(self):
         mine = self.create(title="mine")

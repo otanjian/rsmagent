@@ -298,6 +298,8 @@ class TodoTool(BaseTool):
             # is written before the todo write.
             member_resolver=lambda username: svc.resolve_assignable_member(
                 ident.tenant_id, username),
+            member_namer=lambda user_id: svc.describe_member(
+                ident.tenant_id, user_id),
             audit_recorder=_audit_recorder(svc, actor),
         )
 

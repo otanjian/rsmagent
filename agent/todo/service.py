@@ -389,6 +389,7 @@ class TodoService:
         app_data_root: Optional[str] = None,
         member_resolver=None,
         audit_recorder=None,
+        member_namer=None,
     ):
         self.actor = actor
         self._enabled_fn = enabled_fn or default_enabled
@@ -405,6 +406,13 @@ class TodoService:
         # *before* the store write, because an action whose audit record failed
         # must not exist at all (see ``_audit_or_raise``).
         self._audit_recorder = audit_recorder
+        # ``member_namer(user_id) -> {"username", "display_name"}`` names the
+        # current handler on the rows the delegator owns but no longer holds, so
+        # the workbench can show who took the item over. Naming only — it grants
+        # nothing, and it differs from ``member_resolver`` in not demanding an
+        # assignable target: a handler deactivated after receiving must still be
+        # named rather than silently rendered as unknown.
+        self._member_namer = member_namer
         # The DB is only opened once we know the actor is bound and the feature
         # is on; opening it lazily avoids creating files for disabled reads.
         self._store_instance: Optional[TodoStore] = None
@@ -510,14 +518,21 @@ class TodoService:
         owner_id = item.get("owner_id")
         i_hold_it = assignee_id == self._me
         i_delegated_it = owner_id == self._me and assignee_id != self._me
+        i_own_it = owner_id == self._me
         may_delegate = self.actor.has("todo.assign")
         active = item.get("status") in ("pending", "in_progress")
         pending = item.get("status") == "pending"
+        # Whatever I hold is mine to pass on, but *which* action that is depends
+        # on where the item came from: handing on my own is 指派, handing on what
+        # somebody gave me is 转交 (and, on the same terms, 退回).
+        may_hand_over = bool(may_delegate and pending and i_hold_it)
+        received = i_hold_it and not i_own_it
         return {
             "id": item["id"],
             "scope_id": item["scope_id"],
             "owner_id": owner_id,
             "assignee_id": assignee_id,
+            "assignee": self._assignee_view(assignee_id, i_delegated_it),
             "title": item["title"],
             "description": item.get("description", ""),
             "kind": item.get("kind", "general"),
@@ -546,12 +561,41 @@ class TodoService:
                 for action, enabled in self._available_status_actions(
                     item.get("status", "pending")).items()
             },
-            # Handing it on (指派 when I own it, 转交 when I received it).
-            "can_delegate": bool(may_delegate and pending and i_hold_it),
+            # One flag per delegation action, each the server's own answer for
+            # that action rather than something the client derives from
+            # ``owner_id``. A delegator reading what they handed out therefore
+            # sees ``can_recall`` and nothing else, which is exactly the
+            # read-and-recall posture the workbench has to offer them.
+            "can_assign": bool(may_hand_over and i_own_it),
+            "can_transfer": bool(may_hand_over and received),
+            "can_reject": bool(may_hand_over and received),
             # Taking back what I handed out. The delegator is the only one who
             # may recall, and never the current holder.
             "can_recall": bool(may_delegate and pending and i_delegated_it),
         }
+
+    def _assignee_view(self, assignee_id: str, i_delegated_it: bool) -> Dict[str, str]:
+        """Name the current handler, only on the rows that have to display it.
+
+        Restricted to items I delegated away because that is the one view that
+        cannot show a handler any other way: the receiver knows who they are,
+        and I no longer hold the item. Everything else gets the bare id, so no
+        member data rides along on rows the actor already holds.
+        """
+        view = {"id": assignee_id, "username": "", "display_name": ""}
+        if not i_delegated_it or not self._member_namer:
+            return view
+        try:
+            target = self._member_namer(assignee_id)
+        except Exception:
+            # Naming is presentation. A directory hiccup must not take down a
+            # read that is otherwise authorized; the row falls back to the id.
+            target = None
+        if not target:
+            return view
+        view["username"] = target.get("username", "") or ""
+        view["display_name"] = target.get("display_name", "") or ""
+        return view
 
     @staticmethod
     def _available_status_actions(status: str) -> Dict[str, bool]:
