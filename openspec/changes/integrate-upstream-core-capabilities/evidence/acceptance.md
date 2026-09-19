@@ -501,3 +501,21 @@ surface)」，`data.status !== 'success'` 即抛错，故规范要求的
 `tests/test_feature_action_projection.py` 的 `ACCEPTED` 集合与 `auth/capability_matrix.py`
 同批改动，两处必须一致，否则门禁与投影会打架）。
 
+### 13.5 翻转后在交付代码上的端到端复核
+
+翻转提交本身在**全新 scratch 部署**上复核（`de30b533`，端口 9946、`COW_DATA_DIR=/tmp/rdai-acc/d-flip`，
+日志确认 `Mode: Agent (workspace: /private/tmp/rdai-acc/d-flip)`），确认交付代码——不是补丁检出——
+真的把八个动作放出去：
+
+```
+GET /auth/context → feature_actions 八键全部 {"available": true, "reason": ""}
+GET  /api/scheduler/runs            → 200 {"runs": [], "history_scope": "attributed_only"}
+GET  /api/scheduler/instances       → 200 {"instances": []}
+GET  /api/scheduler/recipients      → 200 {"recipients": []}
+GET  /api/sessions/nope/context_usage   → 403 {"message": "default agent ambiguous"}   ← handler 已到达
+POST /api/sessions/nope/compact_context → 403 {"message": "default agent ambiguous"}   ← 非门禁 503
+```
+
+两个上下文路由回答的是**授权层**的 403（未给 `agent_id` 且默认 Agent 不唯一），
+不是门禁的 503——这正是「已开放」在运行时的形状：路由可达、由 handler 自行裁决。
+
