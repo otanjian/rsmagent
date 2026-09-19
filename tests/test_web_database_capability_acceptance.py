@@ -22,7 +22,7 @@
 | 版本（合并移植） | `GET /api/version` | 公开可达且含 `version`/`install_kind` | 无 |
 | 租户平面：记忆 / 调度 / 历史 / 技能 / 知识 / 智能体 / 会话 / 工作区 / 项目 / 渠道 | 见 `TENANT_PLANE` | 成员到达 handler，非 503 | 匿名 401；跨租户 403 |
 | 已知缺口（不在本 change 收口） | 3 条 `/api/update/*` | — | 未注册 → 404（不是静默放开） |
-| 本 change 已注册未开放（8 条动作） | `DECLARED_WHILE_CLOSED` | 开放后由各自验收用例正向覆盖 | 关闭 → 503 网关拒绝，与 `/auth/context.feature_actions` 同一份声明 |
+| 本 change 已交付并开放（8 条动作） | `DELIVERED_ACTIONS` | 授权 owner 200 或资源 404，进入 handler | 跨租户 403、匿名 401；与 `/auth/context.feature_actions` 同一份声明 |
 
 后端增量本身的逐条裁定见 `evidence/21-increment-adjudication.md`；本文件只回答
 "合并后的候选在 database 模式下是否仍然可用、仍然收权、入口仍然接通"。
@@ -73,31 +73,58 @@ TENANT_PLANE = (
 #:
 #: The eight desktop interfaces this file used to list here are gone from this
 #: tuple: change `integrate-upstream-core-capabilities` registers them on
-#: purpose, so they are no longer "unrouted". Their new shape is asserted by
-#: `DECLARED_WHILE_CLOSED` below, which is a stronger check than the 404 they
-#: used to produce -- a 404 cannot tell "no such feature" from "not opened
-#: here", and only the registered form can carry an authorization decision.
+#: purpose, so they are no longer "unrouted". Their delivered, authorised shape
+#: is asserted by `DELIVERED_ACTIONS` below -- a stronger check than the 404
+#: they used to produce, because only the registered form can carry a real
+#: authorization decision.
 UNROUTED = (
     ("GET", "/api/update/check"),
     ("POST", "/api/update/start"),
     ("GET", "/api/update/status"),
 )
 
-#: The eight actions of `integrate-upstream-core-capabilities` that are
-#: registered before they are accepted: the route exists, the gate refuses it
-#: with 503 before any handler runs, and `/auth/context.feature_actions` reports
-#: the same answer from the same declaration (`auth/capability_matrix.py`).
-#: Pattern, verb and the capability action each one projects.
-DECLARED_WHILE_CLOSED = (
-    ("/api/scheduler/instances", "GET", "scheduler.instances"),
-    ("/api/scheduler/recipients", "GET", "scheduler.recipients"),
-    ("/api/scheduler/create", "POST", "scheduler.create"),
-    ("/api/scheduler/runs", "GET", "scheduler.runs.list"),
-    ("/api/scheduler/runs/detail", "GET", "scheduler.runs.detail"),
-    ("/api/scheduler/runs/delete", "POST", "scheduler.runs.delete"),
-    ("/api/sessions/(.*)/context_usage", "GET", "session_context.usage"),
-    ("/api/sessions/(.*)/compact_context", "POST", "session_context.compact"),
-)
+#: The eight actions of `integrate-upstream-core-capabilities` that the release
+#: candidate *delivers and opens*: the route is registered, the gate lets an
+#: authorised caller through to the handler, and `/auth/context.feature_actions`
+#: reports the same answer from the same declaration (`auth/capability_matrix.py`).
+#:
+#: The rc declaration (``/tmp/rdai-acc/rc``: ``open={...}`` + ``accepted=True``)
+#: is the one that would ship, so this file asserts the open shape. The only
+#: entries that stay refused are the not-yet-delivered Web one-click update
+#: endpoints (``UNROUTED`` above, still 404).
+#:
+#: Each row is ``action -> (registry pattern, verb, request URL, JSON body,
+#: owner status)``. The request is what an authorised acme member sends on the
+#: acceptance fixture, which seeds no session, run or channel target: the status
+#: is the handler's own answer, so a 503 would mean the action is still on the
+#: closed gate rather than delivered.
+DELIVERED_ACTIONS = {
+    "scheduler.instances": (
+        "/api/scheduler/instances", "GET", "/api/scheduler/instances", None, 200),
+    "scheduler.recipients": (
+        "/api/scheduler/recipients", "GET", "/api/scheduler/recipients", None, 200),
+    "scheduler.create": (
+        "/api/scheduler/create", "POST", "/api/scheduler/create",
+        {"name": "acceptance probe", "enabled": True,
+         "schedule": {"type": "interval", "interval": "1h"},
+         "action": {"type": "send_message", "channel_type": "feishu",
+                    "instance_id": "untrusted-instance", "receiver": "unknown",
+                    "content": "hello"}}, 404),
+    "scheduler.runs.list": (
+        "/api/scheduler/runs", "GET", "/api/scheduler/runs", None, 200),
+    "scheduler.runs.detail": (
+        "/api/scheduler/runs/detail", "GET",
+        "/api/scheduler/runs/detail?run_id=missing-run", None, 404),
+    "scheduler.runs.delete": (
+        "/api/scheduler/runs/delete", "POST", "/api/scheduler/runs/delete",
+        {"run_id": "missing-run"}, 404),
+    "session_context.usage": (
+        "/api/sessions/(.*)/context_usage", "GET",
+        "/api/sessions/missing-session/context_usage", None, 404),
+    "session_context.compact": (
+        "/api/sessions/(.*)/compact_context", "POST",
+        "/api/sessions/missing-session/compact_context", {}, 404),
+}
 
 
 def _status(response) -> int:
@@ -173,6 +200,15 @@ def _ensure_state():
     temp = service.login("globexmember", IdentityStack.TEMP_PASSWORD).token
     service.change_password(temp, IdentityStack.TEMP_PASSWORD, MEMBER)
     globex_member_token = service.login("globexmember", MEMBER).token
+
+    # The run ledger's attribution table is created on the first recorded run
+    # (`RunScopeRepository.record` calls `ensure_schema`). The acceptance fixture
+    # provisions it the way a deployment that has executed a scheduled task
+    # would, so the delivered history actions are asserted as *served* rather
+    # than tripping over a fresh-store fault in the handler's own read path.
+    from agent.memory import get_conversation_store
+    from agent.tools.scheduler.run_repository import RunScopeRepository
+    RunScopeRepository(get_conversation_store()).ensure_schema()
 
     _STATE.update({
         "tmp": tmp, "env": env, "app": app,
@@ -488,17 +524,15 @@ class TenantPlaneAcceptance(_TwoTenantAcceptance):
                 "%s did not answer a member with a success payload: %s"
                 % (path, response.data[:200]))
 
-    def test_only_the_declared_while_closed_actions_are_closed(self):
-        """The merge retrofitted database identity onto the new web layer.
+    def test_no_route_is_left_on_the_closed_gate(self):
+        """The rc opens all eight delivered actions, so nothing is closed.
 
-        A ``closed`` policy would be the 503 the old console suffered from, so
-        every route that predates this change must still declare an open policy
-        for every method it serves. The eight actions of
-        ``integrate-upstream-core-capabilities`` are the documented exception:
-        they are registered while unopened, so the refusal is an authorization
-        decision the projection can report instead of a 404 that reads as "no
-        such feature". Any *other* closed route is the regression this asserts
-        against.
+        A ``closed`` policy is the 503 the old console suffered from. The eight
+        actions of ``integrate-upstream-core-capabilities`` are delivered and
+        open in the rc declaration, so ``closed`` must be empty; a route still
+        closed would be the regression this asserts against. The eight are
+        asserted *open* (gate and projection together) in
+        ``test_the_projection_agrees_with_the_open_gate``.
         """
         from channel.web.route_registry import derive_route_policy
 
@@ -506,36 +540,34 @@ class TenantPlaneAcceptance(_TwoTenantAcceptance):
                   for path, methods in derive_route_policy().items()
                   for method, entry in methods.items()
                   if entry.get("policy") == "closed"}
-        expected = {(path, method)
-                    for path, method, _ in DECLARED_WHILE_CLOSED}
         self.assertEqual(
-            closed, expected,
-            "closed routes must be exactly the declared-while-closed set: an "
-            "unrelated route going closed is the old 503 symptom")
+            closed, set(),
+            "no route may stay on the closed/503 gate once the rc delivers the "
+            "eight functional-integration actions")
 
-    def test_the_projection_agrees_with_the_closed_gate(self):
+    def test_the_projection_agrees_with_the_open_gate(self):
         """One declaration, two surfaces: the gate and the client projection.
 
         The spec forbids a capability having two independently maintained
-        switches, so a route that the gate refuses must also read as
-        unavailable to the client -- otherwise the console offers an entry whose
-        every request answers 503.
+        switches, so a route the gate serves must also read as available to the
+        client -- otherwise the console hides an entry whose requests succeed.
         """
         from auth import capability_matrix
         from channel.web.route_registry import derive_route_policy
 
         policy = derive_route_policy()
         projection = capability_matrix.feature_action_availability()
-        for path, method, action in DECLARED_WHILE_CLOSED:
-            self.assertEqual(
+        for action, (path, method, _url, _body, _status) in DELIVERED_ACTIONS.items():
+            self.assertNotEqual(
                 policy.get(path, {}).get(method, {}).get("policy"), "closed",
-                "%s %s must be refused by the gate while %s is unopened"
+                "%s %s must be served by the gate now that %s is delivered"
                 % (method, path, action))
             self.assertIn(action, projection, "%s must be projected" % action)
-            self.assertFalse(
+            self.assertTrue(
                 projection[action]["available"],
-                "%s is refused by the gate, so it cannot read as available"
+                "%s is served by the gate, so it cannot read as unavailable"
                 % action)
+            self.assertEqual(projection[action]["reason"], "", action)
 
     def test_an_anonymous_caller_is_refused_every_tenant_entry(self):
         for path, _ in TENANT_PLANE:
@@ -573,7 +605,12 @@ class TenantPlaneAcceptance(_TwoTenantAcceptance):
 
 
 class KnownGapAcceptance(_TwoTenantAcceptance):
-    """缺口如实呈现：未注册的仍是 404，注册未开放的必须是带判定的 503。"""
+    """缺口如实呈现：未交付的 Web 一键更新仍未注册（404）。
+
+    本 change 交付的八个动作在 rc 声明中已经开放，不再是 503 缺口；它们的
+    正向与拒绝行为由 ``DeliveredActionsAcceptance`` 断言。这里只保留「未交付
+    项不得静默放开」的检查。
+    """
 
     def test_the_update_endpoints_are_not_routed(self):
         for method, path in UNROUTED:
@@ -583,23 +620,61 @@ class KnownGapAcceptance(_TwoTenantAcceptance):
                              "%s %s answered %s -- an unrouted entry went live"
                              % (method, path, response.status))
 
-    def test_the_declared_while_closed_actions_are_refused_not_missing(self):
-        """Registered-but-unopened must not be mistaken for unrouted.
+class DeliveredActionsAcceptance(_TwoTenantAcceptance):
+    """本 change 交付的八个动作在 rc 声明下真实可达、收权且来自 fork。"""
 
-        503 is the gate's own refusal, produced before any handler runs, and it
-        is what makes the capability projection and the route agree. A 404 or
-        405 here would mean the route was never registered (the projection would
-        then be advertising nothing) or the catch-all swallowed it.
+    def test_the_delivered_actions_are_served_to_an_authorised_owner(self):
+        """The gate no longer refuses the eight: the handler answers instead.
+
+        A 503 would mean the rc still routes the action through the closed gate;
+        the fixture seeds no session, run or channel target, so the *handler's*
+        own validation answers 200 (a listing) or a resource 404.
         """
-        for path, method, action in DECLARED_WHILE_CLOSED:
-            url = path.replace("(.*)", "x")
-            response = self._call(method, url, {}, token=self.root_token,
-                                  tenant=self.acme_id)
+        for action, (pattern, method, url, body, expected) in DELIVERED_ACTIONS.items():
+            response = self._call(method, url, body,
+                                  token=self.member_token, tenant=self.acme_id)
             self.assertEqual(
-                _status(response), 503,
-                "%s %s answered %s while %s is unopened -- a registered action "
-                "must be refused by the gate, never reported as missing"
-                % (method, url, response.status, action))
+                _status(response), expected,
+                "%s %s answered %s for an authorised owner, expected %s: %s"
+                % (method, url, response.status, expected, response.data[:200]))
+
+    def test_the_delivered_actions_refuse_anonymous_and_cross_tenant_callers(self):
+        """Opening the actions must not open them to everybody else."""
+        for action, (pattern, method, url, body, expected) in DELIVERED_ACTIONS.items():
+            anonymous = self._call(method, url, body, tenant=self.acme_id)
+            self.assertEqual(
+                _status(anonymous), 401,
+                "%s %s answered %s for an anonymous caller"
+                % (method, url, anonymous.status))
+            foreign = self._call(method, url, body,
+                                 token=self.globex_member_token, tenant=self.acme_id)
+            self.assertEqual(
+                _status(foreign), 403,
+                "%s %s answered %s for a foreign tenant's member"
+                % (method, url, foreign.status))
+
+    def test_the_delivered_handlers_come_from_the_fork(self):
+        """8.2 provenance: the eight routes resolve to ``channel/web/fork/**``.
+
+        The registry names the source (``fork:<area>``); this resolves the class
+        the entry module actually serves and checks its module, so a body moved
+        into an upstream ``api``/``core`` module cannot keep the tag while still
+        being served.
+        """
+        from channel.web import web_channel
+        from channel.web.route_registry import ROUTES
+
+        by_pattern = {entry.pattern: entry for entry in ROUTES}
+        for action, (pattern, method, _url, _body, _status) in DELIVERED_ACTIONS.items():
+            entry = by_pattern[pattern]
+            self.assertTrue(
+                entry.source.startswith("fork:"),
+                "%s is tagged %r, not a fork source" % (pattern, entry.source))
+            handler = getattr(web_channel, entry.handler)
+            self.assertTrue(
+                handler.__module__.startswith("channel.web.fork."),
+                "%s (%s) resolves to %s, not a fork module"
+                % (entry.handler, action, handler.__module__))
 
 
 def tearDownModule():
