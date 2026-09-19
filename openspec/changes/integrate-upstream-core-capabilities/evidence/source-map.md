@@ -7,7 +7,7 @@
 | --- | --- | --- | --- |
 | 动作级可用性投影 | —（新建能力，无上游对应） | `auth/capability_matrix.py::feature_action_availability`、`auth/service.py::context_for_tenant` | `tests/test_feature_action_projection.py` |
 | 客户端能力门禁 | —（新建） | `channel/web/static/js/functional-capabilities.js` | `tests/test_feature_action_clients.cjs` |
-| 上下文用量/压缩 | `channel/web/fork/authorization.py`（既有 `_require_session_scope`）、`bridge/agent_bridge.py::peek_agent`、`agent/protocol/agent.py::compact_context` | `channel/web/fork/handlers/context.py`（新建）、`functional-context.js`（新建） | `tests/test_session_context_scope.py`、`tests/test_context_compaction_concurrency.py` |
+| 上下文用量/压缩 | `channel/web/fork/authorization.py`（既有 `_require_session_scope`；新增 `_owned_context_target` 复用其租户绑定/可见性/owner 探针）、`bridge/agent_bridge.py::peek_agent`、`agent/protocol/agent.py::compact_context`；归属前提由 `channel/web/fork/handlers/chat.py::_authorize_chat_session` 在**认领时**落 `tenant_id` 保证（见 `implementation.md`） | `channel/web/fork/handlers/context.py`（新建）、`functional-context.js`（新建） | `tests/test_session_context_scope.py`、`tests/test_context_compaction_concurrency.py`、`tests/test_chat_identity_context.py` |
 | 模型目录/回退链编辑 | 既有 `channel/web/fork/handlers/models.py::save_catalog` / chain | `channel/web/static/js/functional-models.js`（新建） | `tests/test_functional_models.cjs` |
 | 调度实例/接收者/创建 | `channel/web/fork/handlers/scheduler.py`（既有五 handler） | `channel/web/fork/scheduler_targets.py`（新建） | `tests/test_scheduler_create_scope.py` |
 | 运行归属与访问 | `agent/tools/scheduler/integration.py::_record_scheduler_run`、`authorization.py::TaskAccessService.decide` | `agent/tools/scheduler/run_repository.py`、`run_access.py`（新建） | `tests/test_scheduler_run_scope.py` |
@@ -26,8 +26,8 @@
 | `scheduler.runs.list` | `scheduler_runs_list` | R2 已验收 | `accepted=True`，`open={list: ACCESS_READ}` | 已放行 | 同上 + §12 |
 | `scheduler.runs.detail` | `scheduler_runs_detail` | R2 已验收 | `accepted=True`，`open={detail: ACCESS_READ}` | 已放行 | 同上 |
 | `scheduler.runs.delete` | `scheduler_runs_delete` | R2 已验收 | `accepted=True`，`open={delete: ACCESS_EXECUTE}` | 已放行 | 同上 |
-| `session_context.usage` | `session_context_usage` | **R1 待验收** | `accepted=False`，`open={}` | `not_accepted` → 503 | 待 task 3.6 / 4.5 |
-| `session_context.compact` | `session_context_compact` | **R1 待验收** | `accepted=False`，`open={}` | `not_accepted` → 503 | 待 task 3.6 / 4.5 |
+| `session_context.usage` | `session_context_usage` | **R1 待验收** | `accepted=False`，`open={}` | `not_accepted` → 503 | `evidence/acceptance.md` §13（真实验收已执行：30 项 25 PASS / 5 FAIL 跨三缺陷；DEF-1 已修，复测未回全绿） |
+| `session_context.compact` | `session_context_compact` | **R1 待验收** | `accepted=False`，`open={}` | `not_accepted` → 503 | 同上 |
 
 任何部署都可以用 `RDAI_DISABLED_ACTIONS=<逗号分隔动作键>` **只关不开**已 accepted 的动作；
 拼写未知键在启动时即拒绝（`CapabilityConfigurationError`），因此不存在「关错了却静默放行」。

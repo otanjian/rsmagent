@@ -131,7 +131,15 @@ R1/R2 UI 各自依赖需要的动作：压缩用 compact；用量用 usage；创
 新增函数 `_owned_context_target(ctx, session_id: str, agent_id: str | None) -> tuple[str, ConversationStore]`：
 
 1. 先将现有 `_require_owned_session` 的查询限定到已绑定 store 的存储 Agent 键和当前 tenant，保留其“无行时不拒绝”以兼容其他入口，避免同名 session 误匹配他人行。新 handler 再按 history.read → `_require_session_scope` 取得真实 Agent；从 registry 的 profile.workspace 取得受信 ConversationStore。
-2. 用该已绑定 store 的 `_dimensions()["agent_id"]` 匹配 sessions 的 agent_id，同时匹配 tenant_id=ctx.tenant_id、owner=ctx.user_id、session_id 和 channel_type='web'。无行 404。不使用仅 WHERE session_id 的现有检查作为最终证据。
+2. 用该已绑定 store 的 `_dimensions()["agent_id"]` 匹配 sessions 的 agent_id，同时匹配 tenant_id、owner=ctx.user_id、session_id 和 channel_type='web'。无行 404。不使用仅 WHERE session_id 的现有检查作为最终证据。
+   租户谓词为 `tenant_id=ctx.tenant_id OR tenant_id=''`，与兄弟守卫 `_require_owned_session` 同口径：
+   **归属主张在 `owner=?` 上**，owner 不是本人仍是「无行」，另一租户的真实 id 仍被排除。
+   空桶必须容忍，因为 Web 输入框的认领写入曾经不落租户章（见下），而唯一修复它的是启动期回填——
+   只匹配精确租户会让「用户刚新建的会话」在整个进程生命周期内对两个接口都是 404（R1 真实验收的 DEF-1）。
+   另一半修复在写侧：`channel/web/fork/handlers/chat.py::_authorize_chat_session` 的认领 INSERT 带上
+   `ctx.tenant_id`，新行出生即完整，不再依赖重启回填。两半都由
+   `tests/test_session_context_scope.py`（本人未落章行 200 / 他人未落章行 404）与
+   `tests/test_chat_identity_context.py`（认领行携带租户）钉住，且两条用例在撤掉修复后失败。
 3. 返回业务 Agent ID 和 store。压缩另检查 chat.use、`_require_agent_action(ctx, resolved, "use")`；不得因为管理员而省略 durable owner 条件。
 4. 通过 bridge.peek_agent 原业务 session_id + resolved 查现有运行时；无实例返回 no_live_context。GET 不 get_agent、不模型调用、不初始化工具。
 
