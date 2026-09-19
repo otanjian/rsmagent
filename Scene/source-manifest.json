@@ -300,11 +300,6 @@
       "sha256": "3ea8bb51db8427c3dd8b12b4e9c82d45ce57a60983ab6fe058792e4f2a8e13be"
     },
     {
-      "path": "procurement_tender/skills/bid-analysis/assets/workbench-template.html.bak",
-      "source": "skills/bid-analysis/assets/workbench-template.html.bak",
-      "sha256": "1f53d25dc6f090c83a5eb42609523aa30b988932bb229e8993acc650cec3ac9a"
-    },
-    {
       "path": "procurement_tender/skills/bid-analysis/assets/workbench-template.html",
       "source": "skills/bid-analysis/assets/workbench-template.html",
       "sha256": "6c9ff1f5d81cc1975c67b86f5cc1cfde3f1a0f8a4b027f4992110644a08a3b94"
