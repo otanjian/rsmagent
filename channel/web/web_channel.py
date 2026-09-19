@@ -140,6 +140,9 @@ from channel.web.todo_handlers import (
     TodoDetailHandler,
     TodoEventsHandler,
     TodoSourceHandler,
+    TodoDelegatedHandler,
+    TodoAssigneesHandler,
+    TodoDelegationHandler,
 )
 from scenes.api import ScenesHandler, SceneActivateHandler
 from scenes.api_workbench import SceneWorkbenchImportHandler

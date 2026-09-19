@@ -75,12 +75,56 @@ def _csrf_ok() -> bool:
     return _origin_ok()
 
 
-def _get_identity_service() -> IdentityService:
+def _identity_db_path() -> str:
     from config import conf, get_data_root
     import os
     configured = conf().get("identity_db_path")
-    db_path = configured or os.path.join(get_data_root(), "identity.db")
-    return IdentityService(db_path)
+    return configured or os.path.join(get_data_root(), "identity.db")
+
+
+def _get_identity_service() -> IdentityService:
+    return IdentityService(_identity_db_path())
+
+
+def _member_resolver_for(tenant_id: str):
+    """Bind the receiver lookup to one tenant.
+
+    The delegation target is resolved server-side inside the acting tenant, so a
+    login name from another tenant is simply not found — the todo module never
+    queries identity data itself, and the caller cannot name a tenant.
+    """
+    identity = _get_identity_service()
+
+    def resolve(username: str):
+        return identity.resolve_assignable_member(tenant_id, username)
+
+    return resolve
+
+
+def _audit_recorder_for(actor: TodoActor):
+    """Write delegation events to the identity audit store.
+
+    The todo store and the audit store are separate databases, so this is a
+    separate write rather than one shared transaction; ``TodoService`` calls it
+    *before* the todo write and refuses the action if it fails, which is the
+    direction that cannot produce an unaudited delegation.
+    """
+    from auth.audit import AuditStore
+    audit = AuditStore(_identity_db_path())
+
+    def record(event: dict) -> None:
+        audit.record(
+            actor_user_id=actor.owner_id,
+            actor_username=actor.username,
+            tenant_id=actor.scope_id,
+            target_tenant_id=actor.scope_id,
+            action=str(event.get("action", "")),
+            target=str(event.get("target", "")),
+            redacted_changes=event.get("changes") or {},
+            result=str(event.get("result", "success")),
+        )
+
+    return record
 
 
 def _database_session_token() -> str:
@@ -143,7 +187,13 @@ def _build_service() -> TodoService:
         from common.log import logger
         logger.error("[TodoService] private tenant data root unavailable: %s", e)
         raise TodoUnavailable("租户待办存储不可用") from e
-    return TodoService(actor, enabled_fn=default_enabled, app_data_root=app_data_root)
+    return TodoService(
+        actor,
+        enabled_fn=default_enabled,
+        app_data_root=app_data_root,
+        member_resolver=_member_resolver_for(actor.scope_id),
+        audit_recorder=_audit_recorder_for(actor),
+    )
 
 
 def _json(data: Any) -> str:
@@ -339,6 +389,123 @@ class TodoSourceHandler:
             data = svc.source(item_id)
             data["status"] = "success"
             return _json(data)
+        except TodoServiceError as e:
+            return _error_response(e)
+        except web.HTTPError:
+            raise
+        except Exception:
+            from common.log import logger
+            logger.exception("[TodoService] request failed")
+            return _error_response(TodoServiceError("待办服务暂时不可用", code="internal", http_status=500))
+
+
+class TodoDelegatedHandler:
+    """GET /api/todos/delegated - what I handed to somebody else.
+
+    A separate view rather than a filter on ``/api/todos``: the two sets are
+    disjoint (assigned-to-me vs owned-by-me-and-held-by-another), and mixing them
+    would offer actions on this screen that only the current holder may take.
+    Registered before the ``{id}`` wildcard so it is not read as a todo id.
+    """
+
+    def GET(self):
+        web.header("Content-Type", "application/json; charset=utf-8")
+        try:
+            inp = web.input(status="open", q="", overdue="false", page="1", page_size="20")
+            svc = _build_service()
+            overdue = str(inp.overdue).lower() in ("1", "true", "yes")
+            data = svc.delegated(
+                status=str(inp.status) or "open",
+                q=str(inp.q) or None,
+                overdue=overdue,
+                page=_int_query("page", 1),
+                page_size=_int_query("page_size", 20),
+            )
+            result = dict(data)
+            result["status"] = "success"
+            return _json(result)
+        except TodoServiceError as e:
+            return _error_response(e)
+        except web.HTTPError:
+            raise
+        except Exception:
+            from common.log import logger
+            logger.exception("[TodoService] request failed")
+            return _error_response(TodoServiceError("待办服务暂时不可用", code="internal", http_status=500))
+
+
+class TodoAssigneesHandler:
+    """GET /api/todos/assignees - the delegation receiver picker source.
+
+    Gated by ``todo.assign`` alone. Deliberately *not* ``tenant.members.read``:
+    that permission is a necessary condition for the tenant-administration
+    surfaces, and the member default set excludes it on purpose. Reading it would
+    need a separate authorization decision, so this endpoint has its own minimal
+    projection (login name + display name) under its own permission.
+
+    The projection is served straight from the identity service and never touches
+    the todo store, so no todo database is created for a picker read.
+    """
+
+    def GET(self):
+        web.header("Content-Type", "application/json; charset=utf-8")
+        try:
+            if not default_enabled():
+                raise TodoDisabled()
+            actor = _resolve_actor()
+            if not actor.has("todo.assign"):
+                raise TodoPermissionDenied("无待办委派权限")
+            members = _get_identity_service().list_assignable_members(actor.scope_id)
+            return _json({"status": "success", "items": members})
+        except TodoServiceError as e:
+            return _error_response(e)
+        except web.HTTPError:
+            raise
+        except Exception:
+            from common.log import logger
+            logger.exception("[TodoService] request failed")
+            return _error_response(TodoServiceError("待办服务暂时不可用", code="internal", http_status=500))
+
+
+class TodoDelegationHandler:
+    """POST /api/todos/{id}/delegation - one entry point for the four actions.
+
+    ``action`` selects assign / transfer / recall / reject; the receiver, when the
+    action needs one, is a login name resolved server-side inside the acting
+    tenant. An unknown action is a validation error, never a silent no-op.
+    """
+
+    _TARGETED = ("assign", "transfer")
+    _KNOWN = ("assign", "transfer", "recall", "reject")
+
+    def POST(self, item_id: str = ""):
+        web.header("Content-Type", "application/json; charset=utf-8")
+        if not _csrf_ok():
+            return _error_response(TodoPermissionDenied("来源校验失败"))
+        try:
+            body = _read_json_body()
+            action = str(body.get("action", "") or "")
+            if action not in self._KNOWN:
+                return _error_response(
+                    TodoFieldValidationError("未知的委派动作", field="action"))
+            expected_version = body.get("expected_version")
+            if not isinstance(expected_version, int):
+                return _error_response(
+                    TodoFieldValidationError("缺少 expected_version",
+                                             field="expected_version"))
+            note = str(body.get("note", "") or "")
+            svc = _build_service()
+            if action in self._TARGETED:
+                item = getattr(svc, action)(
+                    item_id,
+                    target_username=body.get("assignee"),
+                    expected_version=expected_version,
+                    note=note,
+                )
+            else:
+                item = getattr(svc, action)(
+                    item_id, expected_version=expected_version, note=note)
+            return _json({"status": "success", "item": item})
         except TodoServiceError as e:
             return _error_response(e)
         except web.HTTPError:
