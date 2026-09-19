@@ -757,8 +757,8 @@ _OUTPUT_PREVIEW_LIMIT = 1000
 
 
 def _record_scheduler_run(task: dict, agent_id: str, trigger: str = "scheduled"):
-    """Open a ``runs`` row for one scheduler execution, or ``None`` if runs
-    tracking is unavailable.
+    """Open a ``runs`` row for one scheduler execution and attribute it, or
+    ``None`` when run tracking is unavailable.
 
     Reuses the same global ``runs`` table that native turns, delegations and
     subagents write to (now agent-scoped in the one global ``index.db``), so a
@@ -767,22 +767,111 @@ def _record_scheduler_run(task: dict, agent_id: str, trigger: str = "scheduled")
     to be closed by :func:`finish_run`, or ``None`` when the store/runs table
     isn't ready — recording a run must never block a delivery.
 
+    The ``runs.agent_id`` and the ``fork_scheduler_run_scopes`` snapshot are
+    written with the *real business Agent id* (the default Agent resolved
+    through the registry, never the storage layer's empty default key). The
+    snapshot is best-effort: if it cannot be taken, or its write fails, the run
+    row is left without a scope — and therefore invisible to history — rather
+    than falling back to the unscoped ledger. Attribution never changes whether
+    or how the task is delivered.
+
     ``trigger`` records how the tick fired — ``"scheduled"`` for the timer,
     ``"manual"`` for a user-initiated "run now" — so history can tell an
     automatic run apart from one a person kicked off.
     """
     try:
+        import time
         import uuid
 
         from agent.memory import get_conversation_store
+        from agent.tools.scheduler.authorization import (
+            SCOPE_PERSONAL,
+            SCOPE_PUBLIC,
+            task_owner,
+        )
+        from agent.tools.scheduler.run_repository import RunScope, RunScopeRepository
+        from common.runtime_identity import current_identity
+
+        def _business_agent_id() -> str:
+            """A real, non-empty business Agent id for the runs ledger.
+
+            The caller resolves it from the live registry already; the fallback
+            exists so a direct call with ``agent_id=""`` still records the
+            default Agent by id rather than the storage layer's empty key.
+            """
+            resolved = (agent_id or "").strip()
+            if resolved:
+                return resolved
+            try:
+                from agent.registry import get_agent_registry
+                registry = get_agent_registry()
+                return (
+                    effective_task_agent_id(task, registry, validate=True)
+                    or registry.default_agent_id
+                    or ""
+                )
+            except Exception:
+                return ""
+
+        def _bound_tenant(real_agent_id: str) -> str:
+            """The tenant the Agent is bound to *now* (the re-verified scope)."""
+            try:
+                from auth.service import get_identity_service
+                binding = get_identity_service().get_agent_binding(real_agent_id)
+                return ((binding or {}).get("tenant_id") or "").strip()
+            except Exception:
+                return ""
+
+        def _execution_scope(run_id: str, real_agent_id: str, session_id: str):
+            """The immutable ownership snapshot for this execution, or ``None``.
+
+            A task with a member owner is personal: the fire must be executing
+            as that member, or the run is unattributable. A task with no owner
+            is public only when it carries an explicit ``scope='public'``
+            marker (what ``create_task`` writes) and the Agent is currently
+            tenant-bound; a legacy row that is merely *implied* public is not
+            evidence of ownership and stays invisible, as the spec requires.
+            """
+            task_id = str(task.get("id") or "")
+            now = int(time.time())
+            owner = task_owner(task)
+            owner_user = (owner.get("user_id") or "").strip()
+            owner_tenant = (owner.get("tenant_id") or "").strip()
+            if owner_user and owner_tenant:
+                identity = current_identity()
+                if (identity.user_id or "") != owner_user \
+                        or (identity.tenant_id or "") != owner_tenant:
+                    return None
+                return RunScope(
+                    run_id=run_id, tenant_id=owner_tenant,
+                    owner_user_id=owner_user, scope=SCOPE_PERSONAL,
+                    agent_id=real_agent_id, task_id=task_id,
+                    session_id=session_id, created_at=now,
+                )
+            if (task.get("scope") or "") != SCOPE_PUBLIC:
+                return None
+            tenant_id = _bound_tenant(real_agent_id)
+            if not tenant_id:
+                return None
+            return RunScope(
+                run_id=run_id, tenant_id=tenant_id, owner_user_id="",
+                scope=SCOPE_PUBLIC, agent_id=real_agent_id, task_id=task_id,
+                session_id=session_id, created_at=now,
+            )
 
         action = task.get("action", {})
         session_id = action.get("notify_session_id") or action.get("receiver") or ""
+        real_agent_id = _business_agent_id()
+        if not real_agent_id:
+            # Never write an empty Agent key into the ledger: an unattributable
+            # run is dropped rather than shown as everyone's.
+            logger.warning("[Scheduler] run recording skipped: no business Agent id")
+            return None
         run_id = uuid.uuid4().hex
         store = get_conversation_store()  # routing-aware: scoped to agent_id
         created = store.create_run(
             run_id,
-            agent_id=agent_id or "",
+            agent_id=real_agent_id,
             session_id=session_id,
             task_id=str(task.get("id") or ""),
             task_source="scheduler",
@@ -798,6 +887,20 @@ def _record_scheduler_run(task: dict, agent_id: str, trigger: str = "scheduled")
         )
         if not created:
             return None
+        scope = _execution_scope(run_id, real_agent_id, session_id)
+        if scope is not None:
+            try:
+                repository = RunScopeRepository(store)
+                repository.ensure_schema()
+                repository.record(scope)
+            except Exception as scope_error:
+                # The run row is already committed. A failed attribution must
+                # not turn into a retry, must not block finish_run, and must
+                # not widen the query: it only leaves this run invisible.
+                logger.warning(
+                    "[Scheduler] run scope write failed for %s: %s",
+                    run_id, scope_error,
+                )
         return store, run_id
     except Exception as e:
         logger.debug(f"[Scheduler] run recording unavailable: {e}")

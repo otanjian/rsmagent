@@ -66,6 +66,11 @@ function setup(payload) {
             },
         },
         fetch: async () => ({ json: async () => payload }),
+        // console.js is a browser script: it reaches for `window` to find the
+        // feature modules loaded ahead of it. The slice under test mounts the
+        // scheduler console, which is a no-op when the module is absent -- so an
+        // empty window is the honest sandbox here, not a stub to work around.
+        window: {},
     };
     vm.createContext(ctx);
     // Slice includes `let tasksLoaded` and the loadTasksView body. loadAgentCatalog

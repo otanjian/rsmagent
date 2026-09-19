@@ -118,18 +118,60 @@
     let _dirty = false;        // unsaved edit modal changes
 
     // ---- summary badge ----------------------------------------------------
-    function applySummaryBadge(summary) {
-        // A small count shown next to the sidebar todo item (like the tasks badge).
-        const badge = document.querySelector('.sidebar-item[data-view="todo"] .nav-badge');
+    // The top-bar bell is the todo's only entry point, so one summary render
+    // paints one badge. Keeping it a named pass holds the 0 / value / 99+
+    // decision in a single place (todo-workbench: 本人角标).
+    const BADGE_OVERFLOW = 99;
+    const BELL_BTN_ID = 'todo-bell-btn';
+    const BELL_BADGE_ID = 'todo-bell-badge';
+
+    function formatBadgeCount(count) {
+        const n = Math.floor(Number(count) || 0);
+        if (n <= 0) return '';
+        return n > BADGE_OVERFLOW ? BADGE_OVERFLOW + '+' : String(n);
+    }
+
+    function paintBadge(badge, text, overdue, overdueClass) {
         if (!badge) return;
-        if (!summary || !summary.enabled || !summary.bound || !summary.open) {
+        if (!text) {
             badge.classList.add('hidden');
+            badge.textContent = '';
             return;
         }
-        badge.textContent = summary.open;
+        badge.textContent = text;
         badge.classList.remove('hidden');
-        if (summary.overdue) badge.classList.add('bg-red-500');
-        else badge.classList.remove('bg-red-500');
+        // The caller names the overdue class so the red state does not depend on
+        // which utility class the stylesheet resolves last.
+        if (overdueClass) {
+            if (overdue) badge.classList.add(overdueClass);
+            else badge.classList.remove(overdueClass);
+        }
+    }
+
+    function setBellOffered(offered) {
+        const btn = document.getElementById(BELL_BTN_ID);
+        if (!btn) return;
+        if (offered) btn.classList.remove('hidden');
+        else btn.classList.add('hidden');
+    }
+
+    function applySummaryBadge(summary) {
+        const usable = !!(summary && summary.enabled && summary.bound);
+        const text = usable ? formatBadgeCount(summary.open) : '';
+        const overdue = usable && !!summary.overdue;
+        paintBadge(document.getElementById(BELL_BADGE_ID), text, overdue, 'todo-bell-badge-overdue');
+        // The entry is withheld only on a server fact: capability withdrawn or
+        // no bound subject. No sidebar entry is left to withhold with it.
+        setBellOffered(!(summary && (summary.enabled === false || summary.bound === false)));
+    }
+
+    // A status that means the server judged this identity, as opposed to a read
+    // that merely failed. 401/403 say the identity may not read todos at all;
+    // the feature-off 404 says the deployment withdrew the capability.
+    function summaryDenied(err) {
+        if (!err) return false;
+        if (err.status === 401 || err.status === 403) return true;
+        return err.code === 'todo_disabled';
     }
 
     async function refreshSummary() {
@@ -138,8 +180,57 @@
             applySummaryBadge(data);
             return data;
         } catch (e) {
-            return { enabled: false, bound: false, open: 0, overdue: 0 };
+            // Unknown, not "off": clear the count but keep the entry, so one
+            // transient failure cannot erase the way in. An authoritative
+            // denial still withholds the entry.
+            applySummaryBadge(null);
+            if (summaryDenied(e)) setBellOffered(false);
+            return null;
         }
+    }
+
+    // ---- top-bar bell entry -----------------------------------------------
+    // The header is upstream-shared markup, so the fork injects its entry from
+    // this module at a stable anchor rather than editing chat.html
+    // (fork-upstream-decoupling: fork frontend ships as its own module).
+    function mountTodoBell() {
+        const header = document.querySelector('.workbench-header');
+        if (!header) return;                              // no workbench shell here
+        if (document.getElementById(BELL_BTN_ID)) return; // idempotent
+        const label = t('menu_todo');
+        const btn = document.createElement('button');
+        btn.id = BELL_BTN_ID;
+        btn.type = 'button';
+        btn.className = 'todo-bell-btn p-2 rounded-lg hover:bg-slate-100 ' +
+            'dark:hover:bg-white/10 cursor-pointer transition-colors duration-150';
+        // console.js's applyI18n() ran before this module loaded, so seed the
+        // tooltip and the accessible name here; the data-* keys keep both
+        // localized on later language switches.
+        btn.setAttribute('data-tip-key', 'menu_todo');
+        btn.setAttribute('data-tooltip', label);
+        btn.setAttribute('data-tooltip-pos', 'bottom');
+        btn.setAttribute('data-i18n-aria-label', 'menu_todo');
+        btn.setAttribute('aria-label', label);
+        btn.innerHTML = '<i class="fas fa-bell text-slate-500 dark:text-slate-400" aria-hidden="true"></i>';
+        const badge = document.createElement('span');
+        badge.id = BELL_BADGE_ID;
+        badge.className = 'hidden';
+        badge.setAttribute('aria-hidden', 'true');
+        btn.appendChild(badge);
+        btn.addEventListener('click', openTodoFromBell);
+        // Between the page title and the tenant selector. Falling back to the
+        // last header action and then to the header itself means a different
+        // header shape never drops the entry silently.
+        const anchor = document.getElementById('tenant-selector') ||
+            document.getElementById('workspace-toggle-btn');
+        if (anchor && anchor.parentNode === header) header.insertBefore(btn, anchor);
+        else header.appendChild(btn);
+    }
+
+    function openTodoFromBell() {
+        // The todo page's address: reuse the console's availability gate, leave
+        // check and cross-area switch rather than reaching the view directly.
+        if (typeof window.navigateTo === 'function') window.navigateTo('todo');
     }
 
     // ---- list rendering ---------------------------------------------------
@@ -760,11 +851,25 @@
         document.getElementById('todo-detail-overlay').addEventListener('click', function (e) {
             if (e.target === e.currentTarget) closeTodoDetail();
         });
+
+        // The bell is the cross-view entry, so it is mounted once here, gets a
+        // count without waiting for a visit to the todo page, and refreshes on
+        // window focus. No interval/SSE/push: these are the refresh points
+        // todo-workbench allows.
+        mountTodoBell();
+        refreshSummary();
+        if (typeof window.addEventListener === 'function') {
+            window.addEventListener('focus', function () { refreshSummary(); });
+        }
     }
 
     // ---- expose to global scope for onclick/fetch --------------------------
     window.loadTodosView = loadTodosView;
     window.refreshTodosView = refreshTodosView;
+    // Exposed like the other view entry points so the shipped module can be
+    // exercised directly (see tests/test_todo_frontend.cjs).
+    window.mountTodoBell = mountTodoBell;
+    window.refreshSummary = refreshSummary;
     // Register the fork TODO view with console.js (change
     // fork-decoupling-and-tenant-hardening, task 8.6). No `repaint`: a language
     // switch left this view untouched before, and it still does.

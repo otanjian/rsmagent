@@ -103,6 +103,10 @@ function bootNav(context) {
     const sandbox = {
         _identityMode: () => 'database',
         _baseAuthContext: () => context,
+        // console.js is a browser script: the Tasks mount looks up its feature
+        // module through `window`. Absent the module the mount is a no-op, so an
+        // empty window is the honest sandbox for these slices.
+        window: {},
     };
     vm.createContext(sandbox);
     vm.runInContext(
@@ -273,6 +277,10 @@ function bootTasks(payload) {
             },
         },
         fetch: async () => ({ json: async () => payload }),
+        // console.js is a browser script: the Tasks mount looks up its feature
+        // module through `window`. Absent the module the mount is a no-op, so an
+        // empty window is the honest sandbox for this slice.
+        window: {},
     };
     vm.createContext(ctx);
     const from = consoleJs.indexOf('let tasksLoaded = false;');

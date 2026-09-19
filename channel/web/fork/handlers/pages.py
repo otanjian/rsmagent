@@ -59,6 +59,16 @@ class ChatHandler:
                   'js/appearance.js', 'js/scenes/index.js',
                   'js/identity-admin.js', 'js/todos.js', 'js/fragments.js',
                   'css/console.css', 'css/appearance.css']
+        # The functional modules are discovered rather than listed, for the same
+        # reason the i18n namespaces are: they are added per feature, and a name
+        # missed here would leave a browser running an upgraded console against a
+        # cached copy of a module the page already references.
+        try:
+            js_dir = os.path.join(_WEB_ROOT, 'static', 'js')
+            assets += [f'js/{name}' for name in sorted(os.listdir(js_dir))
+                       if name.startswith('functional-') and name.endswith('.js')]
+        except OSError:
+            pass
         # The per-domain i18n namespaces are discovered rather than listed: the
         # split (task 8.5) adds files over time, and a name missed here would
         # leave a browser rendering an upgraded console with a stale dictionary.

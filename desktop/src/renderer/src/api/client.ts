@@ -12,6 +12,7 @@ import type {
   SchedulerTask,
   SchedulerRun,
   SchedulerRunDetail,
+  SchedulerRunPage,
   TaskSchedule,
   TaskAction,
   SchedulerInstance,
@@ -126,6 +127,29 @@ class ApiClient {
       }
     }
     return { path: url, options: opts }
+  }
+
+  /**
+   * Gate one business call on a per-action capability (design D2).
+   *
+   * The check happens BEFORE the request is issued, so a closed action never
+   * reaches the broker and the UI can show "not open in this deployment"
+   * instead of a late server refusal. It awaits the projection, so the first
+   * call after a reconnect/re-login does not race the `/auth/context` fetch.
+   */
+  private async requireFeature(key: string): Promise<void> {
+    await desktopContext.requireFeature(key)
+  }
+
+  /**
+   * Turn a 200-with-`status:"error"` body into a thrown error. The new
+   * scheduler/context endpoints answer real error statuses, but the legacy
+   * `status` convention still exists, and a caller must never mistake a failed
+   * body for a successful empty list.
+   */
+  private failBody(data: { status?: string; message?: string; code?: string } | null | undefined): never {
+    const message = data?.message || data?.code || 'the request failed'
+    throw new Error(message)
   }
 
   /**
@@ -505,6 +529,7 @@ class ApiClient {
   }
 
   async getContextUsage(sessionId: string, agentId?: string): Promise<{ status: string } & ContextUsage> {
+    await this.requireFeature('session_context.usage')
     return this.request(this.scoped(`/api/sessions/${encodeURIComponent(sessionId)}/context_usage`, agentId))
   }
 
@@ -522,6 +547,9 @@ class ApiClient {
     after?: number
     usage?: ContextUsage | null
   }> {
+    // A write: gate before issuing, and never replay it. The caller must not
+    // retry a network-ambiguous compaction (it could commit twice server-side).
+    await this.requireFeature('session_context.compact')
     return this.request(this.scoped(`/api/sessions/${encodeURIComponent(sessionId)}/compact_context`, agentId), {
       method: 'POST',
       body: JSON.stringify(agentId ? { agent_id: agentId } : {}),
@@ -842,11 +870,18 @@ class ApiClient {
     return data.tasks
   }
 
-  // Execution history for scheduled tasks, newest first. In multi-Agent mode we
-  // send an explicit empty agent_id so the backend returns the whole team's
-  // history (mirroring the task list); single-Agent mode omits the param.
-  // Pass a taskId to narrow to one task's runs.
-  async getSchedulerRuns(taskId = '', limit = 100, offset = 0): Promise<SchedulerRun[]> {
+  // Execution history for scheduled tasks, newest first, gated on
+  // `scheduler.runs.list`. In multi-Agent mode we send an explicit empty
+  // agent_id so the backend returns the whole team's history (mirroring the
+  // task list); single-Agent mode omits the param. Pass a taskId to narrow to
+  // one task's runs.
+  //
+  // `history_scope` is part of the contract: the server only returns runs whose
+  // execution-time attribution it can prove, so the page can state the scope.
+  // A `status !== 'success'` body throws — it is never turned into an empty
+  // page, which would disguise a refusal or outage as "no records".
+  async getSchedulerRunPage(taskId = '', limit = 100, offset = 0): Promise<SchedulerRunPage> {
+    await this.requireFeature('scheduler.runs.list')
     const qs = new URLSearchParams()
     if (this.activeAgentId) qs.set('agent_id', '')
     if (taskId) qs.set('task_id', taskId)
@@ -854,40 +889,71 @@ class ApiClient {
     if (offset) qs.set('offset', String(offset))
     const query = qs.toString()
     const path = query ? `/api/scheduler/runs?${query}` : '/api/scheduler/runs'
-    const data = await this.request<{ status: string; runs: SchedulerRun[] }>(path)
-    return data.runs || []
+    const data = await this.request<{ status: string; runs?: SchedulerRun[]; message?: string; code?: string }>(
+      path
+    )
+    if (data.status !== 'success') this.failBody(data)
+    return { runs: data.runs || [], history_scope: 'attributed_only' }
+  }
+
+  // Legacy shape kept for the notification poll and any other existing caller.
+  // The history page uses `getSchedulerRunPage` so it can read `history_scope`;
+  // both share one implementation and one gate.
+  async getSchedulerRuns(taskId = '', limit = 100, offset = 0): Promise<SchedulerRun[]> {
+    const page = await this.getSchedulerRunPage(taskId, limit, offset)
+    return page.runs
   }
 
   // Delete a single execution-history record from the runs ledger. Removes only
   // the list item; the delivered message in the session history is untouched.
+  // Gated on `scheduler.runs.delete`; a refused delete must not be reported as
+  // success, so a non-success body throws.
   async deleteSchedulerRun(runId: string): Promise<void> {
-    await this.request<{ status: string }>('/api/scheduler/runs/delete', {
-      method: 'POST',
-      body: JSON.stringify({ run_id: runId }),
-    })
+    await this.requireFeature('scheduler.runs.delete')
+    const data = await this.request<{ status: string; message?: string; code?: string }>(
+      '/api/scheduler/runs/delete',
+      {
+        method: 'POST',
+        body: JSON.stringify({ run_id: runId }),
+      }
+    )
+    if (data.status !== 'success') this.failBody(data)
   }
 
   // Runs across ALL Agents that started after `since` (epoch seconds). Powers
   // the cross-session scheduler notification poll: a scheduled task can fire
   // into a session (any Agent) the user isn't viewing, so this is deliberately
   // NOT scoped to the active Agent — the notifier decides what to surface.
-  async getSchedulerRunsSince(since: number, limit = 20): Promise<SchedulerRun[]> {
+  //
+  // `since` is sent on every request; `offset` lets the poll drain a full page
+  // before advancing `since`, so several runs in the same second are not
+  // skipped. Same `status !== 'success'` rule as the page method.
+  async getSchedulerRunsSince(since: number, limit = 20, offset = 0): Promise<SchedulerRun[]> {
+    await this.requireFeature('scheduler.runs.list')
     const qs = new URLSearchParams()
+    // Explicit empty agent_id: aggregate the whole authorized range, matching
+    // the notification poll's intent (never scope to the chat's active Agent).
+    qs.set('agent_id', '')
     qs.set('since', String(Math.floor(since)))
     if (limit) qs.set('limit', String(limit))
-    const data = await this.request<{ status: string; runs: SchedulerRun[] }>(
+    if (offset) qs.set('offset', String(offset))
+    const data = await this.request<{ status: string; runs?: SchedulerRun[]; message?: string; code?: string }>(
       `/api/scheduler/runs?${qs.toString()}`
     )
+    if (data.status !== 'success') this.failBody(data)
     return data.runs || []
   }
 
   // Full detail for one run: the complete delivered body recovered from the
   // receiver's session, or null (fall back to preview). Opened on demand when a
-  // history record is clicked, so the list stays a light index.
+  // history record is clicked, so the list stays a light index. Gated on
+  // `scheduler.runs.detail`; a non-success body throws.
   async getSchedulerRunDetail(runId: string): Promise<SchedulerRunDetail | null> {
-    const data = await this.request<{ status: string; run?: SchedulerRunDetail }>(
+    await this.requireFeature('scheduler.runs.detail')
+    const data = await this.request<{ status: string; run?: SchedulerRunDetail; message?: string; code?: string }>(
       `/api/scheduler/runs/detail?run_id=${encodeURIComponent(runId)}`
     )
+    if (data.status !== 'success') this.failBody(data)
     return data.run || null
   }
 
@@ -928,12 +994,16 @@ class ApiClient {
   // Create a cross-channel task for a trusted recipient. The backend derives the
   // owning Agent from the recipient's channel instance and rejects any receiver
   // not already in the trusted directory, so the client only names the target.
+  //
+  // Gated on `scheduler.create` before the POST is issued, and NEVER retried:
+  // a network-ambiguous create could otherwise schedule the same task twice.
   async createTask(payload: {
     name: string
     enabled: boolean
     schedule: TaskSchedule
     action: TaskAction
   }): Promise<{ status: string; task?: SchedulerTask; message?: string }> {
+    await this.requireFeature('scheduler.create')
     return this.request('/api/scheduler/create', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -942,20 +1012,31 @@ class ApiClient {
 
   // Step 1 of the create/edit picker: channel instances a task can deliver
   // through (web/unknown excluded). Each carries a friendly name, its bound
-  // Agent, and how many trusted recipients it has.
+  // Agent, and how many trusted recipients it has. Gated on
+  // `scheduler.instances`.
   async getSchedulerInstances(): Promise<SchedulerInstance[]> {
-    const data = await this.request<{ status: string; instances: SchedulerInstance[] }>(
+    await this.requireFeature('scheduler.instances')
+    const data = await this.request<{ status: string; instances: SchedulerInstance[]; message?: string; code?: string }>(
       '/api/scheduler/instances'
     )
+    if (data.status !== 'success') this.failBody(data)
     return data.instances || []
   }
 
-  // Step 2 of the picker: every trusted recipient learned from inbound messages,
-  // shared across Agents. The UI scopes them to the chosen instance client-side.
-  async getSchedulerRecipients(): Promise<TaskRecipient[]> {
-    const data = await this.request<{ status: string; recipients: TaskRecipient[] }>(
-      '/api/scheduler/recipients'
+  // Step 2 of the picker: trusted recipients for one channel instance. When
+  // `instanceId` is given the server scopes the directory to that instance
+  // (and refuses an unauthorized id); omitting it keeps the legacy call
+  // working and returns the already-filtered aggregate. Gated on
+  // `scheduler.recipients`.
+  async getSchedulerRecipients(instanceId?: string): Promise<TaskRecipient[]> {
+    await this.requireFeature('scheduler.recipients')
+    const path = instanceId
+      ? `/api/scheduler/recipients?instance_id=${encodeURIComponent(instanceId)}`
+      : '/api/scheduler/recipients'
+    const data = await this.request<{ status: string; recipients: TaskRecipient[]; message?: string; code?: string }>(
+      path
     )
+    if (data.status !== 'success') this.failBody(data)
     return data.recipients || []
   }
 

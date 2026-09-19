@@ -640,6 +640,17 @@ def _require_session_owner(ctx: "Optional[RequestContext]", session_id: str,
                             json.dumps({"status": "error", "message": "default agent ambiguous"}))
 
 
+def _storage_agent_key(store) -> str:
+    """The storage Agent key a bound conversation store reads and writes.
+
+    The ``sessions``/``messages`` tables key an Agent by its *storage* id, which
+    is ``''`` for the default Agent (upstream's historical, un-tagged rows), not
+    the API-visible agent id. Every exact session query has to match on this key
+    rather than on the request's ``agent_id``.
+    """
+    return store._dimensions().get("agent_id", getattr(store, "_agent_id", ""))
+
+
 def _require_owned_session(ctx: "Optional[RequestContext]", session_id: str,
                            agent_id: Optional[str]) -> None:
     """Reject binding a session the caller does not own (database mode).
@@ -648,6 +659,20 @@ def _require_owned_session(ctx: "Optional[RequestContext]", session_id: str,
     owner lives in the ``sessions`` table. This replicates the inline owner check
     from ``_workbench_chat_readiness`` so a member cannot bind another user's
     session (or a non-web session) to a project. Legacy mode is a no-op.
+
+    The probe is scoped to the bound store's storage Agent key and the caller's
+    tenant, not just the session id: two Agents may each own a same-named
+    session, and matching on the id alone would either refuse a caller the row
+    they do own (a colleague's same-named row sorted first) or accept one they
+    do not. A missing row is still *allowed* here, because several other entry
+    points rely on "no row => allow"; callers that need the row as evidence use
+    :func:`_owned_context_target`, which requires an exact match.
+
+    The tenant predicate admits the empty bucket alongside the caller's tenant
+    because rows written before the tenancy dimension was stamped carry ``''``.
+    Matching only ``ctx.tenant_id`` would turn "another member's legacy session"
+    into *no row*, which this guard treats as allowed — the opposite of its
+    purpose. Another tenant's real id is still excluded.
     """
     from channel.web.web_channel import _require_tenant_agent_binding
     if ctx is None:
@@ -664,13 +689,69 @@ def _require_owned_session(ctx: "Optional[RequestContext]", session_id: str,
         con = store._connect()
         try:
             row = con.execute(
-                "SELECT owner, channel_type FROM sessions WHERE session_id=?", (session_id,),
+                "SELECT owner, channel_type FROM sessions"
+                " WHERE session_id=? AND agent_id=?"
+                " AND (tenant_id=? OR tenant_id='')",
+                (session_id, _storage_agent_key(store), ctx.tenant_id),
             ).fetchone()
             if row is not None and (row[0] != ctx.user_id or row[1] != "web"):
-                raise web.HTTPError("404 Not Found", {"Content-Type": "application/json"},
-                                    json.dumps({"status": "error", "message": "session not found"}))
+                raise web.HTTPError(
+                    "404 Not Found", {"Content-Type": "application/json"},
+                    json.dumps({"status": "error", "code": "session_not_found",
+                                "message": "session not found"}))
         finally:
             con.close()
+
+
+def _owned_context_target(ctx: "Optional[RequestContext]", session_id: str,
+                          agent_id: Optional[str]):
+    """Resolve the caller's own session to its business Agent and trusted store.
+
+    The P2 context endpoints need both halves of the same fact — the *business*
+    Agent id (to peek the live runtime, keyed by the API id) and the bound
+    :class:`ConversationStore` (to prove durable ownership). They are derived in
+    one place so the two handlers cannot disagree:
+
+    1. :func:`_require_session_scope` applies the tenant-binding, Agent-visibility
+       and the (deepened) non-exclusive owner probe, and resolves the real Agent;
+       the store is opened from that Agent's workspace in the registry.
+    2. The ``sessions`` row must then match the store's storage Agent key, the
+       caller's tenant, the caller's user id and ``channel_type='web'`` exactly.
+       No row is a 404: existence stays hidden, and a same-named session owned by
+       another Agent (or another member) can never satisfy the match.
+    """
+    from agent.registry import get_agent_registry
+    from agent.memory import get_conversation_store
+
+    if not session_id:
+        raise web.HTTPError("400 Bad Request", {"Content-Type": "application/json"},
+                            json.dumps({"status": "error", "code": "invalid_request",
+                                        "message": "session_id required"}))
+    # Same-module helper: tenant-binding, Agent visibility and the owner probe.
+    resolved = _require_session_scope(ctx, session_id, agent_id)
+    try:
+        profile = get_agent_registry().get(resolved)
+    except (KeyError, ValueError):
+        raise web.HTTPError("404 Not Found", {"Content-Type": "application/json"},
+                            json.dumps({"status": "error", "code": "session_not_found",
+                                        "message": "session not found"})) from None
+    store = get_conversation_store(profile.workspace)
+    with store._lock:
+        con = store._connect()
+        try:
+            row = con.execute(
+                "SELECT owner FROM sessions"
+                " WHERE session_id=? AND agent_id=? AND tenant_id=?"
+                " AND owner=? AND channel_type='web'",
+                (session_id, _storage_agent_key(store), ctx.tenant_id, ctx.user_id),
+            ).fetchone()
+        finally:
+            con.close()
+    if row is None:
+        raise web.HTTPError("404 Not Found", {"Content-Type": "application/json"},
+                            json.dumps({"status": "error", "code": "session_not_found",
+                                        "message": "session not found"}))
+    return resolved, store
 
 
 def _require_session_scope(ctx: "Optional[RequestContext]", session_id: str,

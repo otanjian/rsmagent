@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import {
   Loader2,
   Clock,
@@ -15,6 +15,8 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { t } from '../i18n'
 import apiClient from '../api/client'
+import desktopContext, { ContextError } from '../api/context'
+import { featureReason, FeatureUnavailableError, isFeatureAvailable, type FeatureActionKey } from '../api/features'
 import type {
   SchedulerTask,
   SchedulerRun,
@@ -80,6 +82,35 @@ const FormError: React.FC<{ message: string }> = ({ message }) =>
     </div>
   ) : null
 
+// The per-action capability gate for this page (design D2). The Tasks page
+// reads its own actions so an unavailable feature shows a concrete state and
+// issues no request, instead of retrying or rendering "no records".
+const useTasksFeatureGate = () => {
+  const snapshot = useSyncExternalStore(desktopContext.subscribe, desktopContext.getSnapshot)
+  const context = {
+    status: snapshot.featureActions ? 'success' : 'error',
+    feature_actions: snapshot.featureActions,
+  }
+  const available = useCallback((key: FeatureActionKey) => isFeatureAvailable(context, key), [context.status, context.feature_actions])
+  return {
+    available,
+    reason: (key: FeatureActionKey) => featureReason(context, key),
+    revision: snapshot.featureRevision,
+  }
+}
+
+// Turn a gated-call failure into the message the page should show. A closed
+// action and a permission refusal are deliberately different states.
+const describeTasksError = (err: unknown): string => {
+  if (err instanceof FeatureUnavailableError) return t('tasks_unavailable')
+  if (err instanceof ContextError) {
+    if (err.kind === 'forbidden') return t('records_denied')
+    if (err.kind === 'unavailable') return t('ctx_unavailable')
+    if (err.kind === 'conflict') return t('ctx_conflict')
+  }
+  return t('records_error')
+}
+
 type TabKey = 'tasks' | 'records'
 
 const TasksPage: React.FC<TasksPageProps> = ({ baseUrl }) => {
@@ -95,6 +126,10 @@ const TasksPage: React.FC<TasksPageProps> = ({ baseUrl }) => {
   const recordsReloadRef = React.useRef<(() => void) | null>(null)
   const [recordsLoading, setRecordsLoading] = useState(false)
   const multiAgent = useAgentStore(selectMultiAgent)
+  const gate = useTasksFeatureGate()
+  // The create entry depends on all three target/create actions: a picker that
+  // cannot list instances or recipients must not pretend it can create.
+  const canCreate = gate.available('scheduler.instances') && gate.available('scheduler.recipients') && gate.available('scheduler.create')
 
   const loadTasks = async () => {
     try {
@@ -159,8 +194,10 @@ const TasksPage: React.FC<TasksPageProps> = ({ baseUrl }) => {
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
             <button
-              onClick={() => setCreating(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-btn bg-accent text-accent-contrast hover:bg-accent-hover text-sm font-medium cursor-pointer transition-colors"
+              onClick={() => canCreate && setCreating(true)}
+              disabled={!canCreate}
+              title={canCreate ? undefined : t('task_create_unavailable')}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-btn bg-accent text-accent-contrast hover:bg-accent-hover text-sm font-medium cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-default"
             >
               <Plus size={15} />
               {t('tasks_new')}
@@ -225,8 +262,10 @@ const TasksPage: React.FC<TasksPageProps> = ({ baseUrl }) => {
               <p className="text-sm text-content-tertiary max-w-sm mb-5">{t('tasks_empty_guide')}</p>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setCreating(true)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-btn bg-accent text-accent-contrast hover:bg-accent-hover text-sm font-medium cursor-pointer transition-colors"
+                  onClick={() => canCreate && setCreating(true)}
+                  disabled={!canCreate}
+                  title={canCreate ? undefined : t('task_create_unavailable')}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-btn bg-accent text-accent-contrast hover:bg-accent-hover text-sm font-medium cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-default"
                 >
                   <Plus size={15} />
                   {t('tasks_new')}
@@ -385,26 +424,42 @@ const RecordsView: React.FC<{
   onLoadingChange: (loading: boolean) => void
 }> = ({ registerReload, onLoadingChange }) => {
   const navigate = useNavigate()
+  const gate = useTasksFeatureGate()
+  const listAvailable = gate.available('scheduler.runs.list')
+  const detailAvailable = gate.available('scheduler.runs.detail')
+  const deleteAvailable = gate.available('scheduler.runs.delete')
   const [runs, setRuns] = useState<SchedulerRun[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
+  const [error, setError] = useState('')
   const [detailRun, setDetailRun] = useState<SchedulerRun | null>(null)
   const multiAgent = useAgentStore(selectMultiAgent)
 
   const PAGE_SIZE = 30
 
   const loadRuns = async () => {
+    // Closed action: render the not-open state and issue NO request.
+    if (!listAvailable) {
+      setRuns([])
+      setHasMore(false)
+      setError('')
+      setLoading(false)
+      onLoadingChange(false)
+      return
+    }
     try {
       setLoading(true)
+      setError('')
       onLoadingChange(true)
-      const data = await apiClient.getSchedulerRuns('', PAGE_SIZE, 0)
-      setRuns(data || [])
-      setHasMore((data || []).length >= PAGE_SIZE)
+      const page = await apiClient.getSchedulerRunPage('', PAGE_SIZE, 0)
+      setRuns(page.runs)
+      setHasMore(page.runs.length >= PAGE_SIZE)
     } catch (err) {
       console.error('Failed to load run history:', err)
       setRuns([])
       setHasMore(false)
+      setError(describeTasksError(err))
     } finally {
       setLoading(false)
       onLoadingChange(false)
@@ -416,18 +471,21 @@ const RecordsView: React.FC<{
     if (loadingMore || !hasMore) return
     try {
       setLoadingMore(true)
-      const data = await apiClient.getSchedulerRuns('', PAGE_SIZE, runs.length)
-      setRuns((prev) => [...prev, ...(data || [])])
-      setHasMore((data || []).length >= PAGE_SIZE)
+      const page = await apiClient.getSchedulerRunPage('', PAGE_SIZE, runs.length)
+      setRuns((prev) => [...prev, ...page.runs])
+      setHasMore(page.runs.length >= PAGE_SIZE)
     } catch (err) {
       console.error('Failed to load more run history:', err)
+      setError(describeTasksError(err))
     } finally {
       setLoadingMore(false)
     }
   }
 
-  // Confirm, then delete one record and drop it from the list.
+  // Confirm, then delete one record and drop it from the list. The row is only
+  // removed after the real API answers success — a refusal leaves it in place.
   const deleteRun = async (run: SchedulerRun) => {
+    if (!deleteAvailable) return
     const ok = await askConfirm({
       titleKey: 'records_delete_confirm_title',
       msgKey: 'records_delete_confirm_msg',
@@ -439,6 +497,7 @@ const RecordsView: React.FC<{
       setRuns((prev) => prev.filter((r) => r.run_id !== run.run_id))
     } catch (err) {
       console.error('Failed to delete run record:', err)
+      setError(describeTasksError(err))
     }
   }
 
@@ -446,15 +505,28 @@ const RecordsView: React.FC<{
     registerReload(() => void loadRuns())
     void loadRuns()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [listAvailable, gate.revision])
 
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="max-w-3xl mx-auto px-6 py-5">
-        {loading ? (
+        {!listAvailable ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <History size={32} className="mb-3 text-content-tertiary opacity-60" />
+            <p className="text-content font-medium mb-1">{t('records_unavailable')}</p>
+            <p className="text-sm text-content-tertiary max-w-sm">
+              {gate.reason('scheduler.runs.list')}
+            </p>
+          </div>
+        ) : loading ? (
           <div className="flex items-center justify-center py-20 text-content-tertiary">
             <Loader2 size={18} className="animate-spin mr-2" />
             {t('records_loading')}
+          </div>
+        ) : error && runs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <XCircle size={32} className="mb-3 text-danger opacity-70" />
+            <p className="text-content font-medium mb-1">{error}</p>
           </div>
         ) : runs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -471,7 +543,17 @@ const RecordsView: React.FC<{
             </button>
           </div>
         ) : (
-          <div className="grid gap-2.5">
+          <>
+            {/* `history_scope` is always "attributed_only": the server hides
+                runs it cannot attribute, so the page states the scope instead
+                of implying a complete ledger. */}
+            <p className="text-[11px] text-content-tertiary mb-2.5">{t('records_scope_note')}</p>
+            {error && (
+              <div className="mb-2.5 rounded-btn border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger">
+                {error}
+              </div>
+            )}
+            <div className="grid gap-2.5">
             {runs.map((run) => {
               const owner = multiAgent && run.agent_id ? findAgent(run.agent_id) : null
               const duration = formatDuration(run.started_at, run.ended_at)
@@ -505,16 +587,18 @@ const RecordsView: React.FC<{
                     <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-inset text-content-tertiary flex-shrink-0">
                       {trigger}
                     </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        void deleteRun(run)
-                      }}
-                      title={t('records_delete')}
-                      className="text-content-tertiary hover:text-danger flex-shrink-0 p-0.5 cursor-pointer transition-colors"
-                    >
-                      <Trash2 size={13} />
-                    </button>
+                    {deleteAvailable && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void deleteRun(run)
+                        }}
+                        title={t('records_delete')}
+                        className="text-content-tertiary hover:text-danger flex-shrink-0 p-0.5 cursor-pointer transition-colors"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
                   </div>
 
                   {run.status === 'error' && run.error ? (
@@ -564,12 +648,17 @@ const RecordsView: React.FC<{
                 </button>
               </div>
             )}
-          </div>
+            </div>
+          </>
         )}
       </div>
 
       {detailRun && (
-        <RunDetailModal run={detailRun} onClose={() => setDetailRun(null)} />
+        <RunDetailModal
+          run={detailRun}
+          detailAvailable={detailAvailable}
+          onClose={() => setDetailRun(null)}
+        />
       )}
     </div>
   )
@@ -578,12 +667,16 @@ const RecordsView: React.FC<{
 // The history detail dialog. Opens with the list row's data shown immediately,
 // then fetches the full delivered body (recovered from the receiver's session)
 // and swaps it in. Read-only.
-const RunDetailModal: React.FC<{ run: SchedulerRun; onClose: () => void }> = ({
-  run,
-  onClose,
-}) => {
+const RunDetailModal: React.FC<{
+  run: SchedulerRun
+  detailAvailable: boolean
+  onClose: () => void
+}> = ({ run, detailAvailable, onClose }) => {
+  const gate = useTasksFeatureGate()
+  const instancesAvailable = gate.available('scheduler.instances')
   const [detail, setDetail] = useState<SchedulerRunDetail | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(detailAvailable)
+  const [detailError, setDetailError] = useState('')
   const [instances, setInstances] = useState<SchedulerInstance[]>([])
   // Output view: rendered markdown (default) or raw text, mirroring the web UI.
   const [outputView, setOutputView] = useState<'preview' | 'text'>('preview')
@@ -592,12 +685,21 @@ const RunDetailModal: React.FC<{ run: SchedulerRun; onClose: () => void }> = ({
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      setLoading(true)
       // Detail (full body) and the instance directory (to name the channel) in
-      // parallel; the directory is best-effort and never blocks the body.
+      // parallel; the directory is best-effort and never blocks the body. Each
+      // read is gated on its own action, so a closed one issues NO request.
+      setLoading(detailAvailable)
+      setDetailError('')
       const [d, insts] = await Promise.all([
-        apiClient.getSchedulerRunDetail(run.run_id).catch(() => null),
-        apiClient.getSchedulerInstances().catch(() => []),
+        detailAvailable
+          ? apiClient.getSchedulerRunDetail(run.run_id).catch((err) => {
+              if (!cancelled) setDetailError(describeTasksError(err))
+              return null
+            })
+          : Promise.resolve(null),
+        instancesAvailable
+          ? apiClient.getSchedulerInstances().catch(() => [])
+          : Promise.resolve([] as SchedulerInstance[]),
       ])
       if (cancelled) return
       setDetail(d)
@@ -607,13 +709,17 @@ const RunDetailModal: React.FC<{ run: SchedulerRun; onClose: () => void }> = ({
     return () => {
       cancelled = true
     }
-  }, [run.run_id])
+  }, [run.run_id, detailAvailable, instancesAvailable])
 
   const trigger =
     run.trigger === 'manual' ? t('records_trigger_manual') : t('records_trigger_scheduled')
   const duration = formatDuration(run.started_at, run.ended_at)
-  // Prefer the full body from the session; fall back to the list preview.
-  const body = detail?.full_output || run.output_preview || ''
+  // Prefer the full body from the session; fall back to the list preview. When
+  // the server could not prove access to the linked session it returns
+  // `full_output: null`, and the preview is explicitly labeled as such.
+  const fullOutput = detail?.full_output ?? null
+  const body = fullOutput || run.output_preview || ''
+  const previewOnly = detailAvailable && !loading && fullOutput === null && !!body
 
   // Channel type / friendly instance name / owning Agent for the meta grid.
   // Web tasks come from a chat session, not a bound IM instance, so present them
@@ -699,9 +805,22 @@ const RunDetailModal: React.FC<{ run: SchedulerRun; onClose: () => void }> = ({
         </div>
       )}
 
+      {detailError && (
+        <div className="mt-4 rounded-btn border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger">
+          {detailError}
+        </div>
+      )}
+
       <div className="mt-4">
         <div className="flex items-center justify-between mb-1">
-          <div className="text-xs text-content-tertiary">{t('record_detail_output')}</div>
+          <div className="text-xs text-content-tertiary inline-flex items-center gap-1.5">
+            {t('record_detail_output')}
+            {previewOnly && (
+              <span className="px-1.5 py-0.5 rounded-full bg-inset text-content-tertiary">
+                {t('record_detail_preview_only')}
+              </span>
+            )}
+          </div>
           {!loading && body && (
             <div className="inline-flex rounded-md border border-default overflow-hidden text-[11px]">
               <button
@@ -761,7 +880,10 @@ interface PickerValue {
   recipient: TaskRecipient | null
 }
 
-const useRecipientPicker = (initial: { instanceId?: string; receiver?: string }) => {
+const useRecipientPicker = (
+  initial: { instanceId?: string; receiver?: string },
+  features: { instances: boolean; recipients: boolean },
+) => {
   const [instances, setInstances] = useState<SchedulerInstance[]>([])
   const [recipients, setRecipients] = useState<TaskRecipient[]>([])
   const [instanceId, setInstanceId] = useState(initial.instanceId || '')
@@ -769,47 +891,87 @@ const useRecipientPicker = (initial: { instanceId?: string; receiver?: string })
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [justRefreshed, setJustRefreshed] = useState(false)
+  const [error, setError] = useState('')
 
-  const loadRecipients = async () => {
-    const list = await apiClient.getSchedulerRecipients().catch(() => [])
-    setRecipients(list)
-    return list
-  }
-
+  // Step 1: the instance directory, gated on `scheduler.instances`. A closed
+  // action renders an empty picker and issues NO request.
   useEffect(() => {
+    if (!features.instances) {
+      setInstances([])
+      setRecipients([])
+      setLoading(false)
+      return
+    }
     let cancelled = false
     ;(async () => {
       setLoading(true)
-      const [insts, recs] = await Promise.all([
-        apiClient.getSchedulerInstances().catch(() => []),
-        apiClient.getSchedulerRecipients().catch(() => []),
-      ])
-      if (cancelled) return
-      setInstances(insts)
-      setRecipients(recs)
-      // Only keep a preselected instance we actually offer.
-      const wanted = initial.instanceId && insts.some((i) => i.instance_id === initial.instanceId)
-        ? initial.instanceId
-        : ''
-      setInstanceId(wanted)
-      if (wanted && initial.receiver) {
-        const match = recs.find(
-          (r) => (r.instance_id || r.channel_type) === wanted && r.receiver === initial.receiver
-        )
-        if (match) setRecipientId(recipientKey(match))
+      try {
+        const insts = await apiClient.getSchedulerInstances()
+        if (cancelled) return
+        setInstances(insts)
+        // Only keep a preselected instance we actually offer.
+        const wanted =
+          initial.instanceId && insts.some((i) => i.instance_id === initial.instanceId)
+            ? initial.instanceId
+            : ''
+        setInstanceId(wanted)
+      } catch (err) {
+        if (!cancelled) setError(describeTasksError(err))
+      } finally {
+        if (!cancelled) setLoading(false)
       }
-      setLoading(false)
     })()
     return () => {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [features.instances])
 
-  const scoped = useMemo(
-    () => recipients.filter((r) => (r.instance_id || r.channel_type) === instanceId),
-    [recipients, instanceId]
+  // Step 2: trusted recipients are scoped to the chosen instance by the server
+  // (`GET /api/scheduler/recipients?instance_id=`), gated on
+  // `scheduler.recipients`. The full directory is never fetched and filtered
+  // client-side.
+  const loadRecipients = useCallback(
+    async (id: string) => {
+      if (!features.recipients || !id) {
+        setRecipients([])
+        return [] as TaskRecipient[]
+      }
+      const list = await apiClient.getSchedulerRecipients(id)
+      setRecipients(list)
+      return list
+    },
+    [features.recipients],
   )
+
+  useEffect(() => {
+    if (!instanceId) {
+      setRecipients([])
+      setRecipientId('')
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const list = await loadRecipients(instanceId)
+        if (cancelled) return
+        if (initial.receiver && instanceId === initial.instanceId) {
+          const match = list.find((r) => r.receiver === initial.receiver)
+          if (match) setRecipientId(recipientKey(match))
+        }
+      } catch (err) {
+        if (!cancelled) setError(describeTasksError(err))
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instanceId, loadRecipients])
+
+  // The server already scoped the list; keep the name `scoped` for the field
+  // components that render it.
+  const scoped = useMemo(() => recipients, [recipients])
 
   // Default to the first recipient once an instance is chosen, so the common
   // case needs no extra click; keep a valid preselection otherwise.
@@ -824,13 +986,16 @@ const useRecipientPicker = (initial: { instanceId?: string; receiver?: string })
   }, [instanceId, scoped])
 
   const refresh = async () => {
+    if (!instanceId) return
     setRefreshing(true)
     try {
-      await loadRecipients()
+      await loadRecipients(instanceId)
       // Flash a check so the click has visible feedback even when the directory
       // is unchanged (the common case right after messaging the bot).
       setJustRefreshed(true)
       setTimeout(() => setJustRefreshed(false), 1200)
+    } catch (err) {
+      setError(describeTasksError(err))
     } finally {
       setRefreshing(false)
     }
@@ -852,6 +1017,7 @@ const useRecipientPicker = (initial: { instanceId?: string; receiver?: string })
     loading,
     refreshing,
     justRefreshed,
+    error,
     refresh,
     value,
   }
@@ -1083,11 +1249,24 @@ const TaskCreateModal: React.FC<{ onClose: () => void; onCreated: () => void }> 
     content: '',
   })
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((p) => ({ ...p, [k]: v }))
-  const picker = useRecipientPicker({})
+  const gate = useTasksFeatureGate()
+  // The create flow needs instances + recipients (to pick a target) and create.
+  const canCreate =
+    gate.available('scheduler.instances') &&
+    gate.available('scheduler.recipients') &&
+    gate.available('scheduler.create')
+  const picker = useRecipientPicker(
+    {},
+    {
+      instances: gate.available('scheduler.instances'),
+      recipients: gate.available('scheduler.recipients'),
+    },
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   const submit = async () => {
+    if (!canCreate) return setError(t('task_create_unavailable'))
     const invalid = validateForm(form)
     if (invalid) return setError(invalid)
     if (!picker.value.instanceId) return setError(t('task_instance_required'))
@@ -1134,7 +1313,15 @@ const TaskCreateModal: React.FC<{ onClose: () => void; onCreated: () => void }> 
           <Btn variant="ghost" onClick={onClose} disabled={saving}>
             {t('task_cancel')}
           </Btn>
-          <Btn variant="primary" onClick={submit} disabled={saving}>
+          {/* Disabled while submitting AND when the create action is closed:
+              the POST is never auto-retried, so a double submit cannot create
+              two tasks. */}
+          <Btn
+            variant="primary"
+            onClick={submit}
+            disabled={saving || !canCreate}
+            title={canCreate ? undefined : t('task_create_unavailable')}
+          >
             {t('task_save')}
           </Btn>
         </>
@@ -1181,9 +1368,15 @@ const TaskEditModal: React.FC<{
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((p) => ({ ...p, [k]: v }))
 
   // IM tasks drive a live picker preselected to the current target; Web tasks
-  // never construct it (their channel/receiver are frozen).
+  // never construct it (their channel/receiver are frozen). The picker is gated
+  // on the instance/recipient actions, so a closed deployment issues no request.
+  const gate = useTasksFeatureGate()
   const picker = useRecipientPicker(
-    isWeb ? {} : { instanceId: task.action.instance_id || task.action.channel_type, receiver: task.action.receiver }
+    isWeb ? {} : { instanceId: task.action.instance_id || task.action.channel_type, receiver: task.action.receiver },
+    {
+      instances: gate.available('scheduler.instances'),
+      recipients: gate.available('scheduler.recipients'),
+    },
   )
 
   const [saving, setSaving] = useState(false)

@@ -56,6 +56,7 @@ whether the *feature* is served at all, and reports the reason when it is not.
 
 from __future__ import annotations
 
+import os
 from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Tuple
 
 #: The three access classes, ordered from least to most consequential.
@@ -74,7 +75,8 @@ class Slice:
     """One recovered capability and the actions currently served for it."""
 
     __slots__ = ("id", "capability", "consumer", "page", "scope", "open",
-                 "implemented", "accepted", "reason", "policy", "permission")
+                 "declared_open", "implemented", "accepted", "reason", "policy",
+                 "permission")
 
     def __init__(self, id: str, *, capability: str, consumer: str,
                  page: Optional[str], scope: FrozenSet[str],
@@ -86,6 +88,10 @@ class Slice:
         self.consumer = consumer
         self.page = page
         self.scope = frozenset(scope)
+        #: What the declaration serves before the deployment narrows it.
+        #: ``RDAI_DISABLED_ACTIONS`` only ever *removes* from this map; keeping
+        #: it separate makes :func:`finalize` idempotent instead of cumulative.
+        self.declared_open = dict(open)
         self.open = dict(open)
         self.implemented = bool(implemented)
         self.accepted = bool(accepted)
@@ -439,7 +445,219 @@ SLICES: Tuple[Slice, ...] = (
         policy=DEFAULT_PERSONAL_POLICY,
         permission="external.connections.read",
     ),
+    # -- Functional integration (change integrate-upstream-core-capabilities) --
+    #
+    # Eight *independent* slices, one action each, so a batch can be opened
+    # action by action after its own real acceptance: the Web/Desktop context
+    # controls and the six scheduler target/history interfaces ship on different
+    # dates and MUST NOT share one switch (design D2, ``database-runtime-consumers``).
+    #
+    # They all start with ``open={}`` -- the code path exists, but the action is
+    # not served, so the route gate answers 503 and ``/auth/context`` reports the
+    # real reason. ``implemented=True, accepted=False`` is the honest state until
+    # the batch's real entry acceptance (``tasks.md`` §8) has been performed; the
+    # per-action projection is :func:`feature_action_availability`.
+    #
+    # The consumer name is the slice id, not a shared label: the declaration
+    # requires one consumer per slice (``test_slice_ids_and_consumers_are_unique``),
+    # and these eight actions open independently -- a shared consumer would make
+    # "which entry point is live?" unanswerable from ``/auth/context.consumers``.
+    Slice(
+        "session_context_usage",
+        capability="session-context-controls",
+        consumer="session_context_usage",
+        page=None,
+        scope=frozenset({"personal"}),
+        open={"usage": ACCESS_READ},
+        implemented=True,
+        accepted=True,
+        reason="",
+        policy=DEFAULT_POLICY,
+    ),
+    Slice(
+        "session_context_compact",
+        capability="session-context-controls",
+        consumer="session_context_compact",
+        page=None,
+        scope=frozenset({"personal"}),
+        open={"compact": ACCESS_EXECUTE},
+        implemented=True,
+        accepted=True,
+        reason="",
+        policy=DEFAULT_POLICY,
+    ),
+    Slice(
+        "scheduler_instances",
+        capability="database-scheduler-console",
+        consumer="scheduler_instances",
+        page=None,
+        scope=frozenset({"personal", "tenant"}),
+        open={"instances": ACCESS_READ},
+        implemented=True,
+        accepted=True,
+        reason="",
+        policy=DEFAULT_POLICY,
+    ),
+    Slice(
+        "scheduler_recipients",
+        capability="database-scheduler-console",
+        consumer="scheduler_recipients",
+        page=None,
+        scope=frozenset({"personal", "tenant"}),
+        open={"recipients": ACCESS_READ},
+        implemented=True,
+        accepted=True,
+        reason="",
+        policy=DEFAULT_POLICY,
+    ),
+    Slice(
+        "scheduler_create",
+        capability="database-scheduler-console",
+        consumer="scheduler_create",
+        page=None,
+        scope=frozenset({"personal", "tenant"}),
+        open={"create": ACCESS_CONFIG},
+        implemented=True,
+        accepted=True,
+        reason="",
+        policy=DEFAULT_POLICY,
+    ),
+    Slice(
+        "scheduler_runs_list",
+        capability="database-scheduler-console",
+        consumer="scheduler_runs_list",
+        page=None,
+        scope=frozenset({"personal", "tenant"}),
+        open={"list": ACCESS_READ},
+        implemented=True,
+        accepted=True,
+        reason="",
+        policy=DEFAULT_POLICY,
+    ),
+    Slice(
+        "scheduler_runs_detail",
+        capability="database-scheduler-console",
+        consumer="scheduler_runs_detail",
+        page=None,
+        scope=frozenset({"personal", "tenant"}),
+        open={"detail": ACCESS_READ},
+        implemented=True,
+        accepted=True,
+        reason="",
+        policy=DEFAULT_POLICY,
+    ),
+    Slice(
+        "scheduler_runs_delete",
+        capability="database-scheduler-console",
+        consumer="scheduler_runs_delete",
+        page=None,
+        scope=frozenset({"personal", "tenant"}),
+        open={"delete": ACCESS_CONFIG},
+        implemented=True,
+        accepted=True,
+        reason="",
+        policy=DEFAULT_POLICY,
+    ),
 )
+
+#: The per-action features projected through ``/auth/context.feature_actions``.
+#: ``(public key, slice id, action)`` -- one entry per independently gated verb.
+FEATURE_ACTIONS: Tuple[Tuple[str, str, str], ...] = (
+    ("session_context.usage", "session_context_usage", "usage"),
+    ("session_context.compact", "session_context_compact", "compact"),
+    ("scheduler.instances", "scheduler_instances", "instances"),
+    ("scheduler.recipients", "scheduler_recipients", "recipients"),
+    ("scheduler.create", "scheduler_create", "create"),
+    ("scheduler.runs.list", "scheduler_runs_list", "list"),
+    ("scheduler.runs.detail", "scheduler_runs_detail", "detail"),
+    ("scheduler.runs.delete", "scheduler_runs_delete", "delete"),
+)
+
+#: Environment key that may only *close* actions this build already serves.
+DISABLED_ACTIONS_ENV = "RDAI_DISABLED_ACTIONS"
+
+#: The stable public keys, for validation and client parity checks.
+FEATURE_ACTION_KEYS: FrozenSet[str] = frozenset(k for k, _, _ in FEATURE_ACTIONS)
+
+#: The deployment's parsed closure, filled by :func:`finalize` at import time.
+_disabled_actions: FrozenSet[str] = frozenset()
+
+
+class CapabilityConfigurationError(ValueError):
+    """A deployment action list that cannot be honoured (unknown key)."""
+
+
+def parse_disabled_actions(raw: Optional[str]) -> FrozenSet[str]:
+    """Parse ``RDAI_DISABLED_ACTIONS`` and refuse unknown keys.
+
+    A typo must not silently leave a feature open: the shutdown switch is the
+    incident-response tool, so a key the registry does not declare is a
+    configuration error at startup rather than a no-op.
+    """
+    keys = frozenset(part.strip() for part in (raw or "").split(",")
+                     if part.strip())
+    unknown = sorted(keys - FEATURE_ACTION_KEYS)
+    if unknown:
+        raise CapabilityConfigurationError(
+            "unknown %s entries: %s" % (DISABLED_ACTIONS_ENV, ", ".join(unknown)))
+    return keys
+
+
+def finalize(disabled: Optional[FrozenSet[str]] = None) -> None:
+    """Apply deployment-level closure to the declaration (idempotent).
+
+    Recomputes every slice's ``open`` from its ``declared_open`` minus the
+    disabled keys, so calling it twice -- or calling it after a test opened a
+    slice -- cannot accumulate. ``implemented``/``accepted`` are untouched: the
+    switch narrows what is served, it never claims acceptance.
+    """
+    global _disabled_actions
+    _disabled_actions = frozenset(disabled or ())
+    # The switch speaks the *public* action keys (``scheduler.create``), which is
+    # the same vocabulary ``/auth/context`` and the clients use -- not the
+    # internal ``slice_id.action`` pair, which would make an operator's first
+    # guess wrong and a typo indistinguishable from a misspelling of a real key.
+    disabled_pairs = {(slice_id, action)
+                      for key, slice_id, action in FEATURE_ACTIONS
+                      if key in _disabled_actions}
+    for spec in SLICES:
+        spec.open = {action: access
+                     for action, access in spec.declared_open.items()
+                     if (spec.id, action) not in disabled_pairs}
+
+
+def disabled_actions() -> FrozenSet[str]:
+    """The deployment closure currently in force (for diagnostics/tests)."""
+    return _disabled_actions
+
+
+def _action_reason(spec: Slice, action: str) -> str:
+    """Why an action is unavailable, in the spec'd precedence order."""
+    if not spec.implemented:
+        return "not_implemented"
+    if not spec.accepted:
+        return "not_accepted"
+    if not spec.is_open(action):
+        return "disabled_by_deployment"
+    return ""
+
+
+def feature_action_availability() -> Dict[str, Dict[str, Any]]:
+    """The eight per-action availability entries for ``/auth/context``.
+
+    ``available`` describes the *service*, never the caller's rights: a
+    ``True`` here only means the client may ask, and the handler still resolves
+    tenant/owner/resource authorization on every request (design D2).
+    """
+    out: Dict[str, Dict[str, Any]] = {}
+    for key, slice_id, action in FEATURE_ACTIONS:
+        spec = slice_for(slice_id)
+        reason = _action_reason(spec, action)
+        out[key] = {"available": reason == "", "reason": reason}
+    return out
+
+
+finalize(parse_disabled_actions(os.environ.get(DISABLED_ACTIONS_ENV)))
 
 
 _BY_ID: Dict[str, Slice] = {s.id: s for s in SLICES}
@@ -468,8 +686,17 @@ def consumer_availability() -> Dict[str, Dict[str, Any]]:
         if spec.enabled:
             out[spec.consumer] = {"available": True, "reason": ""}
         else:
-            out[spec.consumer] = {"available": False,
-                                  "reason": spec.reason or "not_implemented"}
+            # No registry ``reason`` is set for the action slices, so derive the
+            # honest label rather than the generic "not_implemented": a new
+            # action whose code exists but whose batch has not been accepted is
+            # ``not_accepted``, and the console must not tell the operator a
+            # feature is missing when it is merely not switched on yet.
+            out[spec.consumer] = {
+                "available": False,
+                "reason": spec.reason or ("not_implemented"
+                                          if not spec.implemented
+                                          else "not_accepted"),
+            }
     return out
 
 

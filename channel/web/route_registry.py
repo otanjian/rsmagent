@@ -255,6 +255,23 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/api/knowledge/graph", "KnowledgeGraphHandler", "upstream", {"GET": P("tenant", comment="knowledge graph (knowledge.read; tenant-bound Agent + owner scoped)")}),
     RouteEntry("/api/knowledge/action", "KnowledgeActionHandler", "upstream", {"POST": P("tenant", comment="knowledge write (data root + agent ownership)")}),
     RouteEntry("/api/knowledge/import", "KnowledgeImportHandler", "upstream", {"POST": P("tenant", comment="knowledge import (data root + agent ownership)")}),
+    # Functional integration (change integrate-upstream-core-capabilities).
+    # Registered while still closed: ``S(...)`` on an unopened action emits
+    # ``{"policy": "closed"}``, so the route exists, the gate answers 503 before
+    # any handler runs, and ``/auth/context.feature_actions`` reports the same
+    # answer. The alternative -- leaving them unregistered -- would answer 404,
+    # which reads as "no such feature" instead of "not opened here yet".
+    #
+    # Every ``/api/scheduler/*`` pattern below is literal, and both the URL table
+    # (``^{pat}\Z``) and the policy table (``^{pattern}\Z``) anchor their
+    # patterns, so no ordering hazard exists between ``/api/scheduler/run`` and
+    # ``/api/scheduler/runs``; they are kept together only for readability.
+    RouteEntry("/api/scheduler/instances", "SchedulerInstancesHandler", "fork:scheduler-targets", {"GET": S("scheduler_instances", "instances", comment="deliverable channel instances in the caller's granted range")}),
+    RouteEntry("/api/scheduler/recipients", "SchedulerRecipientsHandler", "fork:scheduler-targets", {"GET": S("scheduler_recipients", "recipients", comment="trusted recipient catalogue of the caller's granted instances (never the global directory)")}),
+    RouteEntry("/api/scheduler/create", "SchedulerCreateHandler", "fork:scheduler-targets", {"POST": S("scheduler_create", "create", comment="create a personal task through TaskAccessService.create_task (the only write entry)")}),
+    RouteEntry("/api/scheduler/runs", "SchedulerRunsHandler", "fork:scheduler-runs", {"GET": S("scheduler_runs_list", "list", comment="run history, authorised and paged inside the caller's scope (history_scope=attributed_only)")}),
+    RouteEntry("/api/scheduler/runs/detail", "SchedulerRunDetailHandler", "fork:scheduler-runs", {"GET": S("scheduler_runs_detail", "detail", comment="one authorised run; the body is read only with a separate exact session grant")}),
+    RouteEntry("/api/scheduler/runs/delete", "SchedulerRunDeleteHandler", "fork:scheduler-runs", {"POST": S("scheduler_runs_delete", "delete", comment="delete one authorised run's ledger + scope metadata in one transaction; messages are never touched")}),
     RouteEntry("/api/scheduler", "SchedulerHandler", "upstream", {"GET": S("scheduler", "list")}),
     RouteEntry("/api/scheduler/run", "SchedulerRunHandler", "upstream", {"POST": S("scheduler", "run")}),
     RouteEntry("/api/scheduler/toggle", "SchedulerToggleHandler", "upstream", {"POST": S("scheduler", "toggle")}),
@@ -272,6 +289,18 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/api/sessions/(.*)/generate_title", "SessionTitleHandler", "upstream", {"POST": P("tenant", comment="session title")}),
     RouteEntry("/api/prompt/optimize", "PromptOptimizeHandler", "upstream", {"POST": P("tenant", comment="prompt optimize")}),
     RouteEntry("/api/sessions/(.*)/clear_context", "SessionClearContextHandler", "upstream", {"POST": P("tenant", comment="clear context")}),
+    # Context controls (change integrate-upstream-core-capabilities, P2). The
+    # concrete paths must sit *before* the ``/api/sessions/(.*)`` catch-all:
+    # both the URL table and the policy table anchor as ``^{pattern}\Z``, and
+    # ``(.*)`` would otherwise swallow ``.../context_usage`` first.
+    #
+    # ``permission=""`` clears the slice's permission id deliberately: these are
+    # the caller's *own* session, so the authorization is not a role permission
+    # but the durable owner match the handler performs (tenant, user id, storage
+    # Agent key and ``channel_type='web'``), which a permission string cannot
+    # express and would only imply to the console that a role could widen it.
+    RouteEntry("/api/sessions/(.*)/context_usage", "SessionContextUsageHandler", "fork:context", {"GET": S("session_context_usage", "usage", permission="", comment="observe the live context of one owned session (never creates an instance or calls a model)")}),
+    RouteEntry("/api/sessions/(.*)/compact_context", "SessionCompactContextHandler", "fork:context", {"POST": S("session_context_compact", "compact", permission="", comment="manually compact an owned session; a generation in flight answers 409 and a changed snapshot is discarded")}),
     RouteEntry("/api/sessions/(.*)/settings", "SessionSettingsHandler", "upstream", {"GET": P("tenant", comment="session settings (read effective model/permission)"), "POST": P("tenant", comment="session settings")}),
     RouteEntry("/api/sessions/(.*)", "SessionDetailHandler", "upstream", {"PUT": P("tenant", comment="session rename / pin"), "DELETE": P("tenant", comment="delete session")}),
     RouteEntry("/api/history", "HistoryHandler", "upstream", {"GET": P("tenant", comment="history")}),

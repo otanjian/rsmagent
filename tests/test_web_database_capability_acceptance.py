@@ -21,7 +21,8 @@
 | 模型目录覆盖（合并移植） | `POST /api/models action=save_catalog` | 覆盖/隐藏回读一致 | 删除自定义提供方后目录一并清除 |
 | 版本（合并移植） | `GET /api/version` | 公开可达且含 `version`/`install_kind` | 无 |
 | 租户平面：记忆 / 调度 / 历史 / 技能 / 知识 / 智能体 / 会话 / 工作区 / 项目 / 渠道 | 见 `TENANT_PLANE` | 成员到达 handler，非 503 | 匿名 401；跨租户 403 |
-| 已知缺口（不在本 change 收口） | 3 条 `/api/update/*` 与 8 条桌面端接口 | — | 未注册 → 404（不是静默放开） |
+| 已知缺口（不在本 change 收口） | 3 条 `/api/update/*` | — | 未注册 → 404（不是静默放开） |
+| 本 change 已注册未开放（8 条动作） | `DECLARED_WHILE_CLOSED` | 开放后由各自验收用例正向覆盖 | 关闭 → 503 网关拒绝，与 `/auth/context.feature_actions` 同一份声明 |
 
 后端增量本身的逐条裁定见 `evidence/21-increment-adjudication.md`；本文件只回答
 "合并后的候选在 database 模式下是否仍然可用、仍然收权、入口仍然接通"。
@@ -69,25 +70,33 @@ TENANT_PLANE = (
 #: the desktop renderer's live consumers, evidence/deferred-upstream-frontend
 #: §D1). They must answer 404 -- an accidental 200 would mean a new entry went
 #: live without an authorization decision.
+#:
+#: The eight desktop interfaces this file used to list here are gone from this
+#: tuple: change `integrate-upstream-core-capabilities` registers them on
+#: purpose, so they are no longer "unrouted". Their new shape is asserted by
+#: `DECLARED_WHILE_CLOSED` below, which is a stronger check than the 404 they
+#: used to produce -- a 404 cannot tell "no such feature" from "not opened
+#: here", and only the registered form can carry an authorization decision.
 UNROUTED = (
     ("GET", "/api/update/check"),
     ("POST", "/api/update/start"),
     ("GET", "/api/update/status"),
-    ("GET", "/api/scheduler/runs"),
-    ("GET", "/api/scheduler/runs/detail"),
-    ("POST", "/api/scheduler/runs/delete"),
-    ("POST", "/api/scheduler/create"),
-    ("GET", "/api/scheduler/recipients"),
-    ("GET", "/api/scheduler/instances"),
 )
 
-#: The context-budget endpoints are *swallowed* by the fork's session catch-all
-#: ``/api/sessions/(.*)`` rather than being unrouted, so the method is what
-#: fails (405) instead of the path (404). Either way the desktop's call is not
-#: served; recording the shape keeps the gap honest rather than rounded up.
-SWALLOWED_BY_CATCH_ALL = (
-    ("GET", "/api/sessions/x/context_usage"),
-    ("POST", "/api/sessions/x/compact_context"),
+#: The eight actions of `integrate-upstream-core-capabilities` that are
+#: registered before they are accepted: the route exists, the gate refuses it
+#: with 503 before any handler runs, and `/auth/context.feature_actions` reports
+#: the same answer from the same declaration (`auth/capability_matrix.py`).
+#: Pattern, verb and the capability action each one projects.
+DECLARED_WHILE_CLOSED = (
+    ("/api/scheduler/instances", "GET", "scheduler.instances"),
+    ("/api/scheduler/recipients", "GET", "scheduler.recipients"),
+    ("/api/scheduler/create", "POST", "scheduler.create"),
+    ("/api/scheduler/runs", "GET", "scheduler.runs.list"),
+    ("/api/scheduler/runs/detail", "GET", "scheduler.runs.detail"),
+    ("/api/scheduler/runs/delete", "POST", "scheduler.runs.delete"),
+    ("/api/sessions/(.*)/context_usage", "GET", "session_context.usage"),
+    ("/api/sessions/(.*)/compact_context", "POST", "session_context.compact"),
 )
 
 
@@ -479,20 +488,54 @@ class TenantPlaneAcceptance(_TwoTenantAcceptance):
                 "%s did not answer a member with a success payload: %s"
                 % (path, response.data[:200]))
 
-    def test_no_registered_route_is_closed_in_database_mode(self):
+    def test_only_the_declared_while_closed_actions_are_closed(self):
         """The merge retrofitted database identity onto the new web layer.
 
         A ``closed`` policy would be the 503 the old console suffered from, so
-        the acceptance is only meaningful while every registered route declares
-        an open policy for every method it serves.
+        every route that predates this change must still declare an open policy
+        for every method it serves. The eight actions of
+        ``integrate-upstream-core-capabilities`` are the documented exception:
+        they are registered while unopened, so the refusal is an authorization
+        decision the projection can report instead of a 404 that reads as "no
+        such feature". Any *other* closed route is the regression this asserts
+        against.
         """
         from channel.web.route_registry import derive_route_policy
 
-        closed = [(path, method)
+        closed = {(path, method)
                   for path, methods in derive_route_policy().items()
                   for method, entry in methods.items()
-                  if entry.get("policy") == "closed"]
-        self.assertEqual(closed, [])
+                  if entry.get("policy") == "closed"}
+        expected = {(path, method)
+                    for path, method, _ in DECLARED_WHILE_CLOSED}
+        self.assertEqual(
+            closed, expected,
+            "closed routes must be exactly the declared-while-closed set: an "
+            "unrelated route going closed is the old 503 symptom")
+
+    def test_the_projection_agrees_with_the_closed_gate(self):
+        """One declaration, two surfaces: the gate and the client projection.
+
+        The spec forbids a capability having two independently maintained
+        switches, so a route that the gate refuses must also read as
+        unavailable to the client -- otherwise the console offers an entry whose
+        every request answers 503.
+        """
+        from auth import capability_matrix
+        from channel.web.route_registry import derive_route_policy
+
+        policy = derive_route_policy()
+        projection = capability_matrix.feature_action_availability()
+        for path, method, action in DECLARED_WHILE_CLOSED:
+            self.assertEqual(
+                policy.get(path, {}).get(method, {}).get("policy"), "closed",
+                "%s %s must be refused by the gate while %s is unopened"
+                % (method, path, action))
+            self.assertIn(action, projection, "%s must be projected" % action)
+            self.assertFalse(
+                projection[action]["available"],
+                "%s is refused by the gate, so it cannot read as available"
+                % action)
 
     def test_an_anonymous_caller_is_refused_every_tenant_entry(self):
         for path, _ in TENANT_PLANE:
@@ -530,9 +573,9 @@ class TenantPlaneAcceptance(_TwoTenantAcceptance):
 
 
 class KnownGapAcceptance(_TwoTenantAcceptance):
-    """未收口项保持未服务：文档里的缺口在运行期也必须如实为 404/405。"""
+    """缺口如实呈现：未注册的仍是 404，注册未开放的必须是带判定的 503。"""
 
-    def test_the_update_and_scheduler_run_endpoints_are_not_routed(self):
+    def test_the_update_endpoints_are_not_routed(self):
         for method, path in UNROUTED:
             response = self._call(method, path, {}, token=self.root_token,
                                   tenant=self.acme_id)
@@ -540,15 +583,23 @@ class KnownGapAcceptance(_TwoTenantAcceptance):
                              "%s %s answered %s -- an unrouted entry went live"
                              % (method, path, response.status))
 
-    def test_the_context_budget_endpoints_are_swallowed_not_served(self):
-        for method, path in SWALLOWED_BY_CATCH_ALL:
-            response = self._call(method, path, {}, token=self.root_token,
+    def test_the_declared_while_closed_actions_are_refused_not_missing(self):
+        """Registered-but-unopened must not be mistaken for unrouted.
+
+        503 is the gate's own refusal, produced before any handler runs, and it
+        is what makes the capability projection and the route agree. A 404 or
+        405 here would mean the route was never registered (the projection would
+        then be advertising nothing) or the catch-all swallowed it.
+        """
+        for path, method, action in DECLARED_WHILE_CLOSED:
+            url = path.replace("(.*)", "x")
+            response = self._call(method, url, {}, token=self.root_token,
                                   tenant=self.acme_id)
-            self.assertIn(
-                _status(response), (404, 405),
-                "%s %s answered %s -- the desktop's context-budget call may have "
-                "been wired without an authorization decision"
-                % (method, path, response.status))
+            self.assertEqual(
+                _status(response), 503,
+                "%s %s answered %s while %s is unopened -- a registered action "
+                "must be refused by the gate, never reported as missing"
+                % (method, url, response.status, action))
 
 
 def tearDownModule():
