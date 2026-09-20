@@ -3,7 +3,7 @@ import importlib.util
 import inspect
 import threading
 from pathlib import Path
-from typing import Dict, Any, Type
+from typing import Dict, Any, Optional, Type
 from agent.tools.base_tool import BaseTool
 from common.log import logger
 from config import conf
