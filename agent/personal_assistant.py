@@ -197,6 +197,34 @@ class PersonalAssistantProvisioner:
             self._admin_service = get_agent_admin_service()
         return self._admin_service
 
+    def _reload_runtime(self, agent_id: Optional[str]) -> None:
+        """Point the live services at the roster this call just wrote.
+
+        Provisioning writes the roster file, but the registry, router and
+        channel bindings the process is running on are the snapshot it booted
+        with. Routing resolves a request against that snapshot, so a member
+        whose assistant is not in it yet is told the assistant is disabled --
+        until someone restarts the process. The console's roster endpoints
+        reload for exactly this reason; this path writes the roster too, so it
+        owes the same reload.
+
+        Imported here rather than at module scope: this module is used by
+        identity paths that run without the web channel loaded, and a reload is
+        only meaningful when that channel is up. Failures are logged, never
+        raised -- provisioning has already succeeded, and a runtime that cannot
+        be refreshed must not turn a created assistant into a failed member
+        creation.
+        """
+        try:
+            from channel.web.fork.runtime import _reload_agent_runtime
+
+            _reload_agent_runtime(
+                self.admin, changed_agent_ids=[agent_id] if agent_id else None)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning(
+                "[PersonalAssistant] runtime reload after provisioning failed:"
+                " %s", exc)
+
     def _setting(self, key: str, default: Any) -> Any:
         """Deployment setting, with a constructor override winning over config."""
         try:
@@ -524,6 +552,11 @@ class PersonalAssistantProvisioner:
                 status=FAILED, reason=ERROR, message=str(exc), tenant_id=tenant_id,
                 user_id=user_id, agent_id=agent_id,
                 source_agent_id=source_agent_id, actor_user_id=actor_user_id)
+
+        # Everything the roster needed is written; hand the live services the
+        # roster they should be running on, or the member's new assistant is
+        # unreachable until the next restart.
+        self._reload_runtime(agent_id)
 
         return self._record(
             status=CREATED, tenant_id=tenant_id, user_id=user_id, agent_id=agent_id,

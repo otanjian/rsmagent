@@ -865,5 +865,36 @@ class WiringTests(_Base):
                               PersonalAssistantProvisioner)
 
 
+class RuntimeReloadTests(_Base):
+    """A new assistant has to be reachable without restarting the process.
+
+    Provisioning writes the roster file, but routing resolves a request against
+    the registry snapshot the process booted with -- until that snapshot is
+    refreshed, the member's own assistant is "disabled" as far as routing is
+    concerned. The console's roster endpoints reload after writing for the same
+    reason, and this path writes the roster too.
+    """
+
+    _RELOAD = "channel.web.fork.runtime._reload_agent_runtime"
+
+    def test_provisioning_reloads_the_live_runtime(self):
+        with patch(self._RELOAD) as reload_mock:
+            member = self._add_member("alice", "Alice")
+
+        self.assertEqual(member["personal_agent"]["status"], "created")
+        reload_mock.assert_called_once()
+        args, kwargs = reload_mock.call_args
+        self.assertIs(args[0], self.admin)
+        self.assertEqual(
+            kwargs["changed_agent_ids"], [member["personal_agent"]["agent_id"]])
+
+    def test_a_reload_that_fails_does_not_fail_the_member(self):
+        """The reload serves the runtime, so it must not gate the roster write."""
+        with patch(self._RELOAD, side_effect=RuntimeError("no bridge yet")):
+            member = self._add_member("alice", "Alice")
+
+        self.assertEqual(member["personal_agent"]["status"], "created")
+
+
 if __name__ == "__main__":
     unittest.main()
