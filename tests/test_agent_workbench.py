@@ -43,7 +43,8 @@ except ImportError:
 
 class _Profile:
     def __init__(self, id, name, enabled=True, description=None, avatar=None,
-                 position=None, category=None, tags=None):
+                 position=None, category=None, tags=None, agent_type="normal",
+                 coding_project_dir=None):
         self.id = id
         self.name = name
         self.workspace = f"/tmp/{id}"
@@ -53,6 +54,12 @@ class _Profile:
         self.position = position
         self.category = category
         self.tags = tags or ()
+        self.agent_type = agent_type
+        self.coding_project_dir = coding_project_dir
+
+    @property
+    def is_coding(self):
+        return self.agent_type == "coding"
 
     def to_dict(self):
         return {
@@ -146,11 +153,14 @@ class TestWorkbenchProjection(unittest.TestCase):
 
         self.assertEqual(data["status"], "success")
         self.assertEqual(len(data["agents"]), 2)  # archived excluded
-        fields = {"id", "name", "description", "avatar", "is_default", "can_chat",
-                  "unavailable_reason"}
+        fields = {"id", "name", "description", "avatar", "agent_type", "is_default",
+                  "can_chat", "unavailable_reason"}
         for agent in data["agents"]:
             self.assertEqual(set(agent.keys()), fields,
                              "workbench projection must be a strict whitelist")
+        # A coding Agent is listed (the console must be able to show it) but
+        # never chatted with as if it were a normal runtime.
+        self.assertTrue(all(a["agent_type"] == "normal" for a in data["agents"]))
         # No management data leaks into the projection.
         self.assertNotIn("workspace", data)
         self.assertNotIn("channel_instances", data)

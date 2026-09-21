@@ -61,18 +61,23 @@ test('the mount point is a documented, stable anchor', () => {
         'the appearance-dialog mount point must carry its documenting comment');
 });
 
-test('the server cache-busts the fragment loader and the fragment markup', () => {
-    // fragments.js fetches the fragment HTML at runtime. If either URL is not
-    // cache-busted, an upgraded server can still serve a browser-cached copy of
-    // the old loader / fragment, which is exactly the stale-asset bug the
-    // console's existing cache_bust list prevents for the other first-party
-    // assets.
+test('the server stamps the fragment loader and the fragment markup', () => {
+    // fragments.js fetches the fragment HTML at runtime, so both URLs have to
+    // move with the bytes behind them: a page that keeps a stale loader or a
+    // stale fragment will mount the previous markup. They have different
+    // owners now that the page is assembled (change port-upstream-tasks-page):
+    // the loader is a first-party script the assembler stamps like any other,
+    // and the fragment is reached through a markup attribute the assembler
+    // never scans, so the fork handler stamps it from the fragment directory.
+    // The end-to-end half -- both URLs carry a stamp in the served page -- is
+    // asserted where the handler can be driven: test_doc_edit.py.
     const server = readWebLayer();
-    assert.match(server, /'js\/fragments\.js'/, 'fragments.js must be cache-busted');
+    assert.match(chatHtml, /<script defer src="assets\/js\/fragments\.js"><\/script>/,
+        'the loader must stay a first-party script reference for render() to stamp');
     assert.match(server, /fragments_dir = os\.path\.join\([^\n]*'static', 'fragments'\)/,
-        'static/fragments must be discovered so its markup is cache-busted');
-    assert.match(server, /f'fragments\/\{name\}'/,
-        'fragment assets must be added to the cache_bust list');
+        'static/fragments must be discovered so its markup is stamped');
+    assert.match(server, /f'\{reference\}\?v=\{version\}'/,
+        'every discovered fragment the page declares must carry a version stamp');
 });
 
 test('a missing optional UI seam falls back to display only and never touches authorization', async () => {

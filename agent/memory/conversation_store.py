@@ -2010,6 +2010,340 @@ class ConversationStore:
                 conn.close()
         return [r[0] for r in rows]
 
+    # ------------------------------------------------------------------
+    # Coding-agent links
+    #
+    # A coding conversation is not mirrored: OpenCode owns the body, the title
+    # and the running state. What lives here is the association between one of
+    # this platform's sessions and one session on the configured service, plus
+    # the few cached fields the existing history list needs to sort, search and
+    # page without asking the service about every row.
+    #
+    # Everything is scoped like the rest of the history: the caller's Agent
+    # through this handle, and the owner/tenant of the session row. The link
+    # table carries no owner of its own, so there is one answer to "whose
+    # session is this?" rather than two that can drift.
+    # ------------------------------------------------------------------
+
+    _CODING_LINK_COLUMNS = (
+        "agent_id, session_id, service_id, external_session_id,"
+        " project_dir, state, request_id"
+    )
+
+    @staticmethod
+    def _coding_link_row(row: tuple) -> Dict[str, Any]:
+        return {
+            "agent_id": row[0],
+            "session_id": row[1],
+            "service_id": row[2],
+            "external_session_id": row[3],
+            "project_dir": row[4],
+            "state": row[5],
+            "request_id": row[6],
+        }
+
+    def create_coding_link(
+        self,
+        session_id: str,
+        external_session_id: str,
+        service_id: str,
+        project_dir: str,
+        request_id: str = "",
+        state: str = "creating",
+        title: str = "",
+        channel_type: str = "web",
+    ) -> Dict[str, Any]:
+        """Reserve the association and its cache row in one transaction.
+
+        Both rows are written together because either one alone is broken: a
+        link without a session row holds an external id for a conversation no
+        list can show, and a session row without a link looks like a normal
+        conversation. The caller then calls the service, and marks the link
+        ready when it answers; until then ``creating`` says the reservation may
+        be retried rather than treated as a session that exists.
+
+        ``request_id`` is kept so a retry can be recognised as the same attempt.
+
+        ``channel_type`` is ``web`` like any console conversation: a coding
+        session is an ordinary row in the existing list, and "this one is
+        backed by OpenCode" is answered by the link, not by a second channel
+        type that every existing reader would have to learn about.
+        """
+        dimensions = self._dimensions()
+        owner = dimensions.get("owner", "")
+        agent_dim = dimensions.get("agent_id", "")
+        tenant_dim = dimensions.get("tenant_id", "")
+        now = int(time.time())
+        with self._lock:
+            conn = self._connect()
+            try:
+                with conn:
+                    conn.execute(
+                        """
+                        INSERT INTO sessions
+                            (agent_id, session_id, channel_type, owner, tenant_id,
+                             title, created_at, last_active, msg_count)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+                        """,
+                        (agent_dim, session_id, channel_type, owner, tenant_dim,
+                         title, now, now),
+                    )
+                    conn.execute(
+                        """
+                        INSERT INTO opencode_session_links
+                            (agent_id, session_id, service_id, external_session_id,
+                             project_dir, state, request_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (agent_dim, session_id, service_id, external_session_id,
+                         project_dir, state, request_id),
+                    )
+            finally:
+                conn.close()
+        return {
+            "agent_id": agent_dim,
+            "session_id": session_id,
+            "service_id": service_id,
+            "external_session_id": external_session_id,
+            "project_dir": project_dir,
+            "state": state,
+            "request_id": request_id,
+        }
+
+    def get_coding_link(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """This Agent's link for a session, or None when it is not a coding one."""
+        clause, params = dimension_clause(
+            values=self._dimensions(), keys=("agent_id",))
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(
+                    f"SELECT {self._CODING_LINK_COLUMNS}"
+                    f" FROM opencode_session_links WHERE session_id = ?{clause}",
+                    (session_id, *params),
+                ).fetchone()
+            finally:
+                conn.close()
+        return self._coding_link_row(row) if row else None
+
+    def find_coding_link_by_external(
+        self, service_id: str, external_session_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """The link holding an external id, for attach and duplicate checks.
+
+        Scoped by service instance: the same id on another instance is a
+        different session, which is what lets an operator migrate the service
+        without the old links claiming the new instance's ids.
+        """
+        clause, params = dimension_clause(
+            values=self._dimensions(), keys=("agent_id",))
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(
+                    f"SELECT {self._CODING_LINK_COLUMNS}"
+                    " FROM opencode_session_links"
+                    f" WHERE service_id = ? AND external_session_id = ?{clause}",
+                    (service_id, external_session_id, *params),
+                ).fetchone()
+            finally:
+                conn.close()
+        return self._coding_link_row(row) if row else None
+
+    def list_coding_links(
+        self,
+        owner: Optional[str] = None,
+        tenant_id: Optional[str] = None,
+        limit: int = 50,
+        after: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """One owner's links, ordered and paged by a cursor that cannot skip.
+
+        Ordered by ``session_id`` and resumed with ``session_id > after``, so a
+        batch boundary is stable even while rows are created during a walk: a
+        new row sorts into place and is picked up by whichever batch reaches it,
+        and nothing already returned can be returned twice. ``next_cursor`` is
+        None on the last batch so the client knows to stop.
+
+        The owner filter joins through ``sessions`` because the link table
+        deliberately has no owner column of its own.
+        """
+        dimensions = self._dimensions()
+        owner = dimensions.get("owner", "") if owner is None else owner
+        limit = max(1, int(limit))
+        clauses = ["s.owner = ?"]
+        params: List[Any] = [owner]
+        if tenant_id is not None:
+            clauses.append("s.tenant_id = ?")
+            params.append(tenant_id)
+        elif dimensions.get("tenant_id"):
+            clauses.append("s.tenant_id = ?")
+            params.append(dimensions["tenant_id"])
+        scope_sql, scope_params = dimension_clause(
+            values=dimensions, keys=("agent_id",), alias="s.")
+        if scope_sql:
+            clauses.append(scope_sql[len(" AND "):])
+            params.extend(scope_params)
+        if after:
+            clauses.append("l.session_id > ?")
+            params.append(after)
+        where = " AND ".join(clauses)
+        columns = ", ".join(f"l.{name.strip()}" for name in
+                            self._CODING_LINK_COLUMNS.split(","))
+        with self._lock:
+            conn = self._connect()
+            try:
+                rows = conn.execute(
+                    f"""
+                    SELECT {columns}
+                    FROM opencode_session_links l
+                    JOIN sessions s
+                      ON s.agent_id = l.agent_id AND s.session_id = l.session_id
+                    WHERE {where}
+                    ORDER BY l.session_id ASC
+                    LIMIT ?
+                    """,
+                    [*params, limit + 1],
+                ).fetchall()
+            finally:
+                conn.close()
+        links = [self._coding_link_row(row) for row in rows[:limit]]
+        next_cursor = links[-1]["session_id"] if len(rows) > limit else None
+        return {"links": links, "next_cursor": next_cursor}
+
+    def coding_link_states(self, session_ids) -> Dict[str, str]:
+        """The link state of the given sessions, keyed by session id.
+
+        This is what the session list shows as ``sync_state``: the persistent
+        ``creating`` / ``ready`` half. A running/idle answer is deliberately not
+        here — it is a transient result of a refresh round (design D3), so the
+        list must not pretend to know it.
+        """
+        ids = [session_id for session_id in (session_ids or []) if session_id]
+        if not ids:
+            return {}
+        clause, params = dimension_clause(
+            values=self._dimensions(), keys=("agent_id",))
+        marks = ",".join("?" * len(ids))
+        with self._lock:
+            conn = self._connect()
+            try:
+                rows = conn.execute(
+                    "SELECT session_id, state FROM opencode_session_links"
+                    f" WHERE session_id IN ({marks}){clause}",
+                    (*ids, *params),
+                ).fetchall()
+            finally:
+                conn.close()
+        return {row[0]: row[1] for row in rows}
+
+    def set_coding_link_state(self, session_id: str, state: str) -> bool:
+        """Move a link between ``creating`` and ``ready``.
+
+        Returns False when there is no link to move, so a caller that raced a
+        delete does not report success for a reservation that is gone.
+        """
+        clause, params = dimension_clause(
+            values=self._dimensions(), keys=("agent_id",))
+        with self._lock:
+            conn = self._connect()
+            try:
+                with conn:
+                    cursor = conn.execute(
+                        "UPDATE opencode_session_links SET state = ?"
+                        f" WHERE session_id = ?{clause}",
+                        (state, session_id, *params),
+                    )
+            finally:
+                conn.close()
+        return cursor.rowcount > 0
+
+    def touch_coding_link_cache(
+        self,
+        session_id: str,
+        title: Optional[str] = None,
+        remote_updated_ms: Optional[int] = None,
+    ) -> bool:
+        """Refresh the cached title/time from a read of the real session.
+
+        Returns False when the link is gone, which is the signal a late refresh
+        must respect: the row is only ever UPDATEd, never upserted, so a result
+        that arrives after a delete cannot bring the session back into the list.
+
+        A remote ``updated`` older than the cached value is ignored: a refresh
+        that raced a rename must not roll the title back to what it was.
+        """
+        link = self.get_coding_link(session_id)
+        if link is None:
+            return False
+        clause, params = dimension_clause(
+            values=self._dimensions(), keys=("agent_id",))
+        with self._lock:
+            conn = self._connect()
+            try:
+                cached = conn.execute(
+                    f"SELECT last_active, title FROM sessions"
+                    f" WHERE session_id = ?{clause}",
+                    (session_id, *params),
+                ).fetchone()
+                if cached is None:
+                    # The cache row is gone but the link is not: refuse rather
+                    # than re-create a conversation the user deleted.
+                    return False
+                updated_at = None
+                if remote_updated_ms is not None:
+                    if remote_updated_ms <= int(cached[0]) * 1000:
+                        # Stale read: keep what is already newer and say so.
+                        return True
+                    updated_at = int(remote_updated_ms) // 1000
+                # The upstream title is mirrored, not authored: the platform's
+                # own rename writes the same field after the service confirms.
+                if title is None:
+                    title = cached[1]
+                with conn:
+                    conn.execute(
+                        "UPDATE sessions SET title = ?, last_active = ?"
+                        f" WHERE session_id = ?{clause}",
+                        (title, updated_at if updated_at is not None else cached[0],
+                         session_id, *params),
+                    )
+            finally:
+                conn.close()
+        return True
+
+    def delete_coding_link(self, session_id: str) -> bool:
+        """Drop the association and its cache row together.
+
+        Called only after the service has confirmed the deletion, so the local
+        rows never outlive the remote session. The project's files are not
+        touched: they belong to the operator's checkout, not to the platform and
+        not to the service.
+        """
+        clause, params = dimension_clause(
+            values=self._dimensions(), keys=("agent_id",))
+        with self._lock:
+            conn = self._connect()
+            try:
+                with conn:
+                    cursor = conn.execute(
+                        "DELETE FROM opencode_session_links"
+                        f" WHERE session_id = ?{clause}",
+                        (session_id, *params),
+                    )
+                    if cursor.rowcount == 0:
+                        return False
+                    conn.execute(
+                        f"DELETE FROM messages WHERE session_id = ?{clause}",
+                        (session_id, *params),
+                    )
+                    conn.execute(
+                        f"DELETE FROM sessions WHERE session_id = ?{clause}",
+                        (session_id, *params),
+                    )
+            finally:
+                conn.close()
+        return True
+
     def get_stats(self) -> Dict[str, Any]:
         """Return basic stats keyed by channel_type, for monitoring."""
         with self._lock:

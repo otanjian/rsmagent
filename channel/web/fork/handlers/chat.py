@@ -87,6 +87,25 @@ def _authorize_chat_session(ctx, session_id, agent_id, *, create=False) -> str:
         profile = get_agent_registry().get(agent_id)
     except (KeyError, ValueError):
         _chat_error("agent not found", "404 Not Found", "not_found")
+
+    def _execution_gates() -> None:
+        """The gates a send/poll/steer re-runs once the session is the caller's.
+
+        Never cached, so a revoked grant blocks the very next request. A coding
+        Agent is refused only *after* the permission gates: a caller who may not
+        use the Agent at all gets the same 403 they would get for any Agent, and
+        the type never turns a permission answer into a hint. The refusal still
+        precedes the INSERT, so a coding Agent gains no platform session row and
+        no ordinary runtime is ever initialized for it.
+        """
+        _require_chat_use(ctx)
+        _require_agent_action(ctx, agent_id, "use", "agent.use")
+        if profile.is_coding:
+            from agent.coding import coding_web_only
+
+            error = coding_web_only(profile.id)
+            _chat_error(error.message, f"{error.status} Bad Request", error.code)
+
     store = get_conversation_store(profile.workspace)
     with store._lock:
         con = store._connect()
@@ -115,8 +134,7 @@ def _authorize_chat_session(ctx, session_id, agent_id, *, create=False) -> str:
                     # Brand-new session: this caller is its first claimant. The
                     # usage gates still run before INSERT so a denied caller
                     # never leaves an orphaned session row behind.
-                    _require_chat_use(ctx)
-                    _require_agent_action(ctx, agent_id, "use", "agent.use")
+                    _execution_gates()
                     if create:
                         now = int(time.time())
                         # ``tenant_id`` is stamped here, at claim time, so the
@@ -149,8 +167,7 @@ def _authorize_chat_session(ctx, session_id, agent_id, *, create=False) -> str:
                     # Resuming the caller's own conversation re-validates the
                     # execution gates (never cached: a revoked grant blocks the
                     # very next send/poll/steer on this session).
-                    _require_chat_use(ctx)
-                    _require_agent_action(ctx, agent_id, "use", "agent.use")
+                    _execution_gates()
         finally:
             con.close()
     return agent_id

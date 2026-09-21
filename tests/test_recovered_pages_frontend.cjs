@@ -29,9 +29,17 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+const { boot, fnSource: pageFnSource } = require('./_tasks_page.cjs');
+
 const read = p => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
 const consoleJs = read('channel/web/static/js/console.js');
 const chatHtml = read('channel/web/chat.html');
+
+// The scheduled-task page's scripts are no longer console.js's (change
+// port-upstream-tasks-page): the view is upstream's, with a fork patch layer on
+// top. Assertions about it read that layer; tests/_tasks_page.cjs loads it
+// against the real upstream scripts.
+const tasksPage = read('channel/web/static/js/fork/tasks-console.js');
 
 // The view ids the recovered pages are reached through, and the page key the
 // server signs for each. The page keys are asserted *through the product code*
@@ -241,73 +249,42 @@ test('the recovered views are not fetched by the startup path', () => {
     assert.doesNotMatch(init, /loadTasksView|loadMemoryView|loadChannelsView|_fpBrowse|switchMemoryTab/,
         'startup must not preload the recovered pages');
     // The scheduler list is guarded once per session and only filled on demand.
-    assert.match(fnSource('loadTasksView'), /if \(tasksLoaded\) return;/);
+    // Its loader moved to the page's fork patch layer, which applies the
+    // per-action gate before it reaches the flag.
+    assert.match(pageFnSource('loadTasksView', tasksPage), /if \(tasksLoaded\) return;/);
 });
 
 // =====================================================================
 // 3. The scheduler cards follow the server's per-task decision
 // =====================================================================
 
-// The Tasks section: `let tasksLoaded` plus the loader and its helpers. The
-// list's DOM is stubbed; escapeHtml/agent lookups are enough for the assertions.
-function bootTasks(payload) {
-    const nodes = new Map();
-    const ctx = {
-        agentCatalog: [{ id: 'owner', name: 'Owner' }], currentLang: 'zh',
-        t: key => key, // identity: assert on the raw key, locale-agnostic
-        escapeHtml: x => String(x),
-        findAgent: () => null,
-        multiAgentMode: () => false,
-        agentAvatarHTML: () => '',
-        openTaskEditModal: () => {},
-        showConfirmDialog: () => {},
-        document: {
-            getElementById(id) {
-                if (!nodes.has(id)) {
-                    const el = element();
-                    if (id === 'tasks-empty') el.querySelector = sel => (sel === 'p' ? (el._p ||= element()) : null);
-                    nodes.set(id, el);
-                }
-                return nodes.get(id);
-            },
-            createElement() {
-                const el = element();
-                el.querySelector = () => (el._q ||= element());
-                return el;
-            },
-        },
-        fetch: async () => ({ json: async () => payload }),
-        // console.js is a browser script: the Tasks mount looks up its feature
-        // module through `window`. Absent the module the mount is a no-op, so an
-        // empty window is the honest sandbox for this slice.
-        window: {},
-    };
-    vm.createContext(ctx);
-    const from = consoleJs.indexOf('let tasksLoaded = false;');
-    const to = consoleJs.indexOf('// =====================================================================\n// Logs View');
-    assert.ok(from >= 0 && to > from, 'the scheduler section must stay in console.js');
-    vm.runInContext(consoleJs.slice(from, to), ctx);
-    return { ctx, get: id => ctx.document.getElementById(id) };
-}
+// The loader, the card renderer and the session guard now live in the page's
+// fork patch layer (change port-upstream-tasks-page), on top of the upstream
+// scripts; tests/_tasks_page.cjs evaluates that whole stack. The same loader's
+// refusal paths are locked in tests/test_scheduler_frontend.cjs.
 
 test('the scheduler card offers only the verbs the server granted that task', async () => {
-    const { ctx, get } = bootTasks({
-        status: 'success',
-        tasks: [
-            // An Agent-owned task the caller may see but not manage or run.
-            { id: 'public-1', name: 'public-1', enabled: true, scope: 'public',
-              agent_id: 'owner', schedule: { type: 'cron', expression: '0 2 * * *' },
-              action: { content: 'shared work' },
-              capabilities: { view: true, manage: false, run: false } },
-            // The caller's own task: the same page offers the full verb set.
-            { id: 'mine-1', name: 'mine-1', enabled: true, scope: 'personal',
-              agent_id: 'owner', schedule: { type: 'cron', expression: '0 3 * * *' },
-              action: { content: 'my work' },
-              capabilities: { view: true, manage: true, run: true } },
-        ],
+    const page = boot({
+        answers: {
+            '/api/scheduler?': {
+                status: 'success',
+                tasks: [
+                    // An Agent-owned task the caller may see but not manage or run.
+                    { id: 'public-1', name: 'public-1', enabled: true, scope: 'public',
+                      agent_id: 'owner', schedule: { type: 'cron', expression: '0 2 * * *' },
+                      action: { content: 'shared work' },
+                      capabilities: { view: true, manage: false, run: false } },
+                    // The caller's own task: the same page offers the full verb set.
+                    { id: 'mine-1', name: 'mine-1', enabled: true, scope: 'personal',
+                      agent_id: 'owner', schedule: { type: 'cron', expression: '0 3 * * *' },
+                      action: { content: 'my work' },
+                      capabilities: { view: true, manage: true, run: true } },
+                ],
+            },
+        },
     });
-    await ctx.loadTasksView();
-    const cards = get('tasks-list').children;
+    await page.sandbox.loadTasksView();
+    const cards = page.get('tasks-list').children;
     assert.equal(cards.length, 2, 'both tasks are listed');
 
     const readOnly = cards[0].innerHTML;
@@ -318,34 +295,6 @@ test('the scheduler card offers only the verbs the server granted that task', as
     const owned = cards[1].innerHTML;
     assert.match(owned, /task-run-now/, 'the granted run verb is offered');
     assert.match(owned, /type="checkbox"/, 'the granted manage verb is offered');
-});
-
-test('a closed scheduler answer is not rendered as a successful empty list', async () => {
-    const closed = bootTasks({ status: 'error', code: 'database_unavailable' });
-    await closed.ctx.loadTasksView();
-    const closedText = closed.get('tasks-empty').querySelector('p').textContent;
-    assert.equal(closedText, 'tasks_unavailable');
-    assert.equal(closed.get('tasks-list').classList.contains('hidden'), true);
-    assert.equal(closed.get('tasks-empty').classList.contains('hidden'), false);
-
-    // The success-but-empty state is a *different* answer: the failure branch
-    // must never reach it, or a closed consumer would look like "no tasks yet".
-    const empty = bootTasks({ status: 'success', tasks: [] });
-    await empty.ctx.loadTasksView();
-    const emptyText = empty.get('tasks-empty').querySelector('p').textContent;
-    assert.notEqual(closedText, emptyText, 'refusal and empty-success must differ');
-    assert.doesNotMatch(closedText, /暂无定时任务|No scheduled tasks/);
-});
-
-test('a refused scheduler request still resolves to a final state', async () => {
-    const forbidden = bootTasks({ status: 'error', code: 'forbidden', message: 'not your Agent' });
-    await forbidden.ctx.loadTasksView();
-    const text = forbidden.get('tasks-empty').querySelector('p').textContent;
-    // The server's own reason is shown for a non-closed failure, and the list is
-    // not left spinning behind a hidden panel.
-    assert.equal(text, 'not your Agent');
-    assert.equal(forbidden.get('tasks-list').classList.contains('hidden'), true);
-    assert.equal(forbidden.get('tasks-empty').classList.contains('hidden'), false);
 });
 
 // =====================================================================
@@ -463,7 +412,14 @@ test('no module carries its own capability list for the recovered pages', () => 
 });
 
 test('chat.html keeps one not-available surface instead of per-page "not shipped" copy', () => {
-    for (const viewId of [...Object.keys(RECOVERED_VIEWS), 'unavailable']) {
+    // The tasks view is the upstream fragment, included rather than copied
+    // (change port-upstream-tasks-page), so its container is asserted where it
+    // now lives -- naming the fork's own copy would lock the duplicate back in.
+    assert.match(chatHtml, /<!--#include templates\/views\/tasks\.html-->/,
+        'the tasks view fragment must be included');
+    assert.match(read('channel/web/templates/views/tasks.html'), /id="view-tasks"/,
+        'the tasks container must exist');
+    for (const viewId of ['memory', 'channels', 'unavailable']) {
         assert.match(chatHtml, new RegExp(`id="view-${viewId}"`),
             `the ${viewId} container must exist`);
     }

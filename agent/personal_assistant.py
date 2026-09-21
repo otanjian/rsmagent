@@ -347,6 +347,10 @@ class PersonalAssistantProvisioner:
             profile = roster.get(explicit)
             if explicit not in bound or profile is None:
                 return None, NO_SOURCE
+            # A coding Agent has no persona to clone and no normal runtime to
+            # answer with; it is never a personal-assistant template.
+            if profile.get("agent_type") == "coding":
+                return None, NO_SOURCE
             return (explicit, None) if profile.get("enabled", True) else (None, NO_SOURCE)
 
         wanted = self._configured_source_name()
@@ -354,6 +358,7 @@ class PersonalAssistantProvisioner:
             agent_id for agent_id in bound
             if roster.get(agent_id, {}).get("name") == wanted
             and roster[agent_id].get("enabled", True)
+            and roster[agent_id].get("agent_type") != "coding"
         )
         return (matches[0], None) if matches else (None, NO_SOURCE)
 

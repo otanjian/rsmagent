@@ -13,7 +13,6 @@ from common.log import logger
 import json
 import mimetypes
 import os
-import time
 import web
 
 
@@ -37,6 +36,37 @@ class HealthHandler:
         return json.dumps({"status": "ok"})
 
 
+def _stamp_fork_fragments(html: str) -> str:
+    """Stamp the fork fragment URLs the page declares.
+
+    ``fragments.js`` fetches ``static/fragments/*.html`` at runtime, so the URL
+    sits in a ``data-fork-fragment`` attribute -- markup the assembler does not
+    scan, since it only stamps scripts and stylesheets. Without a stamp an
+    upgraded server can keep having a browser mount the previous fork markup.
+    The stamp is the same rule the assembler applies to scripts (the file's own
+    mtime through ``template.asset_version``), so the URL moves exactly when the
+    fragment does. Nothing is stamped that is not a fragment of the page, and a
+    fragment directory that cannot be read leaves the page as assembled rather
+    than failing the request.
+    """
+    from channel.web.core import template
+    fragments_dir = os.path.join(_WEB_ROOT, 'static', 'fragments')
+    try:
+        names = sorted(os.listdir(fragments_dir))
+    except OSError:
+        return html
+    for name in names:
+        if not name.endswith('.html'):
+            continue
+        reference = f'assets/fragments/{name}'
+        if reference not in html:
+            continue
+        version = template.asset_version(f'fragments/{name}')
+        if version:
+            html = html.replace(reference, f'{reference}?v={version}')
+    return html
+
+
 class ChatHandler:
     def GET(self):
         # Content-Type must be explicit: behind a reverse proxy that sends
@@ -46,50 +76,16 @@ class ChatHandler:
         web.header('Content-Type', 'text/html; charset=utf-8')
         web.header('Cache-Control', 'no-cache, no-store, must-revalidate')
         web.header('Pragma', 'no-cache')
-        file_path = os.path.join(_WEB_ROOT, 'chat.html')
-        with open(file_path, 'r', encoding='utf-8') as f:
-            html = f.read()
-        cache_bust = str(int(time.time()))
-        # Every first-party asset the page pulls in, so an upgraded console is
-        # never left running against a browser-cached copy of the old scripts.
-        # identity-admin.js carries the tabbed editors: if it is missed here a
-        # browser can keep rendering the previous (per-tab save) editor even
-        # though the server already ships the unified-save one.
-        assets = ['js/console.js', 'js/workspace.js', 'js/doc-editor.js',
-                  'js/appearance.js', 'js/scenes/index.js',
-                  'js/identity-admin.js', 'js/todos.js', 'js/fragments.js',
-                  'css/console.css', 'css/appearance.css']
-        # The functional modules are discovered rather than listed, for the same
-        # reason the i18n namespaces are: they are added per feature, and a name
-        # missed here would leave a browser running an upgraded console against a
-        # cached copy of a module the page already references.
-        try:
-            js_dir = os.path.join(_WEB_ROOT, 'static', 'js')
-            assets += [f'js/{name}' for name in sorted(os.listdir(js_dir))
-                       if name.startswith('functional-') and name.endswith('.js')]
-        except OSError:
-            pass
-        # The per-domain i18n namespaces are discovered rather than listed: the
-        # split (task 8.5) adds files over time, and a name missed here would
-        # leave a browser rendering an upgraded console with a stale dictionary.
-        try:
-            i18n_dir = os.path.join(_WEB_ROOT, 'static', 'js', 'i18n')
-            assets += [f'js/i18n/{name}' for name in sorted(os.listdir(i18n_dir))
-                       if name.endswith('.js')]
-        except OSError:
-            pass
-        # Fork fragments (task 8.8) are fetched at runtime by fragments.js, so
-        # they need the same cache-busting as the scripts: a browser-cached copy
-        # would keep mounting stale fork markup after an upgrade. Discovered
-        # rather than listed so a new fragment needs no server edit.
-        try:
-            fragments_dir = os.path.join(_WEB_ROOT, 'static', 'fragments')
-            assets += [f'fragments/{name}' for name in sorted(os.listdir(fragments_dir))
-                       if name.endswith('.html')]
-        except OSError:
-            pass
-        for asset in assets:
-            html = html.replace(f'assets/{asset}', f'assets/{asset}?v={cache_bust}')
+        # Assembled from ``templates/`` by the same server-side assembler the
+        # upstream shell uses (``<!--#include path-->``), so the fork's page is
+        # built out of the same view and modal fragments as upstream's instead
+        # of carrying its own copy of each one. Assembly also stamps every
+        # first-party asset with its own mtime, which is what replaces the
+        # hand-maintained asset list and the wall-clock ``?v=`` below it: a new
+        # script, stylesheet or i18n namespace needs no edit here, and an asset
+        # that has not changed keeps the URL the browser already has.
+        from channel.web.core import template as _template
+        html = _stamp_fork_fragments(_template.render('chat.html'))
         # Inject the backend-resolved default language for first-load fallback.
         html = html.replace("{{COW_DEFAULT_LANG}}", i18n.get_language())
         # Inject the validated console navigation presentation switch (layout

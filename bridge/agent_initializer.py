@@ -74,6 +74,16 @@ class AgentInitializer:
         identity = current_identity()
         registry = get_agent_registry()
         profile = registry.get(agent_id or identity.agent_id)
+        # A coding Agent is a Web entry point into OpenCode, not a platform
+        # runtime. Refusing here — the single place a normal runtime is built —
+        # is what keeps a coding Agent from being handed a model, a persona and
+        # a tool set by every consumer that forgot to filter it out: chat,
+        # teams, delegation, channels, schedulers and warmup all funnel through
+        # this call.
+        if profile.is_coding:
+            from agent.coding import coding_web_only
+
+            raise coding_web_only(profile.id)
         workspace_root = profile.workspace
         host_profile = profile
         if host_agent_id and host_agent_id != profile.id:
@@ -571,9 +581,7 @@ class AgentInitializer:
                         not isinstance(delegation, dict)
                         or delegation.get("enabled", True)
                     )
-                    enabled_agents = self.agent_bridge.agent_registry.list(
-                        include_disabled=False
-                    )
+                    enabled_agents = self.agent_bridge.agent_registry.normal()
                     # Delegation only makes sense once a conversation actually has
                     # teammates in it. A solo chat - even on an instance with many
                     # Agents defined - should not carry the tool, so a lone Agent

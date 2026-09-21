@@ -278,6 +278,25 @@ def _has_block_type(content: list, block_type: str) -> bool:
     )
 
 
+# Block types that carry an image. Dropping one during compression is not the
+# same as there having been no image, so the compressed text says so.
+_IMAGE_BLOCK_TYPES = ("image", "image_url")
+
+_IMAGE_OMITTED_NOTE = "（此轮中的图片已在压缩历史时省略）"
+
+
+def _dropped_image_note(content) -> str:
+    """A readable placeholder for image blocks that compression removed."""
+    if not isinstance(content, list):
+        return ""
+    if not any(
+        isinstance(b, dict) and b.get("type") in _IMAGE_BLOCK_TYPES
+        for b in content
+    ):
+        return ""
+    return _IMAGE_OMITTED_NOTE
+
+
 def _extract_text_from_content(content) -> str:
     """Extract plain text from a message content field (str or list of blocks)."""
     if isinstance(content, str):
@@ -313,7 +332,10 @@ def compress_turn_to_text_only(turn: Dict) -> Dict:
             if isinstance(content, list) and _has_block_type(content, "tool_result"):
                 continue
             if not user_text:
-                user_text = _extract_text_from_content(content)
+                note = _dropped_image_note(content)
+                user_text = "\n".join(
+                    part for part in (_extract_text_from_content(content), note) if part
+                )
 
         elif role == "assistant":
             text = _extract_text_from_content(content)

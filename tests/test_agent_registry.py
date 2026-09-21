@@ -205,3 +205,172 @@ def test_profile_to_dict_omits_empty_overrides(tmp_path):
         "workspace": str(Path(tmp_path).resolve()),
         "enabled": True,
     }
+
+
+# --- Agent types ---------------------------------------------------------
+#
+# A ``coding`` Agent is an entry point into a shared OpenCode service, not a
+# second kind of runtime. Two properties carry the whole boundary: reading an
+# old profile must not invent a type (or rewrite the file), and no ordinary
+# runtime path may ever be handed a coding Agent.
+
+
+def test_agents_without_a_type_are_normal_and_unrewritten(tmp_path):
+    """The compatibility red line: loading must not change what is on disk."""
+    settings = {
+        "agent_workspace": str(tmp_path / "cow"),
+        "default_agent_id": "main",
+        "agents": [{"id": "main", "name": "Main"}, {"id": "sales", "name": "Sales"}],
+    }
+    registry = AgentRegistry.from_config(settings)
+
+    assert registry.get("main").agent_type == "normal"
+    assert registry.get("main").is_coding is False
+    # Absent stays absent: a normal Agent's type is never written back.
+    assert "agent_type" not in registry.get("main").to_dict()
+    assert "agent_type" not in settings["agents"][0]
+    assert "coding_project_dir" not in registry.get("main").to_dict()
+
+
+def test_coding_agent_keeps_its_remote_project_verbatim(tmp_path):
+    """The project directory lives on the OpenCode host, not on this one.
+
+    Resolving or normalising it here would silently rewrite a remote POSIX path
+    into whatever the platform host thinks it means, so it is carried as given
+    and never created locally.
+    """
+    remote = "/srv/checkouts/erp"
+    registry = AgentRegistry.from_config(
+        {
+            "agent_workspace": str(tmp_path / "cow"),
+            "default_agent_id": "main",
+            "agents": [
+                {"id": "main", "name": "Main"},
+                {
+                    "id": "erp-coder",
+                    "name": "ERP Coder",
+                    "agent_type": "coding",
+                    "coding_project_dir": remote,
+                },
+            ],
+        }
+    )
+
+    profile = registry.get("erp-coder")
+    assert profile.is_coding is True
+    assert profile.coding_project_dir == remote
+    assert profile.to_dict()["agent_type"] == "coding"
+    assert profile.to_dict()["coding_project_dir"] == remote
+    # Nothing was scaffolded for it: its workspace is the platform state
+    # directory, and that is not where the code lives.
+    assert not Path(remote).exists()
+
+
+def test_coding_agent_without_a_project_is_a_config_error(tmp_path):
+    """Without a project there is nothing to open, so the profile is unusable."""
+    with pytest.raises(AgentRegistryError, match="requires a coding_project_dir"):
+        AgentRegistry.from_config(
+            {
+                "agent_workspace": str(tmp_path / "cow"),
+                "agents": [{"id": "erp-coder", "agent_type": "coding"}],
+            }
+        )
+
+
+def test_unknown_agent_type_is_refused_rather_than_defaulted(tmp_path):
+    """A typo must be reported, not silently answered by a normal runtime."""
+    with pytest.raises(AgentRegistryError, match="agent_type must be one of"):
+        AgentRegistry.from_config(
+            {
+                "agent_workspace": str(tmp_path / "cow"),
+                "agents": [{"id": "main", "agent_type": "codeing"}],
+            }
+        )
+
+
+def test_a_normal_agent_never_keeps_a_remote_project(tmp_path):
+    """A project submitted for a normal Agent is dropped, not stored.
+
+    Keeping it would make the field mean two things depending on the type, and
+    a later type-agnostic reader could not tell which one it was looking at.
+    """
+    registry = AgentRegistry.from_config(
+        {
+            "agent_workspace": str(tmp_path / "cow"),
+            "agents": [
+                {
+                    "id": "main",
+                    "name": "Main",
+                    "coding_project_dir": "/srv/checkouts/erp",
+                }
+            ],
+        }
+    )
+
+    assert registry.get("main").coding_project_dir is None
+    assert "coding_project_dir" not in registry.get("main").to_dict()
+
+
+def test_coding_agent_cannot_be_the_default(tmp_path):
+    """An instance default is what every unaddressed message lands on."""
+    with pytest.raises(AgentRegistryError, match="cannot be the default agent"):
+        AgentRegistry.from_config(
+            {
+                "agent_workspace": str(tmp_path / "cow"),
+                "default_agent_id": "erp-coder",
+                "agents": [
+                    {"id": "main", "name": "Main"},
+                    {
+                        "id": "erp-coder",
+                        "agent_type": "coding",
+                        "coding_project_dir": "/srv/checkouts/erp",
+                    },
+                ],
+            }
+        )
+
+
+def test_promoting_a_coding_agent_to_default_is_refused(tmp_path):
+    """The same rule at runtime: no path may appoint one after startup."""
+    registry = AgentRegistry.from_config(
+        {
+            "agent_workspace": str(tmp_path / "cow"),
+            "default_agent_id": "main",
+            "agents": [
+                {"id": "main", "name": "Main"},
+                {
+                    "id": "erp-coder",
+                    "agent_type": "coding",
+                    "coding_project_dir": "/srv/checkouts/erp",
+                },
+            ],
+        }
+    )
+
+    with pytest.raises(AgentRegistryError, match="cannot be the default agent"):
+        registry.set_default("erp-coder")
+    assert registry.default_agent_id == "main"
+
+
+def test_normal_profiles_are_the_only_ordinary_runtime_candidates(tmp_path):
+    """Every non-Web consumer starts from ``normal()``, not ``list()``."""
+    registry = AgentRegistry.from_config(
+        {
+            "agent_workspace": str(tmp_path / "cow"),
+            "default_agent_id": "main",
+            "agents": [
+                {"id": "main", "name": "Main"},
+                {"id": "stopped", "name": "Stopped", "enabled": False},
+                {
+                    "id": "erp-coder",
+                    "agent_type": "coding",
+                    "coding_project_dir": "/srv/checkouts/erp",
+                },
+            ],
+        }
+    )
+
+    assert [p.id for p in registry.normal()] == ["main"]
+    # ``include_disabled`` still means what it says, minus the coding Agent.
+    assert [p.id for p in registry.normal(include_disabled=True)] == ["main", "stopped"]
+    assert "erp-coder" in [p.id for p in registry.list(include_disabled=True)]

@@ -306,6 +306,19 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/api/sessions/(.*)/compact_context", "SessionCompactContextHandler", "fork:context", {"POST": S("session_context_compact", "compact", permission="", comment="manually compact an owned session; a generation in flight answers 409 and a changed snapshot is discarded")}),
     RouteEntry("/api/sessions/(.*)/settings", "SessionSettingsHandler", "upstream", {"GET": P("tenant", comment="session settings (read effective model/permission)"), "POST": P("tenant", comment="session settings")}),
     RouteEntry("/api/sessions/(.*)", "SessionDetailHandler", "upstream", {"PUT": P("tenant", comment="session rename / pin"), "DELETE": P("tenant", comment="delete session")}),
+    # Coding Agents (change add-opencode-coding-agents). The literal paths come
+    # first so the ``([^/]+)/open`` pattern cannot swallow ``attach`` or
+    # ``sync``; both tables anchor as ``^{pattern}\Z``, so no overlap remains.
+    # ``permission`` is deliberately not set at the route: these handlers
+    # enforce the same gates the chat and session endpoints do (``history.read``,
+    # ``chat.use``, the Agent's ``agent.use`` grant, the tenant binding and the
+    # durable owner), and a route-level permission could only declare one of
+    # them and imply a role could widen the others.
+    RouteEntry("/api/coding/sessions", "CodingSessionsHandler", "fork:coding", {"POST": P("tenant", comment="create or resume a coding session (owner from the verified identity; chat.use + agent.use enforced in handler)")}),
+    RouteEntry("/api/coding/sessions/attach", "CodingSessionAttachHandler", "fork:coding", {"POST": P("tenant", comment="register a session opened inside OpenCode after verifying source ownership, remote existence, project match and root-session shape")}),
+    RouteEntry("/api/coding/sessions/sync", "CodingSessionSyncHandler", "fork:coding", {"POST": P("tenant", comment="refresh one batch of the caller's own cached coding list (history.read scoped to owned rows)")}),
+    RouteEntry("/api/coding/sessions/([^/]+)/open", "CodingSessionOpenHandler", "fork:coding", {"GET": P("tenant", comment="open one owned coding session (never creates remote state)")}),
+    RouteEntry("/api/coding/settings", "CodingSettingsHandler", "fork:coding", {"GET": P("tenant", permission="agent.read", comment="read-only projection of the configured service (never returns the password or its env var)")}),
     RouteEntry("/api/history", "HistoryHandler", "upstream", {"GET": P("tenant", comment="history")}),
     RouteEntry("/api/messages/delete", "MessageDeleteHandler", "upstream", {"POST": P("tenant", comment="delete message")}),
     RouteEntry("/api/logs/download", "LogsDownloadHandler", "upstream", {"GET": P("platform", comment="logs download (process-global run.log; platform control plane)")}),

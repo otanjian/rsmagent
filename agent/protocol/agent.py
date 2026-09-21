@@ -96,6 +96,12 @@ from common.runtime_identity import current_user_id
 
 
 class Agent:
+    # Priced per image when estimating a message's token cost. Both the
+    # Anthropic-style ``image`` block and the OpenAI-style ``image_url`` block
+    # are one image; the latter carries a base64 data URL that must not be
+    # counted as text.
+    IMAGE_BLOCK_TOKENS = 1200
+
     def __init__(self, system_prompt: str, description: str = "AI Agent", model: LLMModel = None,
                  tools=None, output_mode="print", max_steps=100, max_context_tokens=None, 
                  context_reserve_tokens=None, memory_manager=None, name: str = None,
@@ -456,8 +462,13 @@ class Agent:
                 block_type = part.get('type', '')
                 if block_type == 'text':
                     total_tokens += self._estimate_text_tokens(part.get('text', ''))
-                elif block_type == 'image':
-                    total_tokens += 1200
+                elif block_type in ('image', 'image_url'):
+                    # Both spellings mean "one image". The OpenAI-compatible
+                    # ``image_url`` form carries a data URL whose base64 length
+                    # dwarfs the real cost, so it must be priced as an image,
+                    # never as text — otherwise the image is free to the budget
+                    # check and a full prompt overflows the window (400 loop).
+                    total_tokens += self.IMAGE_BLOCK_TOKENS
                 elif block_type == 'tool_use':
                     # tool_use has id + name + input (JSON-encoded)
                     total_tokens += 50  # overhead for structure
@@ -734,7 +745,7 @@ class Agent:
 
     def run_stream(self, user_message: str, on_event=None, clear_history: bool = False,
                    skill_filter=None, cancel_event=None, steer_inbox=None,
-                   allow_empty_response: bool = False) -> str:
+                   allow_empty_response: bool = False, attachments=None) -> str:
         """
         Execute single agent task with streaming (based on tool-call)
 
@@ -762,6 +773,9 @@ class Agent:
             allow_empty_response: If True, an empty answer is returned as-is
                 instead of a fallback message. For runs nobody is waiting on
                 (scheduled tasks), where sending nothing is a valid outcome.
+            attachments: Optional inbound attachments (images) for this turn.
+                Channels only report where each image lives; this layer decides
+                whether it can be delivered to the turn's model.
 
         Returns:
             Final response text
@@ -813,7 +827,7 @@ class Agent:
 
         # Execute
         try:
-            response = executor.run_stream(user_message)
+            response = executor.run_stream(user_message, attachments=attachments)
         except Exception:
             # If executor cleared its messages (context overflow / message format error),
             # sync that back to the Agent's own message list so the next request

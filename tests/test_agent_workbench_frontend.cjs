@@ -386,3 +386,55 @@ test('old session model and project responses cannot overwrite new context', asy
     assert.equal(ctx.state().settings, null);
     assert.equal(ctx.state().workspace.current, undefined);
 });
+
+test('the workbench read carries the Agent type through to the card', async () => {
+    // The card case below hands the renderer a hand-built row, so it cannot see
+    // whether the *read* keeps the type: this projection is normalised through a
+    // field whitelist, and while ``agent_type`` was missing from that list every
+    // row arrived as an ordinary Agent. The card, the new-chat row and
+    // ``agentTypeOf``'s fallback all read the type off this roster, so the badge
+    // and the surface routing were both starved of an answer the server had
+    // already given. Asserted end to end -- read, then the painted grid -- so
+    // either half alone cannot satisfy it.
+    const { ctx, node } = setup(async () => response([
+        agent('coder', { agent_type: 'coding' }),
+        agent('plain', { agent_type: 'normal' }),
+        agent('legacy'),
+    ]));
+
+    const agents = await ctx.fetchAgentWorkbench();
+    assert.equal(agents.find(a => a.id === 'coder').agent_type, 'coding');
+    assert.equal(agents.find(a => a.id === 'plain').agent_type, 'normal');
+    // Absent stays absent rather than being asserted normal: "no type" and
+    // "normal" have to remain distinguishable downstream (旧档案按 normal 处理).
+    assert.equal(agents.find(a => a.id === 'legacy').agent_type, undefined);
+
+    await ctx.loadAgentWorkbench();
+    const grid = node('agent-workbench-grid').innerHTML;
+    assert.equal(grid.split('coding-agent-badge').length - 1, 1,
+        'exactly the coding Agent is marked');
+    assert.match(grid, /agents_type_coding/);
+});
+
+test('the workbench card says when an Agent is a coding one', async () => {
+    // The card's action opens the embedded OpenCode pane rather than the
+    // platform composer, so the roster has to say which card does that: the
+    // picker and the admin form already name the type, and a card that did not
+    // would be the one place a coding Agent looked like an ordinary one.
+    const { ctx } = setup(async () => response([]));
+
+    const coding = ctx.agentWorkbenchCardHTML(
+        { ...agent('coder', { agent_type: 'coding' }), enabled: true }, true, null);
+    assert.match(coding, /coding-agent-badge/);
+    assert.match(coding, /agents_type_coding/);
+
+    // A normal Agent is not marked, so the badge keeps meaning something.
+    const plain = ctx.agentWorkbenchCardHTML(
+        { ...agent('plain', { agent_type: 'normal' }), enabled: true }, true, null);
+    assert.doesNotMatch(plain, /coding-agent-badge/);
+
+    // An Agent whose type the server did not project is treated as normal
+    // (``opencode-coding-agents``: 缺少类型的旧档案 MUST 按 normal 处理).
+    const legacy = ctx.agentWorkbenchCardHTML({ ...agent('old'), enabled: true }, true, null);
+    assert.doesNotMatch(legacy, /coding-agent-badge/);
+});

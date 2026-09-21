@@ -511,16 +511,9 @@ function _enterAccountApp() {
     // consumer starts, so a reply that was in flight when the tenant went away
     // cannot be written into the new one.
     _invalidateAuthContext();
-    // The scheduler console reads the run ledger, which is per-tenant. Its
-    // mounted handle is torn down here rather than left to the next Tasks visit:
-    // a detached module still holding the previous tenant's rows would be one
-    // stray repaint away from showing them under the new tenant. The handle is
-    // only bound once the Tasks console has mounted, so an entry point that
-    // never loads that section reaches the same outcome without the teardown.
-    if (typeof _tasksModuleHandle !== 'undefined' && _tasksModuleHandle) {
-        _tasksModuleHandle.dispose();
-        _tasksModuleHandle = null;
-    }
+    // The task list is the tenant's own ledger, so entering the app (exactly
+    // where the tenant may have changed) drops the loaded flag: the next visit
+    // reads the new tenant's rows instead of repainting the previous one's.
     tasksLoaded = false;
     // The context panel is session-scoped too; tear it down for the same reason
     // (a detached module would still hold the previous tenant's usage).
@@ -2649,6 +2642,14 @@ async function fetchAgentWorkbench() {
         description: a.description || '', avatar: a.avatar || null,
         is_default: a.is_default, can_chat: a.can_chat,
         unavailable_reason: a.unavailable_reason || null,
+        // The type decides which surface serves the Agent -- the card badge, the
+        // new-chat row and ``agentTypeOf``'s fallback all read it -- and this
+        // projection is the one place that could lose it: every other reader
+        // spreads the server row, this one names its fields. Dropping it here
+        // left a coding Agent indistinguishable from an ordinary one on the very
+        // lists that route and label it, however well the card rendered a type
+        // it was never handed. Absent still means normal.
+        agent_type: a.agent_type,
         // Digital-employee projection fields (positioned to render on cards).
         position: a.position || '', category: a.category || '', tags: a.tags || [],
     })).sort((a, b) => Number(b.is_default) - Number(a.is_default));
@@ -2694,9 +2695,16 @@ function agentAnchorHintText() {
 
 function agentWorkbenchCardHTML(agent, canChat, unavailableReason) {
     const desc = (agent.description || '').trim();
-    const badge = agent.is_default
-        ? `<span class="agent-card-badge agent-chip-on">${escapeHtml(t('agents_default'))}</span>`
-        : '';
+    // The default/archived badge and the type badge share the card's top-right
+    // corner; a coding Agent's action opens the embedded pane instead of the
+    // platform composer, so which kind this card is has to be visible here too.
+    const badges = [
+        agent.is_default
+            ? `<span class="agent-card-badge agent-chip-on">${escapeHtml(t('agents_default'))}</span>` : '',
+        agent.agent_type === 'coding'
+            ? `<span class="coding-agent-badge">${escapeHtml(t('agents_type_coding'))}</span>` : '',
+    ].filter(Boolean).join('');
+    const badge = badges ? `<span class="agent-wb-card-badges">${badges}</span>` : '';
     const starting = _agentStartAgentId === agent.id;
     const disabled = !canChat || agentWorkbenchLoading || !!_agentStartInFlight;
     const actionLabel = starting ? t('agent_starting')
@@ -2988,10 +2996,18 @@ function renderAgentDetail() {
     const identity = document.getElementById('agent-detail-identity');
     const profile = document.getElementById('agent-detail-profile');
     if (!agent || !identity || !profile) return;
+    const coding = agent.agent_type === 'coding';
+    // The service line is read through the guarded seam accessor: this region of
+    // the file runs on its own in the Agent tests, where the seam is absent.
+    const seam = (typeof codingSeam === 'function') ? codingSeam() : null;
+    const serviceLabel = (seam && seam.serviceLabel()) || t('agents_coding_service_unset');
     identity.innerHTML = `
         ${agentAvatarHTML(agent, 56)}
         <div class="min-w-0">
-            <div class="text-lg font-semibold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(agent.name)}</div>
+            <div class="flex items-center gap-2">
+                <span class="text-lg font-semibold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(agent.name)}</span>
+                <span class="coding-agent-badge ${coding ? '' : 'hidden'}">${escapeHtml(t('agents_type_coding'))}</span>
+            </div>
             <div class="text-xs text-slate-400 font-mono truncate">${escapeHtml(agent.id)}</div>
         </div>`;
     const isDefault = agent.id === defaultAgentId;
@@ -3015,6 +3031,21 @@ function renderAgentDetail() {
             <label class="agent-field-label">${escapeHtml(t('agents_name'))}</label>
             <input id="agent-edit-name" value="${escapeHtml(agent.name)}" class="agent-input">
         </div>
+        <div class="agent-field">
+            ${fieldLabelWithTip(t('agents_type'), t('agents_type_locked'))}
+            <div id="agent-type-value" class="agent-field-hint">${escapeHtml(coding ? t('agents_type_coding') : t('agents_type_normal'))}</div>
+        </div>
+        ${coding ? `
+        <div class="agent-field">
+            ${fieldLabelWithTip(t('agents_coding_project'), t('agents_coding_project_hint'))}
+            <!-- Read-only: the project is part of the Agent's definition and the
+                 type cannot be changed after creation. -->
+            <div id="agent-coding-project" class="agent-input font-mono bg-slate-50 dark:bg-white/5">${escapeHtml(agent.coding_project_dir || '')}</div>
+        </div>
+        <div class="agent-field">
+            ${fieldLabelWithTip(t('agents_coding_service'), t('agents_coding_service_hint'))}
+            <div id="agent-coding-service" class="agent-field-hint">${escapeHtml(serviceLabel)}</div>
+        </div>` : ''}
         <div class="agent-field">
             ${fieldLabelWithTip(t('agents_description'), t('agents_description_hint'))}
             <textarea id="agent-edit-description" rows="4"
@@ -3099,6 +3130,10 @@ function renderAgentDetail() {
         <div id="agent-profile-status" class="agent-field-hint mt-3"></div>`;
 
     renderAvatarPicker('agent-edit-avatar', agent, (file) => uploadAgentAvatar(agent.id, file));
+
+    // The service line is read through the same one-shot projection the create
+    // form uses; only a coding Agent has one to show.
+    if (coding && seam) seam.paintService('agent-coding-service');
 
     if (!isDefault) {
         const dd = document.getElementById('agent-edit-model');
@@ -3492,7 +3527,13 @@ function renderAgentTasksPane() {
             const runButton = card.querySelector('.task-run-now');
             if (runButton) runButton.addEventListener('click', (e) => {
                 e.stopPropagation();
-                runTaskNow(task, e.currentTarget);
+                // A manual run carries the client's "same request" key, so the
+                // fork's run-now is the one installed by the Tasks page's patch
+                // layer (assets/js/fork/tasks-console.js, loaded last), which
+                // supersedes upstream's keyless version for every caller --
+                // including this pane. Guarded so this pane cannot throw if a
+                // page ever loads without that layer.
+                if (typeof runTaskNow === 'function') runTaskNow(task, e.currentTarget);
             });
             const checkbox = card.querySelector('#' + toggleId);
             if (checkbox) checkbox.addEventListener('change', function() {
@@ -3612,6 +3653,61 @@ function openAgentCreateForm() {
         );
         initDropdown(clone, opts, '', () => {});
     }
+
+    // Type + project (change add-opencode-coding-agents, 4.3). A new Agent
+    // starts normal, which is the state the server assumes for an absent type;
+    // the project field only appears for the type that has one.
+    if (typeof _createAgentType !== 'undefined') _createAgentType = 'normal';
+    const project = document.getElementById('agent-create-project');
+    if (project) project.value = '';
+    if (typeof bindCreateAgentType === 'function') bindCreateAgentType();
+    if (typeof renderCreateCodingFields === 'function') renderCreateCodingFields();
+}
+
+//: The type the open create form will submit. Reset on every open.
+let _createAgentType = 'normal';
+
+function bindCreateAgentType() {
+    document.querySelectorAll('#agent-create-type .agent-seg-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.type === _createAgentType);
+        if (btn.dataset.bound) return;
+        btn.dataset.bound = '1';
+        btn.addEventListener('click', () => {
+            _createAgentType = btn.dataset.type === 'coding' ? 'coding' : 'normal';
+            document.querySelectorAll('#agent-create-type .agent-seg-btn')
+                .forEach(x => x.classList.toggle('active', x === btn));
+            renderCreateCodingFields();
+        });
+    });
+}
+
+/* Show the project and service rows only for a coding Agent, and fill in the
+   service the platform is configured with. The service is read-only: it is
+   deployment configuration, so the form displays it and never submits it. */
+function renderCreateCodingFields() {
+    const coding = _createAgentType === 'coding';
+    document.getElementById('agent-create-project-field')?.classList.toggle('hidden', !coding);
+    document.getElementById('agent-create-service-field')?.classList.toggle('hidden', !coding);
+    if (!coding) return;
+    const seam = (typeof codingSeam === 'function') ? codingSeam() : null;
+    if (seam) seam.paintService('agent-create-service');
+}
+
+/* Paint a read-only service line, reading the projection at most once per page.
+   The first paint states what is known (usually nothing yet) and the read
+   repaints when it settles, so the row never keeps a stale "unset" after the
+   answer has arrived. The projection itself lives in the coding seam's section,
+   which is why it is reached through the guarded accessor. */
+function paintCodingService(elementId) {
+    const seam = (typeof codingSeam === 'function') ? codingSeam() : null;
+    if (!seam) return;
+    const paint = () => {
+        const el = document.getElementById(elementId);
+        if (el) el.textContent = seam.serviceLabel() || t('agents_coding_service_unset');
+    };
+    paint();
+    const pending = seam.settings();
+    if (pending && typeof pending.then === 'function') pending.then(paint);
 }
 
 function closeAgentCreateForm() {
@@ -3658,6 +3754,17 @@ function createAgentWorkspace() {
         status.textContent = t('agents_id_invalid');
         return;
     }
+    // The form's type, read defensively: this region can run without the
+    // declaration above it in the console's own section tests, where the type
+    // is then simply the normal one.
+    const createType = (typeof _createAgentType === 'undefined') ? 'normal' : _createAgentType;
+    // The same rule the server enforces for a coding Agent: the session has to
+    // have a directory to open, and the server would refuse the create anyway.
+    const projectDir = document.getElementById('agent-create-project')?.value.trim() || '';
+    if (createType === 'coding' && !projectDir) {
+        status.textContent = t('agents_coding_project_required');
+        return;
+    }
     fetch('/api/agents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3668,6 +3775,10 @@ function createAgentWorkspace() {
             description: document.getElementById('agent-create-description')?.value.trim() || '',
             clone_from: getDropdownValue(document.getElementById('agent-create-clone')) || null,
             knowledge_mode: _createKnowledgeMode,
+            // Sent explicitly for every Agent so the type is never inferred from
+            // an absent field; the project only when there is one.
+            agent_type: createType,
+            coding_project_dir: createType === 'coding' ? projectDir : null,
             revision: rosterRevision,
         }),
     }).then(r => r.json()).then(data => {
@@ -5127,12 +5238,28 @@ const welcomeTemplateHTML = document.getElementById('welcome-screen')?.innerHTML
 function syncChatHomeLayout() {
     const main = document.getElementById('chat-main');
     if (!main) return;
-    const home = !!document.getElementById('welcome-screen');
+    // ``chat-home`` means "this is an empty chat", and a mounted coding pane is
+    // the opposite of that. Its arrival alone does not remove the welcome markup
+    // -- only an ordinary message does, and a coding conversation renders none --
+    // so presence of the markup is not enough to answer the question. This also
+    // keeps a later re-render (the observer below) from putting the home layout
+    // back on top of the frame the module just mounted.
+    const home = !!document.getElementById('welcome-screen') && !codingPaneMounted();
     const changed = home !== main.classList.contains('chat-home');
     main.classList.toggle('chat-home', home);
     if (changed) main.scrollTop = 0;
     syncHomeHeroOffset();
     watchHomeHero(main);
+}
+
+/** Whether the coding module currently owns the conversation area. */
+function codingPaneMounted() {
+    const module = codingChatModule();
+    try {
+        return !!(module && typeof module.isActive === 'function' && module.isActive());
+    } catch (err) {
+        return false;
+    }
 }
 // The empty-home hero is centred on the vertical axis, which needs its real
 // height: the brand line and the narrow-screen type scale both move it, so
@@ -8726,18 +8853,27 @@ function openNewChatMenu() {
 /* The picker rows, split out so an already-open menu can be repainted when the
    use-range roster arrives without toggling itself shut. */
 function paintNewChatMenu(menu) {
+    const seam = (typeof codingSeam === 'function') ? codingSeam() : null;
     const rows = availableChatAgents().map(agent => `
         <button type="button" class="new-chat-item" onclick="startSoloChat('${escapeHtml(agent.id)}')">
             ${agentAvatarHTML(agent, 22)}
             <span>${escapeHtml(agent.name)}</span>
+            ${agent.agent_type === 'coding'
+                ? `<span class="coding-agent-badge">${escapeHtml(t('agents_type_coding'))}</span>` : ''}
         </button>`).join('');
-    menu.innerHTML = `
-        <div class="new-chat-section">${rows}</div>
+    // A coding conversation is served by Opencode and does not join a group, so
+    // the team entry is not offered for one (task 4.3). The row also carries the
+    // coding-hide marker, so entering a coding pane hides it even if it was
+    // painted for a normal Agent a moment earlier.
+    const teamRow = (seam && seam.isCodingAgent(activeAgentId)) ? '' : `
         <div class="new-chat-sep"></div>
-        <button type="button" class="new-chat-item new-chat-team" onclick="openTeamChatModal()">
+        <button type="button" class="new-chat-item new-chat-team" data-coding-hide
+                onclick="openTeamChatModal()">
             <span class="new-chat-team-ico"><i class="fas fa-user-group"></i></span>
             <span>${escapeHtml(t('new_team_chat'))}</span>
         </button>`;
+    menu.innerHTML = `
+        <div class="new-chat-section">${rows}</div>${teamRow}`;
 }
 
 function startSoloChat(agentId) {
@@ -8755,6 +8891,12 @@ let _teamChatPicks = [];
 
 function openTeamChatModal() {
     document.getElementById('new-chat-menu')?.classList.add('hidden');
+    // A coding conversation is served by Opencode and cannot take guests.
+    const seam = (typeof codingSeam === 'function') ? codingSeam() : null;
+    if (seam && seam.isCodingAgent(activeAgentId)) {
+        _wsToast(t('coding_team_unavailable'));
+        return;
+    }
     _teamChatPicks = [activeAgentId || defaultAgentId];
     const status = document.getElementById('team-chat-status');
     if (status) status.textContent = '';
@@ -8815,9 +8957,20 @@ function startTeamChat() {
 }
 
 function newChat(optimistic = true, inherit = true) {
+    const seam = (typeof codingSeam === 'function') ? codingSeam() : null;
+    // A new conversation for a coding Agent is a new Opencode session; the
+    // ordinary pane is not prepared for it at all.
+    if (seam && seam.isCodingAgent(activeAgentId)) {
+        if (typeof wsGuardUnsaved === 'function'
+            && !wsGuardUnsaved(() => newChat(optimistic, inherit))) return;
+        seam.open(activeAgentId, '');
+        return;
+    }
     // A fresh session resets the preview panel, discarding an open editor.
     if (typeof wsGuardUnsaved === 'function'
         && !wsGuardUnsaved(() => newChat(optimistic, inherit))) return;
+    // ...and it is also the way back to a normal conversation from a coding one.
+    if (seam && !seam.leave()) return;
     if (window.SceneOriginal) window.SceneOriginal.resetChat();
 
     // Do NOT close active streams: other sessions keep streaming in the
@@ -10268,7 +10421,241 @@ function _reattachStream(sid) {
     return true;
 }
 
+/* =====================================================================
+ * Coding Agents (change add-opencode-coding-agents, task 4.3)
+ *
+ * A coding Agent's conversation is served by the embedded Opencode app, not by
+ * the platform's message pane. The console keeps every one of its own
+ * responsibilities -- the identity, the selected session, the sidebar row, the
+ * history list -- and hands exactly one thing to `window.CodingChat`: the
+ * conversation surface. That is why this is a routing decision (*which* surface
+ * serves this Agent) rather than a second chat implementation.
+ *
+ * Two rules:
+ *
+ * 1. The type decides the surface, and the type comes from the roster rows the
+ *    server already marks explicitly (`agent_type`). Absent is normal.
+ * 2. Leaving a coding pane goes through the module's own teardown, which asks
+ *    the page's existing unsaved-editor guard first: switching Agents must not
+ *    throw away an open editor.
+ * ===================================================================== */
+function codingChatModule() {
+    return (typeof window !== 'undefined' && window.CodingChat) || null;
+}
+
+/** The declared type of one Agent; absent means normal. */
+function agentTypeOf(agentId) {
+    const id = agentId || activeAgentId || defaultAgentId || '';
+    if (!id) return 'normal';
+    let found = null;
+    if (typeof findAgent === 'function') found = findAgent(id);
+    if (!found && typeof availableChatAgents === 'function') {
+        found = availableChatAgents().find(a => a && a.id === id) || null;
+    }
+    return found && found.agent_type === 'coding' ? 'coding' : 'normal';
+}
+
+function isCodingAgent(agentId) {
+    return agentTypeOf(agentId) === 'coding';
+}
+
+async function isCodingAgentAsync(agentId) {
+    return isCodingAgent(agentId);
+}
+
+/** The project directory a coding Agent's sessions open, from the roster row. */
+function codingProjectDirOf(agentId) {
+    const id = agentId || activeAgentId || '';
+    const found = (typeof findAgent === 'function' ? findAgent(id) : null)
+        || (typeof availableChatAgents === 'function'
+            ? availableChatAgents().find(a => a && a.id === id) : null);
+    return (found && found.coding_project_dir) || '';
+}
+
+// The service projection is read once per page: it is deployment configuration,
+// not something that changes while the console is open.
+let _codingSettings = null;
+let _codingSettingsRequest = null;
+
+function loadCodingSettings() {
+    if (_codingSettings || _codingSettingsRequest) return _codingSettingsRequest;
+    // Nothing to read a projection with (and nothing to read it for) when the
+    // host has no transport; the display simply stays unstated.
+    if (typeof fetch !== 'function') return null;
+    _codingSettingsRequest = fetch('/api/coding/settings')
+        .then(r => r.json())
+        .then(data => {
+            // A member without `agent.read` gets a refusal here; that is not an
+            // error to show, it just means the service line stays unstated.
+            _codingSettings = (data && data.status === 'success') ? data : { unavailable: true };
+            return _codingSettings;
+        })
+        .catch(() => { _codingSettings = { unavailable: true }; return _codingSettings; });
+    return _codingSettingsRequest;
+}
+
+/** The service name and address for display, or '' when it cannot be stated. */
+function codingServiceLabel() {
+    const settings = _codingSettings || {};
+    if (!settings.service_id && !settings.web_url) return '';
+    return [settings.service_id, settings.web_url].filter(Boolean).join(' · ');
+}
+
+/* Whether a coding conversation may be started at all. The module is only
+   loaded when the deployment has the capability, and the service projects
+   `enabled`; with either absent the console says so instead of mounting a frame
+   that cannot come up. */
+function codingAvailability() {
+    const module = codingChatModule();
+    if (!module) return { available: false, reason: t('coding_disabled') };
+    return { available: true, reason: '' };
+}
+
+/* Mount the embedded pane for one coding conversation, keeping the console's
+   own bookkeeping in step. ``sessionId`` empty means "a new conversation". */
+function openCodingSession(agentId, sessionId, options) {
+    const opts = options || {};
+    const module = codingChatModule();
+    const availability = codingAvailability();
+    if (!availability.available) {
+        if (!opts.quiet) _wsToast(availability.reason);
+        return false;
+    }
+    // A conversation of another type must not stay mounted behind this one.
+    if (!leaveCodingSession()) return false;
+
+    const targetAgent = agentId || activeAgentId || '';
+    if (targetAgent && targetAgent !== activeAgentId) {
+        activeAgentId = targetAgent;
+        writeScopedPreference('cow_active_agent', activeAgentId);
+    }
+    if (currentView !== 'chat') navigateTo('chat');
+    renderComposerIdentity();
+
+    const mounted = sessionId
+        ? module.open(targetAgent, sessionId)
+        : module.launch(targetAgent, codingProjectDirOf(targetAgent));
+    return Promise.resolve(mounted).then(described => {
+        if (!described || !described.session_id) return false;
+        // The platform session exists only once the service has answered, so the
+        // selection and the history row are written from that answer rather than
+        // from a client-side guess.
+        sessionId = described.session_id;
+        writeScopedPreference(activeSessionStorageKey(), sessionId);
+        _sessCfg = null;
+        markActiveSessionRow();
+        if (typeof _historyVisible !== 'undefined' && _historyVisible) loadSessionList();
+        return true;
+    });
+}
+
+/** Tear the coding pane down, through the module's own leave confirmation. */
+function leaveCodingSession() {
+    const module = codingChatModule();
+    if (!module || !module.isActive()) return true;
+    return module.leave();
+}
+
+/** The conversation currently mounted as a coding session, if any. */
+function activeCodingSession() {
+    const module = codingChatModule();
+    return (module && module.current && module.current()) || null;
+}
+
+/* The console's own view of the pane, installed once. The module owns the DOM
+   it mounts, so these are the platform's answers to its questions rather than
+   an attempt to keep two copies of the same state. */
+function wireCodingModule() {
+    const module = codingChatModule();
+    if (!module || typeof module.setHooks !== 'function') return;
+    module.setHooks({
+        // The page's existing unsaved-editor guard; the module calls it before
+        // it takes the pane down.
+        confirmLeave: (proceed) => (typeof wsGuardUnsaved === 'function'
+            ? wsGuardUnsaved(proceed)
+            : (proceed(), true)),
+        notify: (message) => _wsToast(message),
+        redrawList: () => {
+            if (typeof _historyVisible !== 'undefined' && _historyVisible) loadSessionList();
+            loadSidebarRecentSessions();
+        },
+        onLinked: (described) => {
+            // A session the user created inside Opencode is now a platform
+            // session: select it, so the history row and the frame agree.
+            if (!described || !described.session_id) return;
+            const owner = described.agent_id || activeAgentId;
+            if (owner && owner !== activeAgentId) return;
+            sessionId = described.session_id;
+            writeScopedPreference(activeSessionStorageKey(), sessionId);
+            markActiveSessionRow();
+        },
+        onLeave: () => {
+            // Back to the ordinary pane: nothing about the identity changes, so
+            // the composer only has to be redrawn for the same conversation.
+            renderComposerIdentity();
+        },
+    });
+    if (typeof window.addEventListener === 'function') {
+        window.addEventListener('message', (event) => {
+            // The module validates origin, source and channel; an unclaimed
+            // message is simply not ours.
+            module.handleMessage(event);
+        });
+    }
+}
+
+/** The one row the sidebar/history marks as selected, in either surface. */
+function markActiveSessionRow() {
+    document.querySelectorAll('.session-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.sessionId === sessionId
+            && (!el.dataset.agentId || el.dataset.agentId === activeAgentId));
+    });
+    document.querySelectorAll('.sidebar-recent-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.sessionId === sessionId
+            && (!el.dataset.agentId || el.dataset.agentId === activeAgentId));
+    });
+}
+
+/* The seam's own entry points, for the call sites that live in other sections
+   of this file. console.js is split into sections by its own tests, and a
+   helper defined in one section is absent when another runs alone, so every
+   caller asks for the seam with `typeof codingSeam === 'function'` first and
+   behaves exactly as it did before the coding feature when it is missing. */
+function codingSeam() {
+    return {
+        isCodingAgent: isCodingAgent,
+        activeSession: activeCodingSession,
+        open: openCodingSession,
+        leave: leaveCodingSession,
+        markRows: markActiveSessionRow,
+        projectDir: codingProjectDirOf,
+        paintService: paintCodingService,
+        serviceLabel: codingServiceLabel,
+        settings: loadCodingSettings,
+        wire: wireCodingModule,
+    };
+}
+
 function switchSession(newSessionId, agentId) {
+    const seam = (typeof codingSeam === 'function') ? codingSeam() : null;
+    // A coding conversation is served by the embedded pane, so it is opened
+    // through the module rather than by filling the message list. The identity
+    // and the selection are committed by the same helper either way.
+    if (seam && seam.isCodingAgent(agentId || activeAgentId)) {
+        if (newSessionId === sessionId && (!agentId || agentId === activeAgentId)
+            && seam.activeSession()) {
+            // Already showing it: bring the view back without reloading the
+            // frame (a reload would drop whatever the user has open in there).
+            if (currentView !== 'chat') navigateTo('chat');
+            renderComposerIdentity();
+            return;
+        }
+        seam.open(agentId || activeAgentId, newSessionId);
+        return;
+    }
+    // A normal conversation replaces a mounted coding pane, and only once the
+    // page's leave confirmation has agreed.
+    if (seam && !seam.leave()) return;
     // Carry the target across the guard: the identity/session flip must not
     // happen unless the navigation and the unsaved-editor check pass, so a
     // cancel keeps the current Agent and session untouched.
@@ -17352,306 +17739,6 @@ function disposeContextModule() {
 }
 
 // =====================================================================
-// Scheduler View
-// =====================================================================
-// The scheduler console's view state. It stays declared here, beside the view
-// that owns it, because this line is also the marker console.js' own frontend
-// tests slice the scheduler section out of -- moving it would silently widen
-// those slices to the whole file.
-// `_enterAccountApp` reads the handle too: a `let` declared below that function
-// is still initialized long before any request runs, and tearing the mount down
-// on account entry is what keeps a previous tenant's rows from repainting under
-// the new one.
-let tasksLoaded = false;
-let _tasksModuleHandle = null;
-
-function refreshTasksView() {
-    const btn = document.getElementById('task-refresh-btn');
-    const icon = btn.querySelector('i');
-    
-    // Add spin animation
-    icon.classList.add('fa-spin');
-    btn.disabled = true;
-    
-    tasksLoaded = false;
-    const listEl = document.getElementById('tasks-list');
-    listEl.innerHTML = '';
-    
-    loadTasksView();
-    if (_tasksModuleHandle) _tasksModuleHandle.refresh();
-    
-    // Restore button after animation ends
-    setTimeout(() => {
-        icon.classList.remove('fa-spin');
-        btn.disabled = false;
-    }, 500);
-}
-
-function runTaskNow(task, button) {
-    showConfirmDialog({
-        title: t('task_run_confirm_title'),
-        message: `${task.name || task.id}: ${t('task_run_confirm_msg')}`,
-        okText: t('task_run_now'),
-        onConfirm: () => {
-            const originalHtml = button.innerHTML;
-            button.disabled = true;
-            button.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i>${t('task_run_now')}`;
-            // One key per click: the server treats the same key as the same
-            // request, so a retry after a lost response cannot queue a second
-            // fire (the task id alone cannot say "same request").
-            const runKey = (window.crypto && window.crypto.randomUUID)
-                ? window.crypto.randomUUID()
-                : String(Date.now()) + '-' + Math.random().toString(36).slice(2);
-            fetch('/api/scheduler/run', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({task_id: task.id, run_key: runKey, agent_id: task.agent_id || ''})
-            }).then(r => r.json()).then(res => {
-                if (res.status !== 'success') throw new Error(res.message || t('task_run_failed'));
-                button.innerHTML = `<i class="fas fa-check mr-1"></i>${t('task_run_started')}`;
-                setTimeout(() => {
-                    button.innerHTML = originalHtml;
-                    button.disabled = false;
-                }, 1500);
-            }).catch(() => {
-                button.innerHTML = `<i class="fas fa-triangle-exclamation mr-1"></i>${t('task_run_failed')}`;
-                setTimeout(() => {
-                    button.innerHTML = originalHtml;
-                    button.disabled = false;
-                }, 2000);
-            });
-        }
-    });
-}
-
-// Mount the scheduler console (authoring + run history) into its own container.
-// Built lazily so a page that never opens the Tasks view never pays for it, and
-// disposed with the view so its listeners and pending renders go with it.
-function mountTasksModule() {
-    const host = document.getElementById('tasks-history');
-    if (!host) return;
-    const module = window.RdaiFunctionalScheduler;
-    if (!module || typeof module.mount !== 'function') return;
-    if (_tasksModuleHandle) {
-        _tasksModuleHandle.dispose();
-        _tasksModuleHandle = null;
-    }
-    host.innerHTML = '';
-    const hasAny = _featureAvailable('scheduler.create')
-        || _featureAvailable('scheduler.runs.list');
-    host.classList.toggle('hidden', !hasAny);
-    if (!hasAny) return;
-    try {
-        _tasksModuleHandle = module.mount({
-            root: host,
-            // A getter, not the current object: the module re-reads the
-            // projection on every render decision, and the context is replaced
-            // (not mutated) on a tenant switch, so a captured value would keep
-            // answering from the previous tenant's capabilities.
-            getContext: _baseAuthContext,
-            request: _schedulerRequest,
-            t: t,
-        });
-        _tasksModuleHandle.refresh();
-    } catch (err) {
-        console.warn('[Scheduler] console module unavailable', err);
-        _tasksModuleHandle = null;
-    }
-}
-
-// The module's own request seam. It returns the parsed body and *rejects* on a
-// non-success envelope, because the scheduler handlers answer a refusal as a
-// real HTTP status (403/404/409/503) rather than as a 200 carrying
-// `status:'error'` -- so "it resolved" must mean "it succeeded".
-function _schedulerRequest(path, options) {
-    const opts = Object.assign({ credentials: 'same-origin', cache: 'no-store' },
-                               options || {});
-    if (opts.body !== undefined && typeof opts.body !== 'string') {
-        opts.headers = Object.assign({ 'Content-Type': 'application/json' },
-                                     opts.headers || {});
-        opts.body = JSON.stringify(opts.body);
-    }
-    return fetch(path, opts).then(resp => resp.json().catch(() => ({})).then(data => {
-        if (!resp.ok || data.status !== 'success') {
-            const error = new Error(data.message || data.code || ('HTTP ' + resp.status));
-            error.code = data.code || ('http_' + resp.status);
-            error.status = resp.status;
-            throw error;
-        }
-        return data;
-    }));
-}
-
-function loadTasksView() {
-    if (tasksLoaded) return;
-    // The list tags each task with an owning Agent; make sure the roster is in
-    // hand first so findAgent()/multiAgentMode() can resolve the avatar + name.
-    const rosterReady = agentCatalog.length ? Promise.resolve() : loadAgentCatalog();
-    return rosterReady.then(() => {
-    // Mounted before the list resolves: the module fetches its own data, so
-    // holding it behind the list request would serialise two independent reads.
-    mountTasksModule();
-    // Explicit empty agent_id so the global fetch wrapper doesn't inject the
-    // active chat Agent: the task list is the whole team's schedule and must
-    // NOT follow whichever Agent the conversation is currently on. The backend
-    // treats an empty agent_id as "aggregate across all Agents".
-    return fetch('/api/scheduler?agent_id=').then(r => r.json()).then(data => {
-        const emptyEl = document.getElementById('tasks-empty');
-        const listEl = document.getElementById('tasks-list');
-        if (data.status !== 'success') {
-            // Backend closed the consumer (e.g. database identity mode returns
-            // 503 "unavailable in database identity mode"). Instead of hanging on
-            // the hardcoded "Loading...", surface a readable reason so the user
-            // knows the feature is off, not stalled.
-            const code = data.code || data.message || '';
-            const isClosed = code === 'database_unavailable'
-                || /unavailable in database identity mode/i.test(String(data.message || ''));
-            emptyEl.querySelector('p').textContent = isClosed
-                ? t('tasks_unavailable') : (data.message || t('tasks_unavailable'));
-            emptyEl.classList.remove('hidden');
-            listEl.classList.add('hidden');
-            tasksLoaded = true;
-            return;
-        }
-        const allTasks = data.tasks || [];
-        // Backend already sorted by enabled and next_run_at, no need to re-sort on frontend
-        if (allTasks.length === 0) {
-            emptyEl.querySelector('p').textContent = currentLang === 'zh' ? '暂无定时任务' : 'No scheduled tasks';
-            emptyEl.classList.remove('hidden');
-            listEl.classList.add('hidden');
-            tasksLoaded = true;
-            return;
-        }
-        emptyEl.classList.add('hidden');
-        listEl.classList.remove('hidden');
-        listEl.innerHTML = '';
-
-        allTasks.forEach(task => {
-            const isEnabled = task.enabled !== false;
-            // The per-task verbs come from the server's own authorization
-            // decision (`capabilities`, computed by the same service the five
-            // handlers call), so the buttons cannot offer an action the server
-            // would refuse: a task owned by someone else is listed with
-            // `run`/`manage` false instead of showing controls that 403.
-            const caps = task.capabilities || {run: false, manage: false, view: true};
-            const isMine = (task.scope || 'public') === 'personal';
-            const card = document.createElement('div');
-            card.className = 'bg-white dark:bg-[#1A1A1A] rounded-xl border border-slate-200 dark:border-white/10 p-4';
-            card.dataset.taskId = task.id;
-            card.dataset.taskScope = task.scope || 'public';
-            if (!isEnabled) card.classList.add('opacity-50');
-            const schedule = task.schedule || {};
-            let typeLabel = '';
-            if (schedule.type === 'cron') {
-                typeLabel = `<span class="text-xs font-mono text-slate-400">${escapeHtml(schedule.expression || '')}</span>`;
-            } else if (schedule.type === 'interval') {
-                const seconds = schedule.seconds || 0;
-                const hours = Math.floor(seconds / 3600);
-                const mins = Math.floor((seconds % 3600) / 60);
-                const secs = seconds % 60;
-                let intervalText = [];
-                if (hours > 0) intervalText.push(`${hours}h`);
-                if (mins > 0) intervalText.push(`${mins}m`);
-                if (secs > 0 || intervalText.length === 0) intervalText.push(`${secs}s`);
-                typeLabel = `<span class="text-xs text-slate-400">${intervalText.join(' ')}</span>`;
-            } else {
-                typeLabel = `<span class="text-xs text-slate-400">${escapeHtml(schedule.type || 'once')}</span>`;
-            }
-            let nextRun = '--';
-            if (task.next_run_at) {
-                const d = new Date(task.next_run_at);
-                if (!isNaN(d.getTime())) nextRun = d.toLocaleString();
-            }
-            const action = task.action || {};
-            const taskContent = action.content || action.task_description || '';
-            const toggleId = 'toggle-' + task.id;
-            // Scope chip: "mine" vs the Agent's own schedule. The distinction is
-            // what the owner rules turn on, so the page has to show it.
-            const scopeChip = `<span class="text-[10px] leading-none px-1.5 py-0.5 rounded-full ${isMine
-                ? 'bg-primary-50 text-primary-500 dark:bg-primary-500/10'
-                : 'bg-slate-100 text-slate-400 dark:bg-white/10'}">${escapeHtml(isMine
-                    ? (currentLang === 'zh' ? '本人' : 'Mine')
-                    : (currentLang === 'zh' ? '公共' : 'Shared'))}</span>`;
-            // Owner chip: only when several Agents exist (otherwise every task
-            // carries the same face and it's just noise). Empty on a solo install.
-            const owner = (multiAgentMode() && task.agent_id) ? findAgent(task.agent_id) : null;
-            const ownerChip = owner
-                ? `<span class="inline-flex items-center gap-1 ml-2 pl-1 pr-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-[10px] leading-none text-slate-400 dark:text-slate-500">
-                        ${agentAvatarHTML(owner, 15)}<span class="truncate max-w-[80px]">${escapeHtml(owner.name || owner.id)}</span>
-                   </span>`
-                : '';
-            card.innerHTML = `
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="w-2 h-2 rounded-full ${isEnabled ? 'bg-primary-400' : 'bg-slate-300 dark:bg-slate-600'}"></span>
-                    <span class="font-medium text-sm text-slate-700 dark:text-slate-200">${escapeHtml(task.name || task.id || '--')}</span>
-                    ${scopeChip}
-                    ${ownerChip}
-                    <div class="flex-1"></div>
-                    ${typeLabel}
-                </div>
-                <p class="text-xs text-slate-500 dark:text-slate-400 mb-2 line-clamp-2">${escapeHtml(taskContent)}</p>
-                <div class="flex items-center gap-4 text-xs text-slate-400 dark:text-slate-500">
-                    <span><i class="fas fa-clock mr-1"></i>${currentLang === 'zh' ? '下次执行' : 'Next run'}: ${nextRun}</span>
-                    <div class="flex-1"></div>
-                    ${caps.run ? `<button type="button" class="task-run-now px-2 py-1 rounded-md text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-500/10 transition-colors">
-                        <i class="fas fa-play mr-1"></i>${t('task_run_now')}
-                    </button>` : ''}
-                    ${caps.manage ? `<label class="relative inline-flex items-center cursor-pointer" for="${toggleId}">
-                        <input type="checkbox" id="${toggleId}" class="sr-only peer" ${isEnabled ? 'checked' : ''}>
-                        <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-500 dark:bg-slate-600 dark:peer-checked:bg-primary-500"></div>
-                    </label>` : ''}
-                </div>`;
-            const runButton = card.querySelector('.task-run-now');
-            if (runButton) runButton.addEventListener('click', function(e) {
-                e.stopPropagation();
-                runTaskNow(task, runButton);
-            });
-            const checkbox = card.querySelector('#' + toggleId);
-            if (checkbox) checkbox.addEventListener('change', function() {
-                const newEnabled = this.checked;
-                fetch('/api/scheduler/toggle', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({task_id: task.id, enabled: newEnabled, agent_id: task.agent_id || ''})
-                }).then(r => r.json()).then(res => {
-                    if (res.status === 'success') {
-                        const dot = card.querySelector('.rounded-full.w-2');
-                        if (newEnabled) {
-                            card.classList.remove('opacity-50');
-                            if (dot) { dot.classList.remove('bg-slate-300','dark:bg-slate-600'); dot.classList.add('bg-primary-400'); }
-                        } else {
-                            card.classList.add('opacity-50');
-                            if (dot) { dot.classList.remove('bg-primary-400'); dot.classList.add('bg-slate-300','dark:bg-slate-600'); }
-                        }
-                    } else {
-                        this.checked = !newEnabled;
-                    }
-                }).catch(() => { this.checked = !newEnabled; });
-            });
-            // Card click event (excluding toggle switch clicks)
-            card.addEventListener('click', function(e) {
-                if (!e.target.closest('label') && !e.target.closest('input[type="checkbox"]')) {
-                    openTaskEditModal(task);
-                }
-            });
-            card.style.cursor = 'pointer';
-            listEl.appendChild(card);
-        });
-        tasksLoaded = true;
-    }).catch(() => {
-        const emptyEl = document.getElementById('tasks-empty');
-        const listEl = document.getElementById('tasks-list');
-        if (emptyEl && listEl) {
-            emptyEl.querySelector('p').textContent = t('tasks_unavailable');
-            emptyEl.classList.remove('hidden');
-            listEl.classList.add('hidden');
-            tasksLoaded = true;
-        }
-    });
-    });
-}
-
-// =====================================================================
 // Logs View
 // =====================================================================
 let logEventSource = null;
@@ -20205,409 +20292,14 @@ applyI18n();
 
 refreshAccountIdentity();
 
+// Coding Agents (change add-opencode-coding-agents, task 4.3): install the
+// console's answers to the module's questions once. Inert when the module is
+// absent (a deployment without the capability loads no coding.js at all), and
+// the read-only service projection is fetched lazily by the two surfaces that
+// display it -- a console that never opens them makes no request. Guarded
+// because console.js runs in sections here and in its own tests.
+if (typeof codingSeam === 'function') codingSeam().wire();
+
 requestAnimationFrame(() => {
     document.body.classList.add('transition-colors', 'duration-200');
-});
-
-// =====================================================================
-// Task Edit Modal
-// =====================================================================
-let currentEditingTask = null;
-
-function loadTaskChannelOptions(selectedChannelType) {
-    const select = document.getElementById('task-edit-channel-type');
-    select.innerHTML = '';
-    fetch('/api/channels').then(r => r.json()).then(data => {
-        if (data.status !== 'success') return;
-        const allChannels = data.channels || [];
-        // Only include currently active channels, strictly following the channel management page logic
-        let channels = allChannels.filter(c => c.active).map(c => {
-            const label = (typeof c.label === 'object') ? (c.label[currentLang] || c.label.en || c.name) : (c.label || c.name);
-            return { name: c.name, label: label };
-        });
-        const channelNames = channels.map(c => c.name);
-        // Always include the web console channel
-        if (!channelNames.includes('web')) {
-            channels.unshift({ name: 'web', label: currentLang === 'zh' ? 'Web' : 'Web' });
-        }
-        // If the currently selected channel is not in the active list (e.g. disabled), append it to preserve selection
-        if (selectedChannelType && !channelNames.includes(selectedChannelType) && selectedChannelType !== 'web') {
-            const ch = allChannels.find(c => c.name === selectedChannelType);
-            const label = ch
-                ? ((typeof ch.label === 'object') ? (ch.label[currentLang] || ch.label.en || ch.name) : (ch.label || ch.name))
-                : selectedChannelType;
-            channels.push({ name: selectedChannelType, label: label });
-        }
-        channels.forEach(c => {
-            const opt = document.createElement('option');
-            opt.value = c.name;
-            opt.textContent = c.label;
-            select.appendChild(opt);
-        });
-        // Set selected value
-        if (selectedChannelType) {
-            select.value = selectedChannelType;
-        }
-    }).catch(() => {
-        // fallback: at least keep the current selection and web
-        select.innerHTML = '';
-        const webOpt = document.createElement('option');
-        webOpt.value = 'web';
-        webOpt.textContent = 'Web';
-        select.appendChild(webOpt);
-        
-        if (selectedChannelType && selectedChannelType !== 'web') {
-            const opt = document.createElement('option');
-            opt.value = selectedChannelType;
-            opt.textContent = selectedChannelType;
-            select.appendChild(opt);
-        }
-        if (selectedChannelType) {
-            select.value = selectedChannelType;
-        }
-        
-        // Show error message
-        console.error('Failed to load channel options');
-    });
-}
-
-// The owning Agent shown (read-only) in the task edit modal header. Hidden on a
-// single-Agent install, where every task belongs to the one Agent anyway.
-function renderTaskOwnerChip(task) {
-    const el = document.getElementById('task-edit-owner');
-    if (!el) return;
-    const agent = task.agent_id ? findAgent(task.agent_id) : null;
-    if (!multiAgentMode() || !agent) {
-        el.classList.add('hidden');
-        el.innerHTML = '';
-        return;
-    }
-    el.innerHTML = `${agentAvatarHTML(agent, 20)}
-        <span class="text-xs font-medium text-slate-600 dark:text-slate-300 truncate max-w-[120px]">${escapeHtml(agent.name || agent.id)}</span>`;
-    el.classList.remove('hidden');
-    el.classList.add('flex');
-}
-
-function openTaskEditModal(task) {
-    currentEditingTask = task;
-    const overlay = document.getElementById('task-edit-modal-overlay');
-    const titleEl = document.querySelector('#task-edit-modal-overlay h3');
-    const subtitle = document.getElementById('task-edit-modal-subtitle');
-    const deleteBtn = document.getElementById('task-edit-modal-delete');
-    const nameInput = document.getElementById('task-edit-name');
-    const enabledInput = document.getElementById('task-edit-enabled');
-    const scheduleTypeSelect = document.getElementById('task-edit-schedule-type');
-    const cronInput = document.getElementById('task-edit-cron-expression');
-    const intervalInput = document.getElementById('task-edit-interval-seconds');
-    const onceInput = document.getElementById('task-edit-once-time');
-    const actionTypeSelect = document.getElementById('task-edit-action-type');
-    const receiverInput = document.getElementById('task-edit-receiver');
-    const contentInput = document.getElementById('task-edit-content');
-
-    // Set title and subtitle
-    titleEl.textContent = t('task_edit_title');
-    subtitle.textContent = task.id;
-    deleteBtn.classList.remove('hidden');
-
-    // Show which Agent owns this task (read-only). Only meaningful with more
-    // than one Agent; a solo install would just repeat the obvious.
-    renderTaskOwnerChip(task);
-
-    // Populate data
-    nameInput.value = task.name || '';
-    enabledInput.checked = task.enabled !== false;
-
-    const schedule = task.schedule || {};
-    scheduleTypeSelect.value = schedule.type || 'cron';
-
-    // Clear all schedule type input values first to avoid stale data
-    cronInput.value = '';
-    intervalInput.value = '';
-    onceInput.value = '';
-
-    if (schedule.type === 'cron') {
-        cronInput.value = schedule.expression || '';
-    } else if (schedule.type === 'interval') {
-        intervalInput.value = schedule.seconds || '';
-    } else if (schedule.type === 'once') {
-        if (schedule.run_at) {
-            // Manually parse ISO time string to avoid cross-browser timezone issues with new Date()
-            // run_at format: "YYYY-MM-DDTHH:mm:ss" or "YYYY-MM-DDTHH:mm:ss.ffffff"
-            const parts = schedule.run_at.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
-            if (parts) {
-                const timeInput = document.getElementById('task-edit-once-time');
-                timeInput.value = `${parts[1]}-${parts[2]}-${parts[3]}T${parts[4]}:${parts[5]}:${parts[6]}`;
-            }
-        }
-    }
-
-    const action = task.action || {};
-    actionTypeSelect.value = action.type || 'send_message';
-    receiverInput.value = action.receiver || '';
-    contentInput.value = action.content || action.task_description || '';
-
-    // Load channel options and set selected value
-    loadTaskChannelOptions(action.channel_type || 'web');
-
-    // Disable channel type selector — channel is read-only when editing.
-    // Switching the channel after a task is created is problematic because:
-    //   1. The WeChat (weixin/ilink) bot requires a valid context_token that is tied
-    //      to a specific user-session on that channel. Changing the channel to weixin
-    //      would invalidate the existing token — the new receiver on weixin may not
-    //      have an active context_token, causing the scheduled push to silently fail.
-    //   2. Other channels (DingTalk, Feishu, etc.) also carry channel-specific fields
-    //      (e.g. dingtalk_sender_staff_id) that cannot be trivially re-populated for
-    //      a different channel type without user intervention.
-    //   3. The receiver identity itself is channel-bound — a weixin user-id means
-    //      nothing on a Feishu channel, so changing the channel would orphan the task.
-    // For these reasons, the channel type is intentionally frozen once a task exists.
-    // Users who need a task on a different channel should create a new task through
-    // the chat interface (by asking the bot) rather than editing an existing one.
-    document.getElementById('task-edit-channel-type').disabled = true;
-
-    // Update UI
-    updateTaskScheduleFields();
-    updateTaskActionLabel();
-
-    overlay.classList.remove('hidden');
-}
-
-function closeTaskEditModal() {
-    document.getElementById('task-edit-modal-overlay').classList.add('hidden');
-    currentEditingTask = null;
-}
-
-function updateTaskScheduleFields() {
-    const scheduleType = document.getElementById('task-edit-schedule-type').value;
-    const cronWrap = document.getElementById('task-edit-cron-wrap');
-    const intervalWrap = document.getElementById('task-edit-interval-wrap');
-    const onceWrap = document.getElementById('task-edit-once-wrap');
-    const cronHint = document.getElementById('task-edit-cron-hint');
-    const intervalHint = document.getElementById('task-edit-interval-hint');
-    
-    cronWrap.classList.toggle('hidden', scheduleType !== 'cron');
-    intervalWrap.classList.toggle('hidden', scheduleType !== 'interval');
-    onceWrap.classList.toggle('hidden', scheduleType !== 'once');
-    
-    if (cronHint) cronHint.classList.toggle('hidden', scheduleType !== 'cron');
-    if (intervalHint) intervalHint.classList.toggle('hidden', scheduleType !== 'interval');
-}
-
-function updateTaskActionLabel() {
-    const actionType = document.getElementById('task-edit-action-type').value;
-    const label = document.getElementById('task-edit-content-label');
-    const content = document.getElementById('task-edit-content');
-    
-    if (actionType === 'send_message') {
-        label.textContent = t('task_message_content');
-        content.placeholder = t('task_message_content');
-    } else {
-        label.textContent = t('task_task_description');
-        content.placeholder = t('task_task_description');
-    }
-}
-
-function saveTaskEdit() {
-    const nameInput = document.getElementById('task-edit-name');
-    const enabledInput = document.getElementById('task-edit-enabled');
-    const scheduleTypeSelect = document.getElementById('task-edit-schedule-type');
-    const cronInput = document.getElementById('task-edit-cron-expression');
-    const intervalInput = document.getElementById('task-edit-interval-seconds');
-    const onceInput = document.getElementById('task-edit-once-time');
-    const actionTypeSelect = document.getElementById('task-edit-action-type');
-    const channelTypeSelect = document.getElementById('task-edit-channel-type');
-    const receiverInput = document.getElementById('task-edit-receiver');
-    const contentInput = document.getElementById('task-edit-content');
-    const statusEl = document.getElementById('task-edit-modal-status');
-    const saveBtn = document.getElementById('task-edit-modal-save');
-    
-    const name = nameInput.value.trim();
-    if (!name) {
-        statusEl.textContent = currentLang === 'zh' ? '请输入任务名称' : 'Please enter task name';
-        statusEl.style.opacity = '1';
-        setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
-        return;
-    }
-    
-    const scheduleType = scheduleTypeSelect.value;
-    const schedule = { type: scheduleType };
-    
-    if (scheduleType === 'cron') {
-        const expr = cronInput.value.trim();
-        if (!expr) {
-            statusEl.textContent = currentLang === 'zh' ? '请输入 Cron 表达式' : 'Please enter cron expression';
-            statusEl.style.opacity = '1';
-            setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
-            return;
-        }
-        // Basic cron expression format validation: 5 or 6 fields
-        const fields = expr.split(/\s+/);
-        if (fields.length < 5 || fields.length > 6) {
-            statusEl.textContent = currentLang === 'zh' ? 'Cron 表达式格式错误，应为 5 或 6 个字段（分 时 日 月 周）' : 'Invalid cron expression, expected 5 or 6 fields (min hour day month weekday)';
-            statusEl.style.opacity = '1';
-            setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
-            return;
-        }
-        schedule.expression = expr;
-        // Note: detailed cron expression validity is verified by the backend croniter library; frontend only does basic format validation
-    } else if (scheduleType === 'interval') {
-        const seconds = parseInt(intervalInput.value);
-        if (!seconds || seconds < 60) {
-            statusEl.textContent = currentLang === 'zh' ? '间隔秒数最小为 60 秒' : 'Interval must be at least 60 seconds';
-            statusEl.style.opacity = '1';
-            setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
-            return;
-        }
-        schedule.seconds = seconds;
-    } else if (scheduleType === 'once') {
-        const time = onceInput.value;
-        if (!time) {
-            statusEl.textContent = currentLang === 'zh' ? '请选择执行时间' : 'Please select execution time';
-            statusEl.style.opacity = '1';
-            setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
-            return;
-        }
-        // Validate execution time format
-        const selectedTime = new Date(time);
-        if (isNaN(selectedTime.getTime())) {
-            statusEl.textContent = currentLang === 'zh' ? '执行时间格式错误' : 'Invalid execution time format';
-            statusEl.style.opacity = '1';
-            setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
-            return;
-        }
-        // Validate that time is in the future for one-time tasks
-        if (selectedTime <= new Date()) {
-            statusEl.textContent = currentLang === 'zh' ? '执行时间必须在当前时间之后' : 'Execution time must be in the future';
-            statusEl.style.opacity = '1';
-            setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
-            return;
-        }
-        // datetime-local value with step="1" is already in YYYY-MM-DDTHH:mm:ss format
-        // Backend _parse_naive_local treats strings without timezone suffix as local time
-        schedule.run_at = time;
-    }
-    
-    const actionType = actionTypeSelect.value;
-    const channelType = channelTypeSelect.value;
-    const content = contentInput.value.trim();
-
-    if (!content) {
-        statusEl.textContent = currentLang === 'zh' ? '请输入内容' : 'Please enter content';
-        statusEl.style.opacity = '1';
-        setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
-        return;
-    }
-    
-    // Build action with only necessary fields to avoid stale data
-    const action = {
-        type: actionType,
-        channel_type: channelType,
-        receiver: '',
-        receiver_name: '',
-        is_group: false,
-        notify_session_id: ''
-    };
-    
-    if (actionType === 'send_message') {
-        action.content = content;
-    } else {
-        action.task_description = content;
-    }
-    
-    // Preserve the original receiver info (channel is read-only, so it never changes)
-    if (currentEditingTask && currentEditingTask.action) {
-        action.receiver = currentEditingTask.action.receiver || '';
-        action.receiver_name = currentEditingTask.action.receiver_name || '';
-        action.is_group = currentEditingTask.action.is_group || false;
-        action.notify_session_id = currentEditingTask.action.notify_session_id || '';
-        
-        // Preserve channel-specific fields (e.g. DingTalk sender_staff_id)
-        if (channelType === 'dingtalk' && currentEditingTask.action.dingtalk_sender_staff_id) {
-            action.dingtalk_sender_staff_id = currentEditingTask.action.dingtalk_sender_staff_id;
-        }
-    }
-    
-    saveBtn.disabled = true;
-    
-    const payload = {
-        task_id: currentEditingTask.id,
-        agent_id: currentEditingTask.agent_id || '',
-        name: name,
-        enabled: enabledInput.checked,
-        schedule: schedule,
-        action: action
-    };
-    
-    fetch('/api/scheduler/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    }).then(r => r.json()).then(res => {
-        saveBtn.disabled = false;
-        if (res.status === 'success') {
-            closeTaskEditModal();
-            tasksLoaded = false;
-            loadTasksView();
-        } else {
-            statusEl.textContent = res.message || (currentLang === 'zh' ? '保存失败' : 'Save failed');
-            statusEl.style.opacity = '1';
-            setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
-        }
-    }).catch(() => {
-        saveBtn.disabled = false;
-        statusEl.textContent = currentLang === 'zh' ? '网络错误' : 'Network error';
-        statusEl.style.opacity = '1';
-        setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
-    });
-}
-
-function deleteTask() {
-    if (!currentEditingTask) return;
-    
-    const taskName = currentEditingTask.name || currentEditingTask.id || '未知任务';
-    const taskId = currentEditingTask.id;  // Capture early to avoid closure race condition
-    const taskAgentId = currentEditingTask.agent_id || '';  // route delete to the owner's store
-    showConfirmDialog({
-        title: t('task_delete_confirm_title'),
-        message: (currentLang === 'zh' ? `确定要删除任务「${taskName}」吗？` : `Are you sure to delete task "${taskName}"?`),
-        onConfirm: () => {
-            fetch('/api/scheduler/delete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ task_id: taskId, agent_id: taskAgentId })
-            }).then(r => r.json()).then(res => {
-                if (res.status === 'success') {
-                    closeTaskEditModal();
-                    tasksLoaded = false;
-                    loadTasksView();
-                } else {
-                    const statusEl = document.getElementById('task-edit-modal-status');
-                    if (statusEl) {
-                        statusEl.textContent = res.message || 'Delete failed';
-                        statusEl.classList.remove('hidden', 'text-green-500');
-                        statusEl.classList.add('text-red-500');
-                        setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
-                    }
-                }
-            }).catch(() => {
-                const statusEl = document.getElementById('task-edit-modal-status');
-                if (statusEl) {
-                    statusEl.textContent = 'Network error';
-                    statusEl.classList.remove('hidden', 'text-green-500');
-                    statusEl.classList.add('text-red-500');
-                    setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
-                }
-            });
-        }
-    });
-}
-
-
-document.getElementById('task-edit-schedule-type').addEventListener('change', updateTaskScheduleFields);
-document.getElementById('task-edit-action-type').addEventListener('change', updateTaskActionLabel);
-document.getElementById('task-edit-modal-cancel').addEventListener('click', closeTaskEditModal);
-document.getElementById('task-edit-modal-save').addEventListener('click', saveTaskEdit);
-document.getElementById('task-edit-modal-delete').addEventListener('click', deleteTask);
-document.getElementById('task-edit-modal-overlay').addEventListener('click', function(e) {
-    if (e.target === this) closeTaskEditModal();
 });

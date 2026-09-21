@@ -696,12 +696,16 @@ class AgentStreamExecutor:
         if len(self.tool_failure_history) > 50:
             self.tool_failure_history = self.tool_failure_history[-50:]
 
-    def run_stream(self, user_message: str) -> str:
+    def run_stream(self, user_message: str, attachments=None) -> str:
         """
         Execute streaming reasoning loop
         
         Args:
             user_message: User message
+            attachments: Optional inbound attachments (images) for this turn.
+                Images are attached as content blocks only when this turn's
+                model can accept them; otherwise the reason is reported in the
+                text so the model can answer honestly.
             
         Returns:
             Final response text
@@ -724,16 +728,21 @@ class AgentStreamExecutor:
             user_message[:500] + f" …(+{len(user_message) - 500} chars)"
         )
         logger.info(f"🤖 {self.model.model}{thinking_label}{effort_label} | 👤 {_log_msg}")
-        
-        # Add user message (Claude format - use content blocks for consistency)
+
+        # Add user message (Claude format - use content blocks for consistency).
+        # Images become real image content parts here (never on the channel
+        # side): an image that cannot be delivered is reported into the text so
+        # the model knows it did not receive the picture.
+        from agent.attachments import build_turn_blocks
+
+        blocks, image_notices = build_turn_blocks(
+            user_message, attachments, model=self.model,
+        )
+        if image_notices:
+            logger.info(f"[Agent] image attachments not delivered: {image_notices}")
         self.messages.append({
             "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": user_message
-                }
-            ]
+            "content": blocks,
         })
 
         # Trim context ONCE before the agent loop starts, not during tool steps.

@@ -614,6 +614,7 @@ class WecomBotChannel(ChatChannel):
             logger.info(f"[WecomBot] File cached for session {session_id}: {wecom_msg.content}")
             return None
 
+        image_attachments = []
         if wecom_msg.ctype == ContextType.TEXT:
             cached_files = file_cache.get(session_id)
             if cached_files:
@@ -623,6 +624,13 @@ class WecomBotChannel(ChatChannel):
                     fpath = fi["path"]
                     if ftype == "image":
                         file_refs.append(f"[图片: {fpath}]")
+                        # The marker above is what history shows; this is the
+                        # machine-readable counterpart the agent turns into an
+                        # image content part when the model accepts one.
+                        image_attachments.append({
+                            "path": fpath,
+                            "file_type": "image",
+                        })
                     elif ftype == "video":
                         file_refs.append(f"[视频: {fpath}]")
                     else:
@@ -640,6 +648,8 @@ class WecomBotChannel(ChatChannel):
         )
         if not context:
             return None
+        if image_attachments:
+            context["attachments"] = image_attachments
         self._stamp_external_identity(context, wecom_msg)
         return context, wecom_msg
 

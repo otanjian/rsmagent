@@ -647,3 +647,131 @@ def test_snapshot_reports_knowledge_mode(admin):
     modes = {a["id"]: a.get("knowledge_mode") for a in service.snapshot()["agents"]}
     assert modes["primary"] == "shared"
     assert modes["research"] == "own"
+
+
+# --- Coding Agents --------------------------------------------------------
+#
+# A coding Agent is created, edited and cloned through the same service, so the
+# console does not need a second write path. What these tests pin down is that
+# the type is stated once, kept, and never smuggled into a normal Agent.
+
+
+def test_coding_agent_requires_a_project_and_is_saved(admin):
+    service, root, _ = admin
+
+    created = service.create_agent(
+        "erp-coder",
+        "ERP Coder",
+        agent_type="coding",
+        coding_project_dir="  /srv/checkouts/erp  ",
+    )
+
+    assert created["agent_type"] == "coding"
+    assert created["coding_project_dir"] == "/srv/checkouts/erp"
+    assert created["workspace"] == str(root / "agents" / "erp-coder")
+    saved = {a["id"]: a for a in _saved(root)["agents"]}
+    assert saved["erp-coder"]["agent_type"] == "coding"
+    assert saved["erp-coder"]["coding_project_dir"] == "/srv/checkouts/erp"
+    # The project directory is the OpenCode host's business: this side never
+    # creates it, and the Agent's own workspace stays a derived platform path.
+    assert "workspace" not in saved["erp-coder"]
+    assert not Path("/srv/checkouts/erp").exists()
+
+
+def test_coding_agent_without_a_project_is_refused(admin):
+    service, root, _ = admin
+
+    with pytest.raises(AgentAdminError, match="coding_project_dir"):
+        service.create_agent("erp-coder", "ERP Coder", agent_type="coding")
+
+    assert [a["id"] for a in service.snapshot()["agents"]] == ["primary"]
+    # The refusal left no half-built Agent behind on disk.
+    assert not (root / "agents" / "erp-coder").exists()
+
+
+def test_normal_agent_ignores_a_submitted_project_dir(admin):
+    """A project sent for a normal Agent is dropped rather than stored."""
+    service, root, _ = admin
+
+    created = service.create_agent(
+        "research",
+        "Research",
+        str(root / "research"),
+        coding_project_dir="/srv/checkouts/erp",
+    )
+
+    assert created["agent_type"] == "normal"
+    assert created["coding_project_dir"] is None
+    saved = {a["id"]: a for a in _saved(root)["agents"]}
+    assert "coding_project_dir" not in saved["research"]
+    assert "agent_type" not in saved["research"]
+
+
+def test_agent_type_cannot_be_changed_after_creation(admin):
+    """The type decides what every other field means, so it is not editable."""
+    service, root, _ = admin
+    service.create_agent("research", "Research", str(root / "research"))
+
+    with pytest.raises(AgentAdminError, match="cannot be changed"):
+        service.update_agent("research", agent_type="coding")
+
+    with pytest.raises(AgentAdminError, match="must be one of"):
+        service.update_agent("research", agent_type="codeing")
+
+
+def test_editing_a_coding_agents_default_project_keeps_the_type(admin):
+    service, root, _ = admin
+    service.create_agent(
+        "erp-coder", "ERP Coder",
+        agent_type="coding", coding_project_dir="/srv/checkouts/erp",
+    )
+
+    updated = service.update_agent("erp-coder", coding_project_dir="/srv/checkouts/erp-v2")
+
+    assert updated["agent_type"] == "coding"
+    assert updated["coding_project_dir"] == "/srv/checkouts/erp-v2"
+    saved = {a["id"]: a for a in _saved(root)["agents"]}
+    assert saved["erp-coder"]["agent_type"] == "coding"
+    assert saved["erp-coder"]["coding_project_dir"] == "/srv/checkouts/erp-v2"
+    # An omitted project leaves the stored one alone.
+    service.update_agent("erp-coder", name="ERP Coder Renamed")
+    saved = {a["id"]: a for a in _saved(root)["agents"]}
+    assert saved["erp-coder"]["coding_project_dir"] == "/srv/checkouts/erp-v2"
+
+
+def test_coding_agent_cannot_become_the_default(admin):
+    service, root, _ = admin
+    service.create_agent(
+        "erp-coder", "ERP Coder",
+        agent_type="coding", coding_project_dir="/srv/checkouts/erp",
+    )
+
+    with pytest.raises(AgentAdminError, match="cannot be the default agent"):
+        service.update_agent("erp-coder", make_default=True)
+
+    assert _saved(root)["default_agent_id"] == "primary"
+
+
+def test_cloning_a_coding_agent_copies_configuration_not_conversations(admin):
+    service, root, _ = admin
+    service.create_agent(
+        "erp-coder", "ERP Coder",
+        agent_type="coding", coding_project_dir="/srv/checkouts/erp",
+    )
+
+    clone = service.clone_agent("erp-coder", "erp-coder-2", "ERP Coder 2")
+
+    assert clone["agent_type"] == "coding"
+    assert clone["coding_project_dir"] == "/srv/checkouts/erp"
+    saved = {a["id"]: a for a in _saved(root)["agents"]}
+    assert saved["erp-coder-2"]["agent_type"] == "coding"
+
+
+def test_cloning_a_normal_agent_stays_normal(admin):
+    service, root, _ = admin
+    service.create_agent("research", "Research", str(root / "research"))
+
+    clone = service.clone_agent("research", "research-2", "Research 2")
+
+    assert clone["agent_type"] == "normal"
+    assert clone["coding_project_dir"] is None

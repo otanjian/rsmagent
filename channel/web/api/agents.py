@@ -128,7 +128,11 @@ def _reload_agent_runtime(service, changed_agent_ids=None) -> None:
     # Reconcile schedulers against what is already running, rather than
     # stopping and recreating the whole set.
     from agent.tools.scheduler.integration import init_scheduler, stop_scheduler
-    live_ids = {p.id for p in registry.list(include_disabled=False)}
+    # Schedulers exist for Agents that run the normal runtime. A coding Agent
+    # has no runtime to schedule, so it is excluded on both sides of the
+    # reconcile — including the stop set, so a coding Agent can never hold a
+    # scheduler id.
+    live_ids = {p.id for p in registry.normal()}
     previously = set(agent_bridge.scheduler_agent_ids)
 
     for agent_id in previously - live_ids:
@@ -138,7 +142,7 @@ def _reload_agent_runtime(service, changed_agent_ids=None) -> None:
             logger.warning(f"[WebChannel] stop_scheduler({agent_id}) failed: {e}")
         agent_bridge.scheduler_agent_ids.discard(agent_id)
 
-    for profile in registry.list(include_disabled=False):
+    for profile in registry.normal():
         if profile.id in previously:
             continue  # already has a running scheduler; init_scheduler is a no-op
         if init_scheduler(agent_bridge, profile.workspace, profile.id):
