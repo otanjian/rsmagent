@@ -1589,6 +1589,7 @@ class WebChannel(ChatChannel):
                 }, ensure_ascii=False)
 
             # Append file references to the prompt (same format as QQ channel)
+            context_attachments = []
             if attachments:
                 file_refs = []
                 for att in attachments:
@@ -1615,6 +1616,14 @@ class WebChannel(ChatChannel):
                         file_refs.append(f"[{label}: {fpath}]")
                     elif ftype == "image":
                         file_refs.append(f"[{i18n.t('图片', 'Image')}: {fpath}]")
+                        # The path marker above stays (it is what history shows
+                        # and what a text-only model can still reason about),
+                        # but the image itself is delivered as a content part
+                        # when this turn's model accepts one.
+                        context_attachments.append({
+                            "path": fpath,
+                            "file_type": "image",
+                        })
                     elif ftype == "video":
                         file_refs.append(f"[{i18n.t('视频', 'Video')}: {fpath}]")
                     elif ftype == "directory":
@@ -1664,6 +1673,10 @@ class WebChannel(ChatChannel):
             context["receiver"] = session_id
             context["request_id"] = request_id
             context["agent_id"] = resolved_agent_id
+            if context_attachments:
+                # Structured inbound images for the agent turn. The prompt keeps
+                # its path markers; this is the machine-readable counterpart.
+                context["attachments"] = context_attachments
             # Addressing a teammate hands them the turn. The conversation still
             # belongs to `resolved_agent_id`, so this only changes who answers.
             # The composer already knows who it wrote; parsing the text is the
@@ -2237,6 +2250,7 @@ _HTTP_STATUS_TEXT = {
     500: "Internal Server Error",
     502: "Bad Gateway",
     503: "Service Unavailable",
+    504: "Gateway Timeout",
 }
 
 
@@ -2538,8 +2552,50 @@ def _annotate_sessions_with_projects(store, result: dict, agent_id: Optional[str
     result["project_order"] = project_store.get_order()
 
 
+def _annotate_coding_sessions(store, result: dict, agent_id: Optional[str]) -> None:
+    """Mark the coding rows of a session list with their link state.
+
+    ``agent_type`` in the row's badge already says "this conversation is backed
+    by the coding service"; ``sync_state`` says whether the remote session
+    actually exists yet, which is what lets the console render a reservation as
+    "creation unfinished, retryable" instead of an openable conversation.
+
+    Only the *persistent* half is published. A running/idle answer is a
+    transient result of a refresh round (design D3) and is deliberately absent:
+    the list must not claim to know something it has not just asked.
+    """
+    rows = result.get("sessions") or []
+    if not rows:
+        return
+    try:
+        states = store.coding_link_states([row.get("session_id") for row in rows])
+    except Exception as e:  # noqa: BLE001 - a marker must not fail the list
+        logger.debug(f"[WebChannel] Coding state annotation skipped: {e}")
+        return
+    for row in rows:
+        state = states.get(row.get("session_id"))
+        if state:
+            row["sync_state"] = state
+
+
 def _agent_badge(profile) -> dict:
-    return {"id": profile.id, "name": profile.name, "avatar": profile.avatar or ""}
+    """The per-Agent label the client renders next to a conversation.
+
+    ``agent_type`` is part of the badge, which is what lets the session list
+    (and the composer's roster) route a coding conversation to the embedded
+    frame without a second request per row. It is exact rather than a hint: a
+    coding Agent can only ever hold coding sessions, because every normal
+    execution path refuses it before writing a row, and the coding entry always
+    writes a link.
+
+    Read through ``getattr`` because this is a *projection*: a profile stand-in
+    that predates the field is a normal Agent, and a label must never be the
+    thing that fails a list request.
+    """
+    from agent.registry import AGENT_TYPE_NORMAL
+
+    return {"id": profile.id, "name": profile.name, "avatar": profile.avatar or "",
+            "agent_type": getattr(profile, "agent_type", None) or AGENT_TYPE_NORMAL}
 
 
 def _roster_from_members(host_agent_id: str, members) -> List[dict]:
@@ -2706,6 +2762,10 @@ def _list_sessions_across_agents(page: int, page_size: int,
             continue
 
         total += chunk.get("total", 0)
+        # The type comes from the badge and the link state from the store: both
+        # markers the console needs, applied to the same dicts the loop below
+        # appends to the merged list.
+        _annotate_coding_sessions(store, chunk, profile.id)
         badge = _agent_badge(profile)
         for session in chunk.get("sessions") or []:
             path = project_map.get(session["session_id"])

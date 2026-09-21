@@ -389,6 +389,21 @@ available_setting = {
         "max_concurrent": 3,     # parallel sub agents per spawn call (range 1-10)
         "timeout_seconds": 300,  # budget for one spawn call (range 10-3600)
     },
+    # Shared OpenCode service that coding agents are embedded into. One service
+    # per instance, configured by the operator: tenants never submit an address,
+    # and the password is read from the named environment variable at request
+    # time so it is never stored in config, a URL, a session or a log.
+    # ``service_id`` names one persistent data instance: keep it when the
+    # address moves, change it when the database does, so an old link is never
+    # re-claimed on a different instance.
+    "opencode": {
+        "enabled": False,
+        "service_id": "default",
+        "api_url": "http://127.0.0.1:4096",
+        "web_url": "",
+        "username": "opencode",
+        "password_env": "RSM_OPENCODE_PASSWORD",
+    },
     # Delegation between configured agents. Unlike a sub agent, the target is a
     # standing peer that answers in its own workspace. The call is synchronous:
     # the delegating Agent waits for the teammate's result. The tool only

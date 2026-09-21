@@ -1238,6 +1238,13 @@ class IdentityService:
         resolving to it would send new conversations to a workspace an admin
         took out of service (tasks 7.1/7.3).
 
+        A coding Agent is excluded for a related reason: it is an explicit Web
+        entry only, so every ordinary send that landed on it would be refused
+        for being coding (``opencode-coding-agents``: coding MUST NOT 被设为通用
+        默认). Leaving it in the chain does not merely risk a bad default, it
+        guarantees one the moment a tenant's only shared Agent is a coding one,
+        which is exactly what happens to a tenant whose first Agent is coding.
+
         An Agent the registry does not know is *not* excluded. The binding is
         the tenant's authorization of record and the registry is a per-config
         roster (it can legitimately omit an Agent whose workspace is resolved
@@ -1250,6 +1257,8 @@ class IdentityService:
             profile = get_agent_registry().get(agent_id, require_enabled=False)
         except Exception:
             return True
+        if getattr(profile, "is_coding", False):
+            return False
         return bool(getattr(profile, "enabled", True))
 
     def clone_of(self, tenant_id: str, source_agent_id: str) -> Optional[Dict[str, Any]]:

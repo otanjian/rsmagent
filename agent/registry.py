@@ -22,6 +22,14 @@ _AGENT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 # agent can always be addressed (see AgentRegistry.get_addressed).
 DEFAULT_AGENT_ALIAS = "default"
 
+# What an Agent runs on. A ``normal`` Agent is the existing runtime: its own
+# workspace, model and tools. A ``coding`` Agent is only an entry point into the
+# shared OpenCode service and never builds a normal runtime; every execution
+# path branches on this value, so it is immutable once saved.
+AGENT_TYPE_NORMAL = "normal"
+AGENT_TYPE_CODING = "coding"
+AGENT_TYPES = (AGENT_TYPE_NORMAL, AGENT_TYPE_CODING)
+
 
 class AgentRegistryError(ValueError):
     """Raised when agent configuration is invalid."""
@@ -60,6 +68,19 @@ class AgentProfile:
     sops: Tuple[str, ...] = ()
     tools_allowlist: Optional[Tuple[str, ...]] = None
     tools_denylist: Tuple[str, ...] = ()
+
+    #: ``normal`` (default) or ``coding``. Missing means ``normal``, so every
+    #: roster written before the field existed keeps working untouched.
+    agent_type: str = AGENT_TYPE_NORMAL
+    #: Absolute directory on the **OpenCode server**, not a platform path. It is
+    #: never resolved, created or checked locally: the platform cannot see that
+    #: filesystem, and a coding Agent is allowed to point at an existing
+    #: non-empty checkout.
+    coding_project_dir: Optional[str] = None
+
+    @property
+    def is_coding(self) -> bool:
+        return self.agent_type == AGENT_TYPE_CODING
 
     @property
     def workspace_path(self) -> Path:
@@ -104,6 +125,12 @@ class AgentProfile:
             data["tools_allowlist"] = list(self.tools_allowlist)
         if self.tools_denylist:
             data["tools_denylist"] = list(self.tools_denylist)
+        # Omitted for a normal Agent so that saving the roster never rewrites
+        # the type onto historic profiles; readers default a missing value.
+        if self.agent_type != AGENT_TYPE_NORMAL:
+            data["agent_type"] = self.agent_type
+        if self.coding_project_dir:
+            data["coding_project_dir"] = self.coding_project_dir
         return data
 
 
@@ -151,6 +178,44 @@ def _string_field(raw: Mapping[str, Any], agent_id: str, key: str) -> Optional[s
         raise AgentRegistryError(f"agent '{agent_id}' {key} must be a string when set")
     stripped = value.strip()
     return stripped or None
+
+
+def _agent_type_field(raw: Mapping[str, Any], agent_id: str) -> str:
+    """Parse ``agent_type``, treating a missing value as ``normal``.
+
+    A non-empty string that is not a known type is an error rather than a
+    silent fallback: an operator who typed ``coding`` on a build that cannot
+    run it must be told, not handed a normal Agent that quietly answers with a
+    model instead of the code project.
+    """
+    value = raw.get("agent_type")
+    if value is None:
+        return AGENT_TYPE_NORMAL
+    if not isinstance(value, str) or value.strip().casefold() not in AGENT_TYPES:
+        raise AgentRegistryError(
+            f"agent '{agent_id}' agent_type must be one of: {', '.join(AGENT_TYPES)}"
+        )
+    return value.strip().casefold()
+
+
+def _coding_project_dir_field(
+    raw: Mapping[str, Any], agent_id: str, agent_type: str
+) -> Optional[str]:
+    """Parse the remote project directory.
+
+    Deliberately not passed through ``_normalise_workspace``: the path lives on
+    the OpenCode server, so resolving it here would silently rewrite a remote
+    POSIX path into whatever the platform host thinks it means, and an
+    existence check would reject every project the platform cannot see.
+    """
+    value = _string_field(raw, agent_id, "coding_project_dir")
+    if agent_type == AGENT_TYPE_CODING and not value:
+        raise AgentRegistryError(
+            f"agent '{agent_id}' is coding and requires a coding_project_dir"
+        )
+    if agent_type != AGENT_TYPE_CODING:
+        return None
+    return value
 
 
 def _string_list(raw: Mapping[str, Any], agent_id: str, key: str) -> Tuple[str, ...]:
@@ -215,6 +280,8 @@ def _profile_from_mapping(
     if avatar is not None and not isinstance(avatar, str):
         raise AgentRegistryError(f"agent '{agent_id}' avatar must be a string")
 
+    agent_type = _agent_type_field(raw, agent_id)
+
     return AgentProfile(
         id=agent_id,
         # Older team files may still carry the previous product name. Keep
@@ -238,6 +305,8 @@ def _profile_from_mapping(
         sops=_string_list(raw, agent_id, "sops"),
         tools_allowlist=_asset_selection(raw, agent_id, "tools_allowlist"),
         tools_denylist=_string_list(raw, agent_id, "tools_denylist"),
+        agent_type=agent_type,
+        coding_project_dir=_coding_project_dir_field(raw, agent_id, agent_type),
     )
 
 
@@ -346,6 +415,13 @@ class AgentRegistry:
             raise AgentRegistryError(f"default agent '{agent_id}' is not configured")
         if not profile.enabled:
             raise AgentRegistryError(f"default agent '{agent_id}' is disabled")
+        # A coding Agent is an explicit Web入口 only; making it the instance
+        # default would route every ordinary consumer into a service that does
+        # not take ordinary messages.
+        if profile.is_coding:
+            raise AgentRegistryError(
+                f"coding agent '{agent_id}' cannot be the default agent"
+            )
 
     def get(self, agent_id: Optional[str] = None, require_enabled: bool = True) -> AgentProfile:
         with self._lock:
@@ -385,6 +461,16 @@ class AgentRegistry:
                 profiles = [profile for profile in profiles if profile.enabled]
             return sorted(profiles, key=lambda profile: profile.id)
 
+    def normal(self, include_disabled: bool = False) -> List[AgentProfile]:
+        """The profiles an ordinary runtime path may act on.
+
+        Every consumer that builds a normal runtime, a scheduler, a team, a
+        delegation target or a channel candidate starts from here rather than
+        ``list()``, so a coding Agent cannot leak into a path that would ask it
+        for a model, a persona or a workspace.
+        """
+        return [profile for profile in self.list(include_disabled=include_disabled) if not profile.is_coding]
+
     def upsert(self, profile: AgentProfile) -> None:
         with self._lock:
             for existing in self._profiles.values():
@@ -408,6 +494,7 @@ class AgentRegistry:
     def set_default(self, agent_id: str) -> None:
         with self._lock:
             profile = self.get(agent_id, require_enabled=True)
+            self._validate_default(profile.id)
             self._default_agent_id = profile.id
 
     def remove(self, agent_id: str) -> AgentProfile:

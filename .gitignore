@@ -8,6 +8,10 @@ venv*
 *.pyc
 python
 config.json
+# Timestamped pre-edit copies written next to config.json by migration/repair
+# scripts. `config.json` itself is ignored above, but the backups carry the same
+# live API keys and are not matched by that exact-name rule.
+config.json.bak-*
 QR.png
 nohup.out
 tmp

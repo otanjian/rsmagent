@@ -15,6 +15,7 @@ from agent.permission import (
 from bridge.context import *
 from common.log import logger
 import json
+from typing import NoReturn, Optional
 import web
 
 
@@ -39,9 +40,81 @@ def _conversation_store_for(agent_id: Optional[str]):
     return get_conversation_store(get_agent_registry().get(agent_id or None).workspace)
 
 
+def _coding_service_for(agent_id: Optional[str]):
+    """The coding service over the addressed Agent's store.
+
+    Imported lazily like every other cross-module dependency in this package, so
+    a deployment with the capability absent pays nothing for importing it.
+    """
+    from channel.web.fork.handlers.coding import _coding_service
+
+    return _coding_service(_conversation_store_for(agent_id))
+
+
+def _coding_link(agent_id: Optional[str], session_id: str):
+    """The link when this session is a coding one, else None.
+
+    A *probe*, not a decision: by the time this is called the caller's ownership
+    and the tenant binding are already established, so the only question left is
+    which of the two session kinds this row is. It therefore never raises — a
+    rename of an ordinary session must not start failing because the coding
+    capability is misconfigured or the store was built without the table.
+    """
+    try:
+        return _coding_service_for(agent_id).link_for(session_id)
+    except Exception:  # noqa: BLE001 - a probe must not fail the request
+        return None
+
+
+def _coding_refusal(error) -> NoReturn:
+    """Report a service refusal with its own status and stable code."""
+    from channel.web.fork.handlers.coding import _coding_error, _reason
+
+    _coding_error(error.message, f"{error.status} {_reason(error.status)}", error.code)
+
+
+def _coding_unsupported(message: str) -> NoReturn:
+    """Refuse an operation a coding session has no platform-side meaning for.
+
+    Clearing context and deleting an individual message are operations on the
+    platform's own mirror of a conversation. A coding conversation has no such
+    mirror — OpenCode holds every turn — so the honest answer is a refusal, not
+    a success that changed nothing.
+    """
+    from agent.coding import CODING_WEB_ONLY
+    from channel.web.fork.handlers.coding import _coding_error
+
+    _coding_error(message, "400 Bad Request", CODING_WEB_ONLY)
+
+
+def _coding_write(agent_id: Optional[str], action, *args, **kwargs):
+    """Run one coding management action, mapping a refusal to its HTTP answer."""
+    from agent.coding import CodingError
+
+    try:
+        return action(*args, **kwargs)
+    except CodingError as error:
+        _coding_refusal(error)
+
+def _forget_session_side_stores(session_id: str) -> None:
+    """Drop the per-session side rows a deleted conversation leaves behind.
+
+    A stale project binding would keep inflating the "how many spaces are in
+    use" count that decides how the session list is grouped.
+    """
+    try:
+        from agent.workspace import project_store, session_prefs
+
+        project_store.forget_session(session_id)
+        session_prefs.forget_session(session_id)
+    except Exception as e:  # noqa: BLE001 - best-effort cleanup
+        logger.debug(f"[WebChannel] Session side-store cleanup skipped: {e}")
+
+
 class SessionsHandler:
     def GET(self):
         from channel.web.web_channel import _agent_badge
+        from channel.web.web_channel import _annotate_coding_sessions
         from channel.web.web_channel import _annotate_sessions_with_projects
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _list_sessions_across_agents
@@ -94,6 +167,7 @@ class SessionsHandler:
                 _annotate_sessions_with_projects(
                     store, result, agent_id, user_id=ctx.user_id if ctx else None,
                 )
+                _annotate_coding_sessions(store, result, agent_id)
                 badge = _agent_badge(
                     get_agent_registry().get(agent_id or None, require_enabled=False)
                 )
@@ -124,6 +198,20 @@ class SessionDetailHandler:
                 _require_read_permission(ctx, "history.read")
                 agent_id = _require_session_scope(
                     ctx, session_id, _request_agent_id(params))
+
+                # A coding session is deleted through the service before
+                # anything local changes: interrupt first if it is running, and
+                # keep the record when the service refuses, so the console never
+                # shows a conversation the service still holds. The runtime
+                # teardown below is skipped deliberately — a coding session has
+                # no platform runtime, queue or cancellation key to clear.
+                link = _coding_link(agent_id, session_id)
+                if link is not None:
+                    service = _coding_service_for(agent_id)
+                    _coding_write(agent_id, service.delete, session_id=session_id)
+                    _forget_session_side_stores(session_id)
+                    logger.info(f"[WebChannel] Coding session deleted: {session_id}")
+                    return json.dumps({"status": "success"})
 
                 # Stop any in-flight run first: a reply that lands after the delete
                 # would otherwise keep burning tokens for a session nobody can see.
@@ -207,8 +295,18 @@ class SessionDetailHandler:
                 from agent.memory import get_conversation_store
                 store = _conversation_store_for(agent_id)
 
+                # A coding session's name lives in OpenCode, so a rename goes
+                # there first and only then to the cache: a refusal leaves the
+                # old name in place rather than a title that exists only here.
+                # Pinning and archiving stay local — they are the console's own
+                # arrangement and mean nothing to the service.
+                link = _coding_link(agent_id, session_id) if title else None
                 found = True
-                if title:
+                if link is not None:
+                    service = _coding_service_for(agent_id)
+                    _coding_write(agent_id, service.rename,
+                                  session_id=session_id, title=title)
+                elif title:
                     found = store.rename_session(session_id, title)
                 if pinned is not None:
                     found = store.set_pinned(session_id, bool(pinned)) and found
@@ -361,6 +459,12 @@ class SessionSettingsHandler:
                             "status": "error",
                             "message": "members must be a list of agent ids",
                         })
+                    # A team is a set of Agents answering in the same
+                    # conversation, so a coding Agent can never be one: it has no
+                    # ordinary runtime to take a turn.
+                    from channel.web.web_channel import _reject_coding_agent
+                    for member in updates.get("members") or []:
+                        _reject_coding_agent(str(member).strip())
                     # Compared as sets: the invite order is only the console's
                     # business, and a reorder must not cost every participant a
                     # rebuild.
@@ -404,6 +508,13 @@ class SessionSettingsHandler:
                 )
                 state = _session_settings_state(session_id, agent_id)
             return json.dumps({"status": "success", **state}, ensure_ascii=False)
+        except web.HTTPError:
+            # A deliberate refusal (a coding Agent in the member list, an
+            # out-of-scope session model) carries its own status and machine
+            # code; degrading it into 200-with-status:error would leave the
+            # console unable to tell it from a crash, which is the same reason
+            # every other handler in this module re-raises it.
+            raise
         except Exception as e:
             logger.error(f"[WebChannel] Session settings update error: {e}")
             return json.dumps({"status": "error", "message": str(e)})
@@ -436,6 +547,13 @@ class SessionTitleHandler:
 
                 from agent.memory import get_conversation_store
                 store = _conversation_store_for(agent_id)
+                # The name of a coding session is OpenCode's, and this endpoint
+                # derives a title from a message pair the platform would have to
+                # have stored itself. A coding session has no such messages, so
+                # a local write here could only diverge from the service.
+                if _coding_link(agent_id, session_id) is not None:
+                    _coding_unsupported(
+                        "the coding service owns this session's name")
                 updated = store.rename_session(session_id, title)
                 logger.info(f"[WebChannel] Session title set: sid={session_id}, title='{title}', db_updated={updated}")
 
@@ -493,6 +611,15 @@ class SessionClearContextHandler:
 
                 from agent.memory import get_conversation_store
                 store = _conversation_store_for(agent_id)
+
+                # A coding conversation has no platform context to clear: its
+                # turns live in OpenCode, and emptying a mirror that holds
+                # nothing would answer success without changing anything the
+                # user can see. Refusing says so plainly.
+                if _coding_link(agent_id, session_id) is not None:
+                    _coding_unsupported(
+                        "this session's context lives in the coding service")
+
                 new_seq = store.clear_context(session_id)
 
                 # Delete the agent instance so a fresh one is created on the next message
@@ -601,6 +728,14 @@ class MessageDeleteHandler:
                 # 1. Delete from database
                 from agent.memory import get_conversation_store
                 store = _conversation_store_for(agent_id)
+
+                # Deleting one turn is an edit of the platform's copy of a
+                # conversation; a coding session's turns are OpenCode's own
+                # records, so this must not pretend to edit them.
+                if _coding_link(agent_id, session_id) is not None:
+                    _coding_unsupported(
+                        "this session's messages live in the coding service")
+
                 deleted = store.delete_message_pair(session_id, int(user_seq), delete_user=delete_user, cascade=cascade)
 
                 # 2. Sync agent's in-memory context so its next turn sees the

@@ -55,7 +55,8 @@ def _seed():
 class _FakeProfile:
     """Minimal AgentProfile stand-in for the projection tests."""
 
-    def __init__(self, agent_id, name, enabled=True):
+    def __init__(self, agent_id, name, enabled=True, agent_type="normal",
+                 coding_project_dir=None):
         self.id = agent_id
         self.name = name
         self.workspace = "/tmp/%s" % agent_id
@@ -65,6 +66,12 @@ class _FakeProfile:
         self.position = ""
         self.category = ""
         self.tags = ()
+        self.agent_type = agent_type
+        self.coding_project_dir = coding_project_dir
+
+    @property
+    def is_coding(self):
+        return self.agent_type == "coding"
 
     @property
     def workspace_path(self):

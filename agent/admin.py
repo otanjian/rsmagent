@@ -15,7 +15,13 @@ from typing import Dict, Iterable, List, Mapping, Optional
 
 from agent import team
 from agent.deletion_guard import conflict_message, deletion_conflicts
-from agent.registry import AgentProfile, AgentRegistry
+from agent.registry import (
+    AGENT_TYPE_CODING,
+    AGENT_TYPE_NORMAL,
+    AGENT_TYPES,
+    AgentProfile,
+    AgentRegistry,
+)
 from common.log import logger
 from common.utils import expand_path
 
@@ -432,6 +438,21 @@ class AgentAdminService:
             raise AgentAdminError(f"{field} must be a list of strings")
         return [x.strip() for x in value if x.strip()]
 
+    @staticmethod
+    def _api_projection(profile: AgentProfile) -> Dict:
+        """The shape an admin call returns, as opposed to the shape it stores.
+
+        ``agent_type`` is explicit here even though the stored form omits
+        ``"normal"``: a console reading a create/update response has to be able
+        to tell a normal Agent from a response that simply did not carry the
+        field, and the type is what the console branches on.
+        """
+        data = profile.to_dict()
+        if not data.get("agent_type"):
+            data["agent_type"] = AGENT_TYPE_NORMAL
+        data.setdefault("coding_project_dir", None)
+        return data
+
     def _build_profile(
         self,
         agent_id: str,
@@ -455,6 +476,8 @@ class AgentAdminService:
         sops: Optional[Iterable[str]] = None,
         tools_allowlist: Optional[Iterable[str]] = None,
         tools_denylist: Optional[Iterable[str]] = None,
+        agent_type: str = None,
+        coding_project_dir: str = None,
     ) -> AgentProfile:
         """Normalise the console's raw field values into an ``AgentProfile``.
 
@@ -463,6 +486,21 @@ class AgentAdminService:
         an empty sequence is a deliberate "none", and that a blank string is the
         same as not configured.
         """
+        resolved_type = (agent_type or AGENT_TYPE_NORMAL).strip().casefold()
+        if resolved_type not in AGENT_TYPES:
+            raise AgentAdminError(
+                f"agent type must be one of: {', '.join(AGENT_TYPES)}"
+            )
+        project_dir = (coding_project_dir or "").strip() or None
+        if resolved_type == AGENT_TYPE_CODING:
+            if not project_dir:
+                raise AgentAdminError(
+                    "a coding agent requires coding_project_dir"
+                )
+        else:
+            # A normal Agent has no remote project; keeping a stale value would
+            # make a later type change look like it half-succeeded.
+            project_dir = None
         return AgentProfile(
             id=agent_id,
             name=name,
@@ -502,6 +540,8 @@ class AgentAdminService:
                 if tools_denylist is not None
                 else ()
             ),
+            agent_type=resolved_type,
+            coding_project_dir=project_dir,
         )
 
     def _materialise_workspace(
@@ -562,6 +602,8 @@ class AgentAdminService:
         sops: Optional[Iterable[str]] = None,
         tools_allowlist: Optional[Iterable[str]] = None,
         tools_denylist: Optional[Iterable[str]] = None,
+        agent_type: str = None,
+        coding_project_dir: str = None,
     ) -> Dict:
         if knowledge_mode not in (None, "shared", "own"):
             raise AgentAdminError("knowledge mode must be 'shared' or 'own'")
@@ -627,6 +669,8 @@ class AgentAdminService:
                     sops=sops,
                     tools_allowlist=tools_allowlist,
                     tools_denylist=tools_denylist,
+                    agent_type=agent_type,
+                    coding_project_dir=coding_project_dir,
                 )
                 registry.upsert(profile)
                 profiles = self._explicit_profiles(settings, self._registry(settings))
@@ -646,7 +690,7 @@ class AgentAdminService:
                 if created_destination and destination.exists():
                     shutil.rmtree(destination, ignore_errors=True)
                 raise
-            return profile.to_dict()
+            return self._api_projection(profile)
 
     def clone_agent(
         self,
@@ -746,6 +790,11 @@ class AgentAdminService:
                     sops=source_profile.sops,
                     tools_allowlist=source_profile.tools_allowlist,
                     tools_denylist=source_profile.tools_denylist,
+                    # Type and remote project are configuration, so a clone of a
+                    # coding Agent is also coding. Sessions, links and project
+                    # contents are runtime state and stay behind.
+                    agent_type=source_profile.agent_type,
+                    coding_project_dir=source_profile.coding_project_dir,
                 )
                 registry.upsert(profile)
                 profiles = self._explicit_profiles(settings, self._registry(settings))
@@ -765,7 +814,7 @@ class AgentAdminService:
                 if created_destination and destination.exists():
                     shutil.rmtree(destination, ignore_errors=True)
                 raise
-            return profile.to_dict()
+            return self._api_projection(profile)
 
     def update_agent(
         self,
@@ -791,11 +840,38 @@ class AgentAdminService:
         sops=_UNSET,
         tools_allowlist=_UNSET,
         tools_denylist=_UNSET,
+        agent_type: str = None,
+        coding_project_dir=_UNSET,
     ) -> Dict:
         with self._lock:
             settings = self._load()
             registry = self._registry(settings)
             current = registry.get(agent_id, require_enabled=False)
+            # The type decides which runtime every other field means, so it is
+            # not an editable property: changing it in place would leave a
+            # normal Agent's model/persona attached to a code project, or the
+            # reverse. A new Agent is the way to change type.
+            if agent_type is not None:
+                requested_type = str(agent_type).strip().casefold()
+                if requested_type not in AGENT_TYPES:
+                    raise AgentAdminError(
+                        f"agent type must be one of: {', '.join(AGENT_TYPES)}"
+                    )
+                if requested_type != current.agent_type:
+                    raise AgentAdminError(
+                        "agent type cannot be changed after creation"
+                    )
+            if coding_project_dir is _UNSET:
+                new_project_dir = current.coding_project_dir
+            else:
+                new_project_dir = (coding_project_dir or "").strip() or None
+            if current.is_coding:
+                if not new_project_dir:
+                    raise AgentAdminError(
+                        "a coding agent requires coding_project_dir"
+                    )
+            else:
+                new_project_dir = None
             new_enabled = current.enabled if enabled is None else enabled
             if not isinstance(new_enabled, bool):
                 raise AgentAdminError("enabled must be a boolean")
@@ -920,11 +996,20 @@ class AgentAdminService:
                 sops=new_sops,
                 tools_allowlist=new_tools_allowlist,
                 tools_denylist=new_tools_denylist,
+                agent_type=current.agent_type,
+                coding_project_dir=new_project_dir,
             )
             registry.upsert(updated)
             if not new_enabled:
                 registry.set_enabled(agent_id, False)
             if make_default:
+                # registry.set_default validates this too; raising here keeps
+                # the message tied to the coding type instead of to the
+                # default-agent invariant.
+                if updated.is_coding:
+                    raise AgentAdminError(
+                        "a coding agent cannot be the default agent"
+                    )
                 registry.set_default(agent_id)
 
             profiles = [
@@ -938,7 +1023,7 @@ class AgentAdminService:
                 {"agents": profiles, "default_agent_id": registry.default_agent_id},
                 revision,
             )
-            return updated.to_dict()
+            return self._api_projection(updated)
 
     def archive_agent(self, agent_id: str, revision: str = None) -> Dict:
         return self.update_agent(agent_id, enabled=False, revision=revision)

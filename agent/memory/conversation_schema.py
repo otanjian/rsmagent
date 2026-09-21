@@ -47,6 +47,11 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 SESSIONS = "sessions"
 MESSAGES = "messages"
 
+#: The coding-agent association table. Lives in the same file as the
+#: conversations on purpose: a link is only meaningful next to the session row
+#: it points at, and both sides of a refresh must commit together.
+OPENCODE_SESSION_LINKS = "opencode_session_links"
+
 #: Columns kept as a physical copy so a composite-key rebuild can be rolled
 #: back (a primary-key change is not expressible as an inverse ALTER).
 BACKUP_SUFFIX = "_prekey_backup"
@@ -265,6 +270,54 @@ CONVERSATION_DIMENSIONS: Tuple[TableDimension, ...] = (
 )
 
 
+#: Tables owned by a capability rather than by a dimension.
+#:
+#: The dimension seam composes columns onto the two conversation tables; a
+#: capability's own table has no columns to contribute to them and no interest
+#: in their keys, so it is registered here instead. It is created and migrated
+#: by exactly the same ``CREATE TABLE IF NOT EXISTS`` / additive-column path, so
+#: a deployment that upgrades gets the table without a second migration runner.
+#:
+#: ``opencode_session_links`` maps one platform session to one session on the
+#: configured coding service. Notes on the shape:
+#:
+#: * the primary key is the platform pair ``(agent_id, session_id)``, matching
+#:   how the conversation tables are keyed, so a link is impossible to orphan;
+#: * ``(service_id, external_session_id)`` is unique because the id is derived
+#:   from the request: the same request must resolve to one link, and a
+#:   different service instance must be able to reuse the id;
+#: * ``project_dir`` is the directory the session was created under, kept here
+#:   rather than read from the Agent, so editing an Agent's default project
+#:   never moves an existing conversation;
+#: * ``state`` is ``creating`` until the service confirms, which is what makes a
+#:   create whose response was lost retryable instead of duplicated;
+#: * no owner/tenant columns: those stay on the ``sessions`` row, and every
+#:   link query joins through it, so there is exactly one answer to "whose
+#:   session is this?".
+OPENCODE_SESSION_LINKS_SPEC = TableSpec(
+    name=OPENCODE_SESSION_LINKS,
+    columns=(
+        ColumnSpec("agent_id", "agent_id TEXT NOT NULL DEFAULT ''"),
+        ColumnSpec("session_id", "session_id TEXT NOT NULL"),
+        ColumnSpec("service_id", "service_id TEXT NOT NULL DEFAULT ''"),
+        ColumnSpec("external_session_id",
+                   "external_session_id TEXT NOT NULL DEFAULT ''"),
+        ColumnSpec("project_dir", "project_dir TEXT NOT NULL DEFAULT ''"),
+        ColumnSpec("state", "state TEXT NOT NULL DEFAULT 'creating'"),
+        ColumnSpec("request_id", "request_id TEXT NOT NULL DEFAULT ''"),
+    ),
+    key=("agent_id", "session_id"),
+    unique=(("service_id", "external_session_id"),),
+    indexes=(
+        IndexSpec("idx_coding_links_service", OPENCODE_SESSION_LINKS,
+                  ("service_id", "external_session_id")),
+    ),
+)
+
+#: Capability tables, in creation order.
+CAPABILITY_TABLES: Tuple[TableSpec, ...] = (OPENCODE_SESSION_LINKS_SPEC,)
+
+
 # ---------------------------------------------------------------------------
 # Composition
 # ---------------------------------------------------------------------------
@@ -337,6 +390,10 @@ def conversation_schema(
         name: _compose_table(spec, dims)
         for name, spec in _HISTORICAL_TABLES.items()
     }
+    for spec in CAPABILITY_TABLES:
+        # A capability table is not composed with any dimension: it carries its
+        # own scoping columns and is created identically on every deployment.
+        tables[spec.name] = _compose_table(spec, ())
     return ComposedSchema(tables=tables, dimensions=dims)
 
 

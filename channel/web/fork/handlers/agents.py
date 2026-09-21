@@ -111,7 +111,16 @@ def _adopt_created_agent_for_tenant(ctx: "RequestContext", agent_id: str, *,
     had_agents = bool(svc.tenant_agent_ids(ctx.tenant_id))
     svc.bind_agent(tenant_id=ctx.tenant_id, agent_id=agent_id,
                    origin=ADMIN_CREATED, actor_user_id=ctx.user_id)
-    if not had_agents and not svc.tenant_default_agent_id(ctx.tenant_id):
+    # A coding Agent is not a candidate for the tenant default: it is an
+    # explicit Web entry, so appointing it would point every ordinary chat at a
+    # runtime that refuses ordinary messages (``opencode-coding-agents``:
+    # coding MUST NOT 被设为通用默认). The appointment is a convenience for a
+    # tenant that starts empty, and a tenant left without a default simply asks
+    # the member to pick one.
+    from channel.web.fork.common import _coding_agent_profile
+
+    if (not had_agents and not svc.tenant_default_agent_id(ctx.tenant_id)
+            and _coding_agent_profile(agent_id) is None):
         svc.appoint_tenant_default_agent(
             tenant_id=ctx.tenant_id, agent_id=agent_id, actor_user_id=ctx.user_id)
     return "shared"
@@ -293,6 +302,11 @@ def _tenant_agents_projection(ctx: "Optional[RequestContext]") -> Dict:
             "is_default": bool(profile.id == tenant_default),
             "can_chat": can_chat,
             "unavailable_reason": unavailable_reason,
+            # Explicit for every row, so the gallery can branch on the type
+            # without knowing that "absent" means normal. The remote project
+            # directory is *not* here: the gallery has no use for it and it
+            # would leak one tenant's layout to another.
+            "agent_type": profile.agent_type,
         })
     data: Dict = {"agents": agents}
     if not agents:
@@ -353,6 +367,12 @@ def _tenant_agents_admin_projection(ctx: "Optional[RequestContext]") -> Dict:
         data = profile.to_dict()
         data.pop("workspace", None)
         data["is_default"] = bool(profile.id == tenant_default)
+        # The management pane round-trips the type and the remote project, so
+        # both are present for every row: ``agent_type`` explicitly (absent
+        # would be indistinguishable from normal for a client that does not
+        # know the default), the project only when the Agent is coding.
+        data["agent_type"] = profile.agent_type
+        data["coding_project_dir"] = profile.coding_project_dir
         # Which *kind* of default this row is: ``is_default`` above is the
         # resolved anchor (a member's own choice, else the tenant's, else the
         # deterministic fallback), and only this one is the member's explicit,
@@ -464,6 +484,7 @@ class AgentsHandler:
         from channel.web.web_channel import _bind_channel_instance
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _raise_forbidden
+        from channel.web.web_channel import _reject_coding_agent
         from channel.web.web_channel import _reload_agent_runtime
         from channel.web.web_channel import _require_agent_action
         from channel.web.web_channel import _require_agent_create
@@ -525,6 +546,13 @@ class AgentsHandler:
                             sops=body.get("sops"),
                             tools_allowlist=body.get("tools_allowlist"),
                             tools_denylist=body.get("tools_denylist"),
+                            # The type and its project are part of the create
+                            # payload, not a follow-up edit: an Agent whose type
+                            # is decided after the fact would be a normal Agent
+                            # for as long as the second request is in flight, and
+                            # the type is immutable once saved.
+                            agent_type=body.get("agent_type"),
+                            coding_project_dir=body.get("coding_project_dir"),
                         )
                         created_id = (result or {}).get("id") or agent_id
                         if ctx is not None and ctx.tenant_id:
@@ -574,7 +602,8 @@ class AgentsHandler:
                         updates["knowledge"] = body.get("knowledge")
                     for _field in ("position", "category", "tags", "greeting",
                                    "persona_summary", "scene_id", "knowledge_ids",
-                                   "sops", "tools_allowlist", "tools_denylist"):
+                                   "sops", "tools_allowlist", "tools_denylist",
+                                   "agent_type", "coding_project_dir"):
                         if _field in body:
                             updates[_field] = body.get(_field)
                     result = service.update_agent(agent_id, **updates)
@@ -621,6 +650,9 @@ class AgentsHandler:
                             json.dumps({"status": "error",
                                         "message": "agent is not bound to this tenant",
                                         "code": "not_found"}))
+                    # The tenant default is what every member lands on when they
+                    # enter chat, so it must be an Agent that can answer there.
+                    _reject_coding_agent(agent_id)
                     try:
                         result = identity.appoint_tenant_default_agent(
                             tenant_id=ctx.tenant_id, agent_id=agent_id,
@@ -654,6 +686,9 @@ class AgentsHandler:
                             json.dumps({"status": "error", "message": "agent not found",
                                         "code": "not_found"}))
                     _require_agent_action(ctx, agent_id, "edit", "agent.edit")
+                    # A member's own default is what their next new chat opens,
+                    # so like the tenant default it has to be able to answer.
+                    _reject_coding_agent(agent_id)
                     try:
                         # The subject is the verified session, never the body:
                         # ``user_id``/``tenant_id`` in the payload are unread, so
@@ -687,9 +722,15 @@ class AgentsHandler:
                     # shared team.json roster binding.
                     platform_ctx = _require_platform_console()
                     _require_agent_action(platform_ctx, agent_id, "edit", "agent.edit")
+                    # Inbound IM traffic becomes ordinary messages, so the bound
+                    # Agent has to be one that runs the ordinary runtime.
+                    _reject_coding_agent(agent_id)
                     # members: list => set team; omitted/None => leave team untouched
                     raw_members = body.get("members", None)
                     members = raw_members if isinstance(raw_members, list) else None
+                    if members:
+                        for member in members:
+                            _reject_coding_agent(str(member).strip())
                     result = _bind_channel_instance(
                         channel_type=body.get("channel_type", ""),
                         instance_id=body.get("instance_id", ""),

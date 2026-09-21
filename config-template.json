@@ -41,9 +41,23 @@
   "agent_max_context_turns": 30,
   "agent_max_steps": 30,
   "agent_permission_mode": "full-access",
+  "image_input": {
+    "max_bytes": 4194304,
+    "max_count": 4,
+    "max_edge": 1568,
+    "jpeg_quality": 85
+  },
   "subagent": {
     "enabled": true,
     "max_concurrent": 3
+  },
+  "opencode": {
+    "enabled": false,
+    "service_id": "default",
+    "api_url": "http://127.0.0.1:4096",
+    "web_url": "",
+    "username": "opencode",
+    "password_env": "RSM_OPENCODE_PASSWORD"
   },
   "enable_thinking": false,
   "reasoning_effort": "high",

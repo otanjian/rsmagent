@@ -96,11 +96,24 @@ def test_generated_ddl_carries_the_composed_constraints():
 
 
 def test_unregistered_dimensions_leave_the_ddl_at_the_historical_shape():
-    ddl = " ".join(cs.build_ddl(cs.conversation_schema(dimensions=())).split())
-    assert "PRIMARY KEY (session_id)" in ddl
-    assert "UNIQUE (session_id, seq)" in ddl
-    assert "agent_id" not in ddl
-    assert "tenant_id" not in ddl
+    """The dimension seam is inert: with none registered, ``sessions`` and
+    ``messages`` are exactly the historical tables.
+
+    Checked per table rather than on the whole script, because the script also
+    carries capability tables (``opencode_session_links``), which are registered
+    as tables of their own and are not composed with any dimension: they are the
+    same on every deployment and cannot widen the conversation keys.
+    """
+    schema = cs.conversation_schema(dimensions=())
+    sessions = " ".join(schema.table("sessions").ddl().split())
+    messages = " ".join(schema.table("messages").ddl().split())
+
+    assert "PRIMARY KEY (session_id)" in sessions
+    assert "UNIQUE (session_id, seq)" in messages
+    for table in (sessions, messages):
+        assert "agent_id" not in table
+        assert "tenant_id" not in table
+    assert cs.OPENCODE_SESSION_LINKS in schema.tables
 
 
 # --- the store actually uses it -----------------------------------------

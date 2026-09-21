@@ -227,6 +227,48 @@ def _int_param(params, name: str, default: int) -> int:
         return default
 
 
+def _coding_agent_profile(agent_id: str) -> "Optional[object]":
+    """The roster profile for ``agent_id`` when it is a coding Agent, else ``None``.
+
+    The read behind :func:`_reject_coding_agent`, split out for callers that have
+    to *decide* the same question rather than refuse it. They must treat "not
+    coding" and "unknown" alike, which is how the refusing form behaves too: an
+    id the roster does not know is left to the caller's own existence check, so
+    this can never turn "no such Agent" into a different answer.
+    """
+    if not agent_id:
+        return None
+    from agent.registry import get_agent_registry
+
+    try:
+        profile = get_agent_registry().get(agent_id, require_enabled=False)
+    except KeyError:
+        return None
+    return profile if profile.is_coding else None
+
+
+def _reject_coding_agent(agent_id: str) -> None:
+    """Answer ``coding_web_only`` when ``agent_id`` names a coding Agent.
+
+    The second half of the rule the roster enforces on create: a coding Agent
+    may exist, be assigned and be opened in the Web, but it must never become
+    the target of something that will ask it for a model, a persona or a normal
+    runtime — a tenant default, a member default, a team member, a channel
+    binding, a scheduled task. Unknown ids are left to the caller's own
+    existence check, so this cannot turn "no such Agent" into a different
+    answer.
+    """
+    profile = _coding_agent_profile(agent_id)
+    if profile is None:
+        return
+    from agent.coding import coding_web_only
+    from channel.web.auth_handlers import _error
+
+    error = coding_web_only(profile.id)
+    # ``_error`` raises, so the caller does not need to return.
+    _error(error.message, error.status, error.code)
+
+
 def _workbench_agents_projection() -> Dict:
     """Minimal read-only projection for the workbench (use-Agents) page.
 
@@ -274,6 +316,7 @@ def _workbench_agents_projection() -> Dict:
             "position": profile.position or "",
             "category": profile.category or "",
             "tags": list(profile.tags or []),
+            "agent_type": profile.agent_type,
         })
     return {"agents": agents}
 

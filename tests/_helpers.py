@@ -395,6 +395,24 @@ class WebAppHarness:
             set_agent_registry(None)
         except Exception:  # noqa: BLE001 - best-effort teardown
             pass
+        # ``AgentBridge`` is a process-global too, and it caches the registry it
+        # was constructed with while the ``Bridge`` singleton outlives one
+        # harness's ``conf`` patch. A test that drives an ordinary session
+        # through the app builds it, so re-point it at the registry the *real*
+        # configuration resolves and drop the instances it created here -- a
+        # plain channel-routing test in another file would otherwise route its
+        # message through this harness's roster and answer with the wrong
+        # Agent. Same leak as ``test_session_context_scope._roster``.
+        try:
+            from agent.registry import get_agent_registry
+            from bridge.bridge import Bridge
+
+            bridge = Bridge().get_agent_bridge()
+            with bridge._agents_lock:
+                bridge._agent_instances.clear()
+            bridge.agent_registry = get_agent_registry()
+        except Exception:  # noqa: BLE001 - best-effort teardown
+            pass
         self._reset_scheduler_globals()
 
     @staticmethod
@@ -414,26 +432,62 @@ class WebAppHarness:
         The registry reads the roster, and its cache is keyed on the file's
         stamped mtime, so writing here is what makes a second Agent visible to
         the app that was already built.
+
+        An entry may be a bare id or a full profile mapping, because a coding
+        Agent cannot be described by an id alone: it needs ``agent_type`` and
+        ``coding_project_dir`` to be readable at all, and the registry refuses a
+        coding Agent without a project rather than guessing one.
         """
         from agent import team
 
-        default = default or agent_ids[0]
+        entries = list(agent_ids)
+        first_id = (entries[0] if isinstance(entries[0], str) else entries[0]["id"]) if entries else None
+        default = default or first_id
         profiles = []
-        for index, agent_id in enumerate(agent_ids):
-            if index == 0:
-                profiles.append({"id": agent_id, "name": agent_id})
-            else:
-                profiles.append({
-                    "id": agent_id, "name": agent_id,
-                    "workspace": os.path.join(self.shared_root, "agents", agent_id),
-                })
+        for index, entry in enumerate(entries):
+            if isinstance(entry, str):
+                entry = {"id": entry, "name": entry}
+            profile = dict(entry)
+            profile.setdefault("name", profile["id"])
+            if index != 0 and not profile.get("agent_type"):
+                profile.setdefault(
+                    "workspace",
+                    os.path.join(self.shared_root, "agents", profile["id"]),
+                )
+            profiles.append(profile)
         path = team.team_file(self._settings)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         path.write_text(json.dumps({
             "agents": profiles, "default_agent_id": default,
         }), encoding="utf-8")
-        self._roster = [p["id"] for p in profiles]
+        self._roster = entries
+        self._roster_default = default
         return path
+
+    def _roster_ids(self):
+        return [e if isinstance(e, str) else e["id"] for e in getattr(self, "_roster", [])]
+
+    def add_coding_agent(self, agent_id, project_dir, *, name=None, tenant_id=None):
+        """Put a coding Agent in the roster, enabled and bound to the tenant.
+
+        Coding Agents are ordinary roster entries for every read path, so the
+        same binding step applies; what makes them special is that only the Web
+        coding entry may run them.
+        """
+        entries = [e for e in getattr(self, "_roster", []) if not (
+            (e if isinstance(e, str) else e["id"]) == agent_id)]
+        entries.append({
+            "id": agent_id,
+            "name": name or agent_id,
+            "agent_type": "coding",
+            "coding_project_dir": project_dir,
+        })
+        self.service.bind_agent(
+            tenant_id=tenant_id or self.tenant_id, agent_id=agent_id)
+        if agent_id not in self._agents:
+            self._agents.append(agent_id)
+        return self.write_roster(
+            entries, default=getattr(self, "_roster_default", None))
 
     def add_agent(self, *agent_ids, tenant_id=None):
         """Bind Agents to the tenant and put them in the roster.
@@ -443,10 +497,12 @@ class WebAppHarness:
         is bound to exactly one tenant and a first bind to the wrong one is not
         repairable (``bind_agent`` refuses a cross-tenant re-point).
         """
-        existing = list(getattr(self, "_roster", []))
+        existing = [e for e in getattr(self, "_roster", [])]
+        seen = [e if isinstance(e, str) else e["id"] for e in existing]
         for agent_id in agent_ids:
-            if agent_id not in existing:
+            if agent_id not in seen:
                 existing.append(agent_id)
+                seen.append(agent_id)
             self.service.bind_agent(tenant_id=tenant_id or self.tenant_id,
                                     agent_id=agent_id)
             if agent_id not in self._agents:
@@ -553,6 +609,12 @@ class WebAppHarness:
 
     def post(self, path, body, token=None, **kwargs):
         return self.request(path, "POST", body=body, token=token, **kwargs)
+
+    def put(self, path, body, token=None, **kwargs):
+        return self.request(path, "PUT", body=body, token=token, **kwargs)
+
+    def delete(self, path, token=None, **kwargs):
+        return self.request(path, "DELETE", token=token, **kwargs)
 
     @staticmethod
     def json(response):

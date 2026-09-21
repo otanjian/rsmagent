@@ -325,6 +325,7 @@ from channel.web.fork.common import (
     _int_param,
     _is_database_identity,
     _personal_agents_projection,
+    _reject_coding_agent,
     _render_project_refusal,
     _resolve_default_agent,
     _resolve_tenant_default_agent,
@@ -460,6 +461,13 @@ from channel.web.fork.handlers.models import (
     ModelsHandler,
     model_catalog,
 )
+from channel.web.fork.handlers.coding import (
+    CodingSessionAttachHandler,
+    CodingSessionOpenHandler,
+    CodingSessionsHandler,
+    CodingSessionSyncHandler,
+    CodingSettingsHandler,
+)
 from channel.web.fork.handlers.pages import (
     AssetsHandler,
     ChatHandler,
@@ -572,6 +580,7 @@ from channel.web.fork.runtime import (
     _addressed_agent_id,
     _agent_admin_service,
     _agent_badge,
+    _annotate_coding_sessions,
     _annotate_sessions_with_projects,
     _artifacts_from_steps,
     _as_epoch,

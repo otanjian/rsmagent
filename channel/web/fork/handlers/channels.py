@@ -2076,6 +2076,11 @@ def _channel_target_candidates(ctx: "RequestContext") -> List[Dict]:
             ctx, action=SCOPE_MANAGE):
         if unavailable_reason == "agent_disabled":
             continue
+        # A channel turns inbound IM traffic into ordinary messages, which a
+        # coding Agent cannot receive. Offering it here would promise a target
+        # the create is required to refuse.
+        if profile.is_coding:
+            continue
         binding = _agent_binding_for(ctx, profile.id) or {}
         owns = binding.get("private_owner_user_id") == getattr(ctx, "user_id", None)
         targets.append({

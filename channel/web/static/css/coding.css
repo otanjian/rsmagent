@@ -1,0 +1,120 @@
+/* =====================================================================
+ * Coding sessions in the chat pane (change add-opencode-coding-agents, 4.3).
+ *
+ * The embedded OpenCode app fills the conversation area, so the frame has to
+ * cover exactly what the ordinary composer and message list occupied and
+ * nothing else. The hidden/restore decision itself lives in coding.js
+ * (`applyChrome`); this file only describes the two states.
+ * ===================================================================== */
+
+/* The frame host: chat-main is a flex column holding the message list and the
+ * composer. While a coding session is mounted both are hidden, so the frame is
+ * the only child left to take the remaining height. */
+#chat-main.coding-active {
+    padding: 0;
+}
+
+/* The empty-chat layout (`#chat-main.chat-home` in appearance.css, which loads
+ * before this file) pads the pane's top and makes it a scroll container. The
+ * class itself is removed on mount (coding.js, and the console's own layout
+ * sync), but the collapse it causes is severe enough to be worth a layout that
+ * cannot inherit it: same specificity, later in the cascade. */
+html[data-web-palette] #chat-main.coding-active {
+    padding: 0;
+    overflow: hidden;
+    --home-hero-offset: 0px;
+}
+
+#chat-main > iframe.coding-frame {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    border: 0;
+    display: block;
+    background: #ffffff;
+}
+
+html.dark #chat-main > iframe.coding-frame {
+    background: #1a1a1a;
+}
+
+/* Waiting for the child's ready notice. Deliberately plain: it must not look
+ * like a result, only like work in progress. */
+#chat-main > .coding-loading {
+    position: absolute;
+    inset-inline-start: 50%;
+    top: 12px;
+    transform: translateX(-50%);
+    z-index: 5;
+    padding: 6px 12px;
+    border-radius: 9999px;
+    font-size: 12px;
+    color: #64748b;
+    background: rgba(248, 250, 252, 0.92);
+    border: 1px solid rgba(100, 116, 139, 0.2);
+}
+
+/* The child stayed silent past the timeout: the pane says what it knows and
+ * offers the one safe action (reopen this same session). */
+#chat-main > .coding-retry {
+    position: absolute;
+    inset-inline-start: 50%;
+    top: 12px;
+    transform: translateX(-50%);
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 9999px;
+    font-size: 12px;
+    color: #92400e;
+    background: rgba(255, 251, 235, 0.96);
+    border: 1px solid rgba(217, 119, 6, 0.3);
+}
+
+html.dark #chat-main > .coding-loading {
+    color: #94a3b8;
+    background: rgba(26, 26, 26, 0.92);
+    border-color: rgba(148, 163, 184, 0.24);
+}
+
+html.dark #chat-main > .coding-retry {
+    color: #fbbf24;
+    background: rgba(41, 37, 20, 0.96);
+    border-color: rgba(251, 191, 36, 0.3);
+}
+
+.coding-retry-btn {
+    padding: 2px 10px;
+    border-radius: 9999px;
+    border: 1px solid currentColor;
+    background: transparent;
+    color: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.coding-retry-btn:hover {
+    background: rgba(217, 119, 6, 0.12);
+}
+
+/* The Agent form / workbench badge that names a coding Agent and its project. */
+.coding-agent-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 12px;
+    line-height: 1.6;
+    background: rgba(59, 130, 246, 0.1);
+    color: #1d4ed8;
+    border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+html.dark .coding-agent-badge {
+    color: #93c5fd;
+    background: rgba(59, 130, 246, 0.16);
+    border-color: rgba(147, 197, 253, 0.3);
+}
