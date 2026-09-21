@@ -8,6 +8,7 @@ import time
 
 from channel import channel_factory
 from common import const
+from common import process_watch
 from common.log import logger
 from common.ssl_certs import ensure_ca_bundle
 from config import load_config, conf
@@ -311,6 +312,7 @@ class ChannelManager:
             # deployments keep the old behavior - other channels may still be
             # serving, so one broken channel must not take the process down.
             if DESKTOP_MODE and name == "web":
+                process_watch.record_exit(f"desktop channel '{name}' failed to start")
                 logging.shutdown()
                 os._exit(1)
 
@@ -580,6 +582,9 @@ def _start_web_watchdog(timeout: int = WEB_STARTUP_TIMEOUT):
             faulthandler.dump_traceback()
         except Exception:
             pass
+        # os._exit skips atexit, so the lifecycle record needs the reason said
+        # out loud or this reads like an external kill.
+        process_watch.record_exit(f"web console not serving within {timeout}s")
         logging.shutdown()
         os._exit(1)
 
@@ -841,6 +846,11 @@ def _scaffold_subagent_assets():
 
 def run():
     try:
+        # First, before config: a death during startup must be as diagnosable as
+        # one during traffic (see common/process_watch.py). Deliberately here and
+        # not at import time — tests import this module, and faulthandler plus
+        # atexit hooks are process-global, so they would leak into the suite.
+        process_watch.install()
         # Before any TLS connection: a packaged build has no OpenSSL CA store.
         bundle = ensure_ca_bundle()
         if bundle:
@@ -917,6 +927,7 @@ def run():
         # "connecting" until its timeout. Exit non-zero so it surfaces the real
         # error and offers a retry right away.
         if DESKTOP_MODE:
+            process_watch.record_exit("desktop startup failed")
             logging.shutdown()
             os._exit(1)
 

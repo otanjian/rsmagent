@@ -7,6 +7,7 @@ from bridge.context import *
 from bridge.reply import Reply, ReplyType
 from channel.chat_channel import ChatChannel, check_prefix
 from channel.chat_message import ChatMessage
+from common import process_watch
 from common.log import logger
 from config import conf
 
@@ -342,7 +343,10 @@ class TerminalChannel(ChatChannel):
             sys.stdout.write(_Style.RESET)
         sys.stdout.write("\nExiting...\n")
         sys.stdout.flush()
-        # Hard-exit the entire process from a daemon thread.
+        # Hard-exit the entire process from a daemon thread. Announce it: os._exit
+        # skips atexit, and an unannounced exit reads like an external kill in the
+        # lifecycle record (see common/process_watch.py).
+        process_watch.record_exit("terminal channel exited")
         os._exit(0)
 
     def get_input(self):
