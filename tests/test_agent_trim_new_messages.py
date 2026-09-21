@@ -27,7 +27,7 @@ class _FakeExecutor:
         self.messages = list(messages)
         self._trim_to = trim_to
 
-    def run_stream(self, user_message):
+    def run_stream(self, user_message, attachments=None):
         # 1. append the new user query (before trimming, like the real executor)
         self.messages.append(
             {"role": "user", "content": [{"type": "text", "text": user_message}]}

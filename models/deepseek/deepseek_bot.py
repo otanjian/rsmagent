@@ -43,6 +43,15 @@ DEFAULT_API_BASE = "https://api.deepseek.com/v1"
 # This is a ceiling, not a reservation: unused budget costs nothing.
 V4_AGENT_MAX_TOKENS = 128 * 1024
 
+# Models that accept OpenAI-style image content parts. Kept as a module constant
+# so the capability contract has a single, testable source of truth instead of
+# string literals scattered across the property.
+_VISION_MODELS = frozenset({
+    const.DEEPSEEK_FLASH,
+    const.DEEPSEEK_V4_FLASH,
+    const.DEEPSEEK_V4_FLASH_VISION_EXP,
+})
+
 
 class DeepSeekBot(Bot, OpenAICompatibleBot):
     def __init__(self):
@@ -89,13 +98,22 @@ class DeepSeekBot(Bot, OpenAICompatibleBot):
 
     @property
     def supports_vision(self) -> bool:
-        """deepseek-flash (V4.1) is natively multimodal, and the dedicated
-        deepseek-v4-flash-vision-exp accepts images too. The other chat models
-        (deepseek-v4-flash / -pro / -chat / -reasoner) return 400 on image
-        input, so gate on the exact model name to let the vision tool route to
-        a vision-capable model instead of misfiring the non-vision main model."""
-        model_name = (conf().get("model") or "").lower()
-        return model_name in (const.DEEPSEEK_FLASH, const.DEEPSEEK_V4_FLASH_VISION_EXP)
+        """Whether the model this bot will actually send accepts image input.
+
+        Verified against the provider's real behaviour: ``deepseek-v4-flash``
+        accepts an OpenAI-style ``image_url`` content part and answers with a
+        real description of the picture. The earlier claim that it "returns 400
+        on image input" was wrong, and gating on it silently disabled the vision
+        tool's main-model channel for the most commonly configured model.
+
+        The authority is ``self.args["model"]`` — that is what
+        :meth:`call_with_tools` puts in the request body. Reading only the global
+        config would misjudge a bot whose config was resolved elsewhere (and,
+        when no global model is set, would report "cannot read images" for a bot
+        that is about to send one).
+        """
+        model_name = (self.args.get("model") or conf().get("model") or "").lower()
+        return model_name in _VISION_MODELS
 
     @staticmethod
     def _is_v4_model(model_name: str) -> bool:

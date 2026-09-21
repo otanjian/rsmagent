@@ -647,7 +647,7 @@ class AgentBridge:
         # for the first user message. init_scheduler is idempotent.
         try:
             from agent.tools.scheduler.integration import init_scheduler
-            for profile in self.agent_registry.list(include_disabled=False):
+            for profile in self.agent_registry.normal():
                 if init_scheduler(self, profile.workspace, profile.id):
                     self.scheduler_agent_ids.add(profile.id)
             self.scheduler_initialized = bool(self.scheduler_agent_ids)
@@ -1697,12 +1697,21 @@ class AgentBridge:
                 if session_id:
                     steer_inbox = get_steer_registry().register(session_id)
                 # Use agent's run_stream method with event handler
+                from agent.attachments import attachments_from_context
+
+                attachments = attachments_from_context(context)
+                if attachments:
+                    logger.info(
+                        f"[AgentBridge] {len(attachments)} image attachment(s) "
+                        f"carried on the inbound context"
+                    )
                 response = agent.run_stream(
                     user_message=model_query,
                     on_event=event_handler.handle_event,
                     clear_history=clear_history,
                     cancel_event=cancel_event,
                     steer_inbox=steer_inbox,
+                    attachments=attachments or None,
                     # A scheduled task may legitimately have nothing to report
                     # (e.g. "notify me only if the price drops"). Nobody is
                     # waiting on this run, so an empty answer stays empty and
