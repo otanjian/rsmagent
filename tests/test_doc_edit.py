@@ -8,8 +8,6 @@ from unittest.mock import patch
 import pytest
 
 from agent.workspace.service import WorkspaceConflictError, WorkspaceService
-
-from tests._helpers import web_layer_source
 SKILL_MD = """---
 name: {name}
 description: {desc}
@@ -362,8 +360,15 @@ def test_document_editor_is_loaded_before_its_users():
 
     assert html.index("assets/js/doc-editor.js") < html.index("assets/js/console.js")
     # A cached copy of the old page would ask for a script that has since been
-    # renamed, so the new file has to be in the cache-busting list too.
-    assert "js/doc-editor.js" in web_layer_source()
+    # renamed, so the page has to serve the new file and stamp it. The stamp is
+    # applied to every first-party asset at assembly time
+    # (channel/web/core/template.py), so this reads the answer the browser gets
+    # instead of a list of names a handler used to maintain by hand.
+    from channel.web import web_channel
+
+    with patch("web.header"):
+        served = web_channel.ChatHandler().GET()
+    assert re.search(r'assets/js/doc-editor\.js\?v=[0-9a-f]+', served)
 
 
 def test_console_scripts_are_served_cache_busted():
@@ -382,6 +387,15 @@ def test_console_scripts_are_served_cache_busted():
         # No unversioned reference may survive, or the browser reloads the
         # cached copy through that one instead.
         assert f'assets/{asset}"' not in html, f"{asset} still served unversioned"
+
+    # The fork fragments are fetched at runtime by fragments.js through a
+    # markup attribute the assembler does not scan, so they are stamped by the
+    # handler after assembly. Missed, a browser keeps mounting the previous
+    # dialog until its cache entry expires.
+    assert re.search(r'assets/fragments/appearance-dialog\.html\?v=[0-9a-f]+', html), \
+        "the fork fragment markup is not version-stamped"
+    assert re.search(r'assets/js/fragments\.js\?v=[0-9a-f]+', html), \
+        "the fragment loader is not version-stamped"
 
 
 def test_document_editor_contract():

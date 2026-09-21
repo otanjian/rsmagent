@@ -17,6 +17,7 @@ assertions, add the authorization on the wire rather than deleting the tests).
 """
 
 import json
+import re
 import sys
 import types
 from datetime import datetime, timedelta
@@ -226,9 +227,25 @@ def test_the_same_run_key_queues_one_fire_through_the_route(web_app):
     assert service.run_task_now.call_count == 2, "one per distinct key"
 
 
+def _page_scripts_source(root: Path) -> str:
+    """The scripts the console page loads, as one string.
+
+    The manual-run control moved with the ported scheduled-task page (change
+    ``port-upstream-tasks-page``): it now lives in the fork patch layer loaded
+    last, not in ``console.js``. Reading the page's own script set keeps this
+    assertion about the control rather than about the file that happens to hold
+    it, so the next move does not need a test edit.
+    """
+    page = (root / "channel/web/chat.html").read_text(encoding="utf-8")
+    static = root / "channel/web/static"
+    return "\n".join(
+        (static / rel).read_text(encoding="utf-8")
+        for rel in re.findall(r'<script[^>]+src="assets/(js/[^"?]+)', page))
+
+
 def test_manual_run_is_exposed_by_explicit_web_and_desktop_controls():
     root = Path(__file__).parents[1]
-    web_console = (root / "channel/web/static/js/console.js").read_text(encoding="utf-8")
+    web_console = _page_scripts_source(root)
     desktop_client = (root / "desktop/src/renderer/src/api/client.ts").read_text(encoding="utf-8")
     desktop_page = (root / "desktop/src/renderer/src/pages/TasksPage.tsx").read_text(encoding="utf-8")
 

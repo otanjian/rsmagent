@@ -2458,6 +2458,23 @@ body.account-menu-sheet-open { overflow: hidden; }
 }
 .cfg-dropdown-selected:hover { border-color: #94a3b8; }
 .dark .cfg-dropdown-selected:hover { border-color: #64748b; }
+/* A picker that has nothing to offer (or nothing the caller may change): it
+   keeps showing its value but reads as inert. Ported with the upstream
+   scheduled-task page (change port-upstream-tasks-page) — upstream's markup and
+   filterTaskRecipients() both carry this class, and the fork's stylesheet is the
+   only one the page loads. Placed after the dark base rules so the grey tone
+   wins over `.dark .cfg-dropdown-selected`, which has the same specificity. */
+.cfg-dropdown-disabled { pointer-events: none; }
+.cfg-dropdown-disabled .cfg-dropdown-selected {
+    cursor: not-allowed;
+    background: #f1f5f9;
+    color: #475569;
+}
+.dark .cfg-dropdown-disabled .cfg-dropdown-selected {
+    background: #252525;
+    color: #cbd5e1;
+}
+.cfg-dropdown-disabled .cfg-dropdown-arrow { opacity: 0.4; }
 /* A compact trigger for header rows, so the picker lines up with the pill
    tabs beside it instead of towering over them. */
 .cfg-dropdown-sm .cfg-dropdown-selected {
@@ -4821,11 +4838,24 @@ textarea.doc-editor {
     padding: 22px 24px 4px;
 }
 .dark .agent-modal-title { color: #f1f5f9; }
-/* overflow stays visible so an opened dropdown's menu can spill past the last
-   field instead of being clipped into a scroll area (which would show a
-   scrollbar and trap the options). The card itself scrolls if a form ever
-   outgrows the viewport. */
-.agent-modal-body { padding: 12px 24px; overflow: visible; }
+/* The card is clamped to the viewport, so exactly one region has to give and
+   scroll: the body. With no scroll region the overflow was simply unreachable
+   -- a fixed overlay has nowhere to scroll, and the card paints past its own
+   bottom edge -- which cut off the tail of the create form (项目目录 / 编码服务
+   and the 创建智能体 button) on any window shorter than the form. The title and
+   the footer keep `flex-shrink: 0` so the action stays where it is while the
+   fields between them scroll; the body needs no `min-height: 0` because a
+   non-visible overflow already drops a flex item's automatic minimum size to
+   zero, which is what lets it shrink and scroll instead of pushing the card
+   past its own max-height.
+   The dropdown menus inside are unaffected: `.cfg-dropdown-menu` carries its
+   own max-height and scroll, and the open handler flips a menu upward when it
+   would be clipped against the viewport bottom (``console.js``), so a flipped
+   menu scrolls into view with the body rather than being trapped. */
+.agent-modal-title,
+.agent-modal-head,
+.agent-modal-foot { flex-shrink: 0; }
+.agent-modal-body { padding: 12px 24px; overflow-y: auto; }
 
 /* ---- Role create/edit page (replaces modal for roles) ---- */
 .role-editor {
@@ -5587,6 +5617,17 @@ button.composer-menu-item.joined:hover .joined-remove { display: inline; color: 
 }
 .agent-wb-card-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .agent-wb-card-top .agent-card-badge { position: static; flex-shrink: 0; align-self: flex-start; }
+/* The card's top-right corner holds the default/archived chip and, for a coding
+ * Agent, the type badge. The wrapper is the flex child so the two stack instead
+ * of squeezing the name. */
+.agent-wb-card-badges {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+    align-self: flex-start;
+}
 .agent-wb-card-top .agent-avatar { flex-shrink: 0; }
 .agent-wb-card-name { font-weight: 600; font-size: 15px; color: #1e293b; }
 .dark .agent-wb-card-name { color: #f1f5f9; }

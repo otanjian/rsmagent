@@ -10,8 +10,15 @@ const { createAppearanceController } = require('../channel/web/static/js/appeara
 const source = fs.readFileSync(path.join(__dirname, '../channel/web/static/js/console.js'), 'utf8');
 function section(start, end) {
     const from = source.indexOf(start);
-    const to = source.indexOf(end, from + start.length);
-    assert.ok(from >= 0 && to > from, `Missing console section ${start}`);
+    assert.ok(from >= 0, `Missing console section ${start}`);
+    // An absent `end` means "to the end of the file", which is what the last
+    // section needs: the scheduled-task sections that used to follow
+    // Initialization moved to the fork patch module (change
+    // port-upstream-tasks-page), so nothing marks its end any more.
+    const to = end === undefined
+        ? source.length
+        : source.indexOf(end, from + start.length);
+    assert.ok(to > from, `Missing console section ${end}`);
     return source.slice(from, to);
 }
 
@@ -189,7 +196,7 @@ function setup(transport = async () => response(database()), { agentWrapper = fa
     if (!tenantResolution) ctx._ensureTenantSelected = () => Promise.resolve(true);
     node('login-overlay').classList.add('hidden');
     node('app').classList.add('hidden');
-    run(section('// Initialization\n', '// Task Edit Modal\n'));
+    run(section('// Initialization\n'));
     return {
         ctx, run, node, document, nodes, calls, storage, counter, realInitApp,
         state: () => run('({..._accountState})'),
