@@ -1260,6 +1260,7 @@ class WeixinQrHandler:
         """厂商确认：收窄并加密临时结果，然后走同一个提交通道。"""
         from channel.web import scan_onboarding as so
         from channel import weixin_scan_adapter as adapter
+        from auth.service import get_identity_service
 
         if not session.provider_result_present:
             # 只保留渠道类型声明的凭据字段；厂商的 ilink_bot_id / ilink_user_id 与
@@ -1271,7 +1272,18 @@ class WeixinQrHandler:
                 session.handle, result=result,
                 sensitive_keys=adapter.provider_secret_keys(),
                 declared_keys=adapter.provider_result_keys(), actor=actor)
-        return self._commit(ctx, body)
+        committed = self._commit(ctx, body)
+        # 扫码人身份：厂商若把「谁扫的码」一并返回，就在实例落地后绑定该账号，本人的第一
+        # 条消息因此无需再走绑定码。绑定发生在提交之后且不抛错（实例已提交、扫码已成功，
+        # 绑定写不进去不能把「已保存」变成「扫码失败」），服务端自行判定该类型入站是否
+        # 携带身份戳——不带戳的类型这里只会记一行日志，未绑定的实例仍可由首个发送者认领。
+        scanner = adapter.scanner_identity(answer)
+        if scanner:
+            adapter.bind_scanner_identity(
+                get_identity_service(),
+                instance_id=str((committed or {}).get("instance_id") or ""),
+                tenant_id=ctx.tenant_id or "", identity=scanner)
+        return committed
 
     def _commit(self, ctx, body):
         from channel.web import scan_onboarding as so

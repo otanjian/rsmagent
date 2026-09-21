@@ -439,6 +439,28 @@ def resolve_actor_for_context(context: dict, agent_id: Optional[str],
     svc = get_identity_service()
     user = svc.find_user_for_external_identity(provider, issuer, subject)
     if not user:
+        # Nobody has bound this account yet. On an instance that has *never* been
+        # bound, the first private sender claims it as the channel's own member
+        # (change auto-bind-channel-sender): the person who set the channel up
+        # should not have to prove their account with a binding code. The claim
+        # decides *whose* account is speaking — the instance's owner for a
+        # personal one, its creator for a shared one — and a group chat, an
+        # already-bound instance or a triple owned by someone else is refused, so
+        # the rule can never be used to take over an established channel.
+        instance_id = str((context or {}).get("instance_id") or "").strip()
+        if instance_id:
+            claim = svc.claim_instance_for_sender(
+                instance_id=instance_id, provider=provider, issuer=issuer,
+                subject=subject, is_group=bool((context or {}).get("isgroup")),
+            )
+            if claim.get("claimed"):
+                logger.info(
+                    f"[external_identity] instance '{instance_id}' auto-bound its"
+                    f" first sender to {claim.get('user_id')}"
+                )
+                user = svc.find_user_for_external_identity(
+                    provider, issuer, subject)
+    if not user:
         return None, UNBOUND
 
     # The tenant anchor: the instance's owner when known, else the routed
