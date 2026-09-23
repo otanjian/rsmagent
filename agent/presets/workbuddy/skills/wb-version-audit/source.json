@@ -1,0 +1,38 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/version-audit.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/UoXJIwwI90aPks73SAhtf4/0/pkg.zip",
+  "package_sha256": "9abd8c8db185357f6e4dc7fc15343ae822a3db14eb8d96a52001d45b0ad708eb",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "417b73bf79d0f20e2ad193bcc37392b6074501f4472b11ca4bb4682aec38f1dc"
+    },
+    {
+      "original": "references/diff_rules.md",
+      "path": "references/diff_rules.md",
+      "sha256": "f63e6065c5e65ec1a5e2a370cbdbf9f9488d4ba16ff9c44e7dfc5b3b696ba2ea"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "c265dc642d1f7605a547232d3f25377df7de1593af7c15571bf28a5b3a8edeb3"
+    },
+    {
+      "original": "输入参考文件/发放台账_20260729.xlsx",
+      "path": "assets/demo/发放台账_20260729.xlsx",
+      "sha256": "35931079ce6bcdd0ae72dd2058eab3b034d305a2e65fe83a146eb78bf82710fb"
+    },
+    {
+      "original": "输入参考文件/受控版本_20260729.xlsx",
+      "path": "assets/demo/受控版本_20260729.xlsx",
+      "sha256": "aa51fedc27930f9cb57231f2b8f2f0b3d4ead4421b6b7723a51182a9edaa7d2e"
+    },
+    {
+      "original": "输入参考文件/场景④_预期输出.xlsx",
+      "path": "assets/demo/场景④_预期输出.xlsx",
+      "sha256": "0208e78a71edec37bab37343c319421c19b5bcb80c237807cdec517c383520bf"
+    }
+  ]
+}

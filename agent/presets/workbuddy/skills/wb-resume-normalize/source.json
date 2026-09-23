@@ -1,0 +1,48 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/resume-normalize.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/06XwE1VAhgB63YUUuxghlS/0/pkg.zip",
+  "package_sha256": "cb6d473df340871fac9ccb7d6946a8ee019155cc964b27f6eefa45a4d77a57ef",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "85113483c840294ea919560edc549d5f76c005540f0197aaf080208741b59c2c"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "8b4b5abd93aadcfbb61ca664616a3047a19b49f8e0e09402fa1718cfaec5f1a8"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "a5f73f9f2d179b4b53a2e9374339c941777b216144b6a4ff7e637c293de6c3a3"
+    },
+    {
+      "original": "输入参考文件/01_BOSS直聘导出_装配技师.xlsx",
+      "path": "assets/demo/01_BOSS直聘导出_装配技师.xlsx",
+      "sha256": "8764f572f7bbf2b3d5d859866ed474aea3fd31f2b91061773927b9d8e734b2d9"
+    },
+    {
+      "original": "输入参考文件/02_邮箱投递简历_82份清单.xlsx",
+      "path": "assets/demo/02_邮箱投递简历_82份清单.xlsx",
+      "sha256": "f6005cbb153ade1c7652199edb9b734dfb4c3c404a3f94e04c753355e9584e77"
+    },
+    {
+      "original": "输入参考文件/03_猎头推荐_装配技师_50份.xlsx",
+      "path": "assets/demo/03_猎头推荐_装配技师_50份.xlsx",
+      "sha256": "4dd71781d8b8d1001eb1996a435de445a110237171c9e007a884c3b460c33fec"
+    },
+    {
+      "original": "输入参考文件/04_2025年简历库_装配技师.xlsx",
+      "path": "assets/demo/04_2025年简历库_装配技师.xlsx",
+      "sha256": "ba8878aefc49eb5bc7bb5868f1fe871d7e21152cf6e5ca88fd5682a786e64018"
+    },
+    {
+      "original": "输入参考文件/05_岗位JD_装配技师.txt",
+      "path": "assets/demo/05_岗位JD_装配技师.txt",
+      "sha256": "4be057d2575de890ed642247fa1139603b03183fe57103d3758d18e54a516365"
+    }
+  ]
+}

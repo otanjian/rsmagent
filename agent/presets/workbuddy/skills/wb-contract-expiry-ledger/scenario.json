@@ -1,0 +1,14 @@
+{
+  "slug": "contract-expiry-ledger",
+  "name": "劳动合同台账重建与到期预警",
+  "group": "hr",
+  "default_task": "这些是我们公司的劳动合同扫描件和三个版本的台账，帮我重建一份能扛住检查的合同台账。\n\n已经过期的、该续没续的、到了该签无固定期限的，都给我标出来。\n医疗期和孕产的顺延也要查，我这边有在休名单。\n\n算不出或拿不准的标出来我去查，别自己填。补签建议列清楚，通知先不发。\n\n产出三份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：ER-01_劳动合同台账与到期预警表.xlsx（预警分级、敞口金额与无固定期限临界标记）、ER-01_待补签与待核实清单.xlsx（按风险分级，含补签方案建议与责任人）、ER-01_归档整理清单.xlsx（按离职保存二年规则分该归档与可销毁）。",
+  "demo_files": [
+    "01_劳动合同台账_现行版.xlsx",
+    "02_劳动合同台账_2023旧版.xlsx",
+    "03_行政档案室文件盒清单.xlsx",
+    "04_员工花名册.xlsx",
+    "05_在休与特殊状态名单.txt"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/contract-expiry-ledger.html"
+}

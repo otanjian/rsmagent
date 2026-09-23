@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/social-insurance-base-check.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/FcirhxshHITj7AjyDdpIyc/0/pkg.zip",
+  "package_sha256": "2050aea7fd64f741fc25fda733514be297f52fb55f71e56c7bfb17f12e993c9d",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "861c12d8f0e91e05d54ba8208367d29d5abf80c70a97999b3e2b111894ab022f"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "9eb6e1a75e5f712f58c2242fc31110844d00a3adee143464b752bfdc7ce1eea4"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "75d44a59ac72a01cc3bb340dea12abbc7f0f1061246233b1e8992e9ae6df3862"
+    },
+    {
+      "original": "输入参考文件/01_个税申报记录_2025-09至2026-08.xlsx",
+      "path": "assets/demo/01_个税申报记录_2025-09至2026-08.xlsx",
+      "sha256": "985a399d4dd8206d958d88c17911323a3b7a5ed1ca4028bc255d35b5d373350b"
+    },
+    {
+      "original": "输入参考文件/02_社保缴费明细_各险种.xlsx",
+      "path": "assets/demo/02_社保缴费明细_各险种.xlsx",
+      "sha256": "4c8fb76d2e31d0a1a8976fd85c36da7b20c602370c0b370a746bc90582ce4079"
+    },
+    {
+      "original": "输入参考文件/03_工资表_2026-07.xlsx",
+      "path": "assets/demo/03_工资表_2026-07.xlsx",
+      "sha256": "a5ccd712517c02e0acfa0e1c69b4b56c68d219ef7f822f052a21b7b1b48f9013"
+    },
+    {
+      "original": "输入参考文件/04_自愿放弃社保协议.txt",
+      "path": "assets/demo/04_自愿放弃社保协议.txt",
+      "sha256": "37d78493dc7693aa8337967f46c777ecb8aa08f5b894be102333651ea11e5211"
+    }
+  ]
+}

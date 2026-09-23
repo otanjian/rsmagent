@@ -1,0 +1,53 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ots1af1M8J2fvk7OxWVwPg/17/deep-dives/bid-void-selfcheck.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/L5By8dwk7XrvUcoNTmvlrT/0/pkg.zip",
+  "package_sha256": "0dc8d5870508a168cb7c487c3a52f1cf370cbbb397e3219721a19f79320cc36b",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "59009aa3e97857a087760fdfb849ebcd810e159d9c12116c59095a3cc6bfa48b"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "483b145e3f721cc6d6ae3dad524f980c8bfec4fe55199fe64bcb2038a9f34bbe"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "8d54b75d4a86250d8e86ea6ba0a0b6df08c7cf8778c6e9f074c6496344583f98"
+    },
+    {
+      "original": "输入参考文件/01_商务标材料清册.xlsx",
+      "path": "assets/demo/01_商务标材料清册.xlsx",
+      "sha256": "cadefd0c90bc7b4a7744caa32ab135f56468f977b23d233d0568ee027d8aaf68"
+    },
+    {
+      "original": "输入参考文件/02_招标文件材料要求摘录.txt",
+      "path": "assets/demo/02_招标文件材料要求摘录.txt",
+      "sha256": "784488890c4fde608d411c14c0f0353dcb53e1977d689bb6194f80df578105d2"
+    },
+    {
+      "original": "输入参考文件/03_分项报价表与总价核对底稿.xlsx",
+      "path": "assets/demo/03_分项报价表与总价核对底稿.xlsx",
+      "sha256": "46d649b65e5f96d6d192901d6a5e3d22c150168755eab25706823173210530c1"
+    },
+    {
+      "original": "输入参考文件/04_资质与证书有效期台账.xlsx",
+      "path": "assets/demo/04_资质与证书有效期台账.xlsx",
+      "sha256": "5021a50f416d0548830b1e4b5afa0d7c54b4463bdc7b0ebfb1204db5acab4e7d"
+    },
+    {
+      "original": "输入参考文件/05_业绩材料归档情况表.xlsx",
+      "path": "assets/demo/05_业绩材料归档情况表.xlsx",
+      "sha256": "a002db6165f74b4552f5c4d2afb6a94cdd6a7142f7503635dd05de0761612e52"
+    },
+    {
+      "original": "输入参考文件/06_查询截图生成记录.xlsx",
+      "path": "assets/demo/06_查询截图生成记录.xlsx",
+      "sha256": "3cd15ba5aaf6ae595c029fca375cb4157f19b2e7b89a6d899c26e84aca0a5d39"
+    }
+  ]
+}

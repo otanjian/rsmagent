@@ -1,0 +1,53 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ots1af1M8J2fvk7OxWVwPg/17/deep-dives/ar-aging-collection.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/OGvSWnJjBB5VgSwJ7gH8nT/0/pkg.zip",
+  "package_sha256": "289220dec8fa9cc760da1583be8feb7cb30e43acd421cd30b4876b2812124d22",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "21660f47454b1fbf850f5d70231a5608da2e3fb77ccc3667f635ea1aaa2a40bc"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "6116c880c50629263de494bdeda5e3a70fe63c7bfd2526c641e68864c6e0676f"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "98360d52d71c3b0eaea84b113225ad7d5702a6e2a7e3f2f875c72e18911667c6"
+    },
+    {
+      "original": "输入参考文件/01_应收账款台账（全库逾期部分）.xlsx",
+      "path": "assets/demo/01_应收账款台账（全库逾期部分）.xlsx",
+      "sha256": "5f91d27cbe23db7dd49985df027f1c8aed36defc5cf3b2c62288faf56ef4de3b"
+    },
+    {
+      "original": "输入参考文件/02_销售回款明细表.xlsx",
+      "path": "assets/demo/02_销售回款明细表.xlsx",
+      "sha256": "a143e84433832f628375f02c43f4b49e19cdfb95f433ddcdd36d3e95908871a0"
+    },
+    {
+      "original": "输入参考文件/03_催收跟进记录整理.txt",
+      "path": "assets/demo/03_催收跟进记录整理.txt",
+      "sha256": "3a02a733b8e0d07ca90efbad4d4cc5a65bd431c8232f6845702d79c745d09287"
+    },
+    {
+      "original": "输入参考文件/04_债权凭证材料归档情况.xlsx",
+      "path": "assets/demo/04_债权凭证材料归档情况.xlsx",
+      "sha256": "e0e1afd9c50312418883cb171118cf33c32e8d0187e935068824889c858be3a8"
+    },
+    {
+      "original": "输入参考文件/05_客户工商与司法公开信息.txt",
+      "path": "assets/demo/05_客户工商与司法公开信息.txt",
+      "sha256": "2fdde99ebdd0e4ba84bf50396b73e435ec17bf8ec008780cc4d1c952d54aa3c7"
+    },
+    {
+      "original": "输入参考文件/06_逾期应收款项登记卡填写要求.txt",
+      "path": "assets/demo/06_逾期应收款项登记卡填写要求.txt",
+      "sha256": "a34a4afd3c8fafcb863a10709cf1e687167b86a856d54cd7ff9f97f95f882ee5"
+    }
+  ]
+}

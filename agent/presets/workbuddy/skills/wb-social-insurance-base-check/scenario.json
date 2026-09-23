@@ -1,0 +1,13 @@
+{
+  "slug": "social-insurance-base-check",
+  "name": "社保基数三数比对体检",
+  "group": "hr",
+  "default_task": "税务通知社保基数申报要开始了，提醒要跟个税口径一致。我们一直按最低基数缴的，个税是按实发报的。\n\n个税申报记录、社保缴费明细、工资表都在这，帮我算算总共差了多少，滞纳金怎么滚的。\n补缴还是分批调，两条路的代价都算给我，我们自己定。\n\n今年的基数怎么报，给我个建议。\n\n产出三份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：PR-02_社保基数差异与稽查敞口测算.xlsx（三数比对、敞口三档与合规路径总账）、PR-02_差异人员分层清单.xlsx（在职连续差异、已离职冻结、超追诉期各层金额）、PR-02_本年度基数申报建议.xlsx（按人建议基数、与实发差异及申报口径说明）。",
+  "demo_files": [
+    "01_个税申报记录_2025-09至2026-08.xlsx",
+    "02_社保缴费明细_各险种.xlsx",
+    "03_工资表_2026-07.xlsx",
+    "04_自愿放弃社保协议.txt"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/social-insurance-base-check.html"
+}

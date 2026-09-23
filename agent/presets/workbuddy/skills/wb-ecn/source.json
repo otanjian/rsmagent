@@ -1,0 +1,48 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/ecn.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/cXM5uzWzjZPIA8pF7cPieo/0/pkg.zip",
+  "package_sha256": "4333570ba9f4e2b5ab7d54c2a428e7ea4a5142bfae0c1ff9b2009731a5122364",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "2ad4bff09c5eae719b628fc52a12d6370af409114466bd117a5d0616558d85cf"
+    },
+    {
+      "original": "references/approval_matrix.md",
+      "path": "references/approval_matrix.md",
+      "sha256": "f9a4d378e233575bdc30312f497e6cb327650c815a66f95c34a885ca0f368158"
+    },
+    {
+      "original": "references/ecn_template.md",
+      "path": "references/ecn_template.md",
+      "sha256": "f3dd1403c8cf7af0f3778b6fa59af4200675b8d3255a7340ea1019ba1b89ed1b"
+    },
+    {
+      "original": "references/impact_assessment_matrix.md",
+      "path": "references/impact_assessment_matrix.md",
+      "sha256": "2a04c078ceb69dd2aeaf7d8f684555f3cee4cc8200f61d5c4ed2cb0b019a1490"
+    },
+    {
+      "original": "references/工程变更案例库.md",
+      "path": "references/工程变更案例库.md",
+      "sha256": "d32142ee3f74f48388eeb93d9b81b27fdb8ef1df4e8a89cfb5dd3bca8bd72c36"
+    },
+    {
+      "original": "输入参考文件/BOM基线_全产品.xlsx",
+      "path": "assets/demo/BOM基线_全产品.xlsx",
+      "sha256": "81b93bf01dee0ff81ca277164025d8ae91351a84234a5e7541f22f06f12b63d6"
+    },
+    {
+      "original": "输入参考文件/在制工单清单.xlsx",
+      "path": "assets/demo/在制工单清单.xlsx",
+      "sha256": "5974289752ed356fcb8387ad09e001d69b5c2b37351619875bfa5bc1abf56769"
+    },
+    {
+      "original": "输入参考文件/未完成订单清单.xlsx",
+      "path": "assets/demo/未完成订单清单.xlsx",
+      "sha256": "19759ab884993e50a329638359a4426687899aa477c7a40652b803a53fe35d53"
+    }
+  ]
+}

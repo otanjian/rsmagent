@@ -250,6 +250,26 @@ class RegistryDerivationTests(unittest.TestCase):
         self.assertEqual(entry["policy"], "tenant")
         self.assertTrue(entry.get("tenant_from_resource"))
 
+    def test_agent_avatar_declares_its_tenant_is_resource_derived(self):
+        """The roster face is a subresource too, and cannot send the header.
+
+        The console and the desktop app both render an Agent's avatar as
+        ``<img src=/api/agents/<id>/avatar>``, so the browser issues the GET and
+        cannot attach ``X-Tenant-ID``. As with the routes above, the exemption is
+        recorded in the registry and the handler derives the tenant from the
+        addressed Agent's binding — while the upload (a ``fetch`` that *can* send
+        the header) keeps requiring an explicit selection.
+        """
+        entry = derive_route_policy()["/api/agents/([^/]+)/avatar"]["GET"]
+        self.assertEqual(entry["policy"], "tenant")
+        self.assertTrue(entry.get("tenant_from_resource"))
+
+    def test_agent_avatar_upload_still_requires_a_tenant_selection(self):
+        """Only the read is header-less: the upload must not inherit the exemption."""
+        entry = derive_route_policy()["/api/agents/([^/]+)/avatar"]["POST"]
+        self.assertEqual(entry["policy"], "tenant")
+        self.assertFalse(entry.get("tenant_from_resource", False))
+
     def test_a_plain_tenant_route_does_not_claim_the_exemption(self):
         entry = derive_route_policy()["/api/sessions"]["GET"]
         self.assertEqual(entry["policy"], "tenant")

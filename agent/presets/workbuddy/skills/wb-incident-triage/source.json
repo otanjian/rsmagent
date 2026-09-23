@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/incident-triage.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/4xFuasYCcJuRva1fV4mYgI/0/pkg.zip",
+  "package_sha256": "28ba682317e717554e7c5f4146b19a8d6ae90491e0e1d8a5cadc441d8e6e64be",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "d1ac60ae940c6c5443324af12e5550f8229b71e9484b90137f99eaa829d5d95b"
+    },
+    {
+      "original": "references/分级与归口规则.md",
+      "path": "references/分级与归口规则.md",
+      "sha256": "06ac92d8ed6c4e6d28cf4378db035cd3ee5a33f29a543b30c9ed456d69c1bcfd"
+    },
+    {
+      "original": "references/协调稿与话术模板.md",
+      "path": "references/协调稿与话术模板.md",
+      "sha256": "fea957b4a23cd748de8f65615c57632126c6f70629d09d4ea70f2329a6c3d2cd"
+    },
+    {
+      "original": "输入参考文件/分级与归口规则.xlsx",
+      "path": "assets/demo/分级与归口规则.xlsx",
+      "sha256": "00eb4d385554d9088cc52232fbc08e84ff2a92b264679d9f3cba3425802a1af5"
+    },
+    {
+      "original": "输入参考文件/历史异常处置记录.xlsx",
+      "path": "assets/demo/历史异常处置记录.xlsx",
+      "sha256": "dc67fd6f44dfe876cf2b3136a910c718e16c065d73dc44fb47e880bbb4077ed9"
+    },
+    {
+      "original": "输入参考文件/客户与订单背景.xlsx",
+      "path": "assets/demo/客户与订单背景.xlsx",
+      "sha256": "f6658a79188f47ae57592ea764fcbc168e7975dba3118b395ff00f6fe83215d6"
+    },
+    {
+      "original": "输入参考文件/异常事件原始记录.xlsx",
+      "path": "assets/demo/异常事件原始记录.xlsx",
+      "sha256": "ccca9aa74cf132ef7afb0476ec2c9a8bc38fbbf480e4995745293316fb0e30d5"
+    }
+  ]
+}

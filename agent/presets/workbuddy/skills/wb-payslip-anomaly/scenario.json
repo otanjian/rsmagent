@@ -1,0 +1,12 @@
+{
+  "slug": "payslip-anomaly",
+  "name": "工资条生成与异常波动拦截",
+  "group": "hr",
+  "default_task": "这个月的工资表拼好了，上个月的也在这。帮我生成工资条，发出去之前把有问题的先拦下来。\n\n比上个月差得多的、差得少的都标出来，正常的人员变动先排除掉。\n每条异常给我个怀疑方向，我好去查。\n\n拦下的名单和确认过的记录都给我留档。\n\n产出三份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：PR-03_8月工资条（分人）.xlsx（法定栏位齐全，员工可读）、PR-03_发放前异常拦截清单.xlsx（标红明细、排查方向与处理结果留痕）、PR-03_环比波动分析.xlsx（全量环比加合理差异排除依据，供复盘）。",
+  "demo_files": [
+    "01_工资表_2026-08.xlsx",
+    "02_工资表_2026-07_财务批注版.xlsx",
+    "03_8月入离职与状态变动.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/payslip-anomaly.html"
+}

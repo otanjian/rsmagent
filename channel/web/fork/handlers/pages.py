@@ -96,6 +96,14 @@ class ChatHandler:
             "{{COW_NAVIGATION_MODE}}",
             _web_navigation_mode(),
         )
+        # ...and the temporary workbench-sidebar presentation switch. It gates
+        # layout only; the team candidate rules and the server-side roster
+        # rejection are the same either way.
+        from channel.web.fork.common import _workbench_sidebar_launch_v2
+        html = html.replace(
+            "{{COW_WORKBENCH_SIDEBAR_LAUNCH_V2}}",
+            _workbench_sidebar_launch_v2(),
+        )
         return html
 
 

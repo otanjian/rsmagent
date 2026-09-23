@@ -1,0 +1,38 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/tax-calendar.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/VRQ13eYiAS6QC2oKMF9p4J/0/pkg.zip",
+  "package_sha256": "97be964c0a24d169e8f3e667b63d3320d253939ee964dc96bb70378da7704a1e",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "a7149ecc132e45a0c9252b9abc40ff46276cb1a3aca7e633174d70c264a14ceb"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "b0e95714249a2eed15883efa69426ad328d74b822c6706cb816e7c76371648a8"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "3e63b260e39fa704f44fe11b369d929b83899b8876b8c8aa7f9a78ef839eb9c1"
+    },
+    {
+      "original": "输入参考文件/2025年度历史申报记录.xlsx",
+      "path": "assets/demo/2025年度历史申报记录.xlsx",
+      "sha256": "d1b58438a555b9c8cb9b264368f5d496564f5abc23f3bbc8e129b2601b3bd55d"
+    },
+    {
+      "original": "输入参考文件/公司税种清单与申报周期.xlsx",
+      "path": "assets/demo/公司税种清单与申报周期.xlsx",
+      "sha256": "11c4458d91a9d0767cf524cf29b1ed57d68e39905573777e909ea740e3cdbd9a"
+    },
+    {
+      "original": "输入参考文件/残保金口径待确认.txt",
+      "path": "assets/demo/残保金口径待确认.txt",
+      "sha256": "3dac10434afc796cf97d795c9e6d1bf29be11d566935a8737eb83b99a271fd31"
+    }
+  ]
+}

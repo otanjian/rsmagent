@@ -10,6 +10,7 @@ from __future__ import annotations
 from auth.object_scope import MANAGE as SCOPE_MANAGE, USE as SCOPE_USE, ObjectScope
 from bridge.context import *
 from common.log import logger
+from contextlib import contextmanager
 from typing import Any, Dict, List, Tuple, Optional, Iterator, NoReturn
 import json
 import os
@@ -300,6 +301,9 @@ def _tenant_agents_projection(ctx: "Optional[RequestContext]") -> Dict:
             "description": profile.description or "",
             "avatar": profile.avatar or None,
             "is_default": bool(profile.id == tenant_default),
+            "position": profile.position or "",
+            "category": profile.category or "",
+            "tags": list(profile.tags or []),
             "can_chat": can_chat,
             "unavailable_reason": unavailable_reason,
             # Explicit for every row, so the gallery can branch on the type
@@ -840,14 +844,81 @@ class AgentCoreFileHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
 
+@contextmanager
+def _avatar_identity_scope(agent_id: str):
+    """Resolve an avatar read's tenant from the addressed Agent.
+
+    The console and the desktop app both render an Agent's face as a plain
+    ``<img src="/api/agents/<id>/avatar">``, and a browser subresource request
+    cannot carry ``X-Tenant-ID``. The route is therefore declared
+    ``tenant_from_resource`` in the roster, the gate authenticates the caller
+    without a tenant selection, and this scope supplies the tenant from the
+    addressed Agent's binding — the same shape as ``_uploads_identity_scope``,
+    which the console reads the same way (as an ``<img>``/``<audio>``).
+
+    Publishing the identity is not incidental: ``_avatar_path`` resolves the
+    tenant's shared root through ``shared_root()``, which reads the *ambient*
+    identity. Without it the lookup would serve the default root's file, which
+    is another tenant's avatar directory — so the tenant has to be resolved
+    before the bytes are read, not after.
+
+    The *resource* decides the tenant, never the client: the binding is read
+    server-side and membership is resolved through ``resolve_context``. A
+    caller-supplied selection is only cross-checked, and an Agent that resolves
+    to no tenant is reported as not-found so a caller without a valid session
+    cannot probe which ids are bound. Object-level ``agent.read`` stays in the
+    handler.
+    """
+    from channel.web.web_channel import _chat_error
+    from auth.runtime import resolve_context, to_runtime_identity, IdentityContextError
+    from channel.web.auth_handlers import _get_service, _session_token
+    from common.runtime_identity import use_identity
+
+    svc, token = _get_service(), _session_token()
+    if not token:
+        _chat_error("unauthorized", "401 Unauthorized", "unauthorized")
+
+    def _fail(exc: "IdentityContextError"):
+        from http import HTTPStatus
+        _chat_error(str(exc), f"{exc.status} {HTTPStatus(exc.status).phrase}", exc.code)
+
+    try:
+        # Authenticate before anything else: an unbound-Agent 404 must not be
+        # observable to a caller who has no valid session at all.
+        resolve_context(svc, token, None)
+    except IdentityContextError as e:
+        _fail(e)
+
+    binding = svc.get_agent_binding(agent_id) if agent_id else None
+    tenant_id = binding["tenant_id"] if binding else None
+    if not tenant_id:
+        raise web.notfound()
+
+    params = web.input(tenant_id="")
+    for selected in (web.ctx.env.get("HTTP_X_TENANT_ID", ""),
+                     getattr(params, "tenant_id", "") or ""):
+        if selected and selected != tenant_id:
+            _chat_error("conflicting tenant selection", "400 Bad Request",
+                        "conflicting_tenant")
+
+    try:
+        ctx = resolve_context(svc, token, tenant_id)
+    except IdentityContextError as e:
+        _fail(e)
+    if ctx.must_change_password:
+        _chat_error("password change required", code="password_change_required")
+
+    with use_identity(to_runtime_identity(ctx)):
+        yield ctx, agent_id
+
+
 class AgentAvatarHandler:
     def GET(self, agent_id: str):
         from channel.web.web_channel import AVATAR_TYPES
         from channel.web.web_channel import _avatar_path
-        from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _require_agent_action
         from channel.web.web_channel import _require_tenant_agent_binding
-        with _db_scope() as ctx:
+        with _avatar_identity_scope(agent_id) as (ctx, agent_id):
             resolved = _require_tenant_agent_binding(ctx, agent_id)
             # Seeing an avatar is a read of the Agent, not a change to it, so a
             # member who can use the Agent can still see the roster image; an
@@ -945,5 +1016,4 @@ class AgentAvatarHandler:
             {"status": "success", "result": result, "revision": revision},
             ensure_ascii=False,
         )
-
 

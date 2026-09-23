@@ -1,0 +1,48 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/order-intake.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/Y8BHBA1jn4NSDCXQbeFOsC/0/pkg.zip",
+  "package_sha256": "0432891be16a32a42c22a785884abd4f2d3a9ad4e73a13970b3f407516bcb983",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "5694a533b56fa32b3933c9de2ee63323a265a1565d9465fd1e88f60aae8ba6ed"
+    },
+    {
+      "original": "references/code_mapping_rules.md",
+      "path": "references/code_mapping_rules.md",
+      "sha256": "9ea662a8cc0d7a9cc6c5d6a90aab39aa2ea1b85aae1e306e64e7dfa426ce81d8"
+    },
+    {
+      "original": "references/unit_conversion.md",
+      "path": "references/unit_conversion.md",
+      "sha256": "31605a2eda4ee86db828a0a65bd3a9705dfd446a5d3b90f96660775817d151ea"
+    },
+    {
+      "original": "输入参考文件/产品主数据.xlsx",
+      "path": "assets/demo/产品主数据.xlsx",
+      "sha256": "5a0ef06d56e3c6ba2383571dbcc15705b668dd1041f8170b724bfc057635fc16"
+    },
+    {
+      "original": "输入参考文件/客户叫料计划.xlsx",
+      "path": "assets/demo/客户叫料计划.xlsx",
+      "sha256": "56d48541140e0bbbf44be8b6405599f0b182fbfe2d761a57512ec35c867e0a80"
+    },
+    {
+      "original": "输入参考文件/客户料号对照表.xlsx",
+      "path": "assets/demo/客户料号对照表.xlsx",
+      "sha256": "c26ee65d55cc68b44c24b141f66ed18bfae49ed0aece8b6251c2b007af8f9987"
+    },
+    {
+      "original": "输入参考文件/客户来单邮件.docx",
+      "path": "assets/demo/客户来单邮件.docx",
+      "sha256": "d181b1be4baa735c3ee7eb369b47532c448b6214753ff2352111b16353df3cbc"
+    },
+    {
+      "original": "输入参考文件/销售价格表.xlsx",
+      "path": "assets/demo/销售价格表.xlsx",
+      "sha256": "9eab0aa48e37cd16e251db8a8043f83acf377af0e4ddc7577e5f0ab3e9985c07"
+    }
+  ]
+}

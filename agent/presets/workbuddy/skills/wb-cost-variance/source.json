@@ -1,0 +1,38 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/cost-variance.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/wYVK1jfjcdjV6hI1b8PnP1/0/pkg.zip",
+  "package_sha256": "b4756943331b908d00733cde8dc4b3a8daddf1dae778d2f27ae00377567c66fb",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "cbee71ca7ecedae31520e95399ebf382a8b883d6d4f9f59997f9e4ecbea3e595"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "517fecd2191090bbfb7dbd3b8541d5708851687f00c31f0f684f022c8cbfb6a4"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "f7cb5cf0427d256b2efd4ef86a132e7a8a8189032c85c697bc9342ae7739a98f"
+    },
+    {
+      "original": "输入参考文件/历史费用台账_2024-2025.xlsx",
+      "path": "assets/demo/历史费用台账_2024-2025.xlsx",
+      "sha256": "aeacfa52d4a4d96040945c26b3838d97492e56fc745ad5cd9369b080995c4cb0"
+    },
+    {
+      "original": "输入参考文件/用量单价明细_2025年12月.xlsx",
+      "path": "assets/demo/用量单价明细_2025年12月.xlsx",
+      "sha256": "9d4608e3099208f553a47d69fb094383114dd743a0d5dd280ebd5b0f3d40cfce"
+    },
+    {
+      "original": "输入参考文件/费用台账_2025年12月.xlsx",
+      "path": "assets/demo/费用台账_2025年12月.xlsx",
+      "sha256": "f943ad0f5006f5699e99498f5f0a09ca1e784c2f3752db60f6dcbc5697dc7899"
+    }
+  ]
+}

@@ -81,6 +81,18 @@ test('saveAgentProfile sends the digital-employee fields', async () => {
     assert.equal(write[2].bot_type, '');
 });
 
+test('profile tags accept mixed commas, trim, deduplicate and clear', async () => {
+    const { ctx, events, node } = setup({ agent: agent() });
+    node('agent-edit-name').value = '采购专员';
+    node('agent-edit-tags').value = ' 财务,经营分析，财务, ,归因 ， ';
+    await ctx.saveAgentProfile();
+    assert.deepEqual([...events.find(e => e[0] === 'write')[2].tags], ['财务', '经营分析', '归因']);
+    events.length = 0;
+    node('agent-edit-tags').value = '， , ';
+    await ctx.saveAgentProfile();
+    assert.deepEqual([...events.find(e => e[0] === 'write')[2].tags], []);
+});
+
 test('saveAgentCapabilities sends sops and tool allow/deny in one update', async () => {
     const a = agent({ sops: ['sop-1'], tools_allowlist: ['read'], tools_denylist: ['write'] });
     const { ctx, events, node } = setup({ agent: a, fetchImpl: async () => ({ json: async () => ({ status: 'success', revision: 'r2' }) }) });

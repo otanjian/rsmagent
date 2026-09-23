@@ -1,0 +1,13 @@
+{
+  "slug": "bom-import",
+  "name": "BOM导入核对",
+  "group": "manufacturing",
+  "default_task": "帮我把这几份 BOM 对一下：ERP 里的当前受控基线是 P-IPC-01_基线_v1.2.xlsx，研发刚发来的新版给了 P-IPC-01_新版_v1.3.xlsx、P-IPC-01_新版_v1.3.pdf 和研发邮件_BOM_v1.3.docx 三份。先看几份来源之间对不对得上，再跟基线比差异；顺手把 BOM 本身的脏数据体检一遍（重复料、空用量、缺版本号这类）。差异按新增、删除、替换、用量变化、信息修订分组，每条写清判断依据，拿不准的单独列出来别猜；邮件正文里研发的说明也一起读，看能不能关联到某个具体料号。\n\n产出两份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：BOM核对报告.xlsx（来源一致性、脏数据体检、差异清单、变更影响、结论五段）、待澄清问题清单.xlsx（阻塞项汇总，一次问完）。",
+  "demo_files": [
+    "P-IPC-01_基线_v1.2.xlsx",
+    "P-IPC-01_新版_v1.3.pdf",
+    "P-IPC-01_新版_v1.3.xlsx",
+    "研发邮件_BOM_v1.3.docx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/bom-import.html"
+}

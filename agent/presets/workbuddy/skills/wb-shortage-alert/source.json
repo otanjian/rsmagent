@@ -1,0 +1,58 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/shortage-alert.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/kYPlGl285Fh1hIao65JlgO/0/pkg.zip",
+  "package_sha256": "eb6e98786e9ea054166e7fc82e22c62b8e9ffc51afed2666cd76a24f6e1eb20e",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "5b4f0144e3a0060f1e397c241c0d5b8a4d9dde86f839298f180ad64bd439f791"
+    },
+    {
+      "original": "references/替代料判定规则.md",
+      "path": "references/替代料判定规则.md",
+      "sha256": "3469d7b1901cca5f8016e59021f846bc66fbc8dbd8e6cabd8d01c8aed0092284"
+    },
+    {
+      "original": "references/齐套计算规则.md",
+      "path": "references/齐套计算规则.md",
+      "sha256": "7b9777aaee7846d79c6015f0504192a3c2d70d1bd1bc799284e8c74299494ed3"
+    },
+    {
+      "original": "输入参考文件/BOM明细.xlsx",
+      "path": "assets/demo/BOM明细.xlsx",
+      "sha256": "6647dc8577fdefefddccc56b50da90c90cd432dc0076db8ed3ed4a3c03844066"
+    },
+    {
+      "original": "输入参考文件/呆滞料清单.xlsx",
+      "path": "assets/demo/呆滞料清单.xlsx",
+      "sha256": "31226cf8c399761fec63259aeb4f59d2551bcd9a8c6c0ff329d4b0d3e03565bb"
+    },
+    {
+      "original": "输入参考文件/在途采购单.xlsx",
+      "path": "assets/demo/在途采购单.xlsx",
+      "sha256": "db789fdf4f3da053406b483c52a3dfb88562ecb0ab55816d45894da505292b17"
+    },
+    {
+      "original": "输入参考文件/工单需求.xlsx",
+      "path": "assets/demo/工单需求.xlsx",
+      "sha256": "e16590124ded87a0b8cb85efdc6a76ae8f6bfd11dc43d67257425a67571ac139"
+    },
+    {
+      "original": "输入参考文件/工艺路线.xlsx",
+      "path": "assets/demo/工艺路线.xlsx",
+      "sha256": "ab488875fd3ed5732f2e680b6c4374a42415d662eea4ff69bf9ec0576b849d0f"
+    },
+    {
+      "original": "输入参考文件/库存快照.xlsx",
+      "path": "assets/demo/库存快照.xlsx",
+      "sha256": "418dfc8205231c9e0a97b36d0c7c52f2b56570aa545dbc43fac92b7665fe0a09"
+    },
+    {
+      "original": "输入参考文件/替代料关系表.xlsx",
+      "path": "assets/demo/替代料关系表.xlsx",
+      "sha256": "809f08be862c61973e69d9bfb2e3ec0c1d7850191e34b3370b6a12653516e69b"
+    }
+  ]
+}

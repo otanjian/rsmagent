@@ -1,0 +1,48 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/bom-import.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/D3YVlkae4VBONnobDvprwI/0/pkg.zip",
+  "package_sha256": "aa57ebf54e981baaaf777623ea38c7ffe42b252e6c0b777d051ed4c72b7bafcd",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "fd74efe98ff17d05367932aaed758e212b563a2389e46cfaed068c676e538344"
+    },
+    {
+      "original": "references/diff_classification.md",
+      "path": "references/diff_classification.md",
+      "sha256": "68b31ec56628d00dfafad5d598d3c6049b6bf706417ad62bab4de523f3854ec8"
+    },
+    {
+      "original": "references/multimodal_parsing.md",
+      "path": "references/multimodal_parsing.md",
+      "sha256": "00d3f3fb687b499d985a8d4951b91c18cd4158b180c70d7ae20a801fcc3553ef"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "0328c4e128a01719e6dc5e248ffa77e4e67891d25c955e04f772cae65dcc78c2"
+    },
+    {
+      "original": "输入参考文件/P-IPC-01_基线_v1.2.xlsx",
+      "path": "assets/demo/P-IPC-01_基线_v1.2.xlsx",
+      "sha256": "ef11f01ed3f389d6ed84695bceb9e565e01aac4caa90fef71e6d17cb2bf13b19"
+    },
+    {
+      "original": "输入参考文件/P-IPC-01_新版_v1.3.pdf",
+      "path": "assets/demo/P-IPC-01_新版_v1.3.pdf",
+      "sha256": "4535b2f6331947bc0142b426d3650e6b16694a2a6677ca61bfdbc95ed447b2ea"
+    },
+    {
+      "original": "输入参考文件/P-IPC-01_新版_v1.3.xlsx",
+      "path": "assets/demo/P-IPC-01_新版_v1.3.xlsx",
+      "sha256": "a62171788aece18af53dc600af0833f86af3b265bf7dc5f4b2015cd6c4e5f02e"
+    },
+    {
+      "original": "输入参考文件/研发邮件_BOM_v1.3.docx",
+      "path": "assets/demo/研发邮件_BOM_v1.3.docx",
+      "sha256": "631131fa490600195d959446acaf96eed339dcfa5fc94c62e76409e16a3b18be"
+    }
+  ]
+}

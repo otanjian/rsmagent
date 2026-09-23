@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/interview-criteria-gen.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/r7EulaiQnZp3BtF3Vzyc3y/0/pkg.zip",
+  "package_sha256": "377d0c271e36f5306ec6e2eb84af8d8dc5395c710727ec08f4f0a3d16e68b05b",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "ac2706511563665177e2ca9daf998ebe1ace5f92172483c9767c72dffe8f05d9"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "ed80efafc5e37c4c6912931d4d99fd494605db6c2a04c0cddaef09f92499b3bb"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "d3067904a58fa7943323bb702416ea0266cc38b19bd535d642f91b3408d031e2"
+    },
+    {
+      "original": "输入参考文件/01_业务经理需求_微信原话.txt",
+      "path": "assets/demo/01_业务经理需求_微信原话.txt",
+      "sha256": "8839838bac7ed65cbbbf66084edf9210a020ce3dda92cec351c75d854f37ad78"
+    },
+    {
+      "original": "输入参考文件/02_质检员JD_2024版.txt",
+      "path": "assets/demo/02_质检员JD_2024版.txt",
+      "sha256": "de7477cf92142662f1b6eadb28c97dd4c87e8c554a9f85ed845bdda8bdf48819"
+    },
+    {
+      "original": "输入参考文件/03_在职质检员_职责与产出.xlsx",
+      "path": "assets/demo/03_在职质检员_职责与产出.xlsx",
+      "sha256": "91b41b1d53041ce63823667a33d3ba5fe66741883c680de306909372ff1f7c18"
+    },
+    {
+      "original": "输入参考文件/04_去年辞退记录_质检岗.txt",
+      "path": "assets/demo/04_去年辞退记录_质检岗.txt",
+      "sha256": "1564a36adbe75fe96db1bda0e23c26d441431b4d5ca457f5ffa7a2a9cd06030c"
+    }
+  ]
+}

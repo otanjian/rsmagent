@@ -1,0 +1,14 @@
+{
+  "slug": "biz-review",
+  "name": "经营复盘",
+  "group": "manufacturing",
+  "default_task": "帮我做一下上个月的经营复盘。五份数据都放一起了：订单月度汇总、交付履约明细、库存与呆滞、质量异常汇总、成本与毛利。先逐条线判断是在改善还是恶化，要同时跟上月比、跟月度目标比。重点两件事：一是哪些好看的指标其实是有代价的，把矛盾的地方指出来；二是恶化的指标要往下追，追到具体产品线、具体订单、具体根因，不要停在「毛利率下滑」这种话上。最后给我三个必须关注的问题，每个配责任部门、建议动作和完成时限。\n\n产出两份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：一页式经营简报.xlsx（五线健康度判定、指标间矛盾检测、三个必须关注的问题带衡量口径）、毛利归因下钻表.xlsx（L1 到 L4 四层，每层带金额与占比）。",
+  "demo_files": [
+    "交付履约明细.xlsx",
+    "库存与呆滞.xlsx",
+    "成本与毛利.xlsx",
+    "订单月度汇总.xlsx",
+    "质量异常汇总.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/biz-review.html"
+}

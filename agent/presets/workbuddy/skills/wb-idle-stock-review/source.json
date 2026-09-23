@@ -1,0 +1,48 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/idle-stock-review.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/8MgnKPRNxy59bWXzTdCqQh/0/pkg.zip",
+  "package_sha256": "09867bf2c8a4efae2eca59756fa386b7890564e8331715b91cf0dafb1be12503",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "5fea290dbb8b7cfd7e42bf39c4d5eb7efdcc0e579868e03f9b75efebcca98dbb"
+    },
+    {
+      "original": "references/四档判定与公差反查.md",
+      "path": "references/四档判定与公差反查.md",
+      "sha256": "17a86c8b2aa7bb00ace95605ba46bcea9812090662f369f2ec71f51222388a1d"
+    },
+    {
+      "original": "references/处置意见书模板.md",
+      "path": "references/处置意见书模板.md",
+      "sha256": "858a5e6ef4ddf0c09745714a678ffad807f3b7aab64bc202b8c630daa31ee069"
+    },
+    {
+      "original": "输入参考文件/交叉校验数据.xlsx",
+      "path": "assets/demo/交叉校验数据.xlsx",
+      "sha256": "a53daa883d92836eb3026cc2127d71024cc24a56f0fac90298bf0f71e6be40d5"
+    },
+    {
+      "original": "输入参考文件/历史处置记录.xlsx",
+      "path": "assets/demo/历史处置记录.xlsx",
+      "sha256": "9ef13ac347c0fb60af4a574a5a2ad260a4044e1c63c1990decd6057d95928dc1"
+    },
+    {
+      "original": "输入参考文件/在产产品图纸公差摘录.xlsx",
+      "path": "assets/demo/在产产品图纸公差摘录.xlsx",
+      "sha256": "c1d58f6df061c2bc5af54b8a000e21ccca66b72bb656e7d3e1c101d74a605d2b"
+    },
+    {
+      "original": "输入参考文件/安全库存与耗用历史.xlsx",
+      "path": "assets/demo/安全库存与耗用历史.xlsx",
+      "sha256": "99abff33981f4934cc6b6206beb7c627ba4db502781040c117cbfe7f1aecb270"
+    },
+    {
+      "original": "输入参考文件/库龄分析表.xlsx",
+      "path": "assets/demo/库龄分析表.xlsx",
+      "sha256": "ef2763a29dceca967c81be725c62714e28e662a95d35a32f5b72a11dcc904d21"
+    }
+  ]
+}

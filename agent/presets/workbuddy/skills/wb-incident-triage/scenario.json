@@ -1,0 +1,13 @@
+{
+  "slug": "incident-triage",
+  "name": "异常分级与升级归口",
+  "group": "manufacturing",
+  "default_task": "上周五到今天群里的异常我让行政摘出来了（异常事件原始记录），客户投诉、车间停线、周会上拖着的都在里面；历史异常处置记录、客户与订单背景、我们自己的分级与归口规则也一起放进来了。帮我理一下：哪几件今天必须我管，哪几件让他们自己处理就行；重复发生过的重点标出来，我要知道哪些是老问题又犯了。每件给个建议归口，但别直接派活，理由写清楚我自己判断。跨部门那种谁都不认的，别硬塞给某个部门。\n\n产出三份：**PDF** 异常升级通知单.pdf（决策包五要素加签署栏）、**Excel（.xlsx）** 异常台账.xlsx（含归口、责任人、SLA 到期、是否重复发生）、**纯文本（.txt）** 对内协调稿.txt（不超过 300 字可直接贴群，末尾单列 P3 项）。不要用对话式总结代替。",
+  "demo_files": [
+    "分级与归口规则.xlsx",
+    "历史异常处置记录.xlsx",
+    "客户与订单背景.xlsx",
+    "异常事件原始记录.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/incident-triage.html"
+}

@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/reconciliation.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/mUZOl1rwdGmNyY627mKIU8/0/pkg.zip",
+  "package_sha256": "6f6c4764edce0784c63f021a77b3edc47272c1570bffcbc9c5fe97631b7f7d50",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "01f6105baf6df50f0c8331072eaf26ea6b68430f8ff9e390b547e17217a2e7be"
+    },
+    {
+      "original": "references/difference_types.md",
+      "path": "references/difference_types.md",
+      "sha256": "4ff4cc5ecb3c3f5fdbc1abf42518673ce80fdf003d78b991627cc1cd81595a54"
+    },
+    {
+      "original": "references/field_mapping.md",
+      "path": "references/field_mapping.md",
+      "sha256": "57514154e66128b1bab1c007782c110d88682f571714e4d1d335181f3bf7c94c"
+    },
+    {
+      "original": "输入参考文件/客户对账单_某主机厂7月.xlsx",
+      "path": "assets/demo/客户对账单_某主机厂7月.xlsx",
+      "sha256": "dbf247d3e17684f5e76b84f51a027a94ef4531038d72da610ff670b9b2109596"
+    },
+    {
+      "original": "输入参考文件/送货单回执台账.xlsx",
+      "path": "assets/demo/送货单回执台账.xlsx",
+      "sha256": "dd9b54ed8c2cba58a8c52a66147ba52b9189d7d598789ec9e06ccbdbb656c4e5"
+    },
+    {
+      "original": "输入参考文件/销售价格表.xlsx",
+      "path": "assets/demo/销售价格表.xlsx",
+      "sha256": "70a91a6ef10acd1f0e7b44bd04caf8afe50e4cba59f76822d245c9c03d607da3"
+    },
+    {
+      "original": "输入参考文件/销售出货明细.xlsx",
+      "path": "assets/demo/销售出货明细.xlsx",
+      "sha256": "5c0e0a7920f8eb38f61c69f01892b185c44b81944ce0f6dd8feee8ac8ba76520"
+    }
+  ]
+}

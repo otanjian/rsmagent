@@ -1,0 +1,13 @@
+{
+  "slug": "probation-evidence",
+  "name": "试用期考核留痕与录用条件对照",
+  "group": "hr",
+  "default_task": "业务经理要辞退一个还在试用期的员工，理由是反应慢态度差。你先帮我看看我们手里的东西够不够。\n\n入职材料、他这几个月的周报、经理的评价我都发你了。\n缺什么、哪条证据是补不了的、程序上有没有倒置的风险，都直说。\n\n两条路的成本算给我，决定我们自己拍。\n\n产出三份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：ER-02_试用期辞退风险诊断报告.xlsx（断链诊断、程序检查与证据清单）、ER-02_证据材料清单与证明力评估.xlsx（逐份材料标注能证明什么、证明不了什么，含日期链核查）、ER-02_试用期留痕模板包.xlsx（录用条件确认书、周度考核表与签收记录）。",
+  "demo_files": [
+    "01_吴梦琪_入职材料与JD.xlsx",
+    "02_吴梦琪_周报汇总.xlsx",
+    "03_业务经理_微信评价.txt",
+    "04_去年辞退案例_装配岗.txt"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/probation-evidence.html"
+}

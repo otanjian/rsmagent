@@ -1,55 +1,6 @@
 $def with (v)
-$ brand = v.cfg('brand', {})
 <main id="main">
 $:(v.page_hero('meta.title_about', 'about.lead'))
-<!-- ===== 项目理念 ===== -->
-<section class="section">
-<div class="section-container">
-<h2 class="section-title">$(v.t('about.mission_title'))</h2>
-<div class="features-grid features-grid--4" style="margin-top:28px">
-$for item in v.content('mission', []):
-    $ id = item['id']
-    <article class="feature-card feature-card--compact reveal">
-    <span class="feature-icon">$:(v.icon(item['icon']))</span>
-    <p class="feature-desc">$(v.t('about.mission.' + id))</p>
-    </article>
-</div>
-</div>
-</section>
-<!-- ===== 与上游的关系 ===== -->
-<section class="section section--soft">
-<div class="section-container">
-<div class="split">
-<div>
-<h2 class="section-title section-title--left">$(v.t('about.upstream_title'))</h2>
-<p class="section-subtitle section-subtitle--left">$(v.t('about.upstream_desc'))</p>
-</div>
-<div class="card-plain">
-<div class="brand-inline">
-<img src="$(v.asset((brand.get('upstream_logo', ''))))" alt="$((brand.get('upstream_name', '')))" />
-<div>
-<strong>$((brand.get('upstream_name', '')))</strong>
-<span>$(v.t('common.open_source'))</span>
-</div>
-</div>
-<p style="margin-top:16px">$(v.t('about.upstream_card'))</p>
-</div>
-</div>
-</div>
-</section>
-<!-- ===== 免责声明 ===== -->
-<section class="section">
-<div class="section-container">
-<h2 class="section-title section-title--left">$(v.t('about.disclaimer_title'))</h2>
-<div class="stack-sm" style="margin-top:24px">
-$for item in v.t_list('about.disclaimer'):
-    <div class="note reveal">
-    $:(v.icon('shield'))
-    <span>$(item)</span>
-    </div>
-</div>
-</div>
-</section>
 <!-- ===== CTA ===== -->
 <section class="section section--soft">
 <div class="section-container">

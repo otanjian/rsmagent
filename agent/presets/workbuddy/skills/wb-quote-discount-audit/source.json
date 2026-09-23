@@ -1,0 +1,53 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ots1af1M8J2fvk7OxWVwPg/17/deep-dives/quote-discount-audit.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/ZTHFcoAluc0gbsjVIrwK6Y/0/pkg.zip",
+  "package_sha256": "9d9c11fd7d68a91e66e62ba2b0dad9c039cddbb2a19061bf77e6738858cf2070",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "4ca9708447da23cf386503cb0a73c18843579b43a6aa8d8d991842c2e1dc8b28"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "7cdc3304e1c2a7f39976ebb2c6275278f0299c0fa1c528b9ec189c2ecc3f9236"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "5f78d73d0ae9af8f410f021a65f2b2d49962090fce48459ed493c7f98a289a8c"
+    },
+    {
+      "original": "输入参考文件/01_标准价目表（2026版）.xlsx",
+      "path": "assets/demo/01_标准价目表（2026版）.xlsx",
+      "sha256": "3f00f94fef15989b77a4973bd4998ffbd982b16a96b57a63fd0f1275cb21329c"
+    },
+    {
+      "original": "输入参考文件/02_本次折扣申请单与报价明细.xlsx",
+      "path": "assets/demo/02_本次折扣申请单与报价明细.xlsx",
+      "sha256": "2af2adbf8bc6e1b166d304fc793a1bb52acecef4a9951d788e9c1424054a5262"
+    },
+    {
+      "original": "输入参考文件/03_恒晟精工历史报价原件台账.xlsx",
+      "path": "assets/demo/03_恒晟精工历史报价原件台账.xlsx",
+      "sha256": "0870fe537ad167addb09d2677c0f39dc4d34b523f17f63f21985a66bec764779"
+    },
+    {
+      "original": "输入参考文件/04_同产品档同类客户成交记录.xlsx",
+      "path": "assets/demo/04_同产品档同类客户成交记录.xlsx",
+      "sha256": "734d4820842db002fdf2bbee6f73ff050b13a97224a617eba63c8e8b029f8100"
+    },
+    {
+      "original": "输入参考文件/05_应收账款台账（恒晟部分）.xlsx",
+      "path": "assets/demo/05_应收账款台账（恒晟部分）.xlsx",
+      "sha256": "4e368c9fd6046bcc6144969a8c71209f70ca4a3fc66b4dd8537c673193568ae6"
+    },
+    {
+      "original": "输入参考文件/06_折扣分档授权规则.txt",
+      "path": "assets/demo/06_折扣分档授权规则.txt",
+      "sha256": "688c600277e8226e6270d261fcf2084386da415d22c4024ad03c72f705befda4"
+    }
+  ]
+}

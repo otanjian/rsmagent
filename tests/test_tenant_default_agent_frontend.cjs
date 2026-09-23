@@ -38,6 +38,11 @@ const agent = (extra = {}) => ({
     id: 'beta', name: 'Beta', description: '', category: 'beta', tags: [],
     greeting: '', persona_summary: '', scene_id: '', enabled: true, ...extra,
 });
+/** The coding-type badge markup inside ``html``, or null when there is none. */
+function codingHint(html) {
+    const found = html.match(/<span class="coding-agent-badge[^"]*"[^>]*>[\s\S]*?<\/span>/);
+    return found ? found[0] : null;
+}
 
 // Load renderAgentDetail with just enough context for its own template.
 function renderCtx({ defaultAgentId, tenantDefaultManageable }) {
@@ -75,7 +80,8 @@ function renderCtx({ defaultAgentId, tenantDefaultManageable }) {
     };
     vm.createContext(ctx);
     vm.runInContext(
-        section('function renderAgentDetail()', 'function renderAvatarPicker('), ctx);
+        section('function codingAgentTypeHint(', 'function agentWorkbenchCardHTML(')
+        + section('function renderAgentDetail()', 'function renderAvatarPicker('), ctx);
     return { ctx, node: id => ctx.document.getElementById(id) };
 }
 
@@ -98,6 +104,39 @@ test('the current default agent offers no "set as default"', () => {
     const html = node('agent-detail-profile').innerHTML;
     assert.ok(!html.includes('setAgentAsDefault'), (
         'the Agent that already is the default must not offer to become it'));
+});
+
+test('a coding Agent is marked with a glyph, not with the type spelled out', () => {
+    // Same hint as the workbench card and the new-chat picker rows (change
+    // simplify-coding-agent-type-hint), so the identity block cannot keep
+    // spelling out a type the rest of the console now shows as an icon.
+    const { ctx, node } = renderCtx({ defaultAgentId: '' });
+    ctx.findAgent = () => agent({ agent_type: 'coding' });
+
+    ctx.renderAgentDetail();
+
+    const hint = codingHint(node('agent-detail-identity').innerHTML);
+    assert.ok(hint, 'the coding Agent lost its type hint');
+    assert.equal(hint, ctx.codingAgentTypeHint(),
+        'the identity block drew its own hint instead of the shared one');
+    assert.match(hint, /fa-terminal/);
+    assert.doesNotMatch(hint, />[^<]*[^\s<]/,
+        'the identity block still renders the type as visible text');
+    // The icon is a label, not the field: the form still states the type in
+    // words, which is where the value is actually read and edited.
+    assert.match(node('agent-detail-profile').innerHTML, /agents_type_coding/,
+        'the type field lost its wording');
+});
+
+test('a normal Agent keeps the hint hidden', () => {
+    const { ctx, node } = renderCtx({ defaultAgentId: '' });
+    ctx.findAgent = () => agent({ agent_type: 'normal' });
+
+    ctx.renderAgentDetail();
+
+    const hint = codingHint(node('agent-detail-identity').innerHTML);
+    assert.ok(hint, 'the toggle element disappeared');
+    assert.match(hint, /\bhidden\b/, 'a normal Agent was marked as a coding one');
 });
 
 test('setAgentAsDefault posts the action and reloads the catalogue', async () => {

@@ -1,0 +1,53 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ots1af1M8J2fvk7OxWVwPg/17/deep-dives/contract-review-pack.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/nr3yVi0KDDBsDWeuTyg38C/0/pkg.zip",
+  "package_sha256": "a1462d4033d9e8c5a9d92cfab36b4d0fb5fc3adf2dd02d03c724017954c0e326",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "01e4fd873bdd3ed2e70a5933de2935af8c43d89eb4d59389b5c830e121e7d30d"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "42fa89f4f94b19e197cc6d313f0ca0945b196d791cb77a11b3bbe36c6682da8a"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "837d0dd820ca12e01c2dfc2e5de4cdb432676aafe3c1e802f4e0b366a04eb392"
+    },
+    {
+      "original": "输入参考文件/01_合同评审必备材料清单与四段审核要点.xlsx",
+      "path": "assets/demo/01_合同评审必备材料清单与四段审核要点.xlsx",
+      "sha256": "135e5337679c51221927895af0d31ec6991ecd434a7891fc60acf68b1b323270"
+    },
+    {
+      "original": "输入参考文件/02_各部门材料到位情况表.xlsx",
+      "path": "assets/demo/02_各部门材料到位情况表.xlsx",
+      "sha256": "8dda57d4134c438b60baee05b29d66529124ca88bc496b927d609c5f1d62ee90"
+    },
+    {
+      "original": "输入参考文件/03_客户主体资质与三系统名称核对.xlsx",
+      "path": "assets/demo/03_客户主体资质与三系统名称核对.xlsx",
+      "sha256": "72b4061a76af1f1d59f38a1abecd9b3e96eb16fd6face65fc53d6b455972343b"
+    },
+    {
+      "original": "输入参考文件/04_财务开票口径与额度占用测算.xlsx",
+      "path": "assets/demo/04_财务开票口径与额度占用测算.xlsx",
+      "sha256": "107f3e4ac4f9f5c3ed3575a1c80c052d7d9610308cbf9458b633d18e5e797ae5"
+    },
+    {
+      "original": "输入参考文件/05_产能与交期确认单（空白待签版）.xlsx",
+      "path": "assets/demo/05_产能与交期确认单（空白待签版）.xlsx",
+      "sha256": "ea1fc6718857e1d6011e0dcb7b92ccb920ef47174fbc2d0c9cc85e0b801d3d09"
+    },
+    {
+      "original": "输入参考文件/06_历史评审缺件与返工记录.txt",
+      "path": "assets/demo/06_历史评审缺件与返工记录.txt",
+      "sha256": "e7cee7d143ca58b84a363c8301dca60a687fe7a4d56f47394627a7efefd6903d"
+    }
+  ]
+}

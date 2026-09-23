@@ -1,0 +1,13 @@
+{
+  "slug": "cash-daily-report",
+  "name": "资金日报自动拼表",
+  "group": "finance",
+  "default_task": "今天要拼一张资金日报。技能内置三份材料：三家银行的对账单/余额截图（工行、招行、建行）、微信收款截图与收据照片、本周的待付款审批单。走完整流程：三家余额汇总、微信在途收款逐条归集、待付款按付款日排好，最后算出「现在真正能用的钱是多少」。\n\n只汇总当日事实，不要做资金预测、不要替我付款；微信里看不清的别硬填一个数，标出来我去问。\n\n产出两份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：RQ-03_资金日报.xlsx（三家余额、收款 Top、待付清单，最后一行是可用资金并附算式）、RQ-03_在途收款明细.xlsx（微信收款一条一行，金额看不清的标「待确认」、不计入可用资金）。",
+  "demo_files": [
+    "历史资金日报口径说明.txt",
+    "待付款审批单_本周.xlsx",
+    "微信收款截图转录.txt",
+    "银行账户余额_2026年6月22日.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/cash-daily-report.html"
+}

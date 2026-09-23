@@ -1,0 +1,53 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ots1af1M8J2fvk7OxWVwPg/17/deep-dives/channel-price-fleeing.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/S2LdaKbnor8utRjG1ZCJf9/0/pkg.zip",
+  "package_sha256": "9d1e924d086bc096bdf0bd6ee6e6244ad399d4280bd5732f0336a1a21bfc4863",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "9cc7c86491f51a45e209ee377920222ea6a240dc9c5df7889f9fd74bdd8874f3"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "cf447cf2677a0436b9619f4d3c4c252c963a60e245bdff828507a43c851567ac"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "4432493db9011cf830a6e679c7e5a549398f6f0bcfb3e922a7809998d8b3ff2d"
+    },
+    {
+      "original": "输入参考文件/01_各级价格体系表.xlsx",
+      "path": "assets/demo/01_各级价格体系表.xlsx",
+      "sha256": "46927d084ddbad5bca74cb140922d8c463c73eeb7cb9d8d0a8423cf98e243cbb"
+    },
+    {
+      "original": "输入参考文件/02_经销商进货台账（含批号）.xlsx",
+      "path": "assets/demo/02_经销商进货台账（含批号）.xlsx",
+      "sha256": "f7eb95b2313a57479e3faf7a86503958b8432e48e0b518dc25043d9f45a83fbc"
+    },
+    {
+      "original": "输入参考文件/03_窜货举报材料整理.xlsx",
+      "path": "assets/demo/03_窜货举报材料整理.xlsx",
+      "sha256": "57d3a6a8d8580a5fb6bfe1c91bd583c69f5f0f118f6f4e248bf4bb92ed0d372b"
+    },
+    {
+      "original": "输入参考文件/04_终端零售价抽查记录.xlsx",
+      "path": "assets/demo/04_终端零售价抽查记录.xlsx",
+      "sha256": "10e64b16f98db9d6b9ef597c41609259bbec37a16b2c7f6078b3c5b10f0361bf"
+    },
+    {
+      "original": "输入参考文件/05_年度经销协议价格与区域条款.txt",
+      "path": "assets/demo/05_年度经销协议价格与区域条款.txt",
+      "sha256": "d7579a5b3a7f53b11578b075fa3230b6fa37b68b20fbcbfa9d89835c7268ccba"
+    },
+    {
+      "original": "输入参考文件/06_历史渠道处罚与判例口径摘录.txt",
+      "path": "assets/demo/06_历史渠道处罚与判例口径摘录.txt",
+      "sha256": "b62048fe870310b500685a4c46b73345d23bab1d3790522a0cf0f44ed0ab3592"
+    }
+  ]
+}

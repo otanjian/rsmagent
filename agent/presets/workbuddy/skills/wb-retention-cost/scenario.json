@@ -1,0 +1,13 @@
+{
+  "slug": "retention-cost",
+  "name": "核心人才保留成本测算",
+  "group": "hr",
+  "default_task": "模具师傅提离职了，对面开价高 2500。老板要个数：重新招一个到底多少钱。\n\n他的薪资调薪历史、这个岗位的招聘花费、新人生成周期都在这。\n他手上那两套模具只有他会调，这种风险也帮我算进去。\n保留和替换两本账并排给我，谈的时候心里有底。\n\n产出三份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：HC-02_核心人才保留 vs 替换成本测算.xlsx（两本账并排、风险量化与谈判要点）、HC-02_离职预警信号复盘.xlsx（考勤、调薪、绩效三信号时间线，供管理层复盘）、HC-02_关键岗位依赖与招聘预案.xlsx（单点依赖清单与预案启动建议）。",
+  "demo_files": [
+    "01_郑国平_薪资与调薪历史.xlsx",
+    "02_郑国平_考勤与绩效近三月.xlsx",
+    "03_模具岗招聘历史_近两年.xlsx",
+    "04_单点依赖岗位清单.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/retention-cost.html"
+}

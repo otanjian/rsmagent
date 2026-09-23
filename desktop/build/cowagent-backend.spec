@@ -162,6 +162,8 @@ datas = [
     (rp('webhelp', 'lang'), 'webhelp/lang'),
     (rp('webhelp', 'config.json'), 'webhelp'),
     (rp('webhelp', 'content.json'), 'webhelp'),
+    (rp('webhelp', 'scenarios.json'), 'webhelp'),
+    (rp('webhelp', 'scenario_docs.json'), 'webhelp'),
     (rp('webhelp', 'icons.json'), 'webhelp'),
 ]
 

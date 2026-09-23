@@ -1,0 +1,13 @@
+{
+  "slug": "order-review",
+  "name": "订单接单评审",
+  "group": "manufacturing",
+  "default_task": "华东能源的 300 台智能控制柜急单 SO-20260708-001，交期 8-06。四份数据都放一起了：订单清单、工单清单、齐套报表、产能负荷表。帮我分析一下能不能按期交付、瓶颈在哪、给我排产调整建议。请综合评估：齐套（缺口料、替代料是否可补、冻结批次处置）、产能（瓶颈工序、装配一线负荷、在制冲突）、客户等级加交期紧迫度。给一个整体结论（可接单、谨慎接单、不建议接）加建议动作加责任岗位。\n\n产出两份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：订单可行性分析.xlsx（结论加齐套加产能加建议动作）、齐套与产能测算底稿.xlsx（缺口料、替代料、冻结批次、瓶颈工序负荷、在制冲突逐项算式）。",
+  "demo_files": [
+    "产能负荷表.xlsx",
+    "工单清单.xlsx",
+    "订单清单.xlsx",
+    "齐套报表.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/order-review.html"
+}

@@ -1,0 +1,48 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/contract-review.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/QpEFGUhMuHBQ3QD344PXSJ/0/pkg.zip",
+  "package_sha256": "6b2e7efe387dbb3970568a8b188f8f4f78e2b3f3aa70219d1dd21645e3b7500d",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "ba3f5d7d0cd45d07844e34f47b62022576aa67838810ce411293852e10da41e7"
+    },
+    {
+      "original": "references/十三条通用红线.md",
+      "path": "references/十三条通用红线.md",
+      "sha256": "34247051e23d7666a81671a4e480053426b76c90eef4c6d26540e99a46b4053c"
+    },
+    {
+      "original": "references/比对表与提示书模板.md",
+      "path": "references/比对表与提示书模板.md",
+      "sha256": "713863b5d81739d56ae65d8f7de262cf116478bc12597b659224b051eb8a24b4"
+    },
+    {
+      "original": "输入参考文件/历史已签合同条款基线.xlsx",
+      "path": "assets/demo/历史已签合同条款基线.xlsx",
+      "sha256": "38168a1edf47816df209f0e72b8d529c67c6a051b998910fede7e777e86b2dd2"
+    },
+    {
+      "original": "输入参考文件/合同条款风险提示.pdf",
+      "path": "assets/demo/合同条款风险提示.pdf",
+      "sha256": "67a9d6209baa2f428e36e33b91e575e72bcd3f7d2ae1014afbbbc2a0229fd060"
+    },
+    {
+      "original": "输入参考文件/待签合同条款摘录.xlsx",
+      "path": "assets/demo/待签合同条款摘录.xlsx",
+      "sha256": "f626422623d883c42ab06108f8acf1b7d95f9ff64aafa7dc54ef7b0dffac4ca1"
+    },
+    {
+      "original": "输入参考文件/条款差异比对表.xlsx",
+      "path": "assets/demo/条款差异比对表.xlsx",
+      "sha256": "538919324de26301586ed6c0f3778c5805c88fc302418123c9ff7034dbb41b3c"
+    },
+    {
+      "original": "输入参考文件/通用条款红线清单.xlsx",
+      "path": "assets/demo/通用条款红线清单.xlsx",
+      "sha256": "4c426493decf6ce6321c1a3e8e69534859364e4e771893b72d9d9052ebdbd821"
+    }
+  ]
+}

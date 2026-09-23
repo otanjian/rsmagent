@@ -1,0 +1,25 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "package": "https://workbuddy-space-static.codebuddy.work/page/INSWrkRFc3l53vz1PEJgPl/0/pkg.zip",
+  "package_sha256": "064d9bce6282545857c8712ef341919f88f95aa18c71b37db815a17584c06eb2",
+  "retrieved_at": "2026-09-22",
+  "upstream_version": "1.2.2",
+  "files": [
+    {
+      "path": "assets/demo/客户询价邮件.docx",
+      "sha256": "c8d734a4bb3de3f2945d82b03a9a6aa8c507dab25102e5d11e965d20179a1f3f"
+    },
+    {
+      "path": "assets/demo/历史报价库.xlsx",
+      "sha256": "5c2fdffe8f1331392f65b4c7820832c56fefef6c31e4e750541582f75dea118f"
+    },
+    {
+      "path": "assets/demo/工序标准工时.xlsx",
+      "sha256": "b9f855ac5b448559d3f1bd0fb7a942a44c7980a12ef67b8ecd4a8355916e487c"
+    },
+    {
+      "path": "assets/demo/材料价格表.xlsx",
+      "sha256": "d42097d05b567c291a2e3817bec74fa7df537be5da7823d72148fdd53ea78a57"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/labor-cost-onepager.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/GNYCWqqmdNEQlo0AeJRlut/0/pkg.zip",
+  "package_sha256": "f367064fbe71faf51d02e2ba9a05ee46b6957cb2483a73c8f69e4284bf114978",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "c614c45d3a96ac0c51a4ba929a3307b5ee86b4975177aa921a96f1cb1b10b4f4"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "4d3c3b2e5015d3d045ca069fe3c8771ad6901bb4ebdc4e485bfadaa5830de900"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "c82d3361a0d44aad33e80c356d161fe0db530f6d7fcc3bf5d2594de9ca68a90c"
+    },
+    {
+      "original": "输入参考文件/01_工资表_2026-08.xlsx",
+      "path": "assets/demo/01_工资表_2026-08.xlsx",
+      "sha256": "0e0f00a2300a4314ad246049bfb20a669c9bf9fc0587ee5e38a13fdd2d7826e6"
+    },
+    {
+      "original": "输入参考文件/02_社保公积金缴费明细_2026-07与08.xlsx",
+      "path": "assets/demo/02_社保公积金缴费明细_2026-07与08.xlsx",
+      "sha256": "66439012d5cbc6db53ea36054bee48def989a817f515aeefe667a7e088dc0e72"
+    },
+    {
+      "original": "输入参考文件/03_财务费用明细_人力相关科目.xlsx",
+      "path": "assets/demo/03_财务费用明细_人力相关科目.xlsx",
+      "sha256": "ce94865f561d64cbc7051d33f03f1efe86c9f787df9dfaaed50573b94b315055"
+    },
+    {
+      "original": "输入参考文件/04_上月与去年同期对照.xlsx",
+      "path": "assets/demo/04_上月与去年同期对照.xlsx",
+      "sha256": "a0bcc4ec80eb57cc959dfed964ff1730f003334479df03f976cb91ba3c75cd34"
+    }
+  ]
+}

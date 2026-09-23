@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/recruitment-funnel-report.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/tf36TwiFqmADDcstCwkJ9i/0/pkg.zip",
+  "package_sha256": "fcd01766d5ea23d98f0a65a80850d1ff58c011a104863dd63991a972e6f5294f",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "058e0a9f5954b464d471b770730accf400f64617152193dd465e148ddb4046a1"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "63a203875176619600af35de6d4f04db0b63a3fa7a795b1bbc930dd82f5c9785"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "26aa18d51691fa8accdd0943462d3c8cd102820d1682326aed92aa5c4e43ac28"
+    },
+    {
+      "original": "输入参考文件/01_各平台后台导出_本季.xlsx",
+      "path": "assets/demo/01_各平台后台导出_本季.xlsx",
+      "sha256": "b64b230a9fd79ad7f13425d7fe061dd290e5a651b9aa3a766e2a0c3f14e47f5b"
+    },
+    {
+      "original": "输入参考文件/02_招聘费用台账_财务口径.xlsx",
+      "path": "assets/demo/02_招聘费用台账_财务口径.xlsx",
+      "sha256": "3d3f402b081b6052d1320dfd18d95630eaef3b1d394781e92ae6169bd74e2755"
+    },
+    {
+      "original": "输入参考文件/03_入职名单与留存_近两季.xlsx",
+      "path": "assets/demo/03_入职名单与留存_近两季.xlsx",
+      "sha256": "a6b4929a602549c1c1335ecc7462068a0933acbaef31a0a37c78b5718f7b0ffe"
+    },
+    {
+      "original": "输入参考文件/04_内推奖金方案_未发出.txt",
+      "path": "assets/demo/04_内推奖金方案_未发出.txt",
+      "sha256": "651ba5048f91e897bf9ddb8bc24f8bea3a72130e3c2dce73296b3e4483b6341d"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "slug": "version-audit",
+  "name": "版本一致性巡检",
+  "group": "manufacturing",
+  "default_task": "帮我做一次受控文件版本一致性巡检。两份数据都放一起了：系统侧的受控版本_20260729.xlsx（PLM/ERP 导出的当前受控版本清单）和现场侧的发放台账_20260729.xlsx（各工位实际在用版本加现场备注）。请按文件编号 join 两份数据，找出所有「现场版本不等于系统受控版本」的差异项，每条差异关联现场备注里的说明，并给出整改建议、责任岗位、完成时限；最后给一个综合判定（全部一致、局部不一致、严重不一致）。\n\n产出两份：**Excel（.xlsx）** 版本一致性巡检报告.xlsx（差异清单加现场备注解读加整改建议加综合判定）、**Markdown（.md）** 分部门整改通知稿.md（按责任岗位分发换版、回收旧版、更新台账的待办）。不要用对话式总结代替。",
+  "demo_files": [
+    "发放台账_20260729.xlsx",
+    "受控版本_20260729.xlsx",
+    "场景④_预期输出.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/version-audit.html"
+}

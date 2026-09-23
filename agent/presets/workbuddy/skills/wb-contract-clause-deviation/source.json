@@ -1,0 +1,48 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ots1af1M8J2fvk7OxWVwPg/17/deep-dives/contract-clause-deviation.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/k5UTHov6ioHycg0jKNKYhQ/0/pkg.zip",
+  "package_sha256": "7725a2466bb9dda985607dfa72cc2e1914eafa551ce70c0c849192d1f2a5ed00",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "627fad97075e4ff05bb9cbf6782fcc8f9d3cbafd96e1d45a26d56fb89a44fb72"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "63db684ef0db6ef2aada1dd4230832675b0192ecb9c92bfb4de1cda0f4d397e2"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "d4ffd960249800661ff675f6afda6245acb930b8dc6222d4aefcfdb1b864dddb"
+    },
+    {
+      "original": "输入参考文件/01_销售合同标准模板条款摘录.txt",
+      "path": "assets/demo/01_销售合同标准模板条款摘录.txt",
+      "sha256": "94c94d094e8b7cc328a1667c88297450e2c7bc6fc8b013f2d3e6b6fa43753a29"
+    },
+    {
+      "original": "输入参考文件/02_本次待签合同条款摘录.txt",
+      "path": "assets/demo/02_本次待签合同条款摘录.txt",
+      "sha256": "f47050661e4bf943eb5f1d0abdc77bfa6c97a0792b57d8821ccf42246f099808"
+    },
+    {
+      "original": "输入参考文件/03_合同评审制度与内控红线摘录.txt",
+      "path": "assets/demo/03_合同评审制度与内控红线摘录.txt",
+      "sha256": "7975988b75bd875bc0a5700db08cc52431a64eace2fdd26dff65099462526df6"
+    },
+    {
+      "original": "输入参考文件/04_历史同类合同同一条款对照台账.xlsx",
+      "path": "assets/demo/04_历史同类合同同一条款对照台账.xlsx",
+      "sha256": "3997cb06cd5c64ce92a154ea25cd4f036faddb66249809fd7d99f068e006eb4b"
+    },
+    {
+      "original": "输入参考文件/05_恒晟精工历史履约记录.xlsx",
+      "path": "assets/demo/05_恒晟精工历史履约记录.xlsx",
+      "sha256": "403283503a07d23ec8d7a74563311a948330a1f8991cd0b17efe5be73cef7018"
+    }
+  ]
+}

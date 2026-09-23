@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/budget-collection.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/lMyCI6aBhQ5MpU4BvV5Ddq/0/pkg.zip",
+  "package_sha256": "ea651c5577a63caf0b1cabd687e09a94ca7f74f3bdf7d43eb387ea37da817f66",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "e19a95850f7096bdbb178b2008025a161ee3eeac9765970062d27dce6f9d1840"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "fcf1614c2ac92b0646cd927dc466d83b66e667643fd28da62b57f5159411e599"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "cdb1336f792b505f6ea548439232ced43cab440def7f86cd507ea99606a91f20"
+    },
+    {
+      "original": "输入参考文件/历史数据与业务动因_2025.xlsx",
+      "path": "assets/demo/历史数据与业务动因_2025.xlsx",
+      "sha256": "9e4dbfbd3f7c1fa0f946e1149b9fdb1fbabc1727c90c224e4f7150c26207bdbd"
+    },
+    {
+      "original": "输入参考文件/生产部与采购部制造费用申报_2026.xlsx",
+      "path": "assets/demo/生产部与采购部制造费用申报_2026.xlsx",
+      "sha256": "f7a3ed16053ed9c9f2f0d7e05a64839bc6456331f60cefce5e9c6c5b30c0bb0c"
+    },
+    {
+      "original": "输入参考文件/行政部预算申报表_2026.xlsx",
+      "path": "assets/demo/行政部预算申报表_2026.xlsx",
+      "sha256": "1fa3634a83a49d723ae6ce101394db8836c248e98e5329d46ff6ad96c10adefe"
+    },
+    {
+      "original": "输入参考文件/销售部预算申报表_2026.xlsx",
+      "path": "assets/demo/销售部预算申报表_2026.xlsx",
+      "sha256": "65176ea807929629bc6dc92962dac787e885191e815459b379ec3bb15634c7c9"
+    }
+  ]
+}

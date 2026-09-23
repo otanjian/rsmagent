@@ -1,0 +1,14 @@
+{
+  "slug": "idle-stock-review",
+  "name": "库存结构与呆滞料复盘",
+  "group": "manufacturing",
+  "default_task": "季度呆滞料复盘，库龄表我拉出来了。另外把采购单、工单预留、销售合同预留（交叉校验数据）、技术部的在产产品图纸公差摘录、安全库存与耗用历史、历史处置记录也一起放进来了。先帮我把不是真呆滞的挑出去——有的是在等在途的料，有的已经被订单预留了，这种报上去会被采购和销售笑。剩下的按图纸公差看看能不能转到在产的产品上用，能转的优先转，别一上来就报废；要客户确认的单独标出来。安全库存那块给个建议就行，别直接改，改错了下个月缺料我担不起。\n\n产出两份：**Excel（.xlsx）** 呆滞清单与处置.xlsx（呆滞清单与处置、待技术确认、安全库存修正建议、BOM 版本溯源四张表）、**PDF** 呆滞料处置意见书.pdf（逐项处置意见，可五方会签）。不要用 Markdown 或纯文本代替。",
+  "demo_files": [
+    "交叉校验数据.xlsx",
+    "历史处置记录.xlsx",
+    "在产产品图纸公差摘录.xlsx",
+    "安全库存与耗用历史.xlsx",
+    "库龄分析表.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/idle-stock-review.html"
+}

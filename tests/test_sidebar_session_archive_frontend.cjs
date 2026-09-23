@@ -45,6 +45,12 @@ function element(tagName = 'div') {
             if (child.parentNode) child.parentNode.children = child.parentNode.children.filter(el => el !== child);
             this.children.push(child); child.parentNode = this; return child;
         },
+        insertBefore(child, ref) {
+            if (child.parentNode) child.parentNode.children = child.parentNode.children.filter(el => el !== child);
+            const idx = ref ? this.children.indexOf(ref) : -1;
+            if (idx < 0) this.children.push(child); else this.children.splice(idx, 0, child);
+            child.parentNode = this; return child;
+        },
         removeChild(child) {
             this.children = this.children.filter(el => el !== child); child.parentNode = null; return child;
         },

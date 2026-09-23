@@ -1,0 +1,12 @@
+{
+  "slug": "cost-variance",
+  "name": "费用异常波动分析",
+  "group": "finance",
+  "default_task": "这个月费用涨得有点多，老板问钱花哪了。技能内置三份材料：费用台账（连续多月）、上月对比数据、用量/单价数据。走完整流程：先比出涨得最多的那几项，再按量差和价差拆开，把每项归因为量涨、价涨还是计价方式变更（包干改按量计费这类），最后按涨价金额排序出清单。\n\n用量数据缺失的项就写「本项无法做量价分离」，不要估一个单价出来充数；只做量价分离和异常标注，砍哪项费用我自己定。\n\n产出两份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：MG-02_费用异常波动分析.xlsx（一行一项，列写上月数、本月数、环比、量差、价差、归因）、MG-02_涨价归因清单.xlsx（逐项写清量涨、价涨、计价变更，拿不准的标「待核实」）。",
+  "demo_files": [
+    "历史费用台账_2024-2025.xlsx",
+    "用量单价明细_2025年12月.xlsx",
+    "费用台账_2025年12月.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/cost-variance.html"
+}

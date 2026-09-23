@@ -1,0 +1,13 @@
+{
+  "slug": "deadline-balance",
+  "name": "交期平衡与产销协同",
+  "group": "manufacturing",
+  "default_task": "本周有 3 张 P-IPC-01 订单挤在装配一线，喷涂又满载。数据都放一起了：订单清单、工单清单、齐套报表、产能负荷表。帮我看下哪张能守、哪张要拆批、哪张要跟销售协调延期，给我一份口径。请按客户等级、交期紧迫度、齐套齐备度三维评估，每张订单出一个建议（守约、拆批、协调延期）并说明原因。\n\n产出两份：**Excel（.xlsx）** 交期平衡三色建议表.xlsx（订单、客户、数量、交期、客户等级、建议、原因）、**Markdown（.md）** 对外沟通口径与分部门待办.md（给销售的客户话术，加上销售、生产、PMC 各自待办）。不要用对话式总结代替。",
+  "demo_files": [
+    "产能负荷表.xlsx",
+    "工单清单.xlsx",
+    "订单清单.xlsx",
+    "齐套报表.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/deadline-balance.html"
+}

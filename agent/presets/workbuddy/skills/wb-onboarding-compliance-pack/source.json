@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/onboarding-compliance-pack.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/AFgtmQuLdAnklXFVMPj6c5/0/pkg.zip",
+  "package_sha256": "b0f79487931559598898c134fb8f605d87b0508bb441a1621898db3cf91e525c",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "45d6eb8c0ee0c58bce88d52df18fa2360b06e65d0b14c4b13a64688ea873273a"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "d7901fceb84fffbdaf301722dca6c1b21868c4b10f11ae5bc0564879d2cdb64a"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "db274894a127dbdb920f729dc9bf07350012d8c11d5759982d71f276fa370505"
+    },
+    {
+      "original": "输入参考文件/01_五人offer审批记录.txt",
+      "path": "assets/demo/01_五人offer审批记录.txt",
+      "sha256": "b681559d5319ba92a03085901f2e5ca67814a080c504efde8d4f17590b1ae3f7"
+    },
+    {
+      "original": "输入参考文件/02_岗位说明书_五岗位.xlsx",
+      "path": "assets/demo/02_岗位说明书_五岗位.xlsx",
+      "sha256": "61129508d48f073574c01523759fd3491e60b2e213534382988b56235ffdf2b0"
+    },
+    {
+      "original": "输入参考文件/03_入职登记表_历史模板.xlsx",
+      "path": "assets/demo/03_入职登记表_历史模板.xlsx",
+      "sha256": "d01c8c46569044ec1480cbad2dcbfae438f5e3c92c9047c55a3ee8a80694246c"
+    },
+    {
+      "original": "输入参考文件/04_社保增减员台账.xlsx",
+      "path": "assets/demo/04_社保增减员台账.xlsx",
+      "sha256": "b453ccbd0032e949b904b0a95d53647ad759de551044bbe38a0db0352cf33dfa"
+    }
+  ]
+}

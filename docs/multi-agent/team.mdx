@@ -54,6 +54,17 @@ You can switch between the two modes at any time; when switching back to shared,
 
 When creating a session, you can have a single Agent talk with you, or start a group chat with multiple Agents.
 
+The top of the sidebar holds one **New chat** control, the same control the session history page's *New chat* is:
+
+- Click the button itself: talk to one Agent, which you can later turn into a group chat from the Agent selector in the input box.
+- Click the caret on its right: a menu opens where you can pick the Agent to talk to, or choose **Multi-agent chat** to open the member picker directly, choose who takes part, name the default responder and start. At least two members are required; you can open it from a coding conversation too, and cancelling leaves that conversation untouched.
+
+The sidebar's session preview shows the five most recent conversations with their kind (a team shows its member faces, a coding conversation shows the coding icon), while **View all** and **Archived** in the heading stay reachable -- the full history and restoring from the archive both live on the history page.
+
+<Note>
+Coding Agents only ever chat solo and never appear in a team picker: the member list, the search, inviting and the `@` candidates all omit it, and the server refuses it as a team owner or member. That follows from how it runs -- it has no ordinary conversation runtime, so it cannot take a turn in a team.
+</Note>
+
 In an existing session, the Agent selector at the bottom left of the input box lets you:
 
 - **Switch Agent**: an empty session can switch its Agent directly; a session that already has content starts a new conversation with the new Agent, while the existing history stays with the original Agent.

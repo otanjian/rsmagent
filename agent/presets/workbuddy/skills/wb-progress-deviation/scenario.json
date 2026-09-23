@@ -1,0 +1,14 @@
+{
+  "slug": "progress-deviation",
+  "name": "执行偏差追踪与补产",
+  "group": "manufacturing",
+  "default_task": "在制工单我导出来了（工单进度日报），另外把齐套与缺料状态、设备科的维修工单、品保的返工与报废单、人事的出勤表也一起放进来了。帮我看下今天早会要讲哪几张单——欠数的、滞后的、返工没补回来的。每张给个根因方向，缺料、品质、设备、人手这四类。哪一类数据不全就直接说不全，别硬凑一个原因给我，我拿着错的结论去问车间会很尴尬；要补产的标出来，别改工单，我自己排。\n\n产出两份：**Excel（.xlsx）** 执行偏差清单.xlsx（偏差清单、根因待确认、补产建议三张表）、**PDF** 执行偏差日报.pdf（一页可打印签字，只放今日必须处置的几张，含数据时点异常提示、待确认事项与签收栏）。不要用 Markdown 或纯文本代替。",
+  "demo_files": [
+    "出勤与人员安排.xlsx",
+    "品质返工与报废单.xlsx",
+    "工单进度日报.xlsx",
+    "设备维修工单.xlsx",
+    "齐套与缺料状态.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/progress-deviation.html"
+}

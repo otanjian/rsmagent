@@ -1,0 +1,53 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ots1af1M8J2fvk7OxWVwPg/17/deep-dives/stalled-deal-detection.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/iz8LpwiYOGaRqCFkAwGhvJ/0/pkg.zip",
+  "package_sha256": "413449c2712e18e2e0be31d2376e54c5ced52e7c2169df1a0651886a4cb2a796",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "3144156b9f9668a8ff2b81fec7e4b2e889bc7f9cb9ff2d8fd409d2ccc1c86b7d"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "2eb817e582c9489aec649cf5e74b051033ccac6970b5ad8ca356ea0581e061aa"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "1a959a8c5dcfed502eb91276f7b38860924c58cd2e6a3959805f0af42d3c4950"
+    },
+    {
+      "original": "输入参考文件/01_CRM在推商机清单导出.xlsx",
+      "path": "assets/demo/01_CRM在推商机清单导出.xlsx",
+      "sha256": "884029d8b3da5be2f77059593f8eac9a0e092294e55783b27e67bd945efa4118"
+    },
+    {
+      "original": "输入参考文件/02_跟进记录明细.xlsx",
+      "path": "assets/demo/02_跟进记录明细.xlsx",
+      "sha256": "1ce73608910b59c799181d8e19318c3ac3014bbcffb2ec24364ae9a2db2aa0bf"
+    },
+    {
+      "original": "输入参考文件/03_报价单台账.xlsx",
+      "path": "assets/demo/03_报价单台账.xlsx",
+      "sha256": "8e61ca02a261813e1a87229081c81bed2d7c272ab6496d8393a230dc2a27b1fa"
+    },
+    {
+      "original": "输入参考文件/04_审批流记录.xlsx",
+      "path": "assets/demo/04_审批流记录.xlsx",
+      "sha256": "4aed4462c9822638a4e165fe0f8db9e9e697be63ab6c4b0259efe0e04bcfcbaa"
+    },
+    {
+      "original": "输入参考文件/05_客户应收与售后记录.xlsx",
+      "path": "assets/demo/05_客户应收与售后记录.xlsx",
+      "sha256": "96d7f4d763884b2acd0272c9a9b034bfd2c1f718f718134bf910ddc52bea3f0c"
+    },
+    {
+      "original": "输入参考文件/06_上年度丢单复盘会纪要摘录.txt",
+      "path": "assets/demo/06_上年度丢单复盘会纪要摘录.txt",
+      "sha256": "c2ceed2e1d0d5a08bfc24249fc84dc1d4ec2a4aa3b2e6ff7cbf73b64f4c8de26"
+    }
+  ]
+}

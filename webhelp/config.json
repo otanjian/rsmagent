@@ -1,21 +1,19 @@
 {
   "brand": {
-    "name": "容大AI",
-    "name_en": "RongAI",
+    "name": "容大AI平台",
+    "name_en": "Rongda AI Platform",
     "logo_light": "assets/img/rongda-ai-logo.svg",
     "logo_dark": "assets/img/rongda-ai-logo-dark.svg",
     "favicon": "assets/img/favicon.ico",
     "upstream_name": "CowAgent",
     "upstream_logo": "assets/img/cow-logo.png"
   },
-  "version": "2.x",
+  "version": "2.3",
   "site_url": "https://rd.rsmxm.com.cn/help",
   "demo_image": "assets/img/home-demo-console.jpg",
   "nav": {
     "index": "nav.home",
-    "features": "nav.features",
-    "enterprise": "nav.enterprise",
-    "architecture": "nav.architecture",
+    "scenarios": "nav.scenarios",
     "about": "nav.about"
   },
   "page_titles": {
@@ -24,8 +22,17 @@
     "enterprise": "meta.title_enterprise",
     "quickstart": "meta.title_quickstart",
     "manual": "manual.title",
+    "scenarios": "meta.title_scenarios",
+    "scenario_doc": "meta.title_scenarios",
     "architecture": "meta.title_architecture",
     "about": "meta.title_about"
+  },
+  "external_links": {
+    "schemes": [],
+    "hosts": [
+      "www.workbuddy.link",
+      "workbuddy-space-static.codebuddy.work"
+    ]
   },
   "deployments": {
     "unix": "bash <(curl -fsSL {site_url}/assets/deploy/run.sh)",

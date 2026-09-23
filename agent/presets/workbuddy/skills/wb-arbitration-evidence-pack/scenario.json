@@ -1,0 +1,13 @@
+{
+  "slug": "arbitration-evidence-pack",
+  "name": "劳动仲裁举证资料包",
+  "group": "hr",
+  "default_task": "前员工把我们仲裁了，主张违法解除和两年加班费，开庭还有 20 天。申请书和这个员工的所有材料都在这。\n\n按举证责任帮我把该准备的证据归集一遍，缺什么直接说，补不了的也直说。\n微信记录怎么取证才算数，告诉我标准。\n\n这个资料包要能直接给律师用。法律意见我们不指望你给，但缺口要标清楚。\n\n产出三份：**Excel（.xlsx）** ER-05_仲裁应诉举证资料包.xlsx（按举证线编排，含证明力评估与缺口说明）、**Excel（.xlsx）** ER-05_证据缺口与补救路径清单.xlsx（能补的含操作与死线，补不了的含答辩绕行建议）、**Word（.docx）** ER-05_取证格式指引.docx（微信、邮件、打卡机三类记录的合规取证步骤）。不要用 Markdown 或纯文本代替。",
+  "demo_files": [
+    "01_仲裁申请书副本.txt",
+    "02_钱进_人事档案节选.xlsx",
+    "03_辞退沟通_微信记录.txt",
+    "04_打卡机导出_2024-2026.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/arbitration-evidence-pack.html"
+}

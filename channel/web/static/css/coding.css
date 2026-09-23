@@ -99,15 +99,21 @@ html.dark #chat-main > .coding-retry {
     background: rgba(217, 119, 6, 0.12);
 }
 
-/* The Agent form / workbench badge that names a coding Agent and its project. */
+/* The coding-type hint: an icon chip, not a text pill (change
+   simplify-coding-agent-type-hint). It shares the top-right corner of the
+   workbench card with the default chip, so the square keeps the badge column
+   from growing when the name next to it is long. The wording now lives in the
+   tooltip and the accessible name, which is why this rule no longer needs a
+   font size or a gap. */
 .coding-agent-badge {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 2px 8px;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
     border-radius: 9999px;
-    font-size: 12px;
-    line-height: 1.6;
+    font-size: 11px;
+    line-height: 1;
     background: rgba(59, 130, 246, 0.1);
     color: #1d4ed8;
     border: 1px solid rgba(59, 130, 246, 0.25);

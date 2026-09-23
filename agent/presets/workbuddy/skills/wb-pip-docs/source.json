@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/pip-docs.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/PfXxPZ0l2ZRkaHnhdli9b6/0/pkg.zip",
+  "package_sha256": "587bd55688145deb2ebb3260ceeeb8e7b2263eeb7e6667b777b0bbfb46696fa0",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "ccb78be2ff3eab24b313de480b9eb8bbb45afa3b417ae2610d06cdd418bc2fd8"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "22af4579d93663441ed5585c60aeb939f689f6a9460142e09f01356e138d313a"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "baad6a53366d9bf66ec6384c69bd39a4c5250cd71e9f557d1333e921b37175b9"
+    },
+    {
+      "original": "输入参考文件/01_刘某_近四月考核数据.xlsx",
+      "path": "assets/demo/01_刘某_近四月考核数据.xlsx",
+      "sha256": "0d4b5af7f7e06a60f341b2180c4c7965a9519d0d4b5392cd378ba405814b6dbd"
+    },
+    {
+      "original": "输入参考文件/02_车间排班与夜班产能记录.xlsx",
+      "path": "assets/demo/02_车间排班与夜班产能记录.xlsx",
+      "sha256": "0a283eef42d8908202c828ef54a2ea1a0ca30863b94aea87e944736140873406"
+    },
+    {
+      "original": "输入参考文件/03_岗位职责与产出基准_装配岗.txt",
+      "path": "assets/demo/03_岗位职责与产出基准_装配岗.txt",
+      "sha256": "56bf60c1d8018efd227612767ed2980dcd1af8d6abcb3a0413d0071c3ed5a051"
+    },
+    {
+      "original": "输入参考文件/04_历史沟通记录_装配岗.txt",
+      "path": "assets/demo/04_历史沟通记录_装配岗.txt",
+      "sha256": "e6868d97bbc5abed900d88eac5c557e5b1cf4709a1da51b6ed27b5c5e0ceea78"
+    }
+  ]
+}

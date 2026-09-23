@@ -1,0 +1,53 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ots1af1M8J2fvk7OxWVwPg/17/deep-dives/rebate-reconciliation.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/qYQ7Fmw5kiAcNSGTOqui23/0/pkg.zip",
+  "package_sha256": "4b7b7828c6b8c07bad59e3a6d6ad2abd502b3e424a0e62bb3ef6caf1ff07ed71",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "11a000ba3e93602aa21a45b24dacb34d6b6fe09ba62d8ddbd51b48bc2e1fdc75"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "11bbf61008d316dbcd8751e3a6cc741db3f558ea1a3c6d5dfd48a2f55c7ee16c"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "716e94f8f0c05c359c1540b296de9e63ed799b99c351033017a6e2cef15ae1c5"
+    },
+    {
+      "original": "输入参考文件/01_2025年度经销协议与返利政策附件.txt",
+      "path": "assets/demo/01_2025年度经销协议与返利政策附件.txt",
+      "sha256": "49ff0eb77d7e1b75c7b19e48e4e06448e08799054e9e65a7d4a94043efb5a390"
+    },
+    {
+      "original": "输入参考文件/02_月度促销与临时政策通知整理.txt",
+      "path": "assets/demo/02_月度促销与临时政策通知整理.txt",
+      "sha256": "283b004d92020951b573ef760b9eb7b1d21ae06b37da069fdfb83e13c138c664"
+    },
+    {
+      "original": "输入参考文件/03_我方经销商进货台账.xlsx",
+      "path": "assets/demo/03_我方经销商进货台账.xlsx",
+      "sha256": "e2e6688f9cc1da2385a55dad14e737a99535dbad8a5564b383e9919591bc3859"
+    },
+    {
+      "original": "输入参考文件/04_久盛发来的进货与返利核算表.xlsx",
+      "path": "assets/demo/04_久盛发来的进货与返利核算表.xlsx",
+      "sha256": "1eb1c7073bc05df2df678841e7bf948d98af86c728fc37d3e9d52b3a65bc702f"
+    },
+    {
+      "original": "输入参考文件/05_窜货处罚单与保证金扣款记录.xlsx",
+      "path": "assets/demo/05_窜货处罚单与保证金扣款记录.xlsx",
+      "sha256": "2ca8fff58baddd1b0cc4aee8fe88ffb53714db8b49e805fbd0a06df62cbb4390"
+    },
+    {
+      "original": "输入参考文件/06_渠道纠纷判例与历史处理口径摘录.txt",
+      "path": "assets/demo/06_渠道纠纷判例与历史处理口径摘录.txt",
+      "sha256": "1444912da89c9ef7e710156c8583fe135ff8c4a294c2f5fdbfcde960159d277a"
+    }
+  ]
+}

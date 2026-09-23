@@ -1,0 +1,13 @@
+{
+  "slug": "onboarding-compliance-pack",
+  "name": "入职合规启动包",
+  "group": "hr",
+  "default_task": "下周有 5 个人入职，offer、岗位说明书、入职登记表模板都在这。帮我给每个人配一套入职启动包。\n\n合同、社保增员、录用条件确认这些有时限的，死线给我列清楚。\n去年有个仓库管理员一直没签合同，也帮我查一下现在的敞口。\n\n缺什么材料直接点名，别等入职当天才发现。\n\n产出三份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：ER-04_入职启动包（按人）.xlsx（5 人各一页，材料、签署、时限、签收四区齐全）、ER-04_入职材料缺口与核验清单.xlsx（逐人缺项点名与核验方式）、ER-04_历史漏签敞口测算.xlsx（入职超一个月未签合同人员，敞口金额逐月累计）。",
+  "demo_files": [
+    "01_五人offer审批记录.txt",
+    "02_岗位说明书_五岗位.xlsx",
+    "03_入职登记表_历史模板.xlsx",
+    "04_社保增减员台账.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/onboarding-compliance-pack.html"
+}

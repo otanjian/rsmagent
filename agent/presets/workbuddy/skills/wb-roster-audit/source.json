@@ -1,0 +1,48 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/roster-audit.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/vt1WfQLXSloog0JDIKN6ww/0/pkg.zip",
+  "package_sha256": "7a3aa27fd81d5bb1c935de81130f196cf31d68b8b066353fa8ccff32dab1df27",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "32ce289c8b8b2f135ddd31b6fb66859da582cbe8dfa386fdc57c40298b4741ac"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "fc78de4f8dc53513a0efb8cfe9bdbea8db7d25ee5e47e2f96fdb0a583b334cf8"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "ff52a70f30336c311276bc0e82aa75941c10325df89f916bda3af4c5c24d3645"
+    },
+    {
+      "original": "输入参考文件/01_花名册_新版.xlsx",
+      "path": "assets/demo/01_花名册_新版.xlsx",
+      "sha256": "0594e17686787e3487c92a517197bf2d12a28c7c36e9851360bb32a6902c4c68"
+    },
+    {
+      "original": "输入参考文件/02_花名册_最终版.xlsx",
+      "path": "assets/demo/02_花名册_最终版.xlsx",
+      "sha256": "2cc4ba3010ce2511cb477a39b8802da1ad2090465e2603eb04a747b8df290adf"
+    },
+    {
+      "original": "输入参考文件/03_花名册_2024旧版.xlsx",
+      "path": "assets/demo/03_花名册_2024旧版.xlsx",
+      "sha256": "6dea507826b7ce35d5994c4b5c7fd470b114d1bf83550731fd29e1191837bea8"
+    },
+    {
+      "original": "输入参考文件/04_社保在缴名单.xlsx",
+      "path": "assets/demo/04_社保在缴名单.xlsx",
+      "sha256": "9a47b3fd19e8a40ff1bc238dd9e9d312b7e3ce2a363e030e5fef8cc54b3a18fb"
+    },
+    {
+      "original": "输入参考文件/05_近12个月入离职记录.xlsx",
+      "path": "assets/demo/05_近12个月入离职记录.xlsx",
+      "sha256": "000315416bf61730e0259d5276633b3db0fed26e531b30ab62e9f8be19fb8ec7"
+    }
+  ]
+}

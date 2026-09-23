@@ -1,0 +1,13 @@
+{
+  "slug": "labor-cost-onepager",
+  "name": "月度人力成本一页纸",
+  "group": "hr",
+  "default_task": "老板问这个月人力成本为什么多了 8 万，我答不上来。工资表、社保缴费明细、财务的费用明细都在这，帮我算清楚。\n\n多的钱每一笔都要能说到具体事上。人均的数也给我。\n下个月的走势帮我预判一下。\n\n产出三份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：HC-01_月度人力成本一页纸.xlsx（总量+构成+归因+预期，一页，能直接给老板看）、HC-01_成本构成明细与口径说明.xlsx（逐项来源与口径注释，供财务对账）、HC-01_环比归因清单.xlsx（每个变动项对应到事件，含一次性/持续性标注）。",
+  "demo_files": [
+    "01_工资表_2026-08.xlsx",
+    "02_社保公积金缴费明细_2026-07与08.xlsx",
+    "03_财务费用明细_人力相关科目.xlsx",
+    "04_上月与去年同期对照.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/labor-cost-onepager.html"
+}

@@ -1,0 +1,53 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/trial-check.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/ln5mPE35bfxcCmabsdXtJd/0/pkg.zip",
+  "package_sha256": "3b696d5bf20bb7451480d1fa229e8bff90b490b6b03e2f19880b34e4eb938e14",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "ee5a08e774e8b4147bb55da5ba3539caa5a0a06b4ef5561790f184577ef07748"
+    },
+    {
+      "original": "references/data_source_fields.md",
+      "path": "references/data_source_fields.md",
+      "sha256": "11ac9f337b44e7e137f3bf6f81fe3fcc980282c042f2c5a7675a2362d48d050d"
+    },
+    {
+      "original": "references/five_check_rules.md",
+      "path": "references/five_check_rules.md",
+      "sha256": "18603e62dcd2f4bef5cd956ac0bc0c2a356f566972327420be9cd6f38924697f"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "06908de3514f62338d12e23b0391dba3e47fa026e59508d624a371733cd2970d"
+    },
+    {
+      "original": "输入参考文件/BOM基线.xlsx",
+      "path": "assets/demo/BOM基线.xlsx",
+      "sha256": "0bf5e89bcd9b84110974558a2075224784fa7bc8ee6d1dd07ae7f2a1d2d833f9"
+    },
+    {
+      "original": "输入参考文件/SOP发放台账.xlsx",
+      "path": "assets/demo/SOP发放台账.xlsx",
+      "sha256": "947d1421767ac93daa3a318fbd538ca98730c88f49c9e027bc2b79cdede10da4"
+    },
+    {
+      "original": "输入参考文件/产能负荷表.xlsx",
+      "path": "assets/demo/产能负荷表.xlsx",
+      "sha256": "c2b29c084787e570deace3cddb1988d7679a15144588f755e015cdcc83b5bc1b"
+    },
+    {
+      "original": "输入参考文件/工装状态表.xlsx",
+      "path": "assets/demo/工装状态表.xlsx",
+      "sha256": "41c5cec5c3e6653d2ce594a1e1f88499b6746adb2e50b0e070048fbc33abf2da"
+    },
+    {
+      "original": "输入参考文件/齐套报表.xlsx",
+      "path": "assets/demo/齐套报表.xlsx",
+      "sha256": "fcd0ced2c4fb151f21b4576f5857878397f1e89c9d8132d1bac8564bf33f47fa"
+    }
+  ]
+}

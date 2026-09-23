@@ -48,7 +48,8 @@ $ other = 'en' if v.lang == 'zh' else 'zh'
       </button>
       <div class="nav-links" id="navLinks">
         $for page, key in v.cfg('nav', {}).items():
-            <a href="$(v.url(page))" class="nav-link$(' is-active' if page.removesuffix('.php') == v.page else '')">$(v.t(key))</a>
+            $ name = page.removesuffix('.php')
+            <a href="$(v.url(page))" class="nav-link$(' is-active' if name == v.page or (name == 'scenarios' and v.page == 'scenario_doc') else '')">$(v.t(key))</a>
         <button class="theme-switch" type="button" id="themeToggle" aria-label="$(v.t('common.theme_toggle'))">
           <span class="icon-sun">$:(v.icon('sun'))</span>
           <span class="icon-moon">$:(v.icon('moon'))</span>

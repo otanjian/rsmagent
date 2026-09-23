@@ -1,0 +1,887 @@
+{
+  "fixtureBackend": true,
+  "scenarios": [
+    {
+      "name": "the sidebar launch control opens the shared picker, and the team picker never a coding Agent",
+      "passed": true
+    },
+    {
+      "name": "the composer separates switching to a coding Agent from inviting teammates",
+      "passed": true
+    },
+    {
+      "name": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "passed": true
+    },
+    {
+      "name": "the three palettes in both modes keep the launch control inside the sidebar",
+      "passed": true
+    },
+    {
+      "name": "the collapsed rail opens the picker beside itself, not inside 72px",
+      "passed": true
+    },
+    {
+      "name": "turning the switch off restores the classic sidebar without weakening a rule",
+      "passed": true
+    }
+  ],
+  "pageErrors": [],
+  "screenshots": [
+    "sidebar-launch-v2-sidebar-picker.png",
+    "sidebar-launch-v2-picker-excludes-coding.png",
+    "sidebar-launch-v2-1440px.png",
+    "sidebar-launch-v2-1024px.png",
+    "sidebar-launch-v2-360px.png",
+    "sidebar-launch-v2-business-dark.png",
+    "sidebar-launch-v2-slate-dark.png",
+    "sidebar-launch-v2-classic-dark.png",
+    "sidebar-launch-v2-collapsed-picker.png",
+    "sidebar-launch-v2-preview-five-rows.png"
+  ],
+  "checks": [
+    {
+      "scenario": "the sidebar launch control opens the shared picker, and the team picker never a coding Agent",
+      "name": "there is one launch control and no separate team button",
+      "ok": true,
+      "launchWraps": 1,
+      "teamButtons": 0,
+      "newChat": {
+        "top": 88,
+        "bottom": 134,
+        "left": 18,
+        "right": 221,
+        "width": 203,
+        "height": 46
+      },
+      "caret": {
+        "top": 106,
+        "bottom": 116,
+        "left": 196,
+        "right": 206,
+        "width": 10,
+        "height": 10
+      }
+    },
+    {
+      "scenario": "the sidebar launch control opens the shared picker, and the team picker never a coding Agent",
+      "name": "the caret rides inside the launch button, at its right edge",
+      "ok": true,
+      "caret": {
+        "top": 106,
+        "bottom": 116,
+        "left": 196,
+        "right": 206,
+        "width": 10,
+        "height": 10
+      },
+      "newChat": {
+        "top": 88,
+        "bottom": 134,
+        "left": 18,
+        "right": 221,
+        "width": 203,
+        "height": 46
+      }
+    },
+    {
+      "scenario": "the sidebar launch control opens the shared picker, and the team picker never a coding Agent",
+      "name": "the sidebar picker is the session panel picker",
+      "ok": true,
+      "sidebar": "\n        <div class=\"new-chat-section\">\n        <button type=\"button\" class=\"new-chat-item\" onclick=\"startSoloChat('defa"
+    },
+    {
+      "scenario": "the sidebar launch control opens the shared picker, and the team picker never a coding Agent",
+      "name": "a single coding conversation is still one picker row away",
+      "ok": true,
+      "soloRows": [
+        "startSoloChat('default')",
+        "startSoloChat('research')",
+        "startSoloChat('writer')",
+        "startSoloChat('coder')"
+      ]
+    },
+    {
+      "scenario": "the sidebar launch control opens the shared picker, and the team picker never a coding Agent",
+      "name": "the launch button fills the block its picker is anchored to",
+      "ok": true,
+      "anchoring": {
+        "palette": "business",
+        "display": "flex",
+        "buttonWidth": 203,
+        "wrapperWidth": 203,
+        "button": {
+          "left": 18,
+          "right": 221,
+          "bottom": 134
+        },
+        "wrapper": {
+          "left": 18,
+          "right": 221
+        },
+        "menu": {
+          "left": 18,
+          "right": 221,
+          "top": 140,
+          "width": 203
+        }
+      }
+    },
+    {
+      "scenario": "the sidebar launch control opens the shared picker, and the team picker never a coding Agent",
+      "name": "the picker is anchored under its own launch button",
+      "ok": true,
+      "anchoring": {
+        "palette": "business",
+        "display": "flex",
+        "buttonWidth": 203,
+        "wrapperWidth": 203,
+        "button": {
+          "left": 18,
+          "right": 221,
+          "bottom": 134
+        },
+        "wrapper": {
+          "left": 18,
+          "right": 221
+        },
+        "menu": {
+          "left": 18,
+          "right": 221,
+          "top": 140,
+          "width": 203
+        }
+      }
+    },
+    {
+      "scenario": "the sidebar launch control opens the shared picker, and the team picker never a coding Agent",
+      "name": "opening the team picker shuts both launch pickers",
+      "ok": true
+    },
+    {
+      "scenario": "the sidebar launch control opens the shared picker, and the team picker never a coding Agent",
+      "name": "the picker focuses its search field",
+      "ok": true,
+      "focused": "team-chat-search"
+    },
+    {
+      "scenario": "the sidebar launch control opens the shared picker, and the team picker never a coding Agent",
+      "name": "only normal Agents are listed",
+      "ok": true,
+      "listed": [
+        "通用助手",
+        "研究员",
+        "文案"
+      ]
+    },
+    {
+      "scenario": "the sidebar launch control opens the shared picker, and the team picker never a coding Agent",
+      "name": "searching \"编码\" exposes no coding Agent",
+      "ok": true,
+      "text": "多智能体对话\n\n选择参与本次对话的智能体；未指定成员时由默认响应者接收消息，输入 @ 可指定其他成员。\n\n已选 1 / 3\n通用助手\n默认响应\n选择智能体\n创建智能体\n没有匹配的智能体\n取消\n开始对话"
+    },
+    {
+      "scenario": "the sidebar launch control opens the shared picker, and the team picker never a coding Agent",
+      "name": "searching \"工程\" exposes no coding Agent",
+      "ok": true,
+      "text": "多智能体对话\n\n选择参与本次对话的智能体；未指定成员时由默认响应者接收消息，输入 @ 可指定其他成员。\n\n已选 1 / 3\n通用助手\n默认响应\n选择智能体\n创建智能体\n没有匹配的智能体\n取消\n开始对话"
+    },
+    {
+      "scenario": "the sidebar launch control opens the shared picker, and the team picker never a coding Agent",
+      "name": "searching \"coder\" exposes no coding Agent",
+      "ok": true,
+      "text": "多智能体对话\n\n选择参与本次对话的智能体；未指定成员时由默认响应者接收消息，输入 @ 可指定其他成员。\n\n已选 1 / 3\n通用助手\n默认响应\n选择智能体\n创建智能体\n没有匹配的智能体\n取消\n开始对话"
+    },
+    {
+      "scenario": "the sidebar launch control opens the shared picker, and the team picker never a coding Agent",
+      "name": "the whole picker text is free of the coding Agent",
+      "ok": true
+    },
+    {
+      "scenario": "the sidebar launch control opens the shared picker, and the team picker never a coding Agent",
+      "name": "the candidate projection excludes the coding Agent",
+      "ok": true,
+      "teamIds": [
+        "default",
+        "research",
+        "writer"
+      ]
+    },
+    {
+      "scenario": "the sidebar launch control opens the shared picker, and the team picker never a coding Agent",
+      "name": "Escape closes the picker and restores focus",
+      "ok": true,
+      "afterClose": "sidebar-new-chat"
+    },
+    {
+      "scenario": "the composer separates switching to a coding Agent from inviting teammates",
+      "name": "the composer invite list holds no coding Agent",
+      "ok": true,
+      "invites": [
+        "研\n研究员",
+        "文\n文案"
+      ]
+    },
+    {
+      "scenario": "the composer separates switching to a coding Agent from inviting teammates",
+      "name": "a single coding conversation is still switchable from the composer",
+      "ok": true,
+      "switches": [
+        "通用助手",
+        "研\n研究员",
+        "文\n文案",
+        "编\n编码助手"
+      ]
+    },
+    {
+      "scenario": "the composer separates switching to a coding Agent from inviting teammates",
+      "name": "the sidebar preview keeps the members marker and the coding marker apart",
+      "ok": true,
+      "rows": 3
+    },
+    {
+      "scenario": "the composer separates switching to a coding Agent from inviting teammates",
+      "name": "the team row states its members, the coding row its own type",
+      "ok": true,
+      "markers": [
+        {
+          "faces": 0,
+          "summary": "",
+          "code": false
+        },
+        {
+          "faces": 0,
+          "summary": "",
+          "code": true
+        },
+        {
+          "faces": 2,
+          "summary": "通用助手、研究员",
+          "code": false
+        }
+      ]
+    },
+    {
+      "scenario": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "name": "the navigation is the one middle scroll region at 1440px",
+      "ok": true,
+      "scrollers": [],
+      "navOverflowY": "auto",
+      "shellOverflowY": "visible"
+    },
+    {
+      "scenario": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "name": "nothing overflows the viewport at 1440px",
+      "ok": true,
+      "documentWidth": 1440,
+      "viewport": 1440
+    },
+    {
+      "scenario": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "name": "the single launch control sits above the navigation at 1440px",
+      "ok": true,
+      "newChat": {
+        "top": 88,
+        "bottom": 134,
+        "left": 18,
+        "right": 221,
+        "width": 203,
+        "height": 46
+      },
+      "caret": {
+        "top": 106,
+        "bottom": 116,
+        "left": 196,
+        "right": 206,
+        "width": 10,
+        "height": 10
+      },
+      "nav": {
+        "top": 152,
+        "bottom": 817,
+        "left": 0,
+        "right": 239,
+        "width": 239,
+        "height": 665
+      }
+    },
+    {
+      "scenario": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "name": "the account footer stays inside the viewport at 1440px",
+      "ok": true,
+      "footer": {
+        "top": 851,
+        "bottom": 900,
+        "left": 12,
+        "right": 227,
+        "width": 215,
+        "height": 49
+      }
+    },
+    {
+      "scenario": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "name": "the navigation is the one middle scroll region at 1024px",
+      "ok": true,
+      "scrollers": [],
+      "navOverflowY": "auto",
+      "shellOverflowY": "visible"
+    },
+    {
+      "scenario": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "name": "nothing overflows the viewport at 1024px",
+      "ok": true,
+      "documentWidth": 1024,
+      "viewport": 1024
+    },
+    {
+      "scenario": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "name": "the single launch control sits above the navigation at 1024px",
+      "ok": true,
+      "newChat": {
+        "top": 88,
+        "bottom": 134,
+        "left": 18,
+        "right": 221,
+        "width": 203,
+        "height": 46
+      },
+      "caret": {
+        "top": 106,
+        "bottom": 116,
+        "left": 196,
+        "right": 206,
+        "width": 10,
+        "height": 10
+      },
+      "nav": {
+        "top": 152,
+        "bottom": 817,
+        "left": 0,
+        "right": 239,
+        "width": 239,
+        "height": 665
+      }
+    },
+    {
+      "scenario": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "name": "the account footer stays inside the viewport at 1024px",
+      "ok": true,
+      "footer": {
+        "top": 851,
+        "bottom": 900,
+        "left": 12,
+        "right": 227,
+        "width": 215,
+        "height": 49
+      }
+    },
+    {
+      "scenario": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "name": "the navigation is the one middle scroll region at 360px",
+      "ok": true,
+      "scrollers": [
+        "#sidebar-nav"
+      ],
+      "navOverflowY": "auto",
+      "shellOverflowY": "visible"
+    },
+    {
+      "scenario": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "name": "nothing overflows the viewport at 360px",
+      "ok": true,
+      "documentWidth": 360,
+      "viewport": 360
+    },
+    {
+      "scenario": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "name": "the single launch control sits above the navigation at 360px",
+      "ok": true,
+      "newChat": {
+        "top": 88,
+        "bottom": 134,
+        "left": 18,
+        "right": 221,
+        "width": 203,
+        "height": 46
+      },
+      "caret": {
+        "top": 106,
+        "bottom": 116,
+        "left": 196,
+        "right": 206,
+        "width": 10,
+        "height": 10
+      },
+      "nav": {
+        "top": 152,
+        "bottom": 637,
+        "left": 0,
+        "right": 239,
+        "width": 239,
+        "height": 485
+      }
+    },
+    {
+      "scenario": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "name": "the account footer stays inside the viewport at 360px",
+      "ok": true,
+      "footer": {
+        "top": 671,
+        "bottom": 720,
+        "left": 12,
+        "right": 227,
+        "width": 215,
+        "height": 49
+      }
+    },
+    {
+      "scenario": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "name": "the drawer picker fits the phone at 360px",
+      "ok": true,
+      "menuBox": {
+        "x": 18,
+        "y": 140,
+        "width": 203,
+        "height": 227.375
+      }
+    },
+    {
+      "scenario": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "name": "starting a picker from the drawer shuts the drawer at 360px",
+      "ok": true,
+      "overlayHidden": true,
+      "shellClasses": "fixed inset-y-0 left-0 z-50 w-52 bg-[#0A0A0A] text-neutral-400 flex flex-col transform lg:relative lg:translate-x-0 transition-transform duration-300 ease-in-out sidebar-launch-v2 -translate-x-full"
+    },
+    {
+      "scenario": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "name": "focus lands on the visible drawer toggle at 360px",
+      "ok": true,
+      "focused": "menu-toggle"
+    },
+    {
+      "scenario": "desktop, narrow desktop and phone keep one scroll region and no overflow",
+      "name": "closing the phone drawer leaves no mask behind at 360px",
+      "ok": true,
+      "overlayOpen": true,
+      "overlayHidden": true
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "business/light paints the promised appearance",
+      "ok": true,
+      "resolved": {
+        "palette": "business",
+        "dark": false
+      }
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "business/light keeps the launch control and its caret inside the sidebar",
+      "ok": true,
+      "newChat": {
+        "top": 88,
+        "bottom": 134,
+        "left": 18,
+        "right": 221,
+        "width": 203,
+        "height": 46
+      },
+      "caret": {
+        "top": 106,
+        "bottom": 116,
+        "left": 196,
+        "right": 206,
+        "width": 10,
+        "height": 10
+      },
+      "shell": {
+        "top": 0,
+        "bottom": 900,
+        "left": 0,
+        "right": 240,
+        "width": 240,
+        "height": 900
+      },
+      "documentWidth": 1440,
+      "viewport": 1440
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "business/light paints the picker as a sidebar surface inside the viewport",
+      "ok": true,
+      "menu": {
+        "box": {
+          "left": 18,
+          "right": 221,
+          "top": 140,
+          "bottom": 367.375
+        },
+        "background": "rgb(255, 255, 255)",
+        "sidebarBg": "rgb(246, 248, 250)",
+        "viewportWidth": 1440,
+        "horizontalOverflow": 0
+      }
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "business/dark paints the promised appearance",
+      "ok": true,
+      "resolved": {
+        "palette": "business",
+        "dark": true
+      }
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "business/dark keeps the launch control and its caret inside the sidebar",
+      "ok": true,
+      "newChat": {
+        "top": 88,
+        "bottom": 134,
+        "left": 18,
+        "right": 221,
+        "width": 203,
+        "height": 46
+      },
+      "caret": {
+        "top": 106,
+        "bottom": 116,
+        "left": 196,
+        "right": 206,
+        "width": 10,
+        "height": 10
+      },
+      "shell": {
+        "top": 0,
+        "bottom": 900,
+        "left": 0,
+        "right": 240,
+        "width": 240,
+        "height": 900
+      },
+      "documentWidth": 1440,
+      "viewport": 1440
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "business/dark paints the picker as a sidebar surface inside the viewport",
+      "ok": true,
+      "menu": {
+        "box": {
+          "left": 18,
+          "right": 221,
+          "top": 140,
+          "bottom": 367.375
+        },
+        "background": "rgb(26, 38, 52)",
+        "sidebarBg": "rgb(23, 33, 45)",
+        "viewportWidth": 1440,
+        "horizontalOverflow": 0
+      }
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "slate/light paints the promised appearance",
+      "ok": true,
+      "resolved": {
+        "palette": "slate",
+        "dark": false
+      }
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "slate/light keeps the launch control and its caret inside the sidebar",
+      "ok": true,
+      "newChat": {
+        "top": 88,
+        "bottom": 134,
+        "left": 18,
+        "right": 221,
+        "width": 203,
+        "height": 46
+      },
+      "caret": {
+        "top": 106,
+        "bottom": 116,
+        "left": 196,
+        "right": 206,
+        "width": 10,
+        "height": 10
+      },
+      "shell": {
+        "top": 0,
+        "bottom": 900,
+        "left": 0,
+        "right": 240,
+        "width": 240,
+        "height": 900
+      },
+      "documentWidth": 1440,
+      "viewport": 1440
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "slate/light paints the picker as a sidebar surface inside the viewport",
+      "ok": true,
+      "menu": {
+        "box": {
+          "left": 18,
+          "right": 221,
+          "top": 140,
+          "bottom": 367.375
+        },
+        "background": "rgb(27, 41, 56)",
+        "sidebarBg": "rgb(24, 35, 47)",
+        "viewportWidth": 1440,
+        "horizontalOverflow": 0
+      }
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "slate/dark paints the promised appearance",
+      "ok": true,
+      "resolved": {
+        "palette": "slate",
+        "dark": true
+      }
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "slate/dark keeps the launch control and its caret inside the sidebar",
+      "ok": true,
+      "newChat": {
+        "top": 88,
+        "bottom": 134,
+        "left": 18,
+        "right": 221,
+        "width": 203,
+        "height": 46
+      },
+      "caret": {
+        "top": 106,
+        "bottom": 116,
+        "left": 196,
+        "right": 206,
+        "width": 10,
+        "height": 10
+      },
+      "shell": {
+        "top": 0,
+        "bottom": 900,
+        "left": 0,
+        "right": 240,
+        "width": 240,
+        "height": 900
+      },
+      "documentWidth": 1440,
+      "viewport": 1440
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "slate/dark paints the picker as a sidebar surface inside the viewport",
+      "ok": true,
+      "menu": {
+        "box": {
+          "left": 18,
+          "right": 221,
+          "top": 140,
+          "bottom": 367.375
+        },
+        "background": "rgb(27, 41, 56)",
+        "sidebarBg": "rgb(17, 28, 40)",
+        "viewportWidth": 1440,
+        "horizontalOverflow": 0
+      }
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "classic/light paints the promised appearance",
+      "ok": true,
+      "resolved": {
+        "palette": "classic",
+        "dark": false
+      }
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "classic/light keeps the launch control and its caret inside the sidebar",
+      "ok": true,
+      "newChat": {
+        "top": 88,
+        "bottom": 134,
+        "left": 18,
+        "right": 221,
+        "width": 203,
+        "height": 46
+      },
+      "caret": {
+        "top": 106,
+        "bottom": 116,
+        "left": 196,
+        "right": 206,
+        "width": 10,
+        "height": 10
+      },
+      "shell": {
+        "top": 0,
+        "bottom": 900,
+        "left": 0,
+        "right": 240,
+        "width": 240,
+        "height": 900
+      },
+      "documentWidth": 1440,
+      "viewport": 1440
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "classic/light paints the picker as a sidebar surface inside the viewport",
+      "ok": true,
+      "menu": {
+        "box": {
+          "left": 18,
+          "right": 221,
+          "top": 140,
+          "bottom": 367.375
+        },
+        "background": "rgb(27, 30, 28)",
+        "sidebarBg": "rgb(10, 10, 10)",
+        "viewportWidth": 1440,
+        "horizontalOverflow": 0
+      }
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "classic/dark paints the promised appearance",
+      "ok": true,
+      "resolved": {
+        "palette": "classic",
+        "dark": true
+      }
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "classic/dark keeps the launch control and its caret inside the sidebar",
+      "ok": true,
+      "newChat": {
+        "top": 88,
+        "bottom": 134,
+        "left": 18,
+        "right": 221,
+        "width": 203,
+        "height": 46
+      },
+      "caret": {
+        "top": 106,
+        "bottom": 116,
+        "left": 196,
+        "right": 206,
+        "width": 10,
+        "height": 10
+      },
+      "shell": {
+        "top": 0,
+        "bottom": 900,
+        "left": 0,
+        "right": 240,
+        "width": 240,
+        "height": 900
+      },
+      "documentWidth": 1440,
+      "viewport": 1440
+    },
+    {
+      "scenario": "the three palettes in both modes keep the launch control inside the sidebar",
+      "name": "classic/dark paints the picker as a sidebar surface inside the viewport",
+      "ok": true,
+      "menu": {
+        "box": {
+          "left": 18,
+          "right": 221,
+          "top": 140,
+          "bottom": 367.375
+        },
+        "background": "rgb(27, 30, 28)",
+        "sidebarBg": "rgb(10, 10, 10)",
+        "viewportWidth": 1440,
+        "horizontalOverflow": 0
+      }
+    },
+    {
+      "scenario": "the collapsed rail opens the picker beside itself, not inside 72px",
+      "name": "the rail keeps its launch icon and caret",
+      "ok": true,
+      "shell": {
+        "left": 0,
+        "right": 72,
+        "top": 0,
+        "bottom": 900,
+        "width": 72
+      },
+      "caret": {
+        "left": 44,
+        "right": 53,
+        "top": 119,
+        "bottom": 128,
+        "width": 9
+      }
+    },
+    {
+      "scenario": "the collapsed rail opens the picker beside itself, not inside 72px",
+      "name": "the picker opens beside the rail, whole and unclipped",
+      "ok": true,
+      "menu": {
+        "left": 71,
+        "right": 295,
+        "top": 88,
+        "bottom": 315.375,
+        "width": 224
+      },
+      "shell": {
+        "left": 0,
+        "right": 72,
+        "top": 0,
+        "bottom": 900,
+        "width": 72
+      },
+      "rows": 5
+    },
+    {
+      "scenario": "turning the switch off restores the classic sidebar without weakening a rule",
+      "name": "the classic sidebar has no caret, no picker and no refined class",
+      "ok": true,
+      "shellClasses": "fixed inset-y-0 left-0 z-50 w-52 bg-[#0A0A0A] text-neutral-400 flex flex-col\n                                    transform -translate-x-full lg:relative lg:translate-x-0\n                                    transition-transform duration-300 ease-in-out",
+      "caret": null,
+      "launchWraps": 1
+    },
+    {
+      "scenario": "turning the switch off restores the classic sidebar without weakening a rule",
+      "name": "the classic sidebar keeps its own picker shut",
+      "ok": true
+    },
+    {
+      "scenario": "turning the switch off restores the classic sidebar without weakening a rule",
+      "name": "the classic preview keeps its ten rows",
+      "ok": true,
+      "rows": 10
+    },
+    {
+      "scenario": "turning the switch off restores the classic sidebar without weakening a rule",
+      "name": "the refined preview holds five rows and keeps 查看全部",
+      "ok": true,
+      "rows": 5,
+      "shellClasses": "fixed inset-y-0 left-0 z-50 w-52 bg-[#0A0A0A] text-neutral-400 flex flex-col transform -translate-x-full lg:relative lg:translate-x-0 transition-transform duration-300 ease-in-out sidebar-launch-v2"
+    },
+    {
+      "scenario": "turning the switch off restores the classic sidebar without weakening a rule",
+      "name": "the team candidate rule is the same with the switch off",
+      "ok": true
+    },
+    {
+      "scenario": "turning the switch off restores the classic sidebar without weakening a rule",
+      "name": "the history page still offers the team entry when the switch is off",
+      "ok": true
+    }
+  ],
+  "currentScenario": "turning the switch off restores the classic sidebar without weakening a rule"
+}

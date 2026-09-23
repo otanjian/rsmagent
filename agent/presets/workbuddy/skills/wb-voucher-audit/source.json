@@ -1,0 +1,38 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/voucher-audit.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/1Z5QmykXuGzIF4jZjXFLxx/0/pkg.zip",
+  "package_sha256": "8d12fa843de10394c3868f3a0c7241c9f3c3d56e62df41dda276819e83ad327c",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "c23a3831f8e1eb1ff366e1642908e832795f4aeccc78805e55891f025e959938"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "355040617564be925ad80e50e382fd15e6cef675c7a3fb409224e3586ac4748d"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "b62406c4bd65d9ee934bbe77edae12742653dbb1390f3b0c58910479dd39f280"
+    },
+    {
+      "original": "输入参考文件/凭证作废记录.txt",
+      "path": "assets/demo/凭证作废记录.txt",
+      "sha256": "c4ce6770a3c0efea6a2c181aa8907d7a6c12ff9cd035b9665dbad0d4e7ec48f2"
+    },
+    {
+      "original": "输入参考文件/科目余额表_2026年6月.xlsx",
+      "path": "assets/demo/科目余额表_2026年6月.xlsx",
+      "sha256": "6d60afb39558b8a5d13bcd92485f9ec52061c7d2396453d4e28ec2b28d17f7ff"
+    },
+    {
+      "original": "输入参考文件/记账凭证数据_2026年6月.xlsx",
+      "path": "assets/demo/记账凭证数据_2026年6月.xlsx",
+      "sha256": "4cb9771cdaad0563e10c2805d417b24b5f128d2bb68086ba903235cf5c8607b5"
+    }
+  ]
+}

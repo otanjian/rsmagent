@@ -1,0 +1,14 @@
+{
+  "slug": "quality-analysis",
+  "name": "品质异常分析",
+  "group": "manufacturing",
+  "default_task": "客户投诉来了，P-CAB-02 焊缝开裂，批号 PB-260715-03，要三天内交 8D。资料都放一起了：客户投诉单、报工记录、检验记录、来料批次台账、历史异常库。帮我做完整的异常分析，出一份能直接发客户的 8D；客户肯定会问我们为什么没检出来，这条你一定要答上；没把握的地方别硬写，标出来告诉我。\n\n产出三份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：8D报告_焊缝开裂.xlsx（D0 到 D8 分区，含 5W2H 与 Is/Is-Not、双路径追问链、措施带责任人与验收、客户签核栏）、支撑分析.xlsx（批次履历时间轴、参数偏差表、五维交叉比对、排除结论、检验对比、异常明细六张表）、整改跟踪表.xlsx（围堵、纠正、预防分类，含责任人、时限、验收标准、待改文件清单）。",
+  "demo_files": [
+    "历史异常库.xlsx",
+    "客户投诉单.xlsx",
+    "报工记录.xlsx",
+    "来料批次台账.xlsx",
+    "检验记录.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/quality-analysis.html"
+}

@@ -1,0 +1,18 @@
+{
+  "slug": "sop-gen",
+  "name": "SOP生成与校验",
+  "group": "manufacturing",
+  "default_task": "工艺卡 RT-CAB-02 升到 V3.1 了，图纸也到 Rev.C，但焊接工位那份 SOP 还是 V2.4。材料都放一起了：现行SOP_V2.4.docx、工艺路线卡_P-CAB-02.xlsx、图纸技术要求_DWG-CAB-02_RevC.docx、控制计划_CP-CAB02_V2.2.xlsx、历史异常记录.xlsx。帮我核一遍，该改的地方列出来，顺便看看这些偏差有没有已经出过问题的；改完给我一份能直接送审的，签字栏和变更履历都要留好。\n\n产出四份：**PDF** 新版作业指导书.pdf（A3 横版单页、一页一工序、四个签字栏与变更履历齐全，另附可编辑源文件）、**Excel（.xlsx）** SOP校验报告.xlsx（总览、问题清单、参数对照矩阵三张表）、**Excel（.xlsx）** SOP变更影响清单与发放回收登记表.xlsx（受影响文件、需重新培训岗位、旧版回收状态）、**Markdown（.md）** SOP变更说明.md（发布用，可直接复制进文控流程与车间培训通知）。不要用对话式总结代替。",
+  "demo_files": [
+    "SOP变更影响清单与发放回收登记表.xlsx",
+    "SOP变更说明_V2.4至V3.0.txt",
+    "SOP校验报告_SOP-WLD-CAB02.xlsx",
+    "作业指导书_SOP-WLD-CAB02_V3.0.pdf",
+    "历史异常记录.xlsx",
+    "图纸技术要求_DWG-CAB-02_RevC.docx",
+    "工艺路线卡_P-CAB-02.xlsx",
+    "控制计划_CP-CAB02_V2.2.xlsx",
+    "现行SOP_V2.4.docx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/sop-gen.html"
+}

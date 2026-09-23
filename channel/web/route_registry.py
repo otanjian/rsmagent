@@ -286,7 +286,7 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/api/todos/(.*)/delegation", "TodoDelegationHandler", "fork:todos", {"POST": P("tenant", comment="assign / transfer / recall / reject (todo.assign enforced in handler)")}),
     RouteEntry("/api/todos/(.*)", "TodoDetailHandler", "fork:todos", {"GET": P("tenant", comment="todo detail"), "PATCH": P("tenant", comment="field-edit / target-state update (version-cas)")}),
     RouteEntry("/api/agents", "AgentsHandler", "upstream", {"GET": P("tenant", comment="agents"), "POST": P("tenant", comment="agent create/update/archive/delete/team-bind")}),
-    RouteEntry("/api/agents/([^/]+)/avatar", "AgentAvatarHandler", "upstream", {"GET": P("tenant", comment="agent avatar"), "POST": P("tenant", comment="agent avatar upload")}),
+    RouteEntry("/api/agents/([^/]+)/avatar", "AgentAvatarHandler", "upstream", {"GET": P("tenant", comment="agent avatar (tenant derived from the addressed agent: the console and the desktop app read this as an <img> subresource, which cannot send X-Tenant-ID)", tenant_from_resource=True), "POST": P("tenant", comment="agent avatar upload")}),
     RouteEntry("/api/agents/([^/]+)/files/([^/]+)", "AgentCoreFileHandler", "upstream", {"GET": P("tenant", comment="agent core file"), "PUT": P("tenant", comment="agent core file save")}),
     RouteEntry("/api/sessions", "SessionsHandler", "upstream", {"GET": P("tenant", comment="sessions")}),
     RouteEntry("/api/sessions/(.*)/generate_title", "SessionTitleHandler", "upstream", {"POST": P("tenant", comment="session title")}),

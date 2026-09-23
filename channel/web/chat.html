@@ -82,6 +82,12 @@
         // only): "classic" (single sidebar) or "split" (area switch). Never
         // changes authorization, identity mode or consumer state.
         window.__COW_NAVIGATION_MODE__ = '{{COW_NAVIGATION_MODE}}';
+        // Temporary workbench-sidebar presentation switch: '1' renders the
+        // four-zone sidebar with dual launch buttons and a five-row recent
+        // preview. Layout only -- the team candidate rules and the server-side
+        // roster rejection apply either way, so turning this back off restores
+        // the old sidebar without weakening any team boundary.
+        window.__COW_WORKBENCH_SIDEBAR_LAUNCH_V2__ = '{{COW_WORKBENCH_SIDEBAR_LAUNCH_V2}}';
         document.documentElement.setAttribute('lang', window.__cowResolveLang__());
     })();
     </script>
@@ -199,9 +205,23 @@
                 </div>
             </div>
 
-            <button id="sidebar-new-chat" type="button" class="sidebar-new-chat" onclick="startSidebarNewChat()" data-i18n-title="home_new_chat" data-i18n-aria-label="home_new_chat">
-                <i class="fas fa-plus" aria-hidden="true"></i><span data-i18n="home_new_chat">新建对话</span>
-            </button>
+            <!-- The one launch control of the refined sidebar (change
+                 refine-sidebar-team-chat-launch): the same control the session
+                 panel's 新对话 is — its body starts a chat straight away, its
+                 caret opens the one picker that offers a solo chat per Agent
+                 and 多智能体对话. A separate team button is deliberately not
+                 drawn: two entries for one flow drifted apart. The caret and
+                 its menu belong to the presentation switch, so turning the
+                 switch off restores the plain button. -->
+            <div class="sidebar-new-chat-wrap">
+                <button id="sidebar-new-chat" type="button" class="sidebar-new-chat"
+                        onclick="onNewChatButton(event, 'sidebar')"
+                        data-i18n-title="home_new_chat" data-i18n-aria-label="home_new_chat">
+                    <i class="fas fa-plus" aria-hidden="true"></i><span data-i18n="home_new_chat">新建对话</span>
+                    <i id="sidebar-new-chat-caret" class="fas fa-chevron-down new-chat-caret hidden" aria-hidden="true"></i>
+                </button>
+                <div id="sidebar-new-chat-menu" class="new-chat-menu new-chat-menu-sidebar hidden"></div>
+            </div>
             <!-- Navigation -->
             <nav id="sidebar-nav" class="flex-1 min-h-0 overflow-y-auto py-4 px-3 space-y-1">
                 <!-- Workbench Area (visible on /chat) -->
@@ -497,23 +517,34 @@
         <!-- ================================================================ -->
         <!-- Multi-agent new-chat modal: pick who joins, then start          -->
         <!-- ================================================================ -->
-        <div id="team-chat-modal" class="agent-modal hidden">
-            <div class="agent-modal-card">
-                <h3 class="agent-modal-title" data-i18n="new_team_chat">多智能体对话</h3>
+        <div id="team-chat-modal" class="agent-modal hidden" role="dialog" aria-modal="true"
+             aria-labelledby="team-chat-title">
+            <div class="agent-modal-card team-chat-card">
+                <h3 id="team-chat-title" class="agent-modal-title" data-i18n="new_team_chat">多智能体对话</h3>
                 <div class="agent-modal-body">
-                    <p class="agent-field-hint mb-3" data-i18n="new_team_chat_hint">选择参与本次对话的智能体，第一个为会话的默认智能体。</p>
+                    <p class="agent-field-hint mb-3" data-i18n="new_team_chat_hint">选择参与本次对话的智能体；未指定成员时由默认响应者接收消息，输入 @ 可指定其他成员。</p>
+                    <div class="team-chat-toolbar">
+                        <label class="team-chat-search" for="team-chat-search">
+                            <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                            <input id="team-chat-search" type="search" autocomplete="off" spellcheck="false"
+                                   data-i18n-placeholder="team_chat_search" placeholder="搜索名称或职责"
+                                   oninput="onTeamChatSearch(event)">
+                        </label>
+                        <span id="team-chat-count" class="team-chat-count" role="status" aria-live="polite"></span>
+                    </div>
+                    <div id="team-chat-selected" class="team-chat-selected" aria-live="polite"></div>
                     <div class="team-chat-list-head">
                         <span class="team-chat-list-label" data-i18n="agents_pick_hint">选择智能体</span>
                         <button type="button" class="agent-btn agent-btn-text agent-btn-sm" onclick="openAgentCreateFromModal()">
                             <i class="fas fa-plus mr-1"></i><span data-i18n="agents_create">创建智能体</span>
                         </button>
                     </div>
-                    <div id="team-chat-list" class="team-chat-list"></div>
+                    <div id="team-chat-list" class="team-chat-list" role="listbox" aria-multiselectable="true"></div>
                 </div>
                 <div class="agent-modal-foot">
-                    <span id="team-chat-status" class="agent-field-hint text-red-500 mr-auto"></span>
-                    <button onclick="closeTeamChatModal()" class="agent-btn agent-btn-text" data-i18n="cancel">取消</button>
-                    <button onclick="startTeamChat()" class="agent-btn agent-btn-primary" data-i18n="new_team_chat_start">开始对话</button>
+                    <span id="team-chat-status" class="agent-field-hint text-red-500 mr-auto" role="alert"></span>
+                    <button type="button" onclick="closeTeamChatModal()" class="agent-btn agent-btn-text" data-i18n="cancel">取消</button>
+                    <button type="button" id="team-chat-start" onclick="startTeamChat()" class="agent-btn agent-btn-primary" data-i18n="new_team_chat_start">开始对话</button>
                 </div>
             </div>
         </div>
@@ -924,7 +955,7 @@
                                     <i class="fas fa-rotate" aria-hidden="true"></i>
                                 </button>
                                 <div class="session-panel-new-wrap">
-                                    <button type="button" class="history-new-btn" onclick="onNewChatButton(event)">
+                                    <button id="history-new-chat-btn" type="button" class="history-new-btn" onclick="onNewChatButton(event)">
                                         <i class="fas fa-plus" aria-hidden="true"></i>
                                         <span data-i18n="new_chat">新对话</span>
                                         <i id="new-chat-caret" class="fas fa-chevron-down new-chat-caret hidden" aria-hidden="true"></i>
@@ -1112,6 +1143,30 @@
                                 class="px-4 py-2 rounded-lg border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200 text-sm font-medium whitespace-nowrap shrink-0">
                             <i class="fas fa-rotate mr-1.5"></i><span data-i18n="agent_workbench_refresh">刷新</span>
                         </button>
+                    </div>
+                    <div id="agent-workbench-filters" class="agent-workbench-filters" hidden>
+                        <div class="agent-wb-search">
+                            <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                            <input id="agent-workbench-search" type="search" autocomplete="off" enterkeyhint="search"
+                                   data-i18n-placeholder="agent_workbench_search_placeholder" placeholder="搜索智能体名称、职责、标签…"
+                                   aria-label="搜索智能体" oninput="onAgentWorkbenchSearch(event)"
+                                   oncompositionstart="_wbSearchComposing = true"
+                                   oncompositionend="_wbSearchComposing = false; onAgentWorkbenchSearch(event)"
+                                   onkeydown="if (event.key === 'Escape' && !event.isComposing) { event.preventDefault(); clearAgentWorkbenchSearch(); }">
+                            <button id="agent-workbench-search-clear" type="button" hidden aria-label="清除搜索"
+                                    onclick="clearAgentWorkbenchSearch()"><i class="fas fa-times" aria-hidden="true"></i></button>
+                        </div>
+                        <div class="agent-wb-filter-row">
+                            <div id="agent-workbench-tags" class="agent-wb-filter-tags" role="group" aria-label="按标签筛选"></div>
+                            <button id="agent-workbench-tags-toggle" type="button" class="agent-wb-filter-link" hidden
+                                    aria-expanded="false" aria-controls="agent-workbench-tags" onclick="toggleAgentWorkbenchTags()"
+                                    data-i18n="agent_workbench_tags_more">展开全部</button>
+                        </div>
+                    </div>
+                    <div id="agent-workbench-results" class="agent-workbench-results" hidden>
+                        <span id="agent-workbench-result-count" role="status" aria-live="polite"></span>
+                        <button id="agent-workbench-filter-reset" type="button" class="agent-wb-filter-link" hidden
+                                onclick="clearAgentWorkbenchSearch(true)" data-i18n="agent_workbench_clear_filters">清除条件</button>
                     </div>
                     <div id="agent-workbench-status" class="agent-workbench-status agent-workbench-status-hidden" role="status" aria-live="polite"></div>
                     <div id="agent-workbench-grid" class="agent-workbench-grid"></div>

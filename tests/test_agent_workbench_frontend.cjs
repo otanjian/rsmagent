@@ -32,7 +32,18 @@ function element() {
 }
 const agent = (id, extra = {}) => ({ id, name: id, avatar: null, description: '',
     is_default: false, can_chat: true, unavailable_reason: null, ...extra });
+/** The coding-type badge markup inside ``html``, or null when there is none. */
+function codingHint(html) {
+    const found = html.match(/<span class="coding-agent-badge[^"]*"[^>]*>[\s\S]*?<\/span>/);
+    return found ? found[0] : null;
+}
 const response = agents => ({ ok: true, json: async () => ({ status: 'success', agents }) });
+const filterAgents = () => [
+    agent('default', { name: '智能办公助理', is_default: true }),
+    agent('finance', { name: '对账分析', description: '核对账款', tags: ['财务', '经营分析', '财务', ' '] }),
+    agent('sales', { name: '客户对账', position: '商务专员', category: '销售服务', tags: ['销售', '经营分析'] }),
+    agent('sap', { name: 'SAP 助手', tags: ['ERP'] }),
+];
 function deferred() {
     let resolve, reject;
     const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
@@ -84,6 +95,158 @@ function setup(fetchImpl = async () => response([agent('B')])) {
             settings: _sessCfg, workspace: _wsSelState});`, ctx);
     return { ctx, nodes, events, storage, logs, node: id => ctx.document.getElementById(id) };
 }
+
+test('keyword/tag intersection, per-agent facet counts and legacy untagged records', () => {
+    const { ctx } = setup();
+    const rows = filterAgents();
+    const result = ctx.agentWorkbenchFilterResult([...rows, rows[1]], ' 对账 ', '财务');
+    assert.deepEqual(Array.from(result.agents, a => a.id), ['finance']);
+    const counts = new Map(result.options.map(o => [o.tag, o.count]));
+    assert.equal(counts.get(null), 2);
+    assert.equal(counts.get('财务'), 1);
+    assert.equal(counts.get('经营分析'), 2);
+    assert.equal(counts.get('ERP'), 0);
+    assert.deepEqual(Array.from(ctx.agentWorkbenchFilterResult(rows, '', '').agents, a => a.id), ['default']);
+    assert.deepEqual(Array.from(ctx.agentWorkbenchFilterResult(rows, ' SaP ', null).agents, a => a.id), ['sap']);
+    for (const word of ['sales', '商务专员', '销售服务']) {
+        assert.equal(ctx.agentWorkbenchFilterResult(rows, word, null).agents[0].id, 'sales');
+    }
+});
+
+test('search and tag selection only narrow cards, not the shared chat roster or owner', async () => {
+    const { ctx, node } = setup(async () => response(filterAgents()));
+    await ctx.loadAgentWorkbench();
+    ctx.onAgentWorkbenchSearch({ target: { value: '对账' } });
+    vm.runInContext("selectAgentWorkbenchTag(_wbFilterOptions.findIndex(o => o.tag === '财务'))", ctx);
+    assert.match(node('agent-workbench-grid').innerHTML, /data-agent-id="finance"/);
+    assert.doesNotMatch(node('agent-workbench-grid').innerHTML, /data-agent-id="sales"/);
+    assert.equal(ctx.state().agents.length, 4);
+    assert.equal(ctx.chatAgentCatalog.length, 4);
+    assert.equal(ctx.activeAgentId, 'A');
+    assert.equal(ctx.sessionId, 'old-session');
+    await ctx.loadAgentWorkbench(true);
+    assert.doesNotMatch(node('agent-workbench-grid').innerHTML, /data-agent-id="sales"/);
+    ctx.clearAgentWorkbenchSearch(true);
+    assert.match(node('agent-workbench-grid').innerHTML, /data-agent-id="sales"/);
+    assert.equal(node('agent-workbench-search').focused, true);
+});
+
+test('unmatched filters differ from an empty roster and a failed refresh', async () => {
+    let fail = false;
+    const { ctx, node } = setup(async () => {
+        if (fail) return { ok: false, status: 403, json: async () => ({ code: 'forbidden' }) };
+        return response(filterAgents());
+    });
+    await ctx.loadAgentWorkbench();
+    ctx.onAgentWorkbenchSearch({ target: { value: '没有这个词' } });
+    assert.match(node('agent-workbench-grid').innerHTML, /agent_workbench_no_match/);
+    assert.equal(node('agent-workbench-results').hidden, false);
+    assert.equal(node('agent-workbench-status').textContent, '');
+    fail = true;
+    await ctx.loadAgentWorkbench(true);
+    assert.equal(node('agent-workbench-results').hidden, true);
+    assert.equal(node('agent-workbench-filters').hidden, true);
+    assert.match(node('agent-workbench-grid').innerHTML, /agent_workbench_no_permission/);
+});
+
+test('refresh removing the selected tag falls back to All while preserving the search', async () => {
+    let rows = filterAgents();
+    const { ctx, node } = setup(async () => response(rows));
+    await ctx.loadAgentWorkbench();
+    ctx.onAgentWorkbenchSearch({ target: { value: '对账' } });
+    vm.runInContext("selectAgentWorkbenchTag(_wbFilterOptions.findIndex(o => o.tag === '财务'))", ctx);
+    rows = rows.filter(a => a.id !== 'finance');
+    await ctx.loadAgentWorkbench(true);
+    assert.equal(vm.runInContext('_wbSelectedTag', ctx), null);
+    assert.equal(vm.runInContext('_wbSearchQuery', ctx), '对账');
+    assert.match(node('agent-workbench-grid').innerHTML, /data-agent-id="sales"/);
+    assert.doesNotMatch(node('agent-workbench-grid').innerHTML, /data-agent-id="sap"/);
+});
+
+test('IME composition waits for committed input without replacing the search input', async () => {
+    const { ctx, node } = setup(async () => response(filterAgents()));
+    await ctx.loadAgentWorkbench();
+    const input = node('agent-workbench-search');
+    ctx.onAgentWorkbenchSearch({ target: { value: 'dui' }, isComposing: true });
+    assert.match(node('agent-workbench-grid').innerHTML, /data-agent-id="default"/);
+    ctx.onAgentWorkbenchSearch({ target: { value: '对账' } });
+    assert.doesNotMatch(node('agent-workbench-grid').innerHTML, /data-agent-id="default"/);
+    assert.equal(input, node('agent-workbench-search'));
+});
+
+test('identity changes clear previous filters and invalidate delayed list replies', async () => {
+    const pending = deferred();
+    let delay = false;
+    const { ctx, node, storage } = setup(() => delay ? pending.promise : Promise.resolve(response(filterAgents())));
+    ctx._authEpoch = 1;
+    ctx._accountState = { username: 'alice' };
+    await ctx.loadAgentWorkbench();
+    ctx.onAgentWorkbenchSearch({ target: { value: '财务' } });
+    delay = true;
+    const old = ctx.loadAgentWorkbench();
+    ctx._authEpoch++;
+    pending.resolve(response([agent('old-secret', { tags: ['old-tag'] })]));
+    await old;
+    ctx.renderAgentWorkbench();
+    assert.equal(ctx.state().agents.length, 0);
+    assert.equal(vm.runInContext('_wbSearchQuery', ctx), '');
+    assert.equal(node('agent-workbench-filters').hidden, true);
+    delay = false;
+    await ctx.loadAgentWorkbench();
+    ctx.onAgentWorkbenchSearch({ target: { value: '对账' } });
+    storage.set('cow_tenant_id', 'another-tenant');
+    ctx.renderAgentWorkbench();
+    assert.equal(ctx.chatAgentCatalog.length, 0);
+    assert.equal(node('agent-workbench-grid').innerHTML, '');
+    assert.equal(node('agent-workbench-tags').innerHTML, '');
+});
+
+test('a newer response uses the latest search and cannot resurrect old tags', async () => {
+    const first = deferred(), second = deferred();
+    let calls = 0;
+    const { ctx, node } = setup(() => (++calls === 1 ? first : second).promise);
+    const old = ctx.loadAgentWorkbench();
+    const fresh = ctx.loadAgentWorkbench();
+    ctx.onAgentWorkbenchSearch({ target: { value: 'SAP' } });
+    second.resolve(response(filterAgents()));
+    await fresh;
+    first.resolve(response([agent('stale', { tags: ['stale-tag'] })]));
+    await old;
+    assert.match(node('agent-workbench-grid').innerHTML, /data-agent-id="sap"/);
+    assert.doesNotMatch(node('agent-workbench-tags').innerHTML, /stale-tag/);
+});
+
+test('custom labels stay text, special tag names cannot collide with synthetic filters', async () => {
+    const { ctx, node } = setup(async () => response([
+        agent('safe', { tags: ['全部', '未打标签', '__proto__', '\"><img src=x onerror=alert(1)>'] }),
+    ]));
+    ctx.escapeHtml = text => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    await ctx.loadAgentWorkbench();
+    const html = node('agent-workbench-tags').innerHTML;
+    assert.doesNotMatch(html, /<img/);
+    assert.match(html, /&lt;img/);
+    const result = ctx.agentWorkbenchFilterResult(ctx.state().agents, '', '全部');
+    assert.equal(result.agents.length, 1);
+    assert.equal(ctx.agentWorkbenchFilterResult(ctx.state().agents, '', '').agents.length, 0);
+});
+
+test('only the first tag row remains focusable when collapsed; expanding and resizing restore access', () => {
+    const { ctx, node } = setup();
+    const buttons = [0, 0, 40, 40, 80, 120].map(offsetTop => ({ offsetTop, hidden: false }));
+    const list = node('agent-workbench-tags');
+    list.clientWidth = 480;
+    list.style = { setProperty() {} };
+    list.querySelectorAll = () => buttons;
+    ctx.layoutAgentWorkbenchTags();
+    assert.deepEqual(buttons.map(b => b.hidden), [false, false, true, true, true, true]);
+    assert.equal(node('agent-workbench-tags-toggle').hidden, false);
+    ctx.toggleAgentWorkbenchTags();
+    assert.ok(buttons.every(b => !b.hidden));
+    assert.equal(node('agent-workbench-tags-toggle').attrs['aria-expanded'], 'true');
+    buttons.forEach(b => { b.offsetTop = 0; });
+    ctx.layoutAgentWorkbenchTags();
+    assert.equal(node('agent-workbench-tags-toggle').hidden, true);
+});
 
 test('fresh workbench Agent starts even when absent from management cache', async () => {
     const { ctx, events, node } = setup(async () => response([agent('B', { name: 'New name' })]));
@@ -428,6 +591,21 @@ test('the workbench card says when an Agent is a coding one', async () => {
     assert.match(coding, /coding-agent-badge/);
     assert.match(coding, /agents_type_coding/);
 
+    // The hint is a glyph, not a label. As text it sat next to the Agent's own
+    // name and read like a second name, so the wording moved into the tooltip
+    // and the accessible name (change simplify-coding-agent-type-hint).
+    const hint = codingHint(coding);
+    assert.ok(hint, 'the coding card has no type hint');
+    assert.match(hint, /<i class="fas fa-terminal"/);
+    assert.doesNotMatch(hint, />[^<]*[^\s<]/,
+        'the hint still renders visible text instead of only the icon');
+    assert.match(hint, /role="img"/, 'the icon is not exposed as an image');
+    assert.match(hint, /title="agents_type_coding"/, 'the hover hint lost the type wording');
+    assert.match(hint, /aria-label="agents_type_coding"/, 'the icon has no accessible name');
+    // One implementation: the picker row and the admin identity block draw the
+    // same markup, so the three cannot drift into three different hints.
+    assert.equal(hint, ctx.codingAgentTypeHint());
+
     // A normal Agent is not marked, so the badge keeps meaning something.
     const plain = ctx.agentWorkbenchCardHTML(
         { ...agent('plain', { agent_type: 'normal' }), enabled: true }, true, null);
@@ -437,4 +615,19 @@ test('the workbench card says when an Agent is a coding one', async () => {
     // (``opencode-coding-agents``: 缺少类型的旧档案 MUST 按 normal 处理).
     const legacy = ctx.agentWorkbenchCardHTML({ ...agent('old'), enabled: true }, true, null);
     assert.doesNotMatch(legacy, /coding-agent-badge/);
+});
+
+test('the icon hint is a square chip, not a text pill', () => {
+    // The card's top-right column holds the default chip and the type hint
+    // side by side, so the hint has to keep a fixed square: a pill that grows
+    // with its label would squeeze the Agent's name again.
+    const css = fs.readFileSync(
+        path.join(__dirname, '../channel/web/static/css/coding.css'), 'utf8');
+    const rule = css.match(/\.coding-agent-badge \{[\s\S]*?\}/);
+    assert.ok(rule, 'the type hint has no styling rule');
+    assert.match(rule[0], /width: 20px/);
+    assert.match(rule[0], /height: 20px/);
+    assert.match(rule[0], /justify-content: center/);
+    assert.doesNotMatch(rule[0], /padding:/,
+        'the chip still reserves room for a label it no longer has');
 });

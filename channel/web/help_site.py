@@ -129,6 +129,14 @@ class HelpSiteHandler:
             page = page[:-4]
             target = '/help/' + ('' if page == 'index' else page)
             raise web.HTTPError('301 Moved Permanently', {'Location': target + ('?' + urlencode(query) if query else '')}, '')
+        if page == 'scenario_doc':
+            # 参数化页面：/help/scenario_doc 本身没有内容，只有 /help/scenario/<slug>。
+            raise web.notfound()
+        parts = page.split('/')
+        if len(parts) in (2, 3) and parts[0] == 'scenario' and parts[1]:
+            # /help/scenario/<slug>[/tasks|/demo]，语言仍由 cookie 与 ?lang= 决定。
+            query = {**query, 'p': parts[1], 'k': parts[2] if len(parts) == 3 else ''}
+            page = 'scenario_doc'
         if page not in PAGES:
             raise web.notfound()
         lang = query.get('lang', '').lower()

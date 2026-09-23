@@ -21,10 +21,8 @@ function node() {
 function setup(payload) {
     const nodes = new Map();
     const ctx = { agentCatalog: [], activeAgentId: 'owner', defaultAgentId: 'old-default',
-        // None of these cases exercise the separate use-range read, so the
-        // pickers run on the management catalogue — the documented fallback for
-        // a backend that cannot serve that read. ``chat_picker_use_range``
-        // covers the split itself.
+        // Filled by ``loadChatAgentCatalog`` below, which mirrors the app's
+        // separate use-range read.
         chatAgentCatalog: null,
         sessionId: 'existing-session', currentView: 'chat', _authEpoch: 1, tenant: 'tenant-a',
         selectedAdminAgentId: '', _sessCfg: null, channelInstances: [], rosterRevision: '',
@@ -44,11 +42,21 @@ function setup(payload) {
         ['function multiAgentMode()', '// Who is answering'],
         ['function renderComposerIdentity()', 'function toggleComposerAgentMenu('],
         ['function renderComposerAgentMenu()', '/** Jump from the composer'],
+        ['function teamRosterRows()', 'function addressedAgentId('],
         ['function currentTeamIds()', 'function setTeamMembers('],
     ]) vm.runInContext(section(start, end), ctx);
     // The roster the pickers read is a read of its own (the workbench
-    // projection); these cases supply it through ``chatAgentCatalog`` instead.
-    ctx.loadChatAgentCatalog = () => Promise.resolve();
+    // projection), so the harness performs it against the same payload the
+    // management catalogue came from. The team surfaces deliberately do NOT
+    // fall back to the management catalogue, so a stub that left
+    // ``chatAgentCatalog`` empty would make every invite row vanish.
+    ctx.loadChatAgentCatalog = () => {
+        const rows = (payload && payload.agents) || [];
+        // Same shape the real read returns: normalized rows, default first.
+        ctx.chatAgentCatalog = rows.map(ctx.normalizeAgentCatalogEntry)
+            .sort((a, b) => Number(b.is_default) - Number(a.is_default));
+        return Promise.resolve();
+    };
     return { ctx, get: id => ctx.document.getElementById(id) };
 }
 const projected = (id, extra = {}) => ({ id, name: id, can_chat: true, is_default: false, ...extra });
@@ -88,8 +96,8 @@ test('runtime-unavailable and malformed capabilities do not become chat choices'
     assert.doesNotMatch(get('composer-agent-menu').innerHTML, /inviteTeamMember/);
 });
 
-test('an existing group retains its member controls when the available catalog shrinks', async () => {
-    const { ctx, get } = setup({ status: 'success', agents: [projected('owner', { is_default: true })] });
+test('an existing group keeps the member controls of members it can still run', async () => {
+    const { ctx, get } = setup({ status: 'success', agents: [projected('owner', { is_default: true }), projected('guest')] });
     ctx._sessCfg = { team: { members: [{ id: 'guest', name: 'Guest' }] } };
     await ctx.loadAgentCatalog();
     assert.equal(ctx.sharedConversation(), true);
@@ -98,6 +106,23 @@ test('an existing group retains its member controls when the available catalog s
     ctx.renderComposerAgentMenu();
     assert.match(get('composer-agent-menu').innerHTML, /removeTeamMember\('guest'\)/);
     assert.doesNotMatch(get('composer-agent-menu').innerHTML, /pickComposerAgent/);
+});
+
+test('a member that can no longer take part is a generic warning, never a named row', async () => {
+    // The roster the server echoed still names 'gone', but it is outside the
+    // caller's eligible team candidates. Showing its name, face or type would be
+    // exactly the leak the team boundary forbids, so the menu reports an invalid
+    // member and offers no row for it (change refine-sidebar-team-chat-launch,
+    // task 2.5).
+    const { ctx, get } = setup({ status: 'success', agents: [projected('owner', { is_default: true })] });
+    ctx._sessCfg = { team: { members: [{ id: 'gone', name: 'Gone', agent_type: 'coding' }] } };
+    await ctx.loadAgentCatalog();
+    assert.equal(ctx.sharedConversation(), true);
+    ctx.renderComposerAgentMenu();
+    const html = get('composer-agent-menu').innerHTML;
+    assert.doesNotMatch(html, /removeTeamMember\('gone'\)/);
+    assert.doesNotMatch(html, /Gone/);
+    assert.match(html, /team_invalid_members/);
 });
 
 test('a late catalog from the previous tenant cannot restore its Agents', async () => {
