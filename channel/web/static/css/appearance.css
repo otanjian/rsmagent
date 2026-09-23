@@ -562,7 +562,7 @@ html[data-web-palette] #sidebar .sidebar-new-chat {
     justify-content: center;
     gap: 10px;
     min-height: 46px;
-    margin: 8px 18px 18px;
+    margin: 0;
     padding: 10px 16px;
     border: 1px solid var(--web-sidebar-border);
     border-radius: 11px;
@@ -579,6 +579,24 @@ html[data-web-palette] #sidebar .sidebar-new-chat:hover {
     border-color: var(--web-sidebar-accent);
 }
 html[data-web-palette] #sidebar .sidebar-new-chat:disabled { opacity: .6; cursor: not-allowed; }
+/* The launch control and its picker (change refine-sidebar-team-chat-launch).
+   One control, not two: the section spacing belongs to the wrapper so the caret
+   can anchor the menu under the button, and the label stays centred because the
+   caret is taken out of the flow (console.css positions it). The nested surfaces
+   read as the sidebar's own, so the picker is not a white dialog dropped into a
+   dark rail. */
+html[data-web-palette] #sidebar .sidebar-new-chat-wrap { margin: 8px 18px 18px; }
+html[data-web-palette] #sidebar .new-chat-menu {
+    background: var(--web-sidebar-menu);
+    border-color: var(--web-sidebar-border);
+    color: var(--web-sidebar-title);
+}
+html[data-web-palette] #sidebar .new-chat-item { color: var(--web-sidebar-text); }
+html[data-web-palette] #sidebar .new-chat-item:hover {
+    background: var(--web-sidebar-hover);
+    color: var(--web-sidebar-title);
+}
+html[data-web-palette] #sidebar .new-chat-sep { background: var(--web-sidebar-border); }
 html[data-web-palette] #sidebar-nav { padding: 0 16px 18px; }
 html[data-web-palette] #sidebar-nav .menu-group + .menu-group { margin-top: 14px; }
 html[data-web-palette] #sidebar-nav .menu-group > button {
@@ -968,7 +986,21 @@ html[data-web-palette] #composer-card #optimize-btn.text-primary-500 { color: va
     html[data-web-palette] #app.sidebar-collapsed #sidebar { width: 72px; }
     #app.sidebar-collapsed #sidebar .sidebar-brand { justify-content: center; padding: 0; }
     #app.sidebar-collapsed #sidebar .sidebar-brand-mark { width: 32px; height: 32px; }
-    #app.sidebar-collapsed #sidebar .sidebar-new-chat { margin: 8px 12px 18px; padding: 10px; }
+    #app.sidebar-collapsed #sidebar .sidebar-new-chat-wrap { margin: 8px 12px 18px; }
+    #app.sidebar-collapsed #sidebar .sidebar-new-chat { margin: 0; padding: 10px; }
+    #app.sidebar-collapsed #sidebar .sidebar-new-chat .new-chat-caret {
+        right: 5px;
+        bottom: 5px;
+        font-size: 9px;
+    }
+    /* The rail is 72px wide, so the picker cannot hang under the button: it
+       opens beside the rail, the way the account menu does when collapsed. */
+    #app.sidebar-collapsed #sidebar .new-chat-menu {
+        left: calc(100% + 12px);
+        right: auto;
+        top: 0;
+        width: 224px;
+    }
     #app.sidebar-collapsed #sidebar-nav { padding-left: 10px; padding-right: 10px; }
     #app.sidebar-collapsed #sidebar-nav .sidebar-item { justify-content: center; gap: 0; padding: 11px 0; }
     #app.sidebar-collapsed #sidebar-nav .menu-group > button { justify-content: center; gap: 0; padding: 8px 0; }

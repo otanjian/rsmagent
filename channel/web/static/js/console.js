@@ -443,6 +443,7 @@ function _clearTenantPicker() {
 
 function _invalidateAccountIdentity(phase) {
     ++_authEpoch;
+    if (typeof resetAgentWorkbenchFilters === 'function') resetAgentWorkbenchFilters(true);
     ++_accountCheckSeq;
     _accountCheckRequest = null;
     _accountIdentityKey = null;
@@ -2127,6 +2128,10 @@ function closeSidebar() {
     if (window.innerWidth < 1024) document.getElementById('menu-toggle')?.setAttribute('aria-expanded', 'false');
 }
 
+/* The sidebar's launch control body: start a chat the way the session panel
+   does, reached from the sidebar. Its caret is handled by the shared
+   `onNewChatButton`, which opens the very same picker the history page uses —
+   both are one flow with one candidate rule. */
 function startSidebarNewChat() {
     if (typeof wsGuardUnsaved === 'function' && !wsGuardUnsaved(startSidebarNewChat)) return;
     if (currentView === 'branding' && brandingDirty) {
@@ -2137,6 +2142,52 @@ function startSidebarNewChat() {
     if (currentView !== 'chat') return;
     newChat();
     focusChatComposer();
+}
+
+/* =====================================================================
+   Refined workbench sidebar (temporary presentation switch)
+   =====================================================================
+   `workbench_sidebar_launch_v2` gates *layout only*: the launch control's caret
+   and picker, the navigation order and the five-row recent preview. It never
+   gates a team rule — the candidate projection that keeps coding Agents out, the
+   server-side roster rejection and the save-then-commit start all apply with
+   the switch on or off (spec: 呈现回退不撤销团队类型边界). Turning it off
+   restores the old sidebar exactly, because everything here is additive. */
+function sidebarLaunchV2() {
+    if (typeof window === 'undefined') return false;
+    return String(window.__COW_WORKBENCH_SIDEBAR_LAUNCH_V2__ || '0').trim() === '1';
+}
+
+// The navigation order the refined sidebar promises, as view ids. The markup
+// keeps its own order, so switching the flag back off needs no markup change.
+const SIDEBAR_V2_VIEW_ORDER = ['chat', 'agent-workbench', 'scenes', 'knowledge', 'tasks'];
+
+function applySidebarLaunchV2() {
+    const on = sidebarLaunchV2();
+    if (typeof document === 'undefined' || !document.body) return on;
+    // The class sits on the sidebar it restyles, so the launch control's spacing
+    // and the preview spacing need no rule that reaches outside it.
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) sidebar.classList.toggle('sidebar-launch-v2', on);
+    // The caret belongs to this layout and is only offered when there is
+    // something to choose between; `syncNewChatControls` owns that decision so
+    // the session panel and the sidebar can never disagree about it.
+    syncNewChatControls();
+    if (!on) return on;
+    const items = document.querySelector(
+        '[data-nav-shell="workbench"] .menu-group[data-group="chat"] .menu-group-items');
+    if (!items) return on;
+    const byView = new Map();
+    items.querySelectorAll('.sidebar-item[data-view]').forEach(el => {
+        if (el.dataset.view) byView.set(el.dataset.view, el);
+    });
+    // Re-appending a node moves it. Known entries land in the promised order; an
+    // entry this list does not know about keeps working, just before them.
+    SIDEBAR_V2_VIEW_ORDER.forEach(view => {
+        const el = byView.get(view);
+        if (el) items.appendChild(el);
+    });
+    return on;
 }
 
 // Keep closed groups out of the keyboard focus order and move focus to the
@@ -2333,6 +2384,38 @@ function availableChatAgents() {
     return chatAgents();
 }
 
+/* Which Agents may join a *team*. This is a narrower question than "may chat",
+   and the difference is the whole point of the projection (change
+   refine-sidebar-team-chat-launch, task 2.1):
+
+   - A coding Agent is excluded outright. Its conversation is served by the
+     embedded Opencode app and it has no ordinary runtime to take a turn, so it
+     can never be a teammate — not as the owner, not as a member.
+   - An *unresolved* id is not a candidate either. Absent means "the roster row
+     did not say", which a genuine pre-type profile may use, but an id that has
+     no row at all is unverified and must never be offered.
+   - The use-range read is the only authority. Unlike ``chatAgents()`` this does
+     NOT fall back to the management catalogue when that read has not landed:
+     the fallback would offer Agents whose ``agent.use`` grant was never
+     verified, and team membership is exactly the surface where that matters
+     (design D2).
+
+   Every team surface reads this one projection — the picker, its search, the
+   preselect, the default-responder candidates, the selected summary, the
+   in-conversation invite list and the @ candidates — so a rule change cannot
+   leave one of them offering a coding Agent. */
+function teamCandidateAgents() {
+    const roster = Array.isArray(chatAgentCatalog) ? chatAgentCatalog : [];
+    return roster.filter(agent => agent && agent.enabled !== false && agent.can_chat !== false
+        && !agentIsCoding(agent));
+}
+
+/* The declared type of a roster *row*: absent means normal, which is how a
+   pre-type profile is tolerated without letting an unknown id through. */
+function agentIsCoding(agent) {
+    return !!agent && agent.agent_type === 'coding';
+}
+
 /* An uploaded avatar reuses the same URL every time, so the browser would keep
    serving the stale bytes. The roster revision only moves when the roster's
    *content* changes, and re-uploading over an existing image leaves the field as
@@ -2425,13 +2508,12 @@ function randomAgentId() {
 function loadChatAgentCatalog() {
     return fetchAgentWorkbench().then(agents => {
         chatAgentCatalog = agents;
-        // The composer face, the caret and any open picker are drawn from this
-        // roster, so a list that arrives after the first paint repaints them
-        // instead of leaving the earlier (narrower) reading on screen.
+        // The composer face, both launch controls and any open picker are drawn
+        // from this roster, so a list that arrives after the first paint repaints
+        // them instead of leaving the earlier (narrower) reading on screen.
         renderComposerIdentity();
-        document.getElementById('new-chat-caret')?.classList.toggle('hidden', !multiAgentMode());
-        const menu = document.getElementById('new-chat-menu');
-        if (menu && !menu.classList.contains('hidden')) paintNewChatMenu(menu);
+        syncNewChatControls();
+        if (typeof consumeScenarioOpenLink === 'function') consumeScenarioOpenLink();
     }).catch(() => {});
 }
 
@@ -2508,12 +2590,13 @@ function loadAgentCatalog() {
             else closeAgentDetail();
             renderComposerIdentity();
             renderMemoryAgentSelect();
-            // The new-chat button only sprouts a menu (and its caret) once there
-            // is more than one Agent to choose between.
-            document.getElementById('new-chat-caret')?.classList.toggle('hidden', !multiAgentMode());
+            // A launch control only sprouts a menu (and its caret) once there is
+            // more than one Agent to choose between.
+            syncNewChatControls();
             // A name or avatar may have changed; keep faces already on screen in
             // sync with the roster instead of only new bubbles.
             refreshBubbleAvatars();
+            if (typeof consumeScenarioOpenLink === 'function') consumeScenarioOpenLink();
             return data;
         })
         .catch(err => {
@@ -2568,6 +2651,190 @@ let _wbNoticeKey = '';
 // because an empty list is a success: presenting it as a failure would report
 // an authorization gap as a broken page and invite a pointless retry.
 let _wbEmptyReason = '';
+let _wbSearchQuery = '';
+let _wbSelectedTag = null; // null = all; '' = untagged; otherwise an exact tag.
+let _wbTagsExpanded = false;
+let _wbSearchComposing = false;
+let _wbFilterIdentity = null;
+let _wbFilterOptions = [];
+let _wbFilterObserver = null;
+
+function _wbIdentityContext() {
+    return JSON.stringify([
+        typeof _authEpoch === 'undefined' ? 0 : _authEpoch,
+        typeof _accountState === 'undefined' ? '' : _accountState.username || '',
+        sessionStorage.getItem('cow_tenant_id') || '', _identityMode(),
+    ]);
+}
+
+function resetAgentWorkbenchFilters(clearCatalog = false) {
+    _wbSearchQuery = '';
+    _wbSelectedTag = null;
+    _wbTagsExpanded = false;
+    _wbSearchComposing = false;
+    _wbFilterOptions = [];
+    _wbFilterIdentity = null;
+    const input = document.getElementById('agent-workbench-search');
+    if (input) input.value = '';
+    if (clearCatalog) {
+        ++agentWorkbenchSeq;
+        agentWorkbench = [];
+        chatAgentCatalog = [];
+        agentWorkbenchLoading = false;
+        _wbLoadedError = false;
+        _wbEmptyReason = '';
+        _wbNoticeKey = '';
+        ['agent-workbench-grid', 'agent-workbench-tags'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = '';
+        });
+        ['agent-workbench-filters', 'agent-workbench-results'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.hidden = true;
+        });
+        setWbStatus('');
+    }
+}
+
+function _wbSyncFilterIdentity() {
+    const identity = _wbIdentityContext();
+    if (_wbFilterIdentity !== null && _wbFilterIdentity !== identity) resetAgentWorkbenchFilters(true);
+    _wbFilterIdentity = identity;
+}
+
+function agentWorkbenchTags(agent) {
+    return [...new Set((Array.isArray(agent.tags) ? agent.tags : [])
+        .filter(tag => typeof tag === 'string').map(tag => tag.trim()).filter(Boolean))];
+}
+
+// Derive the gallery without narrowing the shared chat/use catalogue.
+function agentWorkbenchFilterResult(agents, query, selectedTag) {
+    const keyword = String(query || '').trim().toLowerCase();
+    const tags = new Map();
+    const matched = [];
+    let untaggedCount = 0;
+    const seen = new Set();
+    agents.forEach(agent => {
+        if (seen.has(agent.id)) return;
+        seen.add(agent.id);
+        const values = agentWorkbenchTags(agent);
+        values.forEach(tag => { if (!tags.has(tag)) tags.set(tag, 0); });
+        const haystack = [agent.name, agent.id, agent.description, agent.position,
+            agent.category, ...values].filter(Boolean).join(' ').toLowerCase();
+        if (keyword && !haystack.includes(keyword)) return;
+        values.forEach(tag => tags.set(tag, tags.get(tag) + 1));
+        if (!values.length) untaggedCount++;
+        matched.push({ agent, tags: values });
+    });
+    return {
+        options: [{ tag: null, count: matched.length },
+            ...Array.from(tags, ([tag, count]) => ({ tag, count })),
+            { tag: '', count: untaggedCount }],
+        agents: matched.filter(row => selectedTag === null
+            || (selectedTag === '' ? !row.tags.length : row.tags.includes(selectedTag)))
+            .map(row => row.agent),
+    };
+}
+
+function onAgentWorkbenchSearch(event) {
+    if (_wbSearchComposing || event.isComposing) return;
+    _wbSearchQuery = event.target.value;
+    paintAgentWorkbench();
+    const grid = document.getElementById('agent-workbench-grid');
+    if (grid) grid.scrollTop = 0;
+}
+
+function clearAgentWorkbenchSearch(all = false) {
+    _wbSearchQuery = '';
+    _wbSearchComposing = false;
+    if (all) _wbSelectedTag = null;
+    const input = document.getElementById('agent-workbench-search');
+    if (input) { input.value = ''; input.focus(); }
+    paintAgentWorkbench();
+}
+
+function selectAgentWorkbenchTag(index) {
+    if (!Number.isInteger(index) || !_wbFilterOptions[index]) return;
+    _wbSelectedTag = _wbFilterOptions[index].tag;
+    paintAgentWorkbench();
+    const tags = document.getElementById('agent-workbench-tags');
+    const selected = tags && tags.querySelector('[aria-pressed="true"]');
+    if (selected) selected.focus();
+    const grid = document.getElementById('agent-workbench-grid');
+    if (grid) grid.scrollTop = 0;
+}
+
+function toggleAgentWorkbenchTags() {
+    _wbTagsExpanded = !_wbTagsExpanded;
+    layoutAgentWorkbenchTags();
+}
+
+function layoutAgentWorkbenchTags() {
+    const list = document.getElementById('agent-workbench-tags');
+    const toggle = document.getElementById('agent-workbench-tags-toggle');
+    if (!list || !toggle || !list.clientWidth) return;
+    const buttons = Array.from(list.querySelectorAll('.agent-wb-filter-chip'));
+    buttons.forEach(button => { button.hidden = false; });
+    list.classList.remove('is-expanded');
+    toggle.textContent = t(_wbTagsExpanded ? 'agent_workbench_tags_less' : 'agent_workbench_tags_more');
+    // Measure the full row first, then reserve the toggle's width before clipping.
+    toggle.hidden = true;
+    list.style.setProperty('--agent-wb-all-width', `${buttons[0]?.offsetWidth || 0}px`);
+    const firstTop = buttons[0]?.offsetTop;
+    toggle.hidden = !buttons.some(button => button.offsetTop > firstTop);
+    if (!_wbTagsExpanded) {
+        const clipped = buttons.filter(button => button.offsetTop > buttons[0]?.offsetTop);
+        clipped.forEach(button => { button.hidden = true; });
+    }
+    list.classList.toggle('is-expanded', _wbTagsExpanded);
+    toggle.setAttribute('aria-expanded', String(_wbTagsExpanded));
+}
+
+function renderAgentWorkbenchFilters(result) {
+    const toolbar = document.getElementById('agent-workbench-filters');
+    const summary = document.getElementById('agent-workbench-results');
+    const list = document.getElementById('agent-workbench-tags');
+    const ready = !_wbLoadedError && agentWorkbench.length > 0;
+    if (toolbar) toolbar.hidden = !ready;
+    if (summary) summary.hidden = !ready;
+    if (!ready || !list) return;
+    _wbFilterOptions = result.options;
+    // Pin the active tag after All so it stays visible when the list collapses.
+    const indices = result.options.map((_, index) => index);
+    if (_wbSelectedTag !== null) {
+        const selected = result.options.findIndex(option => option.tag === _wbSelectedTag);
+        if (selected > 0) indices.splice(1, 0, indices.splice(selected, 1)[0]);
+    }
+    list.innerHTML = indices.map(index => {
+        const option = result.options[index];
+        const active = option.tag === _wbSelectedTag;
+        const label = option.tag === null ? t('agent_workbench_filter_all')
+            : option.tag === '' ? t('agent_workbench_untagged') : option.tag;
+        return `<button type="button" class="agent-wb-filter-chip${active ? ' is-active' : ''}"
+            aria-pressed="${active}" onclick="selectAgentWorkbenchTag(${index})">
+            <span class="agent-wb-filter-label">${escapeHtml(label)}</span>
+            <span class="agent-wb-filter-count">${option.count}</span></button>`;
+    }).join('');
+    const count = document.getElementById('agent-workbench-result-count');
+    if (count) count.textContent = t('agent_workbench_result_count').replace('{count}', result.agents.length);
+    const reset = document.getElementById('agent-workbench-filter-reset');
+    if (reset) reset.hidden = !_wbSearchQuery && _wbSelectedTag === null;
+    const clear = document.getElementById('agent-workbench-search-clear');
+    if (clear) clear.hidden = !_wbSearchQuery;
+    list.setAttribute('aria-label', t('agent_workbench_filter_label'));
+    const input = document.getElementById('agent-workbench-search');
+    if (input) input.setAttribute('aria-label', t('agent_workbench_search_label'));
+    if (clear) clear.setAttribute('aria-label', t('agent_workbench_search_clear'));
+    if (!_wbFilterObserver && typeof ResizeObserver !== 'undefined') {
+        let width = 0;
+        _wbFilterObserver = new ResizeObserver(entries => {
+            const next = entries[0].contentRect.width;
+            if (next !== width) { width = next; layoutAgentWorkbenchTags(); }
+        });
+        _wbFilterObserver.observe(list.parentElement);
+    }
+    layoutAgentWorkbenchTags();
+}
 
 function _wbEmptyKey() {
     return _wbEmptyReason === 'no_reachable_agents'
@@ -2577,7 +2844,7 @@ function _wbEmptyKey() {
 
 function _wbContext() {
     return [activeAgentId, sessionId, currentView, agentNavigationVersion,
-        sessionStorage.getItem('cow_tenant_id'), _identityMode()].join('|');
+        _wbIdentityContext()].join('|');
 }
 
 // Stable, localizable names for the ways the read can end badly. A single
@@ -2651,7 +2918,7 @@ async function fetchAgentWorkbench() {
         // it was never handed. Absent still means normal.
         agent_type: a.agent_type,
         // Digital-employee projection fields (positioned to render on cards).
-        position: a.position || '', category: a.category || '', tags: a.tags || [],
+        position: a.position || '', category: a.category || '', tags: agentWorkbenchTags(a),
     })).sort((a, b) => Number(b.is_default) - Number(a.is_default));
     // The server's diagnosis of an empty roster rides along on the array so the
     // load/apply contract stays a plain list. ``no_agents`` and ``null`` (an
@@ -2662,11 +2929,16 @@ async function fetchAgentWorkbench() {
 }
 
 function applyAgentWorkbench(agents) {
+    _wbSyncFilterIdentity();
     agentWorkbench = agents;
     // The workbench cards and the chat pickers read the same use-range
     // projection, so whichever read lands first fills both.
     chatAgentCatalog = agents;
     _wbEmptyReason = agents.emptyReason || '';
+    if (_wbSelectedTag !== null && !agents.some(a => _wbSelectedTag === ''
+        ? !agentWorkbenchTags(a).length : agentWorkbenchTags(a).includes(_wbSelectedTag))) {
+        _wbSelectedTag = null;
+    }
     // Avatars can be replaced without changing their URL or roster revision.
     const version = String(Date.now());
     agents.forEach(a => { if (a.avatar === 'image') avatarVersions[a.id] = version; });
@@ -2693,6 +2965,27 @@ function agentAnchorHintText() {
     return t('agents_anchor_source_unknown');
 }
 
+/* The coding type hint is a glyph, not a word (change
+   simplify-coding-agent-type-hint). As text it sat in the card's top-right
+   corner next to the Agent's own name and read like a second name, while the
+   one fact it carries -- this card's action opens the embedded OpenCode pane
+   instead of the platform composer -- was buried in a brand string. The icon
+   keeps that fact with less ink and moves the wording to the tooltip and the
+   accessible name, where it costs no layout and is still readable.
+
+   One implementation for the workbench card, the new-chat picker rows and the
+   Agent management identity block: three literal copies would drift into three
+   different hints, and nothing would fail when they did. ``extraClass`` is how
+   the identity block keeps its ``hidden`` toggle. */
+function codingAgentTypeHint(extraClass = '') {
+    // escapeHtml() only handles &, < and >, so a translated string landing in a
+    // double-quoted attribute needs the quote escaped on top of it.
+    const label = escapeHtml(t('agents_type_coding')).replace(/"/g, '&quot;');
+    return `<span class="coding-agent-badge${extraClass ? ' ' + extraClass : ''}"`
+        + ` role="img" title="${label}" aria-label="${label}">`
+        + '<i class="fas fa-terminal" aria-hidden="true"></i></span>';
+}
+
 function agentWorkbenchCardHTML(agent, canChat, unavailableReason) {
     const desc = (agent.description || '').trim();
     // The default/archived badge and the type badge share the card's top-right
@@ -2701,8 +2994,7 @@ function agentWorkbenchCardHTML(agent, canChat, unavailableReason) {
     const badges = [
         agent.is_default
             ? `<span class="agent-card-badge agent-chip-on">${escapeHtml(t('agents_default'))}</span>` : '',
-        agent.agent_type === 'coding'
-            ? `<span class="coding-agent-badge">${escapeHtml(t('agents_type_coding'))}</span>` : '',
+        agent.agent_type === 'coding' ? codingAgentTypeHint() : '',
     ].filter(Boolean).join('');
     const badge = badges ? `<span class="agent-wb-card-badges">${badges}</span>` : '';
     const starting = _agentStartAgentId === agent.id;
@@ -2748,9 +3040,12 @@ function agentWorkbenchCardHTML(agent, canChat, unavailableReason) {
 }
 
 function renderAgentWorkbench() {
+    _wbSyncFilterIdentity();
     const grid = document.getElementById('agent-workbench-grid');
     const status = document.getElementById('agent-workbench-status');
     if (!grid) return;
+    const filtered = agentWorkbenchFilterResult(agentWorkbench, _wbSearchQuery, _wbSelectedTag);
+    renderAgentWorkbenchFilters(filtered);
     // State: loading / empty / error / cards. The status line carries the
     // non-card states (loading, empty, error), the grid carries the cards.
     if (agentWorkbenchLoading && !agentWorkbench.length) {
@@ -2778,7 +3073,15 @@ function renderAgentWorkbench() {
     }
     if (_wbNoticeKey) setWbError(t(_wbNoticeKey));
     else setWbStatus(agentWorkbenchLoading ? t('agent_workbench_loading') : '');
-    grid.innerHTML = agentWorkbench.map(a =>
+    if (!filtered.agents.length) {
+        grid.innerHTML = `<div class="agent-wb-no-match">
+            <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+            <p>${escapeHtml(t('agent_workbench_no_match'))}</p>
+            <button type="button" class="agent-wb-filter-link" onclick="clearAgentWorkbenchSearch(true)">
+                ${escapeHtml(t('agent_workbench_clear_filters'))}</button></div>`;
+        return;
+    }
+    grid.innerHTML = filtered.agents.map(a =>
         agentWorkbenchCardHTML(a, a.can_chat, a.unavailable_reason)
     ).join('');
 }
@@ -2821,6 +3124,7 @@ function paintAgentWorkbench() {
 function loadAgentWorkbench(manualRefresh = false) {
     const grid = document.getElementById('agent-workbench-grid');
     if (!grid) return Promise.resolve();
+    _wbSyncFilterIdentity();
     // Suppress a spurious "loading" flash when returning to a filled list.
     agentWorkbenchLoading = true;
     _wbLoadedError = false;
@@ -3006,7 +3310,7 @@ function renderAgentDetail() {
         <div class="min-w-0">
             <div class="flex items-center gap-2">
                 <span class="text-lg font-semibold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(agent.name)}</span>
-                <span class="coding-agent-badge ${coding ? '' : 'hidden'}">${escapeHtml(t('agents_type_coding'))}</span>
+                ${codingAgentTypeHint(coding ? '' : 'hidden')}
             </div>
             <div class="text-xs text-slate-400 font-mono truncate">${escapeHtml(agent.id)}</div>
         </div>`;
@@ -3730,6 +4034,13 @@ document.addEventListener('click', (e) => {
     if (newMenu && !newMenu.classList.contains('hidden') && !newMenu.contains(e.target)) {
         newMenu.classList.add('hidden');
     }
+    // The sidebar launch picker is the same control in another place, so a click
+    // outside either one shuts them both.
+    const sidebarNewMenu = document.getElementById('sidebar-new-chat-menu');
+    if (sidebarNewMenu && !sidebarNewMenu.classList.contains('hidden')
+            && !sidebarNewMenu.contains(e.target)) {
+        sidebarNewMenu.classList.add('hidden');
+    }
     const teamModal = document.getElementById('team-chat-modal');
     if (teamModal && !teamModal.classList.contains('hidden') && e.target === teamModal) {
         closeTeamChatModal();
@@ -3806,7 +4117,7 @@ function saveAgentProfile() {
         description: document.getElementById('agent-edit-description')?.value.trim() || '',
         position: document.getElementById('agent-edit-position')?.value.trim() || '',
         category: catEl ? (getDropdownValue(catEl) || '') : agent.category || '',
-        tags: (document.getElementById('agent-edit-tags')?.value || '').split(',').map(s => s.trim()).filter(Boolean),
+        tags: [...new Set((document.getElementById('agent-edit-tags')?.value || '').split(/[,，]/).map(s => s.trim()).filter(Boolean))],
         greeting: document.getElementById('agent-edit-greeting')?.value.trim() || '',
         persona_summary: document.getElementById('agent-edit-persona')?.value.trim() || '',
         scene_id: sceneEl ? (getDropdownValue(sceneEl) || '') : agent.scene_id || '',
@@ -4467,7 +4778,6 @@ function renderComposerAgentMenu() {
     const menu = document.getElementById('composer-agent-menu');
     if (!menu) return;
     const taken = new Set(currentTeamIds());
-    const members = (_sessCfg && _sessCfg.team && _sessCfg.team.members) || [];
     const sections = [];
 
     // Once a conversation has teammates it is a group, and the only sensible
@@ -4488,14 +4798,22 @@ function renderComposerAgentMenu() {
         );
     }
 
-    const candidates = availableChatAgents().filter(a => a.id !== activeAgentId && !taken.has(a.id));
+    // Inviting is team membership, so it reads the team projection: a coding
+    // Agent is not merely disabled here, it is absent — no row, no face, no
+    // "unavailable" label (task 2.2).
+    const candidates = teamCandidateAgents().filter(a => a.id !== activeAgentId && !taken.has(a.id));
 
     // A group chat first lists the teammates already in the conversation (the
     // owner is implicit and not shown), then, in a separate section below, who
     // can still be pulled in. Splitting the two makes it obvious these rows are
     // members to remove, not options to pick.
     if (sharedConversation()) {
-        const joined = members.filter(m => m.id !== activeAgentId).map(m => `
+        // Only members that can actually take a turn get a row. A stored member
+        // that no longer resolves, or that resolves to a coding/disabled Agent,
+        // is reported by a generic warning below and never by its name, face or
+        // type (task 2.5) — naming it would be exactly the "coding Agent appears
+        // in a team surface" leak the boundary forbids.
+        const joined = validTeamMemberRows().map(m => `
             <button type="button" class="composer-menu-item agent-row joined"
                     onclick="removeTeamMember('${escapeHtml(m.id)}')" title="${escapeHtml(t('team_remove'))}">
                 ${agentAvatarHTML(m, 24)}
@@ -4506,6 +4824,11 @@ function renderComposerAgentMenu() {
         if (joined) {
             sections.push(
                 `<div class="composer-menu-title">${escapeHtml(t('team_members'))}</div>${joined}`
+            );
+        }
+        if (invalidTeamMembers().length) {
+            sections.push(
+                `<div class="composer-menu-warning">${escapeHtml(t('team_invalid_members'))}</div>`
             );
         }
     }
@@ -4555,16 +4878,51 @@ function pickComposerAgent(agentId) {
 function inviteTeamMember(agentId) {
     // Keep the menu open so the invited Agent visibly moves from "+ add" to the
     // "× remove" list, and the user can invite several in a row without having
-    // to reopen it each time.
-    addTeamMember(agentId).then(refreshComposerAgentMenuIfOpen);
+    // to reopen it each time. A refused write must say so instead of leaving the
+    // menu looking as though the invite happened.
+    addTeamMember(agentId).then(refreshComposerAgentMenuIfOpen)
+        .catch(err => _wsToast((err && err.message) || t('session_settings_failed')));
 }
 
-/** Everyone addressable in this conversation, owner first. */
+/** The stored team roster exactly as the server reported it (identity included). */
+function teamRosterRows() {
+    return ((_sessCfg && _sessCfg.team && _sessCfg.team.members) || []);
+}
+
+/** The stored members that may actually take a turn: resolvable, ordinary,
+    enabled and within the caller's use range. Everything else is an invalid
+    member — it is *tolerated* (the messages stay, the roster is not rewritten
+    behind the user's back) but it never runs and it is never named. */
+function validTeamMemberRows() {
+    const candidates = teamCandidateAgents();
+    return teamRosterRows().filter(m => candidates.some(a => a.id === m.id));
+}
+
+/** The invalid members, reported only as a count by the selection surfaces. */
+function invalidTeamMembers() {
+    const valid = new Set(validTeamMemberRows().map(m => m.id));
+    return teamRosterRows().filter(m => !valid.has(m.id));
+}
+
+/** The members a team write should submit: the valid ones only.
+
+    The server refuses a roster that names a coding/unknown/unauthorized object
+    *as a whole*, so re-submitting a legacy roster verbatim would make every
+    later invite fail. Submitting the valid set is the explicit cleanup the spec
+    asks for, and it is what makes the store agree with what the user can see. */
+function validTeamMemberIds() {
+    return validTeamMemberRows().map(m => m.id);
+}
+
+/** Everyone addressable in this conversation, owner first.
+
+    Only participants that can take a turn are addressable: a legacy roster's
+    coding or unresolvable member is neither shown as a mention chip nor
+    offered as an @ target (tasks 2.2/2.5). */
 function sessionRoster() {
     const owner = findAgent(activeAgentId);
-    const members = (_sessCfg && _sessCfg.team && _sessCfg.team.members) || [];
     const roster = owner ? [owner] : [];
-    members.forEach(m => {
+    validTeamMemberRows().forEach(m => {
         if (!roster.some(a => a.id === m.id)) roster.push(findAgent(m.id) || m);
     });
     return roster;
@@ -4600,33 +4958,61 @@ function currentTeamIds() {
     return ((_sessCfg && _sessCfg.team && _sessCfg.team.members) || []).map(m => m.id);
 }
 
-function setTeamMembers(ids) {
-    const unique = Array.from(new Set(ids.filter(id => id && id !== activeAgentId)));
-    return fetch(`/api/sessions/${encodeURIComponent(sessionId)}/settings`, {
+/** Persist one conversation's roster, addressed explicitly.
+
+    ``target`` carries ``{sessionId, agentId}`` so a caller can save a roster for
+    a conversation that is *not* the one on screen — the prepare-then-commit team
+    start needs exactly that, and addressing the write through the page's global
+    ``sessionId`` / ``activeAgentId`` would write it onto whatever the user
+    happens to be looking at (design D4).
+
+    Rejects with the server's own message when the write is refused or fails:
+    "no members saved" and "members saved" must not look alike to the caller
+    (task 2.4). */
+function setTeamMembers(ids, target) {
+    const ownerId = (target && target.agentId) || activeAgentId || '';
+    const sid = (target && target.sessionId) || sessionId;
+    const unique = Array.from(new Set((ids || []).filter(id => id && id !== ownerId)));
+    const body = { members: unique.length ? unique : null };
+    if (ownerId) body.agent_id = ownerId;
+    // Spell the owner in the query too: the console's global fetch wrapper
+    // otherwise fills an absent ``agent_id`` from the page's current Agent.
+    const url = `/api/sessions/${encodeURIComponent(sid)}/settings`
+        + (ownerId ? `?agent_id=${encodeURIComponent(ownerId)}` : '');
+    return fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ members: unique.length ? unique : null }),
-    }).then(r => r.json()).then(data => {
-        if (data.status === 'success') {
+        body: JSON.stringify(body),
+    }).then(r => r.json().catch(() => ({})).then(data => {
+        if (!r.ok || !data || data.status !== 'success') {
+            throw new Error((data && data.message) || t('session_settings_failed'));
+        }
+        // Only a write that targeted the conversation on screen may repaint it.
+        if (sid === sessionId && ownerId === activeAgentId) {
             _sessCfg = { model: data.model, team: data.team };
             renderComposerIdentity();
             // Inviting or removing someone changes whether one model can speak
             // for this conversation.
             _renderModelChip();
         }
-    });
+        return data;
+    }));
 }
 
 function addTeamMember(agentId) {
     if (!agentId || agentId === activeAgentId) return Promise.resolve();
-    const ids = currentTeamIds();
+    const ids = validTeamMemberIds();
     if (ids.includes(agentId)) return Promise.resolve();
     return setTeamMembers([...ids, agentId]);
 }
 
 function removeTeamMember(agentId) {
-    return setTeamMembers(currentTeamIds().filter(id => id !== agentId))
-        .then(refreshComposerAgentMenuIfOpen);
+    return setTeamMembers(validTeamMemberIds().filter(id => id !== agentId))
+        .then(refreshComposerAgentMenuIfOpen)
+        .catch(err => {
+            refreshComposerAgentMenuIfOpen();
+            _wsToast((err && err.message) || t('session_settings_failed'));
+        });
 }
 
 /** Repaint the agent menu if it is still open, so add/remove show immediately. */
@@ -4638,7 +5024,13 @@ function refreshComposerAgentMenuIfOpen() {
 async function syncTeamFromText(text) {
     const extra = mentionedAgentIds(text);
     if (!extra.length) return;
-    await setTeamMembers([...currentTeamIds(), ...extra]);
+    try {
+        await setTeamMembers([...validTeamMemberIds(), ...extra]);
+    } catch (err) {
+        // A mention must not become a silent roster write that did not happen;
+        // the message still goes out, addressed to whoever is on the team.
+        _wsToast((err && err.message) || t('session_settings_failed'));
+    }
 }
 
 // Point a channel instance at an Agent. Binding lives on the instance itself
@@ -8828,46 +9220,118 @@ function addLoadingIndicator() {
     return el;
 }
 
-/* The session-panel "新对话" button. Starting a chat is never a decision: the
-   button opens one with the default-anchored Agent straight away, so a tenant
-   that owns several Agents does not gate the primary action on a picker.
-   The caret is the *optional* "switch Agent / start a team chat" entry, and
-   only exists once there is more than one Agent. */
-function onNewChatButton(event) {
+/* =====================================================================
+   New-chat launch controls (change refine-sidebar-team-chat-launch)
+   =====================================================================
+   The session panel's 「新对话」 and the workbench sidebar's 「新建对话」 are the
+   same control in two places, so they are declared once here: the body starts a
+   chat immediately (never gated on a choice) and the caret opens the one picker
+   that offers a solo chat per Agent plus the team entry. Sharing the surface
+   table is what keeps the two menus from drifting into two different rosters,
+   orders or failure behaviours.
+
+   ``available`` is the only difference between them: the sidebar's caret is part
+   of the refined layout, so it appears with the presentation switch, while the
+   panel's caret has always been part of the session header. */
+const NEW_CHAT_SURFACES = {
+    panel: {
+        // The session panel's own button. It is *not* ``new-chat-btn``: that id
+        // belongs to the composer's plus control, and pointing focus restore at
+        // a duplicate id would park focus on the composer instead of the header.
+        control: 'history-new-chat-btn',
+        caret: 'new-chat-caret',
+        menu: 'new-chat-menu',
+        start: () => newChat(true),
+        available: () => true,
+    },
+    sidebar: {
+        control: 'sidebar-new-chat',
+        caret: 'sidebar-new-chat-caret',
+        menu: 'sidebar-new-chat-menu',
+        // The sidebar's own entry point: it keeps the branding/unsaved guard
+        // and hands focus to the composer, which a bare newChat() would skip.
+        start: () => startSidebarNewChat(),
+        available: () => sidebarLaunchV2(),
+    },
+};
+
+function _newChatSurface(name) {
+    return NEW_CHAT_SURFACES[name] || NEW_CHAT_SURFACES.panel;
+}
+
+/** The name of the surface whose picker contains ``node``, or ``''``. */
+function _newChatSurfaceOfMenu(node) {
+    if (!node || typeof node.closest !== 'function') return '';
+    return Object.keys(NEW_CHAT_SURFACES).find(name =>
+        node.closest('#' + NEW_CHAT_SURFACES[name].menu)) || '';
+}
+
+/* The session-panel and sidebar launch buttons. Starting a chat is never a
+   decision: the button opens one with the default-anchored Agent straight away,
+   so a tenant that owns several Agents does not gate the primary action on a
+   picker. The caret is the *optional* "switch Agent / start a team chat" entry,
+   and only exists once there is more than one Agent. */
+function onNewChatButton(event, surfaceName = 'panel') {
+    const surface = _newChatSurface(surfaceName);
     const onCaret = event && event.target && event.target.closest
-        && event.target.closest('#new-chat-caret');
-    if (!onCaret) { newChat(true); return; }
+        && event.target.closest('#' + surface.caret);
+    if (!onCaret) { surface.start(); return; }
     event.stopPropagation();
-    openNewChatMenu();
+    openNewChatMenu(surface.menu, surfaceName);
 }
 
 /* The optional picker: a solo chat per Agent, or a team chat. */
-function openNewChatMenu() {
-    const menu = document.getElementById('new-chat-menu');
-    if (!menu) { newChat(true); return; }
+function openNewChatMenu(menuId = 'new-chat-menu', surfaceName = 'panel') {
+    const menu = document.getElementById(menuId);
+    if (!menu) { _newChatSurface(surfaceName).start(); return; }
     if (!menu.classList.contains('hidden')) { menu.classList.add('hidden'); return; }
+    // One control in two places: leaving the other picker hanging open behind a
+    // freshly opened one would show two rosters at once.
+    closeNewChatMenus(menuId);
     paintNewChatMenu(menu);
     menu.classList.remove('hidden');
+}
+
+/** Shut every new-chat picker except ``keep`` (a menu id). */
+function closeNewChatMenus(keep = '') {
+    Object.keys(NEW_CHAT_SURFACES).forEach(name => {
+        const surface = NEW_CHAT_SURFACES[name];
+        if (surface.menu !== keep) document.getElementById(surface.menu)?.classList.add('hidden');
+    });
+}
+
+/* Keep both launch controls truthful about the roster: a caret appears only when
+   there is something to choose between, and a picker that is already open is
+   repainted so a use-range roster arriving after the first paint is reflected
+   instead of leaving the narrower earlier reading on screen. */
+function syncNewChatControls() {
+    const choosable = multiAgentMode();
+    Object.keys(NEW_CHAT_SURFACES).forEach(name => {
+        const surface = NEW_CHAT_SURFACES[name];
+        document.getElementById(surface.caret)?.classList.toggle('hidden', !(choosable && surface.available()));
+        const menu = document.getElementById(surface.menu);
+        if (menu && !menu.classList.contains('hidden')) paintNewChatMenu(menu);
+    });
 }
 
 /* The picker rows, split out so an already-open menu can be repainted when the
    use-range roster arrives without toggling itself shut. */
 function paintNewChatMenu(menu) {
-    const seam = (typeof codingSeam === 'function') ? codingSeam() : null;
+    // The solo rows are the full use range, coding Agents included: switching to
+    // one is a legitimate single-Agent action and must keep working (task 2.2).
     const rows = availableChatAgents().map(agent => `
         <button type="button" class="new-chat-item" onclick="startSoloChat('${escapeHtml(agent.id)}')">
             ${agentAvatarHTML(agent, 22)}
             <span>${escapeHtml(agent.name)}</span>
-            ${agent.agent_type === 'coding'
-                ? `<span class="coding-agent-badge">${escapeHtml(t('agents_type_coding'))}</span>` : ''}
+            ${agent.agent_type === 'coding' ? codingAgentTypeHint() : ''}
         </button>`).join('');
-    // A coding conversation is served by Opencode and does not join a group, so
-    // the team entry is not offered for one (task 4.3). The row also carries the
-    // coding-hide marker, so entering a coding pane hides it even if it was
-    // painted for a normal Agent a moment earlier.
-    const teamRow = (seam && seam.isCodingAgent(activeAgentId)) ? '' : `
+    // The team entry is never withheld because the current conversation happens
+    // to be a coding one: starting a team only *prepares* an ordinary selection,
+    // and the existing coding session survives until the user confirms (task
+    // 3.2). The modal itself keeps coding Agents out of its candidates.
+    const teamRow = `
         <div class="new-chat-sep"></div>
-        <button type="button" class="new-chat-item new-chat-team" data-coding-hide
+        <button type="button" class="new-chat-item new-chat-team"
                 onclick="openTeamChatModal()">
             <span class="new-chat-team-ico"><i class="fas fa-user-group"></i></span>
             <span>${escapeHtml(t('new_team_chat'))}</span>
@@ -8877,7 +9341,7 @@ function paintNewChatMenu(menu) {
 }
 
 function startSoloChat(agentId) {
-    document.getElementById('new-chat-menu')?.classList.add('hidden');
+    closeNewChatMenus();
     if (!agentId) { newChat(true); return; }
     activeAgentId = agentId;
     writeScopedPreference('cow_active_agent', activeAgentId);
@@ -8886,74 +9350,404 @@ function startSoloChat(agentId) {
     renderComposerIdentity();
 }
 
-// The first checked Agent owns the conversation; the rest are invited as guests.
-let _teamChatPicks = [];
+/* Help-site「一键体验」深链：/?open_agent=<skill>&message=... */
+let _scenarioOpenHandled = false;
 
-function openTeamChatModal() {
-    document.getElementById('new-chat-menu')?.classList.add('hidden');
-    // A coding conversation is served by Opencode and cannot take guests.
-    const seam = (typeof codingSeam === 'function') ? codingSeam() : null;
-    if (seam && seam.isCodingAgent(activeAgentId)) {
-        _wsToast(t('coding_team_unavailable'));
-        return;
+function resolveScenarioAgent(key) {
+    if (!key) return '';
+    const lists = [chatAgentCatalog, agentCatalog];
+    for (let i = 0; i < lists.length; i += 1) {
+        const list = lists[i] || [];
+        if (!list.length) continue;
+        const exact = list.find(a => a && a.id === key);
+        if (exact) return exact.id;
+        const prefixed = list.find(a => a && typeof a.id === 'string' && a.id.startsWith(key + '-'));
+        if (prefixed) return prefixed.id;
+        const bySkill = list.find(a => a && Array.isArray(a.skills) && a.skills.indexOf(key) !== -1);
+        if (bySkill) return bySkill.id;
     }
-    _teamChatPicks = [activeAgentId || defaultAgentId];
-    const status = document.getElementById('team-chat-status');
-    if (status) status.textContent = '';
-    renderTeamChatList();
-    document.getElementById('team-chat-modal')?.classList.remove('hidden');
+    return '';
 }
 
-function closeTeamChatModal() {
+function consumeScenarioOpenLink() {
+    if (_scenarioOpenHandled) return;
+    let url;
+    try {
+        url = new URL(window.location.href);
+    } catch (_) {
+        return;
+    }
+    const key = url.searchParams.get('open_agent');
+    if (!key) return;
+    const message = url.searchParams.get('message') || '';
+    const catalogReady = (chatAgentCatalog && chatAgentCatalog.length)
+        || (agentCatalog && agentCatalog.length);
+    if (!catalogReady) return;
+
+    const agentId = resolveScenarioAgent(key);
+    _scenarioOpenHandled = true;
+    url.searchParams.delete('open_agent');
+    url.searchParams.delete('message');
+    if (typeof window.history !== 'undefined' && window.history.replaceState) {
+        window.history.replaceState(null, '', url.toString());
+    }
+    if (!agentId) {
+        console.warn('[scenario-open] agent not found for', key);
+        return;
+    }
+    if (typeof navigateTo === 'function' && currentView !== 'chat') {
+        navigateTo('chat');
+    }
+    startSoloChat(agentId);
+    if (!message) return;
+    window.setTimeout(function () {
+        const input = document.getElementById('chat-input');
+        if (!input) return;
+        input.value = message;
+        if (typeof sendMessage === 'function') sendMessage();
+    }, 0);
+}
+
+/* =====================================================================
+   Starting a team conversation
+   =====================================================================
+   Building a group is a transaction, not two optimistic steps (change
+   refine-sidebar-team-chat-launch, design D4):
+
+     1. the modal only *collects* a roster; nothing on screen changes,
+     2. "start" saves that roster onto a freshly generated session id the page
+        has not switched to yet -- this is the *prepare* step,
+     3. only a saved roster *commits*: the workbench moves onto that id.
+
+   A refused or failed write therefore leaves the conversation, its unsent
+   draft, the history and the coding view exactly as they were, and the modal
+   stays open to retry. Nothing is ever sent before the roster is on the
+   server, which is what makes the first message already a group message.
+
+   `_teamChatDraft` is the modal's whole state; `epoch` invalidates a pending
+   continuation when the modal is closed or reopened mid-save. */
+let _teamChatDraft = null;
+// The control that opened the picker, so closing it can hand focus back. The
+// sheet is a dialog: without this a keyboard user would be dropped into the
+// page behind it (spec: 弹层支持 Escape 关闭及焦点恢复).
+let _teamChatTrigger = null;
+
+function _elementIsFocusable(el) {
+    return !!el && typeof el.focus === 'function'
+        && (!el.getClientRects || el.getClientRects().length > 0);
+}
+
+/* Focus comes back to the action that opened the sheet, never to an off-screen
+   control: on a phone the sidebar is a drawer that this flow has already
+   collapsed, so the visible drawer toggle is the honest target there. */
+function _restoreTeamChatFocus() {
+    const trigger = _teamChatTrigger;
+    _teamChatTrigger = null;
+    let target = _elementIsFocusable(trigger) ? trigger : null;
+    if (target && target.getBoundingClientRect && typeof window !== 'undefined') {
+        const rect = target.getBoundingClientRect();
+        if (rect.right <= 0 || (window.innerWidth && rect.left >= window.innerWidth)) target = null;
+    }
+    if (!target && typeof window !== 'undefined' && window.innerWidth < 1024) {
+        target = document.getElementById('menu-toggle');
+    }
+    if (_elementIsFocusable(target)) target.focus();
+}
+
+function _teamChatEscape(event) {
+    if (!_teamChatDraft || event.key !== 'Escape') return;
+    event.preventDefault();
+    if (event.stopPropagation) event.stopPropagation();
+    closeTeamChatModal();
+}
+
+/** The roster the picker is currently collecting (test/debug visibility). */
+function teamChatDraft() {
+    return _teamChatDraft;
+}
+
+function openTeamChatModal() {
+    // Read before the pickers close: hiding the menu row that was clicked blurs
+    // it, and focus has to come back to the launch control the user actually
+    // used rather than to a row that no longer exists.
+    const active = document.activeElement;
+    const fromMenu = _newChatSurfaceOfMenu(active);
+    const trigger = fromMenu ? document.getElementById(_newChatSurface(fromMenu).control) : active;
+    closeNewChatMenus();
+    // A picker opened from the phone drawer is a sheet over the whole viewport:
+    // leaving the drawer up behind it would stack two layers the user has to
+    // dismiss and hide the control that focus returns to.
+    const sidebar = document.getElementById('sidebar');
+    if (window.innerWidth < 1024 && trigger && sidebar
+            && typeof sidebar.contains === 'function' && sidebar.contains(trigger)) {
+        closeSidebar();
+    }
+    // A coding conversation is *not* replaced here: this modal only prepares an
+    // ordinary roster over a session id nobody has opened yet, and the coding
+    // pane is left at commit time (task 3.2). Keeping the entry available also
+    // means the user never has to leave the coding chat to look at the picker.
+    const start = initialTeamChatSelection();
+    _teamChatDraft = {
+        epoch: ((_teamChatDraft && _teamChatDraft.epoch) || 0) + 1,
+        selected: start.ids,
+        owner: start.owner,
+        query: '',
+        phase: 'editing',
+        error: '',
+    };
+    const search = document.getElementById('team-chat-search');
+    if (search) search.value = '';
+    renderTeamChatDraft();
+    document.getElementById('team-chat-modal')?.classList.remove('hidden');
+    _teamChatTrigger = (typeof trigger === 'object') ? trigger : null;
+    document.addEventListener('keydown', _teamChatEscape);
+    if (search) search.focus();
+}
+
+/* Who the picker starts with. The Agent in front of the user wins when it may
+   join a team at all; otherwise the unified default resolution decides. An
+   unresolvable roster starts *empty* -- inventing a fallback here would be the
+   "hard-coded default" the change explicitly forbids. */
+function initialTeamChatSelection() {
+    const eligible = new Set(teamCandidateAgents().map(a => a.id));
+    if (activeAgentId && eligible.has(activeAgentId)) {
+        return { ids: [activeAgentId], owner: activeAgentId };
+    }
+    const resolved = (typeof defaultResolution !== 'undefined' && defaultResolution
+        && defaultResolution.agent_id) || defaultAgentId || '';
+    if (resolved && eligible.has(resolved)) return { ids: [resolved], owner: resolved };
+    return { ids: [], owner: '' };
+}
+
+function closeTeamChatModal({ restoreFocus = true } = {}) {
+    // Dropping the draft is what invalidates an in-flight save: its continuation
+    // checks that it still owns `_teamChatDraft`, so closing during the write
+    // cancels the commit without touching the conversation on screen.
+    _teamChatDraft = null;
     document.getElementById('team-chat-modal')?.classList.add('hidden');
+    document.removeEventListener('keydown', _teamChatEscape);
+    if (restoreFocus) _restoreTeamChatFocus();
+    else _teamChatTrigger = null;
 }
 
 /** From the group-chat picker, jump to creating a new Agent. */
 function openAgentCreateFromModal() {
-    closeTeamChatModal();
+    // Focus belongs to the create form this hands off to, not to the launch
+    // button the sheet came from.
+    closeTeamChatModal({ restoreFocus: false });
     navigateTo('agents');
     if (typeof openAgentCreateForm === 'function') openAgentCreateForm();
 }
 
 function toggleTeamChatPick(agentId) {
-    const i = _teamChatPicks.indexOf(agentId);
-    if (i === -1) _teamChatPicks.push(agentId);
-    else _teamChatPicks.splice(i, 1);
-    renderTeamChatList();
+    const draft = _teamChatDraft;
+    if (!draft || draft.phase !== 'editing') return;
+    const i = draft.selected.indexOf(agentId);
+    if (i === -1) {
+        draft.selected.push(agentId);
+        // Selecting is the conscious act that may also answer "who responds by
+        // default"; nobody is picked for the user otherwise.
+        if (!draft.owner) draft.owner = agentId;
+    } else {
+        draft.selected.splice(i, 1);
+        // The default responder is never re-assigned silently: dropping it
+        // leaves the field empty until the user says who takes its place
+        // (design D3).
+        if (draft.owner === agentId) draft.owner = '';
+    }
+    draft.error = '';
+    renderTeamChatDraft();
 }
 
-function renderTeamChatList() {
-    const list = document.getElementById('team-chat-list');
-    if (!list) return;
-    list.innerHTML = availableChatAgents().map(agent => {
-        const rank = _teamChatPicks.indexOf(agent.id);
-        const on = rank !== -1;
-        const owner = rank === 0;
-        return `<button type="button" class="team-chat-row${on ? ' on' : ''}" onclick="toggleTeamChatPick('${escapeHtml(agent.id)}')">
-            ${agentAvatarHTML(agent, 28)}
-            <span class="team-chat-name">${escapeHtml(agent.name)}</span>
-            ${owner ? `<span class="team-chat-owner">${escapeHtml(t('new_team_chat_owner'))}</span>` : ''}
-            <span class="team-chat-check"><i class="fas ${on ? 'fa-circle-check' : 'fa-circle'}"></i></span>
-        </button>`;
+/** Make an already-picked member the conversation's default responder. */
+function setTeamChatOwner(agentId) {
+    const draft = _teamChatDraft;
+    if (!draft || draft.phase !== 'editing') return;
+    if (!draft.selected.includes(agentId)) draft.selected.push(agentId);
+    draft.owner = agentId;
+    draft.error = '';
+    renderTeamChatDraft();
+}
+
+function onTeamChatSearch(event) {
+    const draft = _teamChatDraft;
+    if (!draft) return;
+    draft.query = (event && event.target && event.target.value) || '';
+    renderTeamChatDraft();
+}
+
+/* Search matches name and 职责. The candidate rows carry the digital-employee
+   projection (position/category/description), so all three are searched. */
+function teamChatMatches(agent, query) {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return true;
+    const hay = [agent.name, agent.id, agent.position, agent.category, agent.description]
+        .filter(Boolean).join(' ').toLowerCase();
+    return q.split(/\s+/).every(part => hay.includes(part));
+}
+
+function renderTeamChatDraft() {
+    const draft = _teamChatDraft;
+    if (!draft) return;
+    const eligible = teamCandidateAgents();
+    const byId = new Map(eligible.map(a => [a.id, a]));
+    // Whatever the roster was built from, only live candidates may be sent: an
+    // id the use-range read no longer covers is dropped rather than submitted
+    // and refused by the server (task 3.5).
+    draft.selected = draft.selected.filter(id => byId.has(id));
+    // An owner that stopped being a candidate or left the selection is cleared
+    // rather than swapped for someone else.
+    if (draft.owner && (!byId.has(draft.owner) || !draft.selected.includes(draft.owner))) draft.owner = '';
+
+    renderTeamChatSelected(draft, byId);
+    renderTeamChatRows(draft, eligible, byId);
+    renderTeamChatFooter(draft, eligible);
+}
+
+function renderTeamChatSelected(draft, byId) {
+    const box = document.getElementById('team-chat-selected');
+    if (!box) return;
+    if (!draft.selected.length) {
+        box.innerHTML = `<span class="team-chat-selected-empty">${escapeHtml(t('team_chat_selected_none'))}</span>`;
+        return;
+    }
+    box.innerHTML = draft.selected.map(id => {
+        const agent = byId.get(id);
+        const owner = id === draft.owner;
+        return `<span class="team-chat-chip${owner ? ' owner' : ''}">
+            ${agentAvatarHTML(agent, 20)}
+            <span class="team-chat-chip-name">${escapeHtml(agent.name)}</span>
+            ${owner ? `<span class="team-chat-chip-owner">${escapeHtml(t('new_team_chat_owner'))}</span>` : ''}
+            <button type="button" class="team-chat-chip-x" aria-label="${escapeHtml(t('delete'))}"
+                    onclick="toggleTeamChatPick('${escapeHtml(id)}')"><i class="fas fa-xmark"></i></button>
+        </span>`;
     }).join('');
 }
 
-function startTeamChat() {
-    const picks = _teamChatPicks.filter(id => availableChatAgents().some(a => a.id === id));
-    if (picks.length < 2) {
-        const status = document.getElementById('team-chat-status');
-        if (status) status.textContent = t('new_team_chat_min');
+function renderTeamChatRows(draft, eligible, byId) {
+    const list = document.getElementById('team-chat-list');
+    if (!list) return;
+    const rows = eligible.filter(agent => teamChatMatches(agent, draft.query));
+    if (!rows.length) {
+        list.innerHTML = `<div class="team-chat-empty">${escapeHtml(t(eligible.length ? 'team_chat_no_match' : 'agents_empty'))}</div>`;
         return;
     }
-    closeTeamChatModal();
-    const [owner, ...guests] = picks;
-    activeAgentId = owner;
-    writeScopedPreference('cow_active_agent', activeAgentId);
-    newChat(true);
-    if (typeof resetWorkspaceToAgentRoot === 'function') resetWorkspaceToAgentRoot();
-    // The fresh session exists client-side; invite the guests onto it so the
-    // very first message already goes to a group.
-    setTeamMembers(guests).then(() => renderComposerIdentity());
+    list.innerHTML = rows.map(agent => {
+        const on = draft.selected.includes(agent.id);
+        const owner = draft.owner === agent.id;
+        const meta = agent.position || agent.category || agent.description || '';
+        return `<div class="team-chat-row${on ? ' on' : ''}" role="option" aria-selected="${on ? 'true' : 'false'}">
+            <button type="button" class="team-chat-pick" onclick="toggleTeamChatPick('${escapeHtml(agent.id)}')">
+                ${agentAvatarHTML(agent, 28)}
+                <span class="team-chat-row-text">
+                    <span class="team-chat-name">${escapeHtml(agent.name)}</span>
+                    ${meta ? `<span class="team-chat-meta">${escapeHtml(meta)}</span>` : ''}
+                </span>
+                <span class="team-chat-check"><i class="fas ${on ? 'fa-circle-check' : 'fa-circle'}"></i></span>
+            </button>
+            ${on ? (owner
+                ? `<span class="team-chat-owner">${escapeHtml(t('new_team_chat_owner'))}</span>`
+                : `<button type="button" class="team-chat-owner-btn" onclick="setTeamChatOwner('${escapeHtml(agent.id)}')">${escapeHtml(t('new_team_chat_set_owner'))}</button>`) : ''}
+        </div>`;
+    }).join('');
+}
+
+function renderTeamChatFooter(draft, eligible) {
+    const count = document.getElementById('team-chat-count');
+    if (count) {
+        count.textContent = t('team_chat_count')
+            .replace('{picked}', String(draft.selected.length))
+            .replace('{total}', String(eligible.length));
+    }
+    const start = document.getElementById('team-chat-start');
+    if (start) start.disabled = draft.phase !== 'editing';
+    const status = document.getElementById('team-chat-status');
+    if (status) {
+        status.textContent = draft.error
+            || (draft.phase === 'saving' ? t('team_chat_preparing') : '');
+    }
+}
+
+/* The client's own preconditions: at least two members, and a default responder
+   that is one of them. Returns the error key, or '' when the roster is ready. */
+function teamChatRosterProblem(draft) {
+    const eligible = new Set(teamCandidateAgents().map(a => a.id));
+    if (draft.selected.some(id => !eligible.has(id))) return 'team_chat_stale';
+    if (draft.selected.length < 2) return 'new_team_chat_min';
+    if (!draft.owner || !draft.selected.includes(draft.owner)) return 'new_team_chat_min';
+    return '';
+}
+
+/** Collect-then-prepare-then-commit: see the block comment above. */
+function startTeamChat() {
+    const draft = _teamChatDraft;
+    if (!draft || draft.phase !== 'editing') return;   // one attempt at a time
+    const problem = teamChatRosterProblem(draft);
+    if (problem) {
+        draft.error = t(problem);
+        renderTeamChatDraft();
+        return;
+    }
+    // The roster is saved before anything moves, so the ordinary leave-page
+    // protection is asked up front -- cancelling it changes nothing at all
+    // (task 3.4). The same guard is asked again at commit time.
+    if (typeof wsGuardUnsaved === 'function' && !wsGuardUnsaved(() => startTeamChat())) return;
+    prepareTeamChatSession(draft);
+}
+
+function prepareTeamChatSession(draft) {
+    // The target snapshot the write is addressed with -- and, on a retry, reused
+    // verbatim rather than regenerated (design D4 step 3).
+    const prepared = { sessionId: generateSessionId(), agentId: draft.owner };
+    // A tenant switch or sign-out while the write is in flight must not commit
+    // onto the identity that replaced this one.
+    const epoch = _authEpoch;
+    const tenant = sessionStorage.getItem('cow_tenant_id');
+    const stillCurrent = () => epoch === _authEpoch && tenant === sessionStorage.getItem('cow_tenant_id');
+    draft.phase = 'saving';
+    draft.error = '';
+    renderTeamChatDraft();
+    setTeamMembers(draft.selected.filter(id => id !== prepared.agentId), prepared)
+        .then(data => {
+            // Closed, reopened or replaced while saving: the prepared session is
+            // simply abandoned, uncommitted and invisible.
+            if (_teamChatDraft !== draft || draft.phase !== 'saving') return;
+            if (!stillCurrent()) return;
+            commitTeamChatSession(draft, prepared, data);
+        })
+        .catch(err => {
+            if (_teamChatDraft !== draft || draft.phase !== 'saving') return;
+            // Nothing was committed, so the fail-safe state is the conversation
+            // the user already had, with the modal open and the refusal spelled
+            // out (task 3.6).
+            draft.phase = 'editing';
+            draft.error = (err && err.message) || t('session_settings_failed');
+            _wsToast(draft.error);
+            renderTeamChatDraft();
+        });
+}
+
+/* Commit a prepared session: adopt the owner, move the workbench onto the
+   prepared id, then let the server's own roster answer be what the composer
+   renders (it is the authority on who actually joined). */
+function commitTeamChatSession(draft, prepared, data) {
+    const commit = () => {
+        if (_teamChatDraft !== draft) return;
+        closeTeamChatModal();
+        activeAgentId = prepared.agentId;
+        writeScopedPreference('cow_active_agent', activeAgentId);
+        // Moving onto a prepared session is the same render path an ordinary new
+        // chat takes; only the id is decided elsewhere.
+        if (!commitPreparedSession(prepared.sessionId, { optimistic: true, inherit: true })) return;
+        if (data) _sessCfg = { model: data.model, team: data.team };
+        renderComposerIdentity();
+        if (typeof _renderModelChip === 'function') _renderModelChip();
+        if (typeof resetWorkspaceToAgentRoot === 'function') resetWorkspaceToAgentRoot();
+        const input = document.getElementById('user-input');
+        if (input) input.focus();
+    };
+    if (typeof wsGuardUnsaved === 'function' && !wsGuardUnsaved(commit)) return;
+    commit();
 }
 
 function newChat(optimistic = true, inherit = true) {
@@ -8969,16 +9763,39 @@ function newChat(optimistic = true, inherit = true) {
     // A fresh session resets the preview panel, discarding an open editor.
     if (typeof wsGuardUnsaved === 'function'
         && !wsGuardUnsaved(() => newChat(optimistic, inherit))) return;
-    // ...and it is also the way back to a normal conversation from a coding one.
-    if (seam && !seam.leave()) return;
+    commitPreparedSession(generateSessionId(), { optimistic, inherit });
+}
+
+/**
+ * Move the workbench onto a session id that has already been decided.
+ *
+ * Ordinary new chats generate their id here; the team start generates it
+ * earlier and *saves the roster onto it* before calling this, so the id must be
+ * an input rather than something this function invents (design D4). Everything
+ * else -- leaving a coding pane, the empty transcript, the workspace/settings
+ * refresh, polling generation and the history row -- is shared, so a prepared
+ * session is indistinguishable from any other new chat once committed.
+ *
+ * Returns false when the move was declined (the coding view's own leave guard),
+ * which callers must treat as "nothing happened".
+ */
+function newChatLeavesCodingPane() {
+    const seam = (typeof codingSeam === 'function') ? codingSeam() : null;
+    // Leaving a coding conversation is also this path, and it may refuse: the
+    // embedded app can hold unsaved edits of its own.
+    return !seam || seam.leave() !== false;
+}
+
+function commitPreparedSession(preparedSessionId, { optimistic = true, inherit = true } = {}) {
+    if (!newChatLeavesCodingPane()) return false;
     if (window.SceneOriginal) window.SceneOriginal.resetChat();
 
     // Do NOT close active streams: other sessions keep streaming in the
     // background (each stream self-guards against the foreign view) and their
     // replies still complete and persist.
 
-    // Generate a fresh session and persist it so the next page load also starts clean
-    sessionId = generateSessionId();
+    // Persist the id so the next page load also starts clean.
+    sessionId = preparedSessionId;
     writeScopedPreference(activeSessionStorageKey(), sessionId);
     _sessCfg = null;
     if (!inherit) {
@@ -9014,6 +9831,7 @@ function newChat(optimistic = true, inherit = true) {
     // A fresh session has no server-side context row yet: keep the usage entry
     // quiet until the first turn persists it.
     if (typeof _contextAfterSessionChange === 'function') _contextAfterSessionChange(false);
+    return true;
 }
 
 // =====================================================================
@@ -9360,9 +10178,55 @@ function _refreshHistoryList() {
 }
 
 // === SIDEBAR_RECENT_BEGIN ===
+/* What a conversation announces itself as, derived from the persisted owner
+   badge and roster the list already carries — never guessed from the title
+   (spec: 会话类型标识与成员恢复一致). Both the history rows and the sidebar
+   preview read this one helper, so the two surfaces cannot disagree about what
+   a conversation is.
+
+   - Several Agents: overlapping faces plus the remaining member summary,
+     exactly like the group it is.
+   - A coding conversation keeps its own identity: its turns are served by the
+     embedded app rather than by an ordinary turn, so it must not read as a
+     plain chat.
+   - One Agent: a plain chat row, pinned or not. */
+function sessionTypeMarker(s) {
+    const roster = (s && s.participants) || [];
+    if (roster.length > 1) {
+        const names = roster.map(a => a.name || a.id).filter(Boolean).join('、');
+        // Three faces keep the row tidy; "+N" still states the group's size. The
+        // stack is one image to assistive tech, named by the member summary, so
+        // a screen reader hears who took part instead of a row of empty faces.
+        const crowd = roster.slice(0, 3);
+        const overflow = roster.length - 3;
+        return {
+            html: `<span class="session-faces" role="img" aria-label="${escapeHtml(names)}"`
+                + ` title="${escapeHtml(names)}">`
+                + crowd.map(a => agentAvatarHTML(a, 20)).join('')
+                + (overflow > 0 ? `<span class="session-face-more">+${overflow}</span>` : '')
+                + `</span>`,
+            summary: names,
+        };
+    }
+    const coding = !!(s && s.agent && s.agent.agent_type === 'coding');
+    const icon = coding ? 'fa-code' : (s && s.pinned ? 'fa-thumbtack' : 'fa-message');
+    return {
+        html: `<i class="fas ${icon} session-icon" aria-hidden="true"></i>`,
+        summary: '',
+    };
+}
+
 const SIDEBAR_RECENT_LIMIT = 10;
 function _sidebarRecentLimit(items) {
-    return Array.isArray(items) ? items.slice(0, SIDEBAR_RECENT_LIMIT) : [];
+    return Array.isArray(items) ? items.slice(0, sidebarRecentLimitCount()) : [];
+}
+// The refined sidebar shows a tighter preview. The limit is a presentation
+// value only: the rows come from the same authorized, pinned-first, most-recent
+// ordering either way, and 查看全部 reaches everything past it.
+const SIDEBAR_RECENT_LIMIT_V2 = 5;
+function sidebarRecentLimitCount() {
+    return (typeof sidebarLaunchV2 === 'function' && sidebarLaunchV2())
+        ? SIDEBAR_RECENT_LIMIT_V2 : SIDEBAR_RECENT_LIMIT;
 }
 // The 会话历史 block is the `history` workbench menu entry. It is denied when the
 // authoritative projection withholds its menu grant; an unknown projection (or
@@ -9381,6 +10245,29 @@ let _dragSpaceKey = null;
 let _sessionActionMenu = null;
 let _sessionMenuCleanup = null;
 
+/* The type marker drawn before a sidebar row's title. It is a child of the
+   open button rather than a sibling so a click anywhere on the row's face still
+   opens the conversation, and so the label and its marker stay on one line. */
+function setSidebarRowType(btn, s) {
+    const marker = sessionTypeMarker(s);
+    const glyph = document.createElement('span');
+    glyph.className = 'sidebar-recent-type';
+    glyph.innerHTML = marker.html;
+    if (marker.summary) glyph.title = marker.summary;
+    btn.insertBefore(glyph, btn.children[0] || null);
+}
+
+/* Give a sidebar row its title. Assigning textContent drops every child, so the
+   title and the marker beside it are always written through here — at build
+   time and on an in-place rename alike. The tooltip is the bare conversation
+   title; the marker keeps its own member summary. */
+function setSidebarRowTitle(btn, title) {
+    const marker = btn.querySelector('.sidebar-recent-type');
+    btn.textContent = title;
+    btn.title = title;
+    if (marker) btn.insertBefore(marker, btn.children[0] || null);
+}
+
 function renderSidebarRecentSessions() {
     const list = document.getElementById('sidebar-recent-list');
     const more = document.getElementById('sidebar-recent-more');
@@ -9392,7 +10279,7 @@ function renderSidebarRecentSessions() {
         empty.className = 'sidebar-recent-empty';
         empty.textContent = t('sidebar_history_empty');
         list.appendChild(empty);
-        if (more) more.classList.add('hidden');
+        if (more) more.classList.toggle('hidden', !_sidebarRecentViewAllAlways());
         return;
     }
     items.forEach(s => {
@@ -9412,8 +10299,11 @@ function renderSidebarRecentSessions() {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'sidebar-recent-item' + (isActive ? ' active' : '');
-        btn.textContent = title;
-        btn.title = title;
+        // The title stays the button's own text so in-place renaming keeps
+        // working by text alone; the type marker rides in front of it and is
+        // re-attached by `setSidebarRowTitle` when the title changes.
+        setSidebarRowTitle(btn, title);
+        setSidebarRowType(btn, s);
         btn.dataset.sessionId = s.session_id || '';
         if (ownerId) btn.dataset.agentId = ownerId;
         btn.addEventListener('click', () => {
@@ -9464,7 +10354,22 @@ function renderSidebarRecentSessions() {
         row.appendChild(archive);
         list.appendChild(row);
     });
-    if (more) more.classList.toggle('hidden', items.length < 1);
+    if (more) {
+        more.classList.toggle('hidden',
+            !_sidebarRecentViewAllAlways() && items.length < 1);
+    }
+}
+
+/* Whether 查看全部 stays available for a short (or empty) preview.
+ *
+ * It is the fixed entry to the full history page, so in the refined sidebar it
+ * is offered whenever the section itself is offered — a member with two
+ * conversations still needs a way into search, archiving and rename. The old
+ * behaviour is kept for the old layout, where the row only appears once there
+ * is something to expand.
+ */
+function _sidebarRecentViewAllAlways() {
+    return typeof sidebarLaunchV2 === 'function' && sidebarLaunchV2();
 }
 
 function loadSidebarRecentSessions() {
@@ -9479,7 +10384,7 @@ function loadSidebarRecentSessions() {
         return;
     }
     const seq = ++_sidebarRecentSeq;
-    fetch(`/api/sessions?page=1&page_size=${SIDEBAR_RECENT_LIMIT}&scope=all`)
+    fetch(`/api/sessions?page=1&page_size=${sidebarRecentLimitCount()}&scope=all`)
         .then(async r => {
             const data = await r.json().catch(() => ({}));
             return { ok: r.ok, data };
@@ -9600,7 +10505,9 @@ function renameSidebarSession(sessionId, agentId) {
 
     const entry = _sidebarRecentItems.find(s => s.session_id === sessionId
         && (!owner || (s.agent && s.agent.id) === owner));
-    const oldTitle = (entry && entry.title) || btn.textContent || '';
+    // The tooltip holds the bare title; the button's text may carry the marker's
+    // "+N" too, so it is the fallback of last resort.
+    const oldTitle = (entry && entry.title) || btn.title || btn.textContent || '';
 
     const input = document.createElement('input');
     input.type = 'text';
@@ -9625,13 +10532,13 @@ function renameSidebarSession(sessionId, agentId) {
     let done = false;
     const restore = (title) => {
         done = true;
-        if (title !== undefined) btn.textContent = title;
+        if (title !== undefined) setSidebarRowTitle(btn, title);
         input.remove();
         btn.classList.remove('hidden');
     };
     const revert = (title) => {
         if (entry) entry.title = title;
-        btn.textContent = title;
+        setSidebarRowTitle(btn, title);
     };
     const commit = () => {
         if (done) return;
@@ -10262,18 +11169,9 @@ function _sessionItemEl(s, indent) {
 
     const title = s.title || t('untitled_session');
     // Faces mark a conversation that has several Agents in it, the way a group
-    // chat is distinguishable from a direct one. A conversation with a single
-    // Agent stays a plain row, whatever the roster looks like elsewhere. We show
-    // at most three overlapping faces to keep the row tidy; when more took part,
-    // a small "+N" caps the stack so the group's size is still legible.
-    const roster = s.participants || [];
-    const crowd = roster.length > 1 ? roster.slice(0, 3) : null;
-    const overflow = roster.length - 3;
-    const face = crowd
-        ? `<span class="session-faces">${crowd.map(a => agentAvatarHTML(a, 20)).join('')}`
-            + (overflow > 0 ? `<span class="session-face-more">+${overflow}</span>` : '')
-            + `</span>`
-        : `<i class="fas ${s.pinned ? 'fa-thumbtack' : 'fa-message'} session-icon"></i>`;
+    // chat is distinguishable from a direct one; a single-Agent conversation
+    // stays a plain row. Shared with the sidebar preview so both agree.
+    const face = sessionTypeMarker(s).html;
     const agentName = (s.agent && (s.agent.name || s.agent.id)) || t('agents_default');
     const projectName = s.project && s.project.name || t('ws_default_workspace');
     const time = _historyTimeLabel(s.last_active);
@@ -19666,6 +20564,12 @@ function _applySidebarPermissions(self) {
     // Per-item: platform entries only for a platform admin.
     const platformEl = document.querySelector('.sidebar-item[data-view="platform"]');
     if (platformEl) platformEl.classList.toggle('hidden', !isPlatformAdmin);
+
+    // Permission passes only toggle visibility, but they run after entry and on
+    // every projection refresh; re-asserting the refined layout here keeps the
+    // navigation order and the second launch button stable across them (task
+    // 4.2). Off-flag this restores the markup order and hides the button.
+    if (typeof applySidebarLaunchV2 === 'function') applySidebarLaunchV2();
 }
 
 function openAccountProfile() {
@@ -20283,6 +21187,13 @@ window.submitAccountPassword = submitAccountPassword;
 // =====================================================================
 applyTheme();
 applyI18n();
+
+// Refined workbench sidebar (change refine-sidebar-team-chat-launch, task 4.2):
+// apply the presentation switch as soon as the sidebar markup exists, so the
+// dual launch buttons and the navigation order are right on first paint. The
+// sidebar is hidden behind the account gate until entry, but its layout is
+// resolved here and re-applied after every permission pass.
+if (typeof applySidebarLaunchV2 === 'function') applySidebarLaunchV2();
 
 // Wire the change-password form submit (single submission).
 (function () {

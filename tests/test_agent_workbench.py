@@ -144,7 +144,8 @@ class TestWorkbenchProjection(unittest.TestCase):
         from channel.web.web_channel import AgentsHandler
         profiles = [
             _Profile("primary", "Primary", enabled=True, description="main", avatar=None),
-            _Profile("research", "Research", enabled=True, description="researcher"),
+            _Profile("research", "Research", enabled=True, description="researcher",
+                     position="研究员", category="分析", tags=["财务", "经营分析"]),
             _Profile("archived", "Archived", enabled=False),
         ]
         with patch("agent.registry.get_agent_registry",
@@ -154,7 +155,7 @@ class TestWorkbenchProjection(unittest.TestCase):
         self.assertEqual(data["status"], "success")
         self.assertEqual(len(data["agents"]), 2)  # archived excluded
         fields = {"id", "name", "description", "avatar", "agent_type", "is_default",
-                  "can_chat", "unavailable_reason"}
+                  "can_chat", "unavailable_reason", "position", "category", "tags"}
         for agent in data["agents"]:
             self.assertEqual(set(agent.keys()), fields,
                              "workbench projection must be a strict whitelist")
@@ -168,6 +169,10 @@ class TestWorkbenchProjection(unittest.TestCase):
         # Default Agent is flagged.
         by_id = {a["id"]: a for a in data["agents"]}
         self.assertTrue(by_id["primary"]["is_default"])
+        self.assertEqual(by_id["primary"]["tags"], [])
+        self.assertEqual(by_id["research"]["tags"], ["财务", "经营分析"])
+        self.assertEqual(by_id["research"]["position"], "研究员")
+        self.assertEqual(by_id["research"]["category"], "分析")
         self.assertFalse(by_id["research"]["is_default"])
         # Platform admin is execution-authorized for enabled Agents.
         self.assertTrue(all(a["can_chat"] for a in data["agents"]))

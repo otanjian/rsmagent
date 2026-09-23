@@ -13,13 +13,30 @@ const vm = require('node:vm');
 const source = fs.readFileSync(
     path.join(__dirname, '../channel/web/static/js/workspace.js'), 'utf8');
 
-function element() {
-    return { innerHTML: '', value: '', classList: { add() {}, remove() {}, toggle() {}, contains: () => false } };
+function element(childCount = 0) {
+    return {
+        value: '',
+        childElementCount: childCount,
+        // The panel decides "this list has rows" from `childElementCount`, so
+        // keep it in step with innerHTML the way the DOM does — otherwise a
+        // cleared list would still look populated to the code under test.
+        set innerHTML(html) {
+            this._html = String(html);
+            this.childElementCount = this._html.trim() ? 1 : 0;
+        },
+        get innerHTML() { return this._html || ''; },
+        classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+    };
 }
 
-function makeCtx(payload) {
+/**
+ * @param {object} payload - response for every request, unless `routes` overrides it.
+ * @param {object} [routes] - payload by URL substring, so a test can answer the
+ *   personal-Agent probe and the fallback tree differently from the refused one.
+ */
+function makeCtx(payload, routes = {}) {
     const nodes = new Map();
-    let lastRequest = '';
+    const requests = [];
     const ctx = {
         wsPanelOpen: false,
         wsCurrentDir: '',
@@ -28,6 +45,7 @@ function makeCtx(payload) {
         currentLang: 'zh',
         t: key => key, // identity; assert on the raw key so it is locale-agnostic
         escapeHtml: x => String(x),
+        localStorage: { getItem: () => null, setItem() {} },
         window: { addEventListener() {}, removeEventListener() {} },
         document: {
             getElementById: id => nodes.get(id) || null,
@@ -37,9 +55,11 @@ function makeCtx(payload) {
             removeEventListener() {},
         },
         fetch: async (url) => {
-            lastRequest = url;
-            return { ok: payload.status === 'success' ? true : false, status: payload.http || 200,
-                json: async () => payload };
+            requests.push(url);
+            const key = Object.keys(routes).find(k => url.includes(k));
+            const body = key ? routes[key] : payload;
+            return { ok: body.status === 'success', status: body.http || 200,
+                json: async () => body };
         },
     };
     vm.createContext(ctx);
@@ -49,7 +69,7 @@ function makeCtx(payload) {
     assert.ok(initIdx > 0, 'Init section not found');
     const cut = source.lastIndexOf('// =====', initIdx);
     vm.runInContext(source.slice(0, cut), ctx);
-    return { ctx, nodes, lastRequest: () => lastRequest };
+    return { ctx, nodes, requests, lastRequest: () => requests[requests.length - 1] };
 }
 
 test('wsErrorMessage localizes the database-unavailable 503', () => {
@@ -93,4 +113,147 @@ test('a successful tree still renders entries', async () => {
     await ctx.loadWorkspaceDir('');
     const html = nodes.get('ws-file-list').innerHTML;
     assert.match(html, /a\.txt/);
+});
+
+// ---------------------------------------------------------------------------
+// The panel button opens on the active Agent's own folders (the `agents/<id>`
+// directory under the workspace root), and a refused Agent falls back to the
+// caller's own private Agent.
+// ---------------------------------------------------------------------------
+
+const AGENT = 'rfq-quote';
+const PERSONAL = { status: 'success', agents: [{ id: 'mine' }], default_agent_id: 'mine' };
+const NO_PRIVATE = { status: 'success', agents: [], default_agent_id: '' };
+const REFUSED = { status: 'error', code: 'forbidden', http: 403, message: 'forbidden' };
+const MISSING = { status: 'error', http: 200, message: 'Not a directory: agents/x' };
+
+// How the panel asks for a folder: the path is percent-encoded on the wire.
+const dirQ = id => encodeURIComponent(`agents/${id}`);
+const agentTree = id => ({ status: 'success', path: `agents/${id}`, root: '/ws/t1',
+    entries: [{ name: 'knowledge', path: `agents/${id}/knowledge`, is_dir: true,
+        size: 0, kind: 'directory' }] });
+const ROOT_TREE = { status: 'success', path: '', root: '/ws/t1',
+    entries: [{ name: 'users', path: 'users', is_dir: true, size: 0, kind: 'directory' }] };
+
+// The panel's state lives in module-level `let` bindings, which are lexical:
+// a property on the sandbox's global object is a *different* variable. Evaluate
+// inside the context instead, so a test reads (and arranges) the same state the
+// code does.
+const peek = (ctx, name) => vm.runInContext(name, ctx);
+const poke = (ctx, source) => vm.runInContext(source, ctx);
+const flush = async () => {
+    for (let i = 0; i < 5; i += 1) await new Promise(resolve => setImmediate(resolve));
+};
+const withAgent = (ctx, id = AGENT) =>
+    poke(ctx, `activeAgentId = ${JSON.stringify(id)};`);
+
+test('the panel button opens on the active Agent own folder', async () => {
+    const { ctx, nodes, requests } = makeCtx(ROOT_TREE, { [dirQ(AGENT)]: agentTree(AGENT) });
+    withAgent(ctx);
+    nodes.set('ws-file-list', element(2));   // rows left by a previous folder
+    nodes.set('workspace-panel', element());
+    // A preview was open, and the browsed directory was another one.
+    poke(ctx, 'wsCurrentFile = {path: "old.html"}; wsCurrentDir = "outputs";');
+    ctx.toggleWorkspacePanel();
+    await flush();
+    assert.equal(peek(ctx, 'wsActiveTab'), 'files');
+    assert.match(nodes.get('ws-file-list').innerHTML, /knowledge/);
+    // One listing, asked for the Agent's folder — not the root, and not the
+    // directory the previous visit had drilled into.
+    assert.equal(requests.length, 1, requests.join('\n'));
+    assert.match(requests[0], new RegExp(`path=${dirQ(AGENT)}`));
+    assert.equal(peek(ctx, 'wsCurrentDir'), `agents/${AGENT}`);
+});
+
+test('a root without the Agent folder lands on the root itself', async () => {
+    // A session that opened a project has no per-Agent folder under it; the
+    // root is then the honest answer, not a "not a directory" error.
+    const { ctx, nodes, requests } = makeCtx(ROOT_TREE, { [dirQ(AGENT)]: MISSING });
+    withAgent(ctx);
+    nodes.set('ws-file-list', element());
+    await ctx.loadWorkspaceDir(`agents/${AGENT}`);
+    assert.match(nodes.get('ws-file-list').innerHTML, /users/);
+    assert.equal(peek(ctx, 'wsCurrentDir'), '');
+    assert.equal(requests.length, 2, requests.join('\n'));
+});
+
+test('a missing directory the user navigated into is reported', async () => {
+    // Only the landing path may quietly fall back to the root: browsing into a
+    // directory that is gone is a real error.
+    const { ctx, nodes, requests } = makeCtx(MISSING);
+    withAgent(ctx);
+    nodes.set('ws-file-list', element());
+    await ctx.loadWorkspaceDir('outputs/gone');
+    assert.match(nodes.get('ws-file-list').innerHTML, /Not a directory/);
+    assert.equal(requests.length, 1, requests.join('\n'));
+});
+
+test('a refused Agent folder falls back to the caller own private Agent', async () => {
+    const { ctx, nodes, requests } = makeCtx(REFUSED,
+        { 'view=personal': PERSONAL, [dirQ('mine')]: agentTree('mine') });
+    withAgent(ctx);
+    nodes.set('ws-file-list', element());
+    await ctx.loadWorkspaceDir(`agents/${AGENT}`);
+    assert.match(nodes.get('ws-file-list').innerHTML, /knowledge/);
+    assert.equal(requests.length, 3, requests.join('\n'));
+    // The retry addresses the *fallback* Agent's own folder, which is a
+    // different directory from the one that was refused.
+    assert.match(requests[2], new RegExp(`path=${dirQ('mine')}`));
+    // The fallback Agent stays in effect for the rest of the panel, otherwise
+    // previewing a file there would be asked for under the refused Agent.
+    assert.equal(peek(ctx, 'wsAgentOverride'), 'mine');
+    assert.equal(peek(ctx, 'wsCurrentDir'), 'agents/mine');
+});
+
+test('the fallback is not retried once it is in effect', async () => {
+    const { ctx, nodes, requests } = makeCtx(REFUSED,
+        { 'view=personal': PERSONAL, [dirQ('mine')]: REFUSED });
+    withAgent(ctx);
+    nodes.set('ws-file-list', element());
+    await ctx.loadWorkspaceDir(`agents/${AGENT}`);
+    // The fallback Agent's folder is refused too, so the panel says so instead
+    // of showing a folder it cannot vouch for.
+    assert.match(nodes.get('ws-file-list').innerHTML, /ws_agent_forbidden/);
+    // One refusal, one probe, one retry — a second fallback would loop.
+    assert.equal(requests.filter(u => u.includes('view=personal')).length, 1,
+        requests.join('\n'));
+});
+
+test('a member with no private Agent still sees the localized reason', async () => {
+    const { ctx, nodes, requests } = makeCtx(REFUSED, { 'view=personal': NO_PRIVATE });
+    withAgent(ctx);
+    nodes.set('ws-file-list', element());
+    await ctx.loadWorkspaceDir(`agents/${AGENT}`);
+    // The landing, the probe, and the root candidate — all refused, and the
+    // panel names the Agent folder in the reader's language rather than
+    // reporting the API's own "agent not found" answer.
+    assert.match(nodes.get('ws-file-list').innerHTML,
+        /<span>ws_agent_forbidden<\/span>/);
+    assert.equal(requests.length, 3, requests.join('\n'));
+});
+
+test('switching Agent drops the fallback and lands on the new Agent folder', async () => {
+    const { ctx, nodes, requests } = makeCtx(agentTree('other'));
+    nodes.set('ws-file-list', element());
+    poke(ctx, "wsAgentOverride = 'mine'; wsCurrentDir = 'agents/mine'; "
+        + "wsPanelOpen = true; activeAgentId = 'mine';");
+    withAgent(ctx, 'other');
+    ctx.resetWorkspaceToAgentRoot();
+    await flush();
+    assert.equal(peek(ctx, 'wsAgentOverride'), '');
+    assert.equal(peek(ctx, 'wsCurrentDir'), 'agents/other');
+    assert.equal(requests.length, 1, requests.join('\n'));
+    assert.match(requests[0], new RegExp(`path=${dirQ('other')}`));
+});
+
+test('a session switch lands on the new session Agent folder', async () => {
+    const { ctx, nodes, requests } = makeCtx(agentTree(AGENT));
+    withAgent(ctx);
+    nodes.set('ws-file-list', element());
+    poke(ctx, "wsAgentOverride = 'mine'; wsPanelOpen = true; wsActiveTab = 'files';");
+    ctx.wsOnSessionSwitch();
+    await flush();
+    assert.equal(peek(ctx, 'wsAgentOverride'), '');
+    assert.equal(requests.length, 1, requests.join('\n'));
+    assert.match(requests[0], new RegExp(`path=${dirQ(AGENT)}`));
 });

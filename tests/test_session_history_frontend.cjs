@@ -119,6 +119,10 @@ function setup(fetchImpl = async url => response([], new URL(url, 'http://test')
             querySelector: () => null, querySelectorAll: () => [] },
         localStorage: { getItem: () => null, setItem() {} },
         sessionStorage: { getItem: key => storage.get(key) || null },
+        // The history section defers sidebar init to a microtask; the harness
+        // exercises the history functions directly and has no sidebar section
+        // loaded, so the deferred callback is dropped rather than run.
+        queueMicrotask: () => {},
         t: key => key, escapeHtml: value => String(value), _wsAttr: value => String(value),
         _wsSelState: { current: null }, _dragSpaceKey: null,
         _sessionItemEl: s => { const el = element(); el.dataset.sessionId = s.session_id; return el; },

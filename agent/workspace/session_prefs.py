@@ -46,6 +46,18 @@ _FIELDS = ("provider", "model", "permission", "members")
 _lock = threading.Lock()
 
 
+class SessionPrefsError(RuntimeError):
+    """A preferences write that did not reach disk.
+
+    :func:`set_prefs` used to swallow the failure and leave the caller believing
+    the new roster was stored, so a team could be created against a write that
+    never happened (change refine-sidebar-team-chat-launch, task 2.4). The write
+    path now raises this instead, and the Web handler answers a real error; the
+    *cleanup* paths (``forget_session`` / ``forget_agent``) stay best-effort
+    because a failed tidy-up must not fail a delete.
+    """
+
+
 def _store_file() -> str:
     from common.state_dir import shared_root
 
@@ -67,16 +79,34 @@ def _load() -> Dict:
     return data
 
 
-def _save(data: Dict) -> None:
+def _save(data: Dict, *, strict: bool = True) -> None:
+    """Persist ``data`` atomically.
+
+    ``strict`` is what separates the two obligations of this store: a caller
+    that is *reporting* an outcome (a settings write) must hear about a failed
+    write, while a caller that is merely *tidying up* (a delete) must not fail
+    because of one.
+    """
     path = _store_file()
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        directory = os.path.dirname(path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
         tmp = f"{path}.tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         os.replace(tmp, path)
     except Exception as e:
         logger.warning(f"[SessionPrefs] Could not write {path}: {e}")
+        if strict:
+            raise SessionPrefsError(
+                f"could not persist session preferences: {e}"
+            ) from e
+
+
+def _save_best_effort(data: Dict) -> None:
+    """Persist a cleanup, logging a failure instead of raising it."""
+    _save(data, strict=False)
 
 
 def _session_key(session_id: str, agent_id: Optional[str]) -> str:
@@ -162,7 +192,7 @@ def forget_session(session_id: str, agent_id: Optional[str] = None) -> None:
     with _lock:
         data = _load()
         if data["sessions"].pop(key, None) is not None:
-            _save(data)
+            _save_best_effort(data)
 
 
 def forget_agent(agent_id: str) -> None:
@@ -207,7 +237,7 @@ def forget_agent(agent_id: str) -> None:
                     sessions.pop(key, None)
 
         if changed:
-            _save(data)
+            _save_best_effort(data)
 
 
 def resolve_permission(session_id: str, agent_id: Optional[str] = None) -> str:

@@ -148,6 +148,7 @@ test('the recent-sessions request is skipped when the grant is withheld', () => 
         _sidebarRecentSeq: 0,
         _sidebarRecentDenied: () => true,
         SIDEBAR_RECENT_LIMIT: 10,
+        sidebarRecentLimitCount: () => 10,
         _sidebarRecentLimit: (items) => items,
         renderSidebarRecentSessions: () => {},
         t: (k) => k,
@@ -169,6 +170,9 @@ test('the recent-sessions request runs when the block is visible', () => {
         _sidebarRecentSeq: 0,
         _sidebarRecentDenied: () => false,
         SIDEBAR_RECENT_LIMIT: 10,
+        // The preview page size is a presentation value owned by
+        // `sidebarRecentLimitCount`; the sandbox pins the pre-switch answer.
+        sidebarRecentLimitCount: () => 10,
         _sidebarRecentLimit: (items) => items,
         renderSidebarRecentItems() {},
         renderSidebarRecentSessions: () => {},

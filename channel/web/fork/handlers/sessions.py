@@ -449,9 +449,9 @@ class SessionSettingsHandler:
                     )
                     raw = body.get("members")
                     if raw is None:
-                        updates["members"] = None
+                        submitted: list = []
                     elif isinstance(raw, list):
-                        updates["members"] = [
+                        submitted = [
                             str(item).strip() for item in raw if str(item).strip()
                         ]
                     else:
@@ -459,12 +459,14 @@ class SessionSettingsHandler:
                             "status": "error",
                             "message": "members must be a list of agent ids",
                         })
-                    # A team is a set of Agents answering in the same
-                    # conversation, so a coding Agent can never be one: it has no
-                    # ordinary runtime to take a turn.
-                    from channel.web.web_channel import _reject_coding_agent
-                    for member in updates.get("members") or []:
-                        _reject_coding_agent(str(member).strip())
+                    # The owner and every member are validated as one roster
+                    # before anything is written (task 2.3). A coding Agent, an
+                    # unknown/disabled id, a cross-tenant or another member's
+                    # private Agent, or one the caller may not use refuses the
+                    # whole write — never "drop it and store the rest".
+                    from channel.web.fork.common import _validate_team_roster
+                    validated = _validate_team_roster(ctx, agent_id, submitted)
+                    updates["members"] = validated or None
                     # Compared as sets: the invite order is only the console's
                     # business, and a reorder must not cost every participant a
                     # rebuild.
@@ -478,7 +480,21 @@ class SessionSettingsHandler:
                         "message": "permission, model, provider or members required",
                     })
 
-                session_prefs.set_prefs(session_id, agent_id, **updates)
+                try:
+                    session_prefs.set_prefs(session_id, agent_id, **updates)
+                except session_prefs.SessionPrefsError as e:
+                    # "Saved" has to mean saved. A write that never reached disk
+                    # must not answer success: the console would switch into a
+                    # team whose roster the next read cannot find (task 2.4).
+                    # Nothing was retired — the runtime still holds the old
+                    # roster — and the store still holds the previous value.
+                    logger.error(
+                        f"[WebChannel] Session settings write failed: sid={session_id}: {e}"
+                    )
+                    from channel.web.auth_handlers import _error
+                    _error("could not save session settings",
+                           500,
+                           "session_prefs_write_failed")
 
                 if roster_changed:
                     # The team is part of what a runtime is assembled against, so

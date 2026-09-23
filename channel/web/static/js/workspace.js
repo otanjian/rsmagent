@@ -31,6 +31,40 @@ let wsCurrentDir = '';
 let wsCurrentRoot = '';   // absolute path of the workspace/project root
 let wsSearchMode = false;
 let wsSearchTimer = null;
+// Agent whose directory the panel browses. Normally the conversation's own
+// Agent (the `agent` query param below); set to the caller's private Agent only
+// after that one refused the request, see wsFallBackToOwnAgent.
+let wsAgentOverride = '';
+// The caller's own private Agent id, memoized once known. `undefined` means
+// "not asked yet" so an empty answer is retried rather than cached.
+let wsOwnAgentId;
+
+// Where the folders of each Agent live, relative to the workspace root the file
+// API reports. That root is the shared root of the caller's tenant (or a
+// project the session opened), and every Agent — shared or private — keeps its
+// own things under `agents/<agent id>`: `AGENT.md`, `knowledge/`, `memory/`,
+// `outputs/`, `scheduler/`, `skills/`. The panel opens on that folder, so the
+// entry answers "where does this Agent keep its files?" (server side, the same
+// layout is what `_tenant_agent_workspace` resolves and what an Agent's
+// workspace is set to).
+const WS_AGENT_DIR = 'agents';
+
+/** The Agent the panel is browsing for; '' before the roster is known. */
+function wsScopedAgentId() {
+    return wsAgentOverride
+        || ((typeof activeAgentId !== 'undefined') ? activeAgentId : '');
+}
+
+/** An Agent's own folder, relative to the workspace root; '' without an Agent. */
+function wsAgentDirPath(agentId) {
+    const id = agentId || '';
+    return id ? `${WS_AGENT_DIR}/${id}` : '';
+}
+
+/** The directory the panel opens on: the active Agent's own folder. */
+function wsAgentLandingPath() {
+    return wsAgentDirPath(wsScopedAgentId());
+}
 
 // =====================================================================
 // Metadata helpers
@@ -109,10 +143,11 @@ async function wsApi(path) {
         if (path.startsWith('/api/workspace/')) {
             const sid = (typeof sessionId !== 'undefined') ? sessionId : '';
             if (sid) path += (path.includes('?') ? '&' : '?') + 'session=' + encodeURIComponent(sid);
-            // Without an opened project the root falls back to the Agent's own
-            // workspace, so the file panel must say which Agent is active — else
-            // it always shows the default Agent's directory.
-            const aid = (typeof activeAgentId !== 'undefined') ? activeAgentId : '';
+            // Without an opened project the root falls back to the shared root
+            // of the caller's tenant, where every Agent has a folder of its
+            // own, so the file panel must say which Agent is active — else it
+            // always shows the default Agent's directory.
+            const aid = wsScopedAgentId();
             if (aid) path += (path.includes('?') ? '&' : '?') + 'agent=' + encodeURIComponent(aid);
         }
     } catch (e) { /* globals not available yet */ }
@@ -178,7 +213,28 @@ function toggleWorkspacePanel() {
         return;
     }
     wsAutoOpenSuppressed = false;
-    openWorkspacePanel(wsCurrentFile ? 'preview' : 'files');
+    openWorkspacePanel();
+    showActiveAgentWorkspace();
+}
+
+/**
+ * Land the file list on the active Agent's own folder.
+ *
+ * Opening the panel asks for that Agent's files, so whatever the previous visit
+ * left behind is dropped first: the file previewed then (which used to make the
+ * panel reopen on the preview tab), the directory drilled into then, and any
+ * fallback Agent chosen then. The rows on screen belong to that old folder, so
+ * the list is emptied here — that is what makes the tab switch below re-list
+ * instead of showing stale entries as if they were this Agent's own.
+ */
+function showActiveAgentWorkspace() {
+    // The fallback Agent of a previous visit is dropped *before* the landing
+    // path is derived, so the folder shown is the active Agent's own.
+    wsAgentOverride = '';
+    wsCurrentDir = wsAgentLandingPath();
+    const list = document.getElementById('ws-file-list');
+    if (list && list.childElementCount) list.innerHTML = '';
+    switchWorkspaceTab('files');
 }
 
 function switchWorkspaceTab(tab) {
@@ -898,32 +954,153 @@ function refreshWorkspaceTree() {
     loadWorkspaceDir(wsCurrentDir);
 }
 
-/** Switching the active Agent moves the file panel's root to that Agent's own
- *  workspace (when no project is open). Drop back to the root and reload, but
- *  only if the panel is already open — never pop it open on a switch. */
+/** Switching the active Agent moves the file panel to that Agent's own folder.
+ *  Land there again, but only if the panel is already open — never pop it open
+ *  on a switch. */
 function resetWorkspaceToAgentRoot() {
-    wsCurrentDir = '';
+    // The new Agent may well be one the caller can browse, so the previous
+    // Agent's fallback must not outlive the switch — and the landing path is the
+    // new Agent's folder, never the old fallback's.
+    wsAgentOverride = '';
+    wsCurrentDir = wsAgentLandingPath();
     if (wsPanelOpen) refreshWorkspaceTree();
 }
 
+// =====================================================================
+// Access fallback: the caller's own private Agent
+// =====================================================================
+/**
+ * Whether a workspace failure means "this Agent's directory is not yours".
+ *
+ * `_workspace_request_scope` refuses with 403/404 an Agent bound to another
+ * tenant, one privately owned by somebody else, and a session the caller does
+ * not own, so both statuses are the permission case the panel falls back from.
+ * Once the fallback Agent is in use this is false: a second refusal would
+ * otherwise loop the reload.
+ */
+function wsShouldFallBackToOwnAgent(e) {
+    return !wsAgentOverride && wsIsRefusal(e);
+}
+
+/** True for the refusals `_workspace_request_scope` answers with (403/404). */
+function wsIsRefusal(e) {
+    const status = e && e.status;
+    return status === 403 || status === 404;
+}
+
+/**
+ * The caller's own private Agent id, or '' when they own none.
+ *
+ * `/api/agents?view=personal` already filters server-side to the Agents this
+ * member owns, so no ownership decision is made here. The member's default
+ * Agent is preferred when it is one of them — that is the Agent the console
+ * sends them to — then whichever private Agent they own.
+ */
+async function wsOwnPrivateAgentId() {
+    if (wsOwnAgentId !== undefined) return wsOwnAgentId;
+    try {
+        const res = await fetch('/api/agents?view=personal', { cache: 'no-store' });
+        const data = await res.json();
+        const agents = (data && data.status === 'success' && Array.isArray(data.agents))
+            ? data.agents : [];
+        const ids = agents.map(a => a.id).filter(Boolean);
+        const preferred = data && data.default_agent_id;
+        const resolved = (preferred && ids.includes(preferred)) ? preferred : (ids[0] || '');
+        // Only a positive answer is remembered: a member with no private Agent
+        // yet must keep working after they create one.
+        if (resolved) wsOwnAgentId = resolved;
+        return resolved;
+    } catch (_) {
+        return '';
+    }
+}
+
+/**
+ * Point the panel at the caller's own private Agent's folder, and say so — the
+ * folder about to be listed belongs to a different Agent than the one asked
+ * for, which is otherwise indistinguishable from a wrong folder.
+ *
+ * @returns {Promise<boolean>} whether a fallback Agent is now in effect.
+ */
+async function wsFallBackToOwnAgent() {
+    const agentId = await wsOwnPrivateAgentId();
+    if (!agentId) return false;
+    wsAgentOverride = agentId;
+    if (typeof _wsToast === 'function') _wsToast(t('ws_fallback_own_agent'));
+    return true;
+}
+
+/** One tree request for a workspace-relative directory. */
+function wsTreeRequest(relPath) {
+    return wsApi(`/api/workspace/tree?path=${encodeURIComponent(relPath || '')}`);
+}
+
+/**
+ * Load a directory into the file list. `relPath` is relative to the workspace
+ * root; empty means the root itself.
+ *
+ * Two ways a listing can be missing are survived:
+ *
+ *  - the Agent's own folder is refused (403/404: another tenant's Agent,
+ *    somebody else's private Agent, a session the caller does not own). The
+ *    panel then shows the caller's own private Agent's folder instead of a dead
+ *    end, and the retry asks for the *new* Agent's folder — it is a different
+ *    directory, so the path is re-derived rather than reused.
+ *  - the Agent's own folder is simply not there. A root that keeps its Agents
+ *    elsewhere (a project the session opened, a legacy single-Agent install)
+ *    has no `agents/<id>/`, and landing on the root itself is then the honest
+ *    answer. That fallback is only offered for the landing path — a directory
+ *    the user navigated into is reported as the error it is.
+ */
 async function loadWorkspaceDir(relPath) {
     const list = document.getElementById('ws-file-list');
     if (!list) return;
     list.innerHTML = `<div class="workspace-empty"><i class="fas fa-spinner fa-spin"></i></div>`;
-    try {
-        const data = await wsApi(`/api/workspace/tree?path=${encodeURIComponent(relPath || '')}`);
-        wsCurrentDir = data.path || '';
-        wsCurrentRoot = data.root || wsCurrentRoot;
-        wsSearchMode = false;
-        // Browsing leaves search mode; drop the stale query from the box.
-        const searchBox = document.getElementById('ws-search-input');
-        if (searchBox && searchBox.value) searchBox.value = '';
-        renderWorkspaceBreadcrumb(wsCurrentDir);
-        renderWorkspaceEntries(data.entries, data.truncated);
-    } catch (e) {
-        list.innerHTML = `<div class="workspace-empty">
-            <i class="fas fa-triangle-exclamation"></i><span>${escapeHtml(wsErrorMessage(e))}</span></div>`;
+    const landing = !!relPath && relPath === wsAgentLandingPath();
+    const candidates = landing ? [relPath, ''] : [relPath || ''];
+    let data = null;
+    let failure = null;
+    // One landing asks about the caller's private Agent at most once: a second
+    // candidate runs into the same refusal, so probing again would only ask the
+    // same question and repeat the answer.
+    let fallbackTried = false;
+    for (const candidate of candidates) {
+        try {
+            data = await wsTreeRequest(candidate);
+            break;
+        } catch (e) {
+            failure = e;
+            if (fallbackTried || !wsShouldFallBackToOwnAgent(e)) continue;
+            fallbackTried = true;
+            if (!(await wsFallBackToOwnAgent())) continue;
+            try {
+                data = await wsTreeRequest(landing ? wsAgentLandingPath() : candidate);
+                break;
+            } catch (e2) {
+                failure = e2;
+            }
+        }
     }
+    if (!data) {
+        // A landing on the Agent's own folder that stays refused is a permission
+        // problem, and says so in the reader's language: the raw 404 behind it
+        // ("agent not found") is about the API's roster, not about the folder
+        // the reader asked for.
+        const message = (landing && wsIsRefusal(failure))
+            ? t('ws_agent_forbidden')
+            : wsErrorMessage(failure);
+        list.innerHTML = `<div class="workspace-empty">
+            <i class="fas fa-triangle-exclamation"></i><span>${escapeHtml(message)}</span></div>`;
+        return;
+    }
+    wsCurrentDir = data.path || '';
+    wsCurrentRoot = data.root || wsCurrentRoot;
+    wsSearchMode = false;
+    // Browsing leaves search mode; drop the stale query from the box.
+    const searchBox = document.getElementById('ws-search-input');
+    if (searchBox && searchBox.value) searchBox.value = '';
+    renderWorkspaceBreadcrumb(wsCurrentDir);
+    renderWorkspaceEntries(data.entries, data.truncated);
 }
 
 function renderWorkspaceBreadcrumb(relPath) {
@@ -1267,12 +1444,15 @@ function relocalizeWorkspacePanel() {
     }
 }
 
-// Reset the panel when the active session changes. The file tree and preview
-// are scoped to a session's working dir (project or default), so stale state
-// from the previous session must be dropped and, if open, reloaded against the
-// new session's root.
+// Reset the panel when the active session changes. The file panel is scoped to
+// a session's Agent, so stale state from the previous session must be dropped
+// and, if open, reloaded against the new session's Agent.
 function wsOnSessionSwitch() {
-    wsCurrentDir = '';
+    // The next session may address an Agent the caller *can* browse, so the
+    // previous one's fallback must not carry over — and the landing path below
+    // is the new session's Agent's own folder, not the old fallback's.
+    wsAgentOverride = '';
+    wsCurrentDir = wsAgentLandingPath();
     wsCurrentRoot = '';
     wsSearchMode = false;
     wsCurrentFile = null;
@@ -1281,7 +1461,7 @@ function wsOnSessionSwitch() {
     wsUpdateHeaderActions();
     if (!wsPanelOpen) return;
     if (wsActiveTab === 'files') {
-        loadWorkspaceDir('');
+        loadWorkspaceDir(wsCurrentDir);
     } else {
         wsSetPreviewEmpty(t('ws_preview_empty'));
     }

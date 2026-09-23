@@ -68,7 +68,13 @@ function launchHarness(agents, payload, useAgents) {
         ['function enabledAgents()', 'function availableChatAgents()'],
         ['function availableChatAgents()', '/* An uploaded avatar'],
         ['function multiAgentMode()', '// Who is answering'],
-        ['/* The session-panel "新对话" button.', 'function startSoloChat('],
+        ['function sidebarLaunchV2()', 'const SIDEBAR_V2_VIEW_ORDER'],
+        // The launch-control section: the panel and the sidebar are the same
+        // control in two places, and these cases run the shipped table. The type
+        // hint rides along because the picker rows draw it, and the point of one
+        // shared implementation is that a row and a card cannot drift apart.
+        ['function codingAgentTypeHint(', 'function agentWorkbenchCardHTML('],
+        ['const NEW_CHAT_SURFACES = {', 'function startSoloChat('],
     ]) {
         vm.runInContext(section(start, end), ctx);
     }
@@ -84,6 +90,11 @@ function launchHarness(agents, payload, useAgents) {
 
 const agent = (id, extra = {}) =>
     ({ id, name: id, enabled: true, can_chat: true, is_default: false, ...extra });
+/** The coding-type badge markup inside ``html``, or null when there is none. */
+function codingHint(html) {
+    const found = html.match(/<span class="coding-agent-badge[^"]*"[^>]*>[\s\S]*?<\/span>/);
+    return found ? found[0] : null;
+}
 
 test('entering chat with several Agents anchors the default, no picker', async () => {
     const { ctx, get } = launchHarness([
@@ -239,4 +250,88 @@ test('an unusable Agent in the use range is not offered for chat', () => {
     assert.doesNotMatch(get('new-chat-menu').innerHTML, /startSoloChat\('broken'\)/,
         'an Agent that cannot chat was offered as a chat target');
     assert.deepEqual(ctx.availableChatAgents().map(a => a.id), ['mine']);
+});
+
+// The sidebar's 新建对话 is the *same* control as the session panel's 新对话:
+// its body starts a chat through the sidebar's own entry point (which keeps the
+// branding/unsaved guard and the composer focus), and its caret opens the same
+// picker. Two menus drawn from two sources is exactly what this pins against.
+
+test('the sidebar launch control is the panel control in another place', () => {
+    const { ctx, calls, get } = launchHarness([
+        agent('research'), agent('owner', { is_default: true }), agent('coder'),
+    ]);
+    ctx.activeAgentId = 'owner';
+    let sidebarStarts = 0;
+    ctx.startSidebarNewChat = () => { sidebarStarts += 1; };
+    ctx.sidebarLaunchV2 = () => true;
+
+    // Body click: the sidebar's own entry point, not a bare newChat().
+    ctx.onNewChatButton({ target: { closest: () => null }, stopPropagation() {} }, 'sidebar');
+    assert.equal(sidebarStarts, 1, 'the sidebar body did not start a chat');
+    assert.equal(calls.newChat, 0, 'the sidebar body bypassed the sidebar entry point');
+
+    // Caret click: the sidebar's own menu node, shut until asked for.
+    assert.ok(get('sidebar-new-chat-menu').classList.contains('hidden'));
+    ctx.onNewChatButton({
+        target: { closest: sel => (sel === '#sidebar-new-chat-caret' ? {} : null) },
+        stopPropagation() {},
+    }, 'sidebar');
+    const sidebarMenu = get('sidebar-new-chat-menu');
+    assert.equal(sidebarMenu.classList.contains('hidden'), false,
+        'the sidebar caret did not open a picker');
+    assert.ok(get('new-chat-menu').classList.contains('hidden'),
+        'opening the sidebar picker left the panel picker open too');
+
+    // Both menus are one painter's output, so their options cannot drift.
+    ctx.paintNewChatMenu(get('new-chat-menu'));
+    assert.equal(sidebarMenu.innerHTML, get('new-chat-menu').innerHTML,
+        'the two launch controls offer different options');
+    assert.match(sidebarMenu.innerHTML, /startSoloChat\('research'\)/);
+    assert.match(sidebarMenu.innerHTML, /openTeamChatModal/);
+});
+
+test('the sidebar caret rides the presentation switch, the panel caret does not', async () => {
+    const { ctx, get } = launchHarness([agent('owner', { is_default: true }), agent('research')]);
+    ctx.sidebarLaunchV2 = () => false;
+    await ctx.loadAgentCatalog();
+    assert.equal(get('new-chat-caret').classList.contains('hidden'), false);
+    assert.ok(get('sidebar-new-chat-caret').classList.contains('hidden'),
+        'the sidebar caret appeared with the refined layout switched off');
+
+    ctx.sidebarLaunchV2 = () => true;
+    await ctx.loadAgentCatalog();
+    assert.equal(get('sidebar-new-chat-caret').classList.contains('hidden'), false,
+        'the sidebar caret stayed hidden with the refined layout on');
+});
+
+test('one usable Agent leaves both launch controls without a caret', async () => {
+    const { ctx, get } = launchHarness([agent('owner', { is_default: true })]);
+    ctx.sidebarLaunchV2 = () => true;
+    await ctx.loadAgentCatalog();
+    assert.ok(get('new-chat-caret').classList.contains('hidden'));
+    assert.ok(get('sidebar-new-chat-caret').classList.contains('hidden'),
+        'the sidebar offered something to choose between that does not exist');
+});
+
+test('a coding Agent is marked in the picker with the card’s glyph', () => {
+    // The picker rows and the workbench card draw one hint from one function
+    // (change simplify-coding-agent-type-hint). A row that spelled the type out
+    // while the card showed a glyph would be exactly the drift this pins.
+    const { ctx, get } = launchHarness([
+        agent('owner', { is_default: true }),
+        agent('coder', { agent_type: 'coding' }),
+    ]);
+
+    ctx.paintNewChatMenu(get('new-chat-menu'));
+
+    const menu = get('new-chat-menu').innerHTML;
+    assert.match(menu, /startSoloChat\('coder'\)/, 'the coding Agent left the picker');
+    const hint = codingHint(menu);
+    assert.ok(hint, 'the coding row carries no type hint');
+    assert.equal(hint, ctx.codingAgentTypeHint(),
+        'the picker drew its own hint instead of the shared one');
+    assert.match(hint, /fa-terminal/);
+    assert.doesNotMatch(hint, />[^<]*[^\s<]/,
+        'the picker row still renders the type as visible text');
 });

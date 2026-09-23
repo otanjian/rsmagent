@@ -340,6 +340,7 @@ from channel.web.fork.common import (
     _workbench_agents_projection,
     _workbench_chat_readiness,
     _workbench_empty_reason,
+    _workbench_sidebar_launch_v2,
 )
 from channel.web.fork.handlers.agents import (
     AgentAvatarHandler,

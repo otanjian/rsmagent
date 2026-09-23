@@ -225,3 +225,61 @@ def test_a_normal_agent_created_first_still_becomes_the_default(bare_web, tmp_pa
     assert bare_web.service.resolved_default_agent_id(bare_web.tenant_id) == plain
 
 
+# -- the type boundary inside a team roster ---------------------------------
+
+
+def _set_team(web, session_id, agent_id, members, username="root"):
+    return web.post(f"/api/sessions/{session_id}/settings",
+                    {"agent_id": agent_id, "members": members},
+                    token=web.login(username))
+
+
+def _stored_members(web, session_id, agent_id):
+    """The roster as the *tenant* stored it, not as the developer's own root."""
+    from agent.workspace import session_prefs
+    from common.runtime_identity import RuntimeIdentity, use_identity
+
+    with use_identity(RuntimeIdentity(user_id=web.admin_id, tenant_id=web.tenant_id)):
+        return session_prefs.get_prefs(session_id, agent_id).get("members") or []
+
+
+def test_a_coding_agent_is_refused_as_a_team_member(web, tmp_path):
+    """Writing a roster validates every member as a whole, and a coding Agent
+    has no ordinary runtime to take a turn: it is refused for what it *is*, so
+    the conversation cannot be left believing it joined."""
+    coder = _uid(tmp_path, "team-coder")
+    web.add_agent("team-peer")
+    web.add_coding_agent(coder, PROJECT_DIR)
+
+    response = _set_team(web, "type-team-member", "shared-agent", ["team-peer", coder])
+
+    assert _status(response) == 400, response.data
+    assert _json(response)["code"] == "coding_web_only"
+    assert _stored_members(web, "type-team-member", "shared-agent") == []
+
+
+def test_a_coding_agent_is_refused_as_the_team_owner(web, tmp_path):
+    """The owner position is not a loophole, and an administrator passes no
+    bypass: the type rule precedes any grant."""
+    coder = _uid(tmp_path, "team-owner-coder")
+    web.add_agent("team-peer")
+    web.add_coding_agent(coder, PROJECT_DIR)
+
+    response = _set_team(web, "type-team-owner", coder, ["team-peer"])
+
+    assert _status(response) == 400, response.data
+    assert _json(response)["code"] == "coding_web_only"
+    assert _stored_members(web, "type-team-owner", coder) == []
+
+
+def test_a_roster_of_normal_agents_is_still_stored(web):
+    """Non-vacuity: the coding refusals above are about the type, not about the
+    roster path being closed to everyone."""
+    web.add_agent("team-peer")
+
+    response = _set_team(web, "type-team-ok", "shared-agent", ["team-peer"])
+
+    assert _status(response) == 200, response.data
+    assert _stored_members(web, "type-team-ok", "shared-agent") == ["team-peer"]
+
+

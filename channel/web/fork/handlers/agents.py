@@ -301,6 +301,9 @@ def _tenant_agents_projection(ctx: "Optional[RequestContext]") -> Dict:
             "description": profile.description or "",
             "avatar": profile.avatar or None,
             "is_default": bool(profile.id == tenant_default),
+            "position": profile.position or "",
+            "category": profile.category or "",
+            "tags": list(profile.tags or []),
             "can_chat": can_chat,
             "unavailable_reason": unavailable_reason,
             # Explicit for every row, so the gallery can branch on the type
@@ -1013,5 +1016,4 @@ class AgentAvatarHandler:
             {"status": "success", "result": result, "revision": revision},
             ensure_ascii=False,
         )
-
 

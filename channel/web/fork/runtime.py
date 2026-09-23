@@ -2052,13 +2052,19 @@ class WebChannel(ChatChannel):
     def chat_page(self):
         """Serve the chat HTML page."""
         from channel.web.web_channel import _web_navigation_mode
+        from channel.web.web_channel import _workbench_sidebar_launch_v2
         file_path = os.path.join(_WEB_ROOT, 'chat.html')  # 使用绝对路径
         with open(file_path, 'r', encoding='utf-8') as f:
             html = f.read()
         # Inject the backend-resolved default language so the console can use
         # it on first load (when the user has no saved cow_lang preference).
         html = html.replace("{{COW_DEFAULT_LANG}}", i18n.get_language())
-        return html.replace("{{COW_NAVIGATION_MODE}}", _web_navigation_mode())
+        html = html.replace("{{COW_NAVIGATION_MODE}}", _web_navigation_mode())
+        # Temporary workbench-sidebar presentation switch (layout only).
+        return html.replace(
+            "{{COW_WORKBENCH_SIDEBAR_LAUNCH_V2}}",
+            _workbench_sidebar_launch_v2(),
+        )
 
     def startup(self):
         from channel.web.web_channel import SERVING

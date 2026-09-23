@@ -102,6 +102,23 @@ def post_settings(tmp_path, monkeypatch, bridge):
 
     monkeypatch.setattr(web_channel, "_db_scope", _fake_db_scope)
 
+    # The roster boundary (type / tenant / enabled / use grant) is exercised by
+    # ``test_coding_agent_type_boundary.py`` and the coding route suite against
+    # the real WSGI app. This file is about the *runtime rebuild* obligation, so
+    # the guards are stubbed to accept the fixture's local registry.
+    import agent.registry as registry_module
+
+    monkeypatch.setattr(
+        registry_module, "get_agent_registry", lambda: bridge.agent_registry
+    )
+    monkeypatch.setattr(
+        web_channel, "_require_tenant_agent_binding", lambda ctx, agent_id: agent_id
+    )
+    monkeypatch.setattr(
+        web_channel, "_require_agent_action",
+        lambda ctx, agent_id, action, permission: None,
+    )
+
     def post(session_id, body):
         monkeypatch.setattr(web_channel.web, "data", lambda: json.dumps(body).encode())
         return json.loads(web_channel.SessionSettingsHandler().POST(session_id))

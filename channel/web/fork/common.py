@@ -125,6 +125,32 @@ def _web_navigation_mode() -> str:
     return raw if raw in _NAVIGATION_MODES else "classic"
 
 
+def _workbench_sidebar_launch_v2() -> str:
+    """Temporary presentation switch for the refined workbench sidebar.
+
+    Returns ``"1"`` when ``workbench_sidebar_launch_v2`` is enabled, else
+    ``"0"``. It is deliberately a one-line presentation value read by the same
+    page projection as ``web_navigation_mode``: the new sidebar layout and its
+    five-row recent-session preview ride on it, while the team roster rules —
+    the candidate projection that keeps coding Agents out, the server-side type
+    rejection and the save-then-commit team start — stay in force for both the
+    old and the new entry points (spec: 呈现回退不撤销团队类型边界).
+
+    Anything that is not an explicit true value falls back to off, so a typo in
+    the config cannot silently ship a half-configured layout. The accepted
+    spellings are the same ones ``agent.evolution.config._as_bool`` accepts, so
+    the config keeps one convention for boolean-ish switches.
+    """
+    from channel.web.web_channel import conf
+
+    raw = conf().get("workbench_sidebar_launch_v2", False)
+    if isinstance(raw, bool):
+        return "1" if raw else "0"
+    if isinstance(raw, str) and raw.strip().lower() in ("true", "1", "yes", "on"):
+        return "1"
+    return "0"
+
+
 def _unavailable() -> str:
     """Stable 503 payload for a consumer closed in database identity mode."""
     web.status = 503
@@ -267,6 +293,86 @@ def _reject_coding_agent(agent_id: str) -> None:
     error = coding_web_only(profile.id)
     # ``_error`` raises, so the caller does not need to return.
     _error(error.message, error.status, error.code)
+
+
+def _team_refuse(message: str, code: str, status: str = "400 Bad Request") -> "NoReturn":
+    """Refuse a team write whose roster cannot be accepted as a whole."""
+    from channel.web.auth_handlers import _error
+
+    _error(message, status, code)
+
+
+def _validate_team_roster(ctx, owner_id: "Optional[str]", members) -> list:
+    """Validate an owner + member roster against the team boundary, or refuse it.
+
+    Called on the team-write path (``POST /api/sessions/{id}/settings``) with the
+    caller's request scope already active, so the tenant binding, the private
+    owner rule and the ``agent.use`` grant are the same ones the send path
+    applies. This is deliberately *independent* of the console's candidate
+    filtering: a hand-written request must not be able to store a roster the
+    picker would never have offered (spec ``agent-team-conversation``:
+    服务端对团队完整名册独立校验).
+
+    The rule is refusal, never repair. Silently dropping an invalid object and
+    storing the rest would leave the user believing their roster was saved while
+    the conversation runs a different team (task 2.3). Returns the normalized
+    roster — owner removed, blanks and duplicates dropped — only when every
+    submitted id passed.
+
+    A coding Agent is refused in *either* position, and no administrator bypass
+    reaches this rule: a coding Agent has no ordinary runtime to take a turn, so
+    there is nothing a grant could authorize (design D5).
+    """
+    from channel.web.web_channel import _require_agent_action
+    from channel.web.web_channel import _require_tenant_agent_binding
+
+    def _check(agent_id: str, *, position: str) -> None:
+        # The tenant binding first: it resolves an unnamed owner to the tenant's
+        # default and refuses a cross-tenant id with a 404 that leaks nothing.
+        resolved = _require_tenant_agent_binding(ctx, agent_id or None)
+        target = resolved or agent_id
+        if not target:
+            _team_refuse(
+                "no Agent is bound to this session", "team_owner_unresolved")
+        from agent.registry import get_agent_registry
+
+        registry = get_agent_registry()
+        try:
+            profile = registry.get(target, require_enabled=False)
+        except KeyError:
+            # The object does not exist for this caller. The message names no
+            # other tenant's or another member's private Agent.
+            _team_refuse("agent not found", "team_member_unknown", "404 Not Found")
+        # Type before state: a coding Agent is refused for what it is, whatever
+        # else the row says, and the client is told which field was wrong.
+        # ``_reject_coding_agent`` raises ``coding_web_only`` itself.
+        if profile.is_coding:
+            from agent.coding import coding_web_only
+            from channel.web.auth_handlers import _error
+
+            error = coding_web_only(profile.id)
+            _error(error.message, error.status, error.code)
+        if not profile.enabled:
+            _team_refuse(
+                f"agent '{target}' is disabled", "team_member_disabled")
+        # Ownership and the use grant: exactly the send path's gate, so a roster
+        # that saves is a roster whose members can actually take a turn.
+        _require_agent_action(ctx, target, "use", "agent.use")
+
+    if owner_id:
+        _check(str(owner_id).strip(), position="owner")
+
+    normalized: list = []
+    for raw in members or []:
+        member_id = str(raw or "").strip()
+        if not member_id or member_id in normalized:
+            continue
+        if owner_id and member_id == str(owner_id).strip():
+            # The owner is stored as the session's own anchor, not as a member.
+            continue
+        _check(member_id, position="member")
+        normalized.append(member_id)
+    return normalized
 
 
 def _workbench_agents_projection() -> Dict:
