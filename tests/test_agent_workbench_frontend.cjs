@@ -249,9 +249,10 @@ test('only the first tag row remains focusable when collapsed; expanding and res
 });
 
 test('fresh workbench Agent starts even when absent from management cache', async () => {
-    const { ctx, events, node } = setup(async () => response([agent('B', { name: 'New name' })]));
+    const { ctx, events, node } = setup(async () => response([agent('B', { name: 'New name', greeting: '我是 B，请告诉我你的任务。' })]));
     await ctx.startChatWithAgent('B');
     assert.equal(ctx.activeAgentId, 'B');
+    assert.equal(ctx.findAgent('B').greeting, '我是 B，请告诉我你的任务。');
     assert.equal(ctx.currentView, 'chat');
     assert.equal(events.filter(e => e[0] === 'newChat').length, 1);
     assert.deepEqual(events.find(e => e[0] === 'newChat'), ['newChat', true, false]);

@@ -304,6 +304,7 @@ def _tenant_agents_projection(ctx: "Optional[RequestContext]") -> Dict:
             "position": profile.position or "",
             "category": profile.category or "",
             "tags": list(profile.tags or []),
+            "greeting": getattr(profile, "greeting", None) or "",
             "can_chat": can_chat,
             "unavailable_reason": unavailable_reason,
             # Explicit for every row, so the gallery can branch on the type
