@@ -1,0 +1,13 @@
+{
+  "slug": "interview-criteria-gen",
+  "name": "面试题与量化录用条件生成",
+  "group": "hr",
+  "default_task": "要招 2 个质检员，业务经理就说了句「要细心、责任心强」。面试题和录用条件帮我生成一套。\n\n去年这个岗位辞退过一个人，理由是检验记录老漏填，这种真实情况要变成题目。\n录用条件要能落到纸面上签字的那种，模糊的词不要。\n\n面试官打分标准也给我，别让每个人的「3 分」意思都不一样。\n\n产出三份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：RC-02_结构化面试题本与评分标准.xlsx（每题对应考察项，含 1 到 5 分行为锚定）、RC-02_量化录用条件确认书（草案）.xlsx（入职当天签，与试用期考核同源，含业务负责人确认栏）、RC-02_岗位要求与历史案例对照.xlsx（模糊要求到量化对照，含历史失败模式）。",
+  "demo_files": [
+    "01_业务经理需求_微信原话.txt",
+    "02_质检员JD_2024版.txt",
+    "03_在职质检员_职责与产出.xlsx",
+    "04_去年辞退记录_质检岗.txt"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/interview-criteria-gen.html"
+}

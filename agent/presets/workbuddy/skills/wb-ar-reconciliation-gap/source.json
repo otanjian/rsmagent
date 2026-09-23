@@ -1,0 +1,53 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ots1af1M8J2fvk7OxWVwPg/17/deep-dives/ar-reconciliation-gap.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/XOtC2EDAccVwj7KP83K3Fw/0/pkg.zip",
+  "package_sha256": "70afd0f0823aa713e26f083d5588d39b6d84271a091ae0af047fb3bb2cef871a",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "79f47803a06fe7738db50936e36296337e79e4ebf170d6ac6af758353a70e781"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "0a10c02a38cf0c295ec040e24df840b6d62e47c9dcc40ef60c5c44694ece74d1"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "8dc7f0dd2b6d37643757b83d2ea3105749628393d4abc35fb4e2e86f1443edb1"
+    },
+    {
+      "original": "输入参考文件/01_我方应收台账（恒晟部分）.xlsx",
+      "path": "assets/demo/01_我方应收台账（恒晟部分）.xlsx",
+      "sha256": "d35d88a8823bf9233f99dec5bb087eee96d63651aa6a8c92116477dfd18a507f"
+    },
+    {
+      "original": "输入参考文件/02_客户发来的对账单.xlsx",
+      "path": "assets/demo/02_客户发来的对账单.xlsx",
+      "sha256": "65fae4fe1759f5d33243d35223707f718661dc587c87c6d8f04407ad6eb52974"
+    },
+    {
+      "original": "输入参考文件/03_发货与退货单据清单.xlsx",
+      "path": "assets/demo/03_发货与退货单据清单.xlsx",
+      "sha256": "1626a44dc0adeae239228b6e92322a836d5471b517b30d4b66d2472182117b7f"
+    },
+    {
+      "original": "输入参考文件/04_折让与运费凭证.xlsx",
+      "path": "assets/demo/04_折让与运费凭证.xlsx",
+      "sha256": "d4d2bd1a48fa5a91d3709fe22165d6ec8779a6dcf885028f148d26897fca60ef"
+    },
+    {
+      "original": "输入参考文件/05_开票记录与作废重开记录.xlsx",
+      "path": "assets/demo/05_开票记录与作废重开记录.xlsx",
+      "sha256": "80149cbb00d22f5fb4b7ba33bd0bff3f34b0a0fb580f2042c26a8b38ff8d5767"
+    },
+    {
+      "original": "输入参考文件/06_对账管理与差异归因口径.txt",
+      "path": "assets/demo/06_对账管理与差异归因口径.txt",
+      "sha256": "c0f5a10d7ca537b6f10d4a8d6190005fbc4653b3a78ddb13e2844bf2d4a04e1b"
+    }
+  ]
+}

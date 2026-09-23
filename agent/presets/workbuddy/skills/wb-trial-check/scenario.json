@@ -1,0 +1,14 @@
+{
+  "slug": "trial-check",
+  "name": "开工条件核查",
+  "group": "manufacturing",
+  "default_task": "我们准备明天试产 P-IPC-01 共 50 台，帮我核对一下开工条件够不够。五份报表都放一起了：BOM基线、齐套报表、SOP发放台账、产能负荷表、工装状态表。请重点检查 BOM 版本一致性、物料齐套、SOP 现场版本、产能可用、工装齐备五项，每一项给一个红、黄、绿的结论，最后综合判一个整体灯号（可开工、可开工需补齐、不可开工）。有卡点就帮我列出建议动作和责任岗位。\n\n产出两份：**Excel（.xlsx）** 试产开工核查表.xlsx（五项红黄绿加综合灯号加卡点补齐建议）、**Markdown（.md）** 卡点补齐待办与推群通知稿.md（每条卡点带具体动作、责任岗位、预计完成时间）。不要用对话式总结代替。",
+  "demo_files": [
+    "BOM基线.xlsx",
+    "SOP发放台账.xlsx",
+    "产能负荷表.xlsx",
+    "工装状态表.xlsx",
+    "齐套报表.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/trial-check.html"
+}

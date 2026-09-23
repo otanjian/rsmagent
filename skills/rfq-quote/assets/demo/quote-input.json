@@ -1,0 +1,303 @@
+{
+  "rfq_id": "RFQ-DEMO-P-CAB-02",
+  "customer": "华东电气（虚构演示）",
+  "part": "P-CAB-02 户外机柜",
+  "demo": true,
+  "currency": "CNY",
+  "tax_basis": "不含税，税率与开票条件待确认",
+  "price_version": "2026-08（演示历史价，不是实时市场价）",
+  "valid_days": 7,
+  "management_rate": 0.08,
+  "markup_floor": 0.25,
+  "policy_source": "演示假设：管理费8%、常规加成28%、下限25%；需换成企业制度",
+  "material": {
+    "net_area": 3.86,
+    "thickness_mm": 2,
+    "density": 7.85,
+    "utilization": 0.78,
+    "price": 4.85,
+    "scrap_price": 1.2,
+    "source": "材料价格表.xlsx / 材料价格，2026-08!C5/C7；几何参数取原模板 §9.1（不是读取实物图纸）",
+    "utilization_reason": "演示假设：32 个长圆百叶孔，78%；实际图纸需技术确认"
+  },
+  "cost_lines": [
+    {
+      "category": "直接材料",
+      "item": "铰链",
+      "quantity": 2,
+      "unit": "件",
+      "price": 9,
+      "source": "WorkBuddy 原模板 §9：演示定额，未获企业批准",
+      "basis": "用量 × 单价；原表缺少的辅料仅用演示定额"
+    },
+    {
+      "category": "直接材料",
+      "item": "三点锁具（国产）",
+      "quantity": 1,
+      "unit": "件",
+      "price": 21.5,
+      "source": "材料价格表.xlsx / 材料价格，2026-08!C12",
+      "basis": "用量 × 单价；原表缺少的辅料仅用演示定额"
+    },
+    {
+      "category": "直接材料",
+      "item": "EPDM 密封条",
+      "quantity": 2.8,
+      "unit": "m",
+      "price": 3.5,
+      "source": "WorkBuddy 原模板 §9：演示定额，未获企业批准",
+      "basis": "用量 × 单价；原表缺少的辅料仅用演示定额"
+    },
+    {
+      "category": "直接材料",
+      "item": "门限位器",
+      "quantity": 1,
+      "unit": "件",
+      "price": 3.3,
+      "source": "WorkBuddy 原模板 §9：演示定额，未获企业批准",
+      "basis": "用量 × 单价；原表缺少的辅料仅用演示定额"
+    },
+    {
+      "category": "加工费",
+      "item": "激光下料",
+      "quantity": 0.42,
+      "unit": "h",
+      "price": 95,
+      "source": "工序标准工时.xlsx / 工序工时，2026年度!C5；WorkBuddy 原模板 §9：演示定额，未获企业批准",
+      "basis": "完整工时 × 费率；不是净作业秒数 / 3600"
+    },
+    {
+      "category": "加工费",
+      "item": "折弯",
+      "quantity": 0.55,
+      "unit": "h",
+      "price": 85,
+      "source": "工序标准工时.xlsx / 工序工时，2026年度!C6；WorkBuddy 原模板 §9：演示定额，未获企业批准",
+      "basis": "完整工时 × 费率；不是净作业秒数 / 3600"
+    },
+    {
+      "category": "加工费",
+      "item": "冲孔攻牙",
+      "quantity": 0.18,
+      "unit": "h",
+      "price": 75,
+      "source": "工序标准工时.xlsx / 工序工时，2026年度!C7；WorkBuddy 原模板 §9：演示定额，未获企业批准",
+      "basis": "完整工时 × 费率；不是净作业秒数 / 3600"
+    },
+    {
+      "category": "加工费",
+      "item": "焊接（段焊假设）",
+      "quantity": 0.65,
+      "unit": "h",
+      "price": 110,
+      "source": "工序标准工时.xlsx / 工序工时，2026年度!C8；WorkBuddy 原模板 §9：演示定额，未获企业批准",
+      "basis": "完整工时 × 费率；不是净作业秒数 / 3600"
+    },
+    {
+      "category": "加工费",
+      "item": "焊后打磨",
+      "quantity": 0.26,
+      "unit": "h",
+      "price": 65,
+      "source": "工序标准工时.xlsx / 工序工时，2026年度!C9；WorkBuddy 原模板 §9：演示定额，未获企业批准",
+      "basis": "完整工时 × 费率；不是净作业秒数 / 3600"
+    },
+    {
+      "category": "加工费",
+      "item": "组装铆接",
+      "quantity": 0.3,
+      "unit": "h",
+      "price": 70,
+      "source": "工序标准工时.xlsx / 工序工时，2026年度!C10；WorkBuddy 原模板 §9：演示定额，未获企业批准",
+      "basis": "完整工时 × 费率；不是净作业秒数 / 3600"
+    },
+    {
+      "category": "加工费",
+      "item": "校平整形",
+      "quantity": 1,
+      "unit": "台",
+      "price": 10.8,
+      "source": "原场景 Live Demo：10.80 元/台，演示假设",
+      "basis": "平面度要求触发；当前工时表无此定额，待工艺确认"
+    },
+    {
+      "category": "表面处理",
+      "item": "脱脂磷化前处理",
+      "quantity": 3.86,
+      "unit": "m²",
+      "price": 12,
+      "source": "WorkBuddy 原模板 §9：演示定额，未获企业批准",
+      "basis": "净展开面积 × 前处理单价"
+    },
+    {
+      "category": "表面处理",
+      "item": "户外喷涂 500h",
+      "quantity": 3.86,
+      "unit": "m²",
+      "price": 46,
+      "source": "材料价格表.xlsx / 材料价格，2026-08!C8",
+      "basis": "净展开面积 × 喷涂单价"
+    },
+    {
+      "category": "包装运输",
+      "item": "木箱",
+      "quantity": 1,
+      "unit": "台",
+      "price": 32,
+      "source": "材料价格表.xlsx / 材料价格，2026-08!C10",
+      "basis": "单台定额"
+    },
+    {
+      "category": "包装运输",
+      "item": "内衬缓冲",
+      "quantity": 1,
+      "unit": "台",
+      "price": 8.5,
+      "source": "WorkBuddy 原模板 §9：演示定额，未获企业批准",
+      "basis": "单台定额，采购表未给出"
+    },
+    {
+      "category": "包装运输",
+      "item": "汽运分摊",
+      "quantity": 0.008333333333333333,
+      "unit": "趟/台",
+      "price": 1680,
+      "source": "材料价格表.xlsx / 材料价格，2026-08!C11",
+      "basis": "整车 1680 元 ÷ 120 台；实际装载量待确认"
+    }
+  ],
+  "history": null,
+  "tiers": [
+    {
+      "kind": "standard",
+      "name": "常规",
+      "quantity": 120,
+      "days": 30,
+      "markup": 0.28,
+      "source": "询价要求30天；交期须生产确认；加成率为演示假设",
+      "adjustments": []
+    },
+    {
+      "kind": "urgent",
+      "name": "加急",
+      "quantity": 120,
+      "days": 18,
+      "markup": 0.28,
+      "source": "演示参考：原页面与原模板有差异，本输入显式选择并重新计管理费",
+      "adjustments": [
+        {
+          "item": "加急加工费",
+          "category": "加工费",
+          "rate": 0.15,
+          "source": "工序标准工时.xlsx / 工序工时，2026年度!A2，含校平"
+        },
+        {
+          "item": "表处换色清线",
+          "amount": 22,
+          "source": "演示参考：原页面与原模板有差异，本输入显式选择并重新计管理费"
+        },
+        {
+          "item": "物流升级",
+          "amount": 14,
+          "source": "演示参考：原页面与原模板有差异，本输入显式选择并重新计管理费"
+        }
+      ]
+    },
+    {
+      "kind": "volume",
+      "name": "批量",
+      "quantity": 300,
+      "days": 40,
+      "markup": 0.25,
+      "source": "演示参考：原页面与原模板有差异，本输入显式选择并重新计管理费；300台阶梯按工时表300-800档",
+      "adjustments": [
+        {
+          "item": "加工批量摊薄10%",
+          "category": "加工费",
+          "rate": -0.1,
+          "source": "工序标准工时.xlsx / 工序工时，2026年度!B16（300-800件档）；边界300需确认"
+        },
+        {
+          "item": "表处满槽10%",
+          "category": "表面处理",
+          "rate": -0.1,
+          "source": "演示参考：原页面与原模板有差异，本输入显式选择并重新计管理费，表处满槽优惠待采购确认"
+        },
+        {
+          "item": "包装运输集装12%",
+          "category": "包装运输",
+          "rate": -0.12,
+          "source": "演示参考：原页面与原模板有差异，本输入显式选择并重新计管理费，运力与整车数待确认"
+        }
+      ]
+    }
+  ],
+  "risks": [
+    {
+      "item": "密封焊缝是否连续满焊",
+      "kind": "history_loss",
+      "assumption": "段焊",
+      "alternative": "满焊，制造成本增加42元/台",
+      "exposure": 45.36,
+      "source": "历史报价库.xlsx / 历史报价库!M6；总成本敞口42×1.08",
+      "owner": "技术",
+      "deadline": "回复客户前",
+      "resolved": false
+    },
+    {
+      "item": "板厚及材质是否含镀锌",
+      "kind": "material",
+      "assumption": "SPCC t2.0",
+      "alternative": "DX51D+Z，板价5.68元/kg",
+      "exposure": 69.65,
+      "source": "材料价格表.xlsx / 材料价格，2026-08!C5/C6；毛重×价差×1.08",
+      "owner": "技术",
+      "deadline": "回复客户前",
+      "resolved": false
+    },
+    {
+      "item": "盐雾时长",
+      "kind": "surface",
+      "assumption": "500h",
+      "alternative": "720h",
+      "exposure": 28.35,
+      "source": "材料价格表.xlsx / 材料价格，2026-08!C8/C9；净面积×价差×1.08",
+      "owner": "销售/客户",
+      "deadline": "回复客户前",
+      "resolved": false
+    },
+    {
+      "item": "锁具品牌",
+      "kind": "hardware",
+      "assumption": "国产",
+      "alternative": "进口",
+      "exposure": 19.44,
+      "source": "材料价格表.xlsx / 材料价格，2026-08!C12/C13；(39.50－21.50)×1.08",
+      "owner": "销售/客户",
+      "deadline": "回复客户前",
+      "resolved": false
+    },
+    {
+      "item": "运输装載量",
+      "kind": "other",
+      "assumption": "整车120台",
+      "alternative": "重新确认实际装载量",
+      "exposure": 3.24,
+      "source": "演示假设：制造成本±3元/台，含8%管理费",
+      "owner": "物流",
+      "deadline": "首件确认前",
+      "resolved": false
+    },
+    {
+      "item": "原始图纸与完整工时定额",
+      "kind": "tolerance",
+      "assumption": "按原演示文字参数",
+      "alternative": "正式图纸复核并补齐校平/辅料定额",
+      "exposure": null,
+      "source": "演示包不含可核对的原始工程图纸；标准工时表只给净作业系数",
+      "owner": "技术/工艺",
+      "deadline": "报价审批前",
+      "resolved": false
+    }
+  ]
+}

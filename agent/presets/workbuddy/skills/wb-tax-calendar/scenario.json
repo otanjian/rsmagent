@@ -1,0 +1,12 @@
+{
+  "slug": "tax-calendar",
+  "name": "纳税日历与逾期预警",
+  "group": "finance",
+  "default_task": "年初把全年的申报节点排出来。附件两份材料：公司税种清单与申报周期、去年的历史申报记录。走完整流程：先生成全年各税种的申报节点，再给每个节点定准备周期、从截止日倒推出「该哪天启动」，最后按参考应缴税额试算逾期滞纳金。\n\n本地口径拿不准的（比如残保金的申报期限）标「待确认本地口径」，别硬填一个日子；不要替我提交任何申报；政策变化以官方为准。\n\n产出两份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：TX-03_年度纳税日历.xlsx（一行一个节点，列写税种、申报周期、截止日、准备周期、应启动日、风险等级）、TX-03_逾期滞纳金试算表.xlsx（逐节点算晚 7 天、晚 15 天各滚多少）。",
+  "demo_files": [
+    "2025年度历史申报记录.xlsx",
+    "公司税种清单与申报周期.xlsx",
+    "残保金口径待确认.txt"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/tax-calendar.html"
+}

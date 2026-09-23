@@ -1,0 +1,14 @@
+{
+  "slug": "roster-audit",
+  "name": "员工花名册法定栏位体检与重建",
+  "group": "hr",
+  "default_task": "我这边有三个版本的花名册，还有入离职记录和社保缴费明细，帮我重建一份唯一版本。\n\n哪个版本是对的用数据说话。缺的栏位列清单我去补，查不到的标出来。\n临时工这类用工形式拿不准的，单独列出来我们自己定。\n\n能对上的就对上，对不上的别硬凑。\n\n产出三份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：ER-03_员工花名册（重建版）.xlsx（法定 8 栏位加数据来源标记）、ER-03_栏位缺口清单.xlsx（逐人逐栏，含补录责任人与模板）、ER-03_版本差异与外部交叉记录.xlsx（三个版本谁对谁错加社保反查发现，留档备查）。",
+  "demo_files": [
+    "01_花名册_新版.xlsx",
+    "02_花名册_最终版.xlsx",
+    "03_花名册_2024旧版.xlsx",
+    "04_社保在缴名单.xlsx",
+    "05_近12个月入离职记录.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/roster-audit.html"
+}

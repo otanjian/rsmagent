@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/arbitration-evidence-pack.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/JzA9nAbEwOgTNaxxztBiP3/0/pkg.zip",
+  "package_sha256": "764607bf5fdcbfc4a03504851038241bb48506ed27239489944bef2c307e9128",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "e258779d8ebcfe238aa2428614679acd28652d2891611a10a82b37b76289a4e0"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "9a2b9bbe65e5743cd46d0ca9b038c5f5dbbbba7db7735197112cb0dcfcca2387"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "4e79fc172cac32b2c5d60c40372d8cadd4f65c409cf4b02d2eb72cc1f3084219"
+    },
+    {
+      "original": "输入参考文件/01_仲裁申请书副本.txt",
+      "path": "assets/demo/01_仲裁申请书副本.txt",
+      "sha256": "73520aa117c420d55774360cf730940ca10e2a6042a524263b29a9b74c95f0ba"
+    },
+    {
+      "original": "输入参考文件/02_钱进_人事档案节选.xlsx",
+      "path": "assets/demo/02_钱进_人事档案节选.xlsx",
+      "sha256": "9f904baa36074ae9aedcc127a50518cf9576622a25f548ad967a9d6c00872d00"
+    },
+    {
+      "original": "输入参考文件/03_辞退沟通_微信记录.txt",
+      "path": "assets/demo/03_辞退沟通_微信记录.txt",
+      "sha256": "ff00d99e54d5b8181da43ec0e83619ad8d44c2c9071329d22a1e5dd428b95d02"
+    },
+    {
+      "original": "输入参考文件/04_打卡机导出_2024-2026.xlsx",
+      "path": "assets/demo/04_打卡机导出_2024-2026.xlsx",
+      "sha256": "a4d6e39bb2b140f3d58dd76a6f90b7dccb4c3a75f0396a267798cbeed278d061"
+    }
+  ]
+}

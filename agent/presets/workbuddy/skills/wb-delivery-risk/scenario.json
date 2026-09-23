@@ -1,0 +1,14 @@
+{
+  "slug": "delivery-risk",
+  "name": "交付风险评估",
+  "group": "manufacturing",
+  "default_task": "明天开始有三批货要发，OQC 都报了不合格，材料我放一起了：出货前检验记录、待出货订单与交期、客户质量协议摘录、返工能力与产能、历史让步先例台账。帮我看下每一批到底能不能放——能放的直接说能放，不能放的告诉我卡在哪、有没有别的路走（返工来不来得及、库存能不能先顶一批、要不要跟客户谈）。客户质量协议那份是我刚从销售那儿要来的，让步能不能走以协议为准，别只看技术上行不行。拿不准的别硬写，列出来我去问；别替我做放行的决定。\n\n产出两份：**PDF** 出货放行决策单.pdf（逐批五档结论加依据加前置与关闭条件加两边代价，含会签栏）、**Excel（.xlsx）** 批次明细与先例台账.xlsx（批次明细与放行状态含 AQL 复核、让步先例台账已追加本次）。不要用 Markdown 或纯文本代替。",
+  "demo_files": [
+    "出货前检验记录.xlsx",
+    "历史让步先例台账.xlsx",
+    "客户质量协议摘录.xlsx",
+    "待出货订单与交期.xlsx",
+    "返工能力与产能.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/delivery-risk.html"
+}

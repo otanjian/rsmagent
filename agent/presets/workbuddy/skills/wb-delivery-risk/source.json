@@ -1,0 +1,48 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/delivery-risk.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/7q6MhixBhObcplK3HvcdI7/0/pkg.zip",
+  "package_sha256": "32a7904d1b001e856b4f3f4715de0c7cc33e8963445d61990d5a3873a1d3ebc9",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "d46289de8d88e8d3e297c90a9647f187fd9b182dc853135cecd4eddcaffa52fd"
+    },
+    {
+      "original": "references/五档判定规则.md",
+      "path": "references/五档判定规则.md",
+      "sha256": "c2a2354d90a92131d4ec84c83f325698e1a4f898d03461ef637889a7ac530c85"
+    },
+    {
+      "original": "references/决策单模板.md",
+      "path": "references/决策单模板.md",
+      "sha256": "14234d2368ec2d5e28e6f9478c927e723e2e83d32596b7fe3a4024f8c5375ce9"
+    },
+    {
+      "original": "输入参考文件/出货前检验记录.xlsx",
+      "path": "assets/demo/出货前检验记录.xlsx",
+      "sha256": "0bcdedb90909db7aacf55d3e7986a616d2f718913d3027b557797cfdb9fcd1f4"
+    },
+    {
+      "original": "输入参考文件/历史让步先例台账.xlsx",
+      "path": "assets/demo/历史让步先例台账.xlsx",
+      "sha256": "e654e46bb6b3fd8079259bd2f678989803b90ae94c90074007d1da60c578c8d5"
+    },
+    {
+      "original": "输入参考文件/客户质量协议摘录.xlsx",
+      "path": "assets/demo/客户质量协议摘录.xlsx",
+      "sha256": "98f711fccde3a28078b429968f374b9e5e09a70b7faa010372aeceb2e0c1cede"
+    },
+    {
+      "original": "输入参考文件/待出货订单与交期.xlsx",
+      "path": "assets/demo/待出货订单与交期.xlsx",
+      "sha256": "fb5744c98c437955ef025860c96f5a8aafddd234ca8ee6a39e395e8a973e6b5d"
+    },
+    {
+      "original": "输入参考文件/返工能力与产能.xlsx",
+      "path": "assets/demo/返工能力与产能.xlsx",
+      "sha256": "b5f9f44bff586b9a6553c52a92d9d062ae588c63f817e76f7b77b1129f0e91ec"
+    }
+  ]
+}

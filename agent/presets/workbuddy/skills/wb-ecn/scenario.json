@@ -1,0 +1,12 @@
+{
+  "slug": "ecn",
+  "name": "工程变更管理ECN",
+  "group": "manufacturing",
+  "default_task": "研发决定把智能控制柜 P-IPC-01 的主控板 M-PCB-001 从原供应商华芯微（S-001）切换到汇川（S-008），原因是原供应商来料虚焊，批次 PCB-260708-A 有 140 件在冻结。三份数据都放一起了：BOM基线_全产品、未完成订单清单、在制工单清单。帮我评估这次变更的影响面：沿 BOM 反查这颗料在哪些产品、订单、工单上被用到，这笔库存和在途该怎么处理。\n\n产出三份：**Markdown（.md）** ECN变更单.md（变更前后对比、分级判定、验证计划与审批链，PE 拿去走审批）、**Excel（.xlsx）** 变更影响评估表.xlsx（产品、订单、工单的反查结果，含在制数量、在途采购与旧料库存影响）、**Markdown（.md）** 分部门待办通知稿.md（采购、计划、品质、仓库各一段，能一键推到企微群）。不要用对话式总结代替。",
+  "demo_files": [
+    "BOM基线_全产品.xlsx",
+    "在制工单清单.xlsx",
+    "未完成订单清单.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/ecn.html"
+}

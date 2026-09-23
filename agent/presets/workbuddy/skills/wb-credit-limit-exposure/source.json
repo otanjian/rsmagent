@@ -1,0 +1,53 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ots1af1M8J2fvk7OxWVwPg/17/deep-dives/credit-limit-exposure.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/Ui6LPSV9qZtUDGEPY3f5nc/0/pkg.zip",
+  "package_sha256": "cc3510ab231151f317627808cf77e97c9b30bff0ec4dfa15c8809f899c9dd44f",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "fc5976eed15f0d6a880fc513bef1da44e457ed76a099f2e1d8268ab013bd125f"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "4fdff7beb7d2950140ad6a989efffaa70774a66d89ecc9c7d90edf31649bae8c"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "d6749048e59b557157f0b85367910371f88307a4b77f950d5f6fcce3df279bad"
+    },
+    {
+      "original": "输入参考文件/01_应收账款台账（恒晟部分）.xlsx",
+      "path": "assets/demo/01_应收账款台账（恒晟部分）.xlsx",
+      "sha256": "3cdafa04be4349a616ddbbc0cad25c0e862e079e52eefe4bb277755d55c264ee"
+    },
+    {
+      "original": "输入参考文件/02_已批未执行订单清单.xlsx",
+      "path": "assets/demo/02_已批未执行订单清单.xlsx",
+      "sha256": "25a14860e357b6e09ad3ce28dcea5f8ec863e4a08f9d3a32f213939697473da1"
+    },
+    {
+      "original": "输入参考文件/03_客户信用额度核定表.xlsx",
+      "path": "assets/demo/03_客户信用额度核定表.xlsx",
+      "sha256": "5b8f2b49efbf078439064df4cd8e514baae010f8b6a7c0bff605ee15eeb794e5"
+    },
+    {
+      "original": "输入参考文件/04_三系统客户主数据导出.xlsx",
+      "path": "assets/demo/04_三系统客户主数据导出.xlsx",
+      "sha256": "52e3d51e3868e74fd500940557cd1b28baca2ac7979636acf6449a6f38c03396"
+    },
+    {
+      "original": "输入参考文件/05_客户工商与司法公开信息.txt",
+      "path": "assets/demo/05_客户工商与司法公开信息.txt",
+      "sha256": "78d732ea445e0808c0c86f4449f445464ecf290ef9ac776a2459afa7b66dc583"
+    },
+    {
+      "original": "输入参考文件/06_客户信用与发货管理办法摘录.txt",
+      "path": "assets/demo/06_客户信用与发货管理办法摘录.txt",
+      "sha256": "d7992c51b136ba350324fd9f303138f5d7806965292f2e45f12bf94042b7af35"
+    }
+  ]
+}

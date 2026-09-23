@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/priority-adjust.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/Rr6aj20aomDUbpJ0MAhdix/0/pkg.zip",
+  "package_sha256": "b9a85be45282cf361b316350d8b9240cf2f6b3b089ebe351f627bc9d04bb1cb8",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "34da9edf472482d70bad649a7f4aac1d3611b480da3d564803f9d1c558c43b97"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "ce00b8a9007910fbda4b8e0e02d650fd227525fb6ea400ad6011a88d12b78b67"
+    },
+    {
+      "original": "references/verdict_rules.md",
+      "path": "references/verdict_rules.md",
+      "sha256": "3507971fc19babcd8c4914c79abe20d23946af356dc52c294fd6206b3731686c"
+    },
+    {
+      "original": "输入参考文件/产能负荷表.xlsx",
+      "path": "assets/demo/产能负荷表.xlsx",
+      "sha256": "9f5b96beaf1d2357bd7a811986988be8a45ba235c6447a10828e56411a5a7f6d"
+    },
+    {
+      "original": "输入参考文件/工单清单.xlsx",
+      "path": "assets/demo/工单清单.xlsx",
+      "sha256": "c9232e2fee98ca2b1f7323d57634781926c4fb53a9aa49ff28f72a3e00dabff7"
+    },
+    {
+      "original": "输入参考文件/订单清单.xlsx",
+      "path": "assets/demo/订单清单.xlsx",
+      "sha256": "885e37bc46e9b79abc75a7928e8bd3b45a0d978605a8f15a4ef87783bad548e8"
+    },
+    {
+      "original": "输入参考文件/齐套报表.xlsx",
+      "path": "assets/demo/齐套报表.xlsx",
+      "sha256": "8c92b09b083bf05bfd2ec0290dcfd6d0c1b0c1b3dc76f56b7f71e429344ba2f5"
+    }
+  ]
+}

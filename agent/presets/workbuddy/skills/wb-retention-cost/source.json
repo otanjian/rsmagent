@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/retention-cost.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/GF0ypkXIknsiSXJdhglXpv/0/pkg.zip",
+  "package_sha256": "743bc479faa4e1e063fddebaa411d407e7313cc623b28bcd75ce22b324a59736",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "d06867508c88b7eb024c8db94a30d4530de89a084291f3509a02ca22a6dd70d8"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "29551a6f2055b70f5939e3955ac9e619d08ca53c429b87ae6d13261ffb605cae"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "ec62c2befa54b2357e45437e86f8b798640a81c295734450400a51f32e56ab90"
+    },
+    {
+      "original": "输入参考文件/01_郑国平_薪资与调薪历史.xlsx",
+      "path": "assets/demo/01_郑国平_薪资与调薪历史.xlsx",
+      "sha256": "8809b8f3174149161b305ac73698f45ad898169de25efb913e0dd63ed0b4ef02"
+    },
+    {
+      "original": "输入参考文件/02_郑国平_考勤与绩效近三月.xlsx",
+      "path": "assets/demo/02_郑国平_考勤与绩效近三月.xlsx",
+      "sha256": "17d1c6519e7b01b5b873874d8615586cab62cead01709648d003f5281eef6ace"
+    },
+    {
+      "original": "输入参考文件/03_模具岗招聘历史_近两年.xlsx",
+      "path": "assets/demo/03_模具岗招聘历史_近两年.xlsx",
+      "sha256": "1bbda3a41ef0f5a8ab63bc5d4c15015fc88780fc83f5f36d134ed13f2df9936d"
+    },
+    {
+      "original": "输入参考文件/04_单点依赖岗位清单.xlsx",
+      "path": "assets/demo/04_单点依赖岗位清单.xlsx",
+      "sha256": "474e80645db356b53235f878aea7634fcdf4b4253ba87b22a4b4caf1923b26a6"
+    }
+  ]
+}

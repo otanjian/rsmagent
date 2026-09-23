@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/cash-daily-report.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/2fShA2a9x8HhJ9JFOWLVjl/0/pkg.zip",
+  "package_sha256": "56f2fc55ca3c95a1ed9a0b65780cd63ce3bc051d92769cab06faba7adb537b28",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "a81d6180a1287f8423903ce9852595759e91085d0c2345aa0fdfbe42924e5a90"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "6cbb7ce66406dc1e43ffdd5155b032f5f5f0f6649d68b3a3ec01a98305dc08d6"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "39f69d5b0949bb18f8ade9bca8d7c631e3a7c16cc9caa6d0cfaf4bfa2a4bc13a"
+    },
+    {
+      "original": "输入参考文件/历史资金日报口径说明.txt",
+      "path": "assets/demo/历史资金日报口径说明.txt",
+      "sha256": "80a4fdb1b58e1b1feb226db21d4fee48da8114376816b2afc5eabfebb2887dae"
+    },
+    {
+      "original": "输入参考文件/待付款审批单_本周.xlsx",
+      "path": "assets/demo/待付款审批单_本周.xlsx",
+      "sha256": "f010399913a52e00fac585d7f1ab9dcc8ef7f35dff524950a829217dc7712176"
+    },
+    {
+      "original": "输入参考文件/微信收款截图转录.txt",
+      "path": "assets/demo/微信收款截图转录.txt",
+      "sha256": "c7ee4e9e668b9e736998ea87090497892eea1371dc7ef12f34ba0ea567c9cd9a"
+    },
+    {
+      "original": "输入参考文件/银行账户余额_2026年6月22日.xlsx",
+      "path": "assets/demo/银行账户余额_2026年6月22日.xlsx",
+      "sha256": "e3debca44e272198761d3a56461bf3460df23c34161f1238bbda4792844a6c0d"
+    }
+  ]
+}

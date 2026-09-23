@@ -1,0 +1,53 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ots1af1M8J2fvk7OxWVwPg/17/deep-dives/lost-deal-timeline.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/RIbs9XbRGWBtxD0bjjL6k1/0/pkg.zip",
+  "package_sha256": "c40b899b8fc88b25aca23fcef3a39f5787d9ef3b8b49da0ec5730e4c5e5eb275",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "217e51836aa9cf8e65cbe419d56d027a16f5ed6935721530b4cb7f8207443243"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "9e91d54d85ca31da7c4b7a87780d7bb59388c9a107cc0ac30f74996459a23405"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "e33804b1938a936012ee81cc82513c09e0296f05b6bcd8c1c23ca7bc4763da72"
+    },
+    {
+      "original": "输入参考文件/01_CRM跟进记录全量.xlsx",
+      "path": "assets/demo/01_CRM跟进记录全量.xlsx",
+      "sha256": "a1f2b4b0d16865d7882a1d4e61d5d75fc1f9b5ec51be3fa4bf25df0c60acfaf1"
+    },
+    {
+      "original": "输入参考文件/02_四版报价单与报价台账.xlsx",
+      "path": "assets/demo/02_四版报价单与报价台账.xlsx",
+      "sha256": "679199f836ac32725c8149a9f04fec66fe1fa80c68568a5885e867e16a7a10d9"
+    },
+    {
+      "original": "输入参考文件/03_折扣审批流记录.xlsx",
+      "path": "assets/demo/03_折扣审批流记录.xlsx",
+      "sha256": "8d82f0a42b14ddff689c21f75f50db6e01ccffc98ff230b9da24078e0c04626c"
+    },
+    {
+      "original": "输入参考文件/04_邮件与会议纪要.txt",
+      "path": "assets/demo/04_邮件与会议纪要.txt",
+      "sha256": "83c10524ce8baf6661586f4b2071800b73d954ce54a8679086881a6fb1ec2c6b"
+    },
+    {
+      "original": "输入参考文件/05_中标公示与对手信息.txt",
+      "path": "assets/demo/05_中标公示与对手信息.txt",
+      "sha256": "a71c7663be09d66d1893c7ff1f35ef308421349adf59d115c95f3249c093687b"
+    },
+    {
+      "original": "输入参考文件/06_上次丢单复盘表(德茂重工).xlsx",
+      "path": "assets/demo/06_上次丢单复盘表(德茂重工).xlsx",
+      "sha256": "7e3febe953b0ba38cc99c406ba4203d12790c654f3c0f2471299ab3acfdf6284"
+    }
+  ]
+}

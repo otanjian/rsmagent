@@ -1,0 +1,48 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ots1af1M8J2fvk7OxWVwPg/17/deep-dives/contract-renewal-sweep.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/SUMswYyQROu5aQVWQz6kn5/0/pkg.zip",
+  "package_sha256": "c62ceede097f48033ad48bf517f37aa635a6e3e787e84b3a0133323d4edc3a04",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "a1f97e4c77ee88c5714c9cbb51af2fa4245e6f9b3327052fbd16727380822d9f"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "2c44347a33365f4730e0879454f78109b0742b8dd2503b1ef0e2beab3d928f31"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "aaba66a81cd40654fed7ca407a53af820de25384dccf8b294de2c3232a697263"
+    },
+    {
+      "original": "输入参考文件/01_销售合同台账.xlsx",
+      "path": "assets/demo/01_销售合同台账.xlsx",
+      "sha256": "285ae9ea46b49c6048ece512f637079d040c78266978b632bf44a5f19f10fe64"
+    },
+    {
+      "original": "输入参考文件/02_在执行合同正本条款提取.txt",
+      "path": "assets/demo/02_在执行合同正本条款提取.txt",
+      "sha256": "2daaed59f5d722804cf9f2e99a315704a6e42095f9142c5d52e361af6fb671a9"
+    },
+    {
+      "original": "输入参考文件/03_履约记录.xlsx",
+      "path": "assets/demo/03_履约记录.xlsx",
+      "sha256": "1c42a17cf0d9b55d684f8732b65e6dd5fcabd5ce6e2831fa24c5f12d4eb6f804"
+    },
+    {
+      "original": "输入参考文件/04_应收与回款记录.xlsx",
+      "path": "assets/demo/04_应收与回款记录.xlsx",
+      "sha256": "4cd7d8f31d7d7ab9c8d7594df40284cefdd7023b5462c05d45c01326c7f8739f"
+    },
+    {
+      "original": "输入参考文件/05_成本变动说明.xlsx",
+      "path": "assets/demo/05_成本变动说明.xlsx",
+      "sha256": "00a7f607b51789a509592e5ced0b4a6b89974d1422bfb48f94cd4d972f8aca87"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/reconciliation-diff.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/YM3SdF4Z4p88QwOgwCPCuT/0/pkg.zip",
+  "package_sha256": "76f6a18e07801249626915868e13c300ae2987ff2e1e37bafb8dd349d4b9db13",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "08981cff7f290f5ee203150970ac55efe8c15178428e7a049a5c8d4121159209"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "96a79518147995d9170a6a00317d01fc6b13f76ebec2afdc5804b86ca4d4e589"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "166797addbb348b72d4c5bc9a360a2ef25a61e156448aa9bfa4911baeb3879b3"
+    },
+    {
+      "original": "输入参考文件/其他客户对账记录.xlsx",
+      "path": "assets/demo/其他客户对账记录.xlsx",
+      "sha256": "b9687da097298adc2b44496e28605ad0756815999fdfe5bcaad57d223890d8c3"
+    },
+    {
+      "original": "输入参考文件/恒通对账单_2026年6月.xlsx",
+      "path": "assets/demo/恒通对账单_2026年6月.xlsx",
+      "sha256": "91e3f363088f0449c675a29a76f9210ac311ae3fc889e54ea63e836343f45f67"
+    },
+    {
+      "original": "输入参考文件/我方应收账款明细账_恒通_2026年6月.xlsx",
+      "path": "assets/demo/我方应收账款明细账_恒通_2026年6月.xlsx",
+      "sha256": "4a1d0efe4189a56aa216410f2cbffe29373aacd0c26bbaf7f1ec6501da37e13f"
+    },
+    {
+      "original": "输入参考文件/红字发票台账.xlsx",
+      "path": "assets/demo/红字发票台账.xlsx",
+      "sha256": "bacd1f2de1cb985ed02adf7305c0422050af04bdec7d18809572c523e1592cdb"
+    }
+  ]
+}

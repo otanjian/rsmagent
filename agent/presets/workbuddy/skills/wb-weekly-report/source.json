@@ -1,0 +1,38 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/weekly-report.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/Tg2azA0Xat7RWv3tLi5iGk/0/pkg.zip",
+  "package_sha256": "bf3c659326e1b10c347204bfe17047fcb9bf543772ca40bc20fcad5e33772887",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "d215e90ca20092b95091fd18ef781d2bc237c8a8d33c5f60ecd130bc932e2e6e"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "6d91c25d01f0c969369c237c89d09db3a5bff45a84fe22eddf8154193a67fb75"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "41bf70451d2224b92960eb45b389f9cbeedb087348432f4ef268d6109a6b5bd7"
+    },
+    {
+      "original": "输入参考文件/仓储库存发货_2026年6月第4周.xlsx",
+      "path": "assets/demo/仓储库存发货_2026年6月第4周.xlsx",
+      "sha256": "ed396bc64a5ae35b728cf7014507320c6465493923b04fb6e80c8cc828f64064"
+    },
+    {
+      "original": "输入参考文件/财务收入确认_2026年6月第4周.xlsx",
+      "path": "assets/demo/财务收入确认_2026年6月第4周.xlsx",
+      "sha256": "18dc338782b464334d3b23082dc8811add44ecc7c8cdec90e1fcb02381384eef"
+    },
+    {
+      "original": "输入参考文件/销售台账_2026年6月第4周.xlsx",
+      "path": "assets/demo/销售台账_2026年6月第4周.xlsx",
+      "sha256": "50c8c4ed4ef6270619c228d5d2a130d6f064848a46d359f8eaa4b7ff9c146ae4"
+    }
+  ]
+}

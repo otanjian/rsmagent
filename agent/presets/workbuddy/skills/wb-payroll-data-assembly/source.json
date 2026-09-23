@@ -1,0 +1,48 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/payroll-data-assembly.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/sEBwqlqlpjUkfZdBgcIYaO/0/pkg.zip",
+  "package_sha256": "ae29a07a09a340d04e90daa8f49fe8343f80158e5e2769675e87ef2c4d9df7b0",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "c9c8b3e9bf4e3d9bcb76106e9e046a0e305fe7adb6d880745054c7f6e95edbdd"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "7bb334094f360823c7fcedf3d4709ebf1d3ce00a8862b78a9ecf9ef4798881a9"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "4cff2792a1e23793235c178c5a364ddb6ffa1e2f7fcfe3f2b6f6d640560d0b78"
+    },
+    {
+      "original": "输入参考文件/01_考勤机导出_2026-08.xlsx",
+      "path": "assets/demo/01_考勤机导出_2026-08.xlsx",
+      "sha256": "947a3e58762ac6e73e34c96d2542b999dbc6de52d0272a11f811b96bad6de672"
+    },
+    {
+      "original": "输入参考文件/02_销售部提成表_2026-08.xlsx",
+      "path": "assets/demo/02_销售部提成表_2026-08.xlsx",
+      "sha256": "862069ab3099345837499a97008295df71b5493deb632513a6af9e6df71a09d8"
+    },
+    {
+      "original": "输入参考文件/03_车间计件统计_2026-08.xlsx",
+      "path": "assets/demo/03_车间计件统计_2026-08.xlsx",
+      "sha256": "bd1128d9bcfa3bff957c5ffea38ab14dada22439ff89328fc29242d0c0182dc2"
+    },
+    {
+      "original": "输入参考文件/04_社保公积金缴费明细_2026-08.xlsx",
+      "path": "assets/demo/04_社保公积金缴费明细_2026-08.xlsx",
+      "sha256": "e66b73eb01c43d34637177a6461190f5709e2dd5c752163db13f51dbfcc5b04f"
+    },
+    {
+      "original": "输入参考文件/05_工资表_2026-07.xlsx",
+      "path": "assets/demo/05_工资表_2026-07.xlsx",
+      "sha256": "e9474d75a0e7774d15c3c3c7b299dee56b3a45efe63fc4da69c3605d803ef52f"
+    }
+  ]
+}

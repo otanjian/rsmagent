@@ -1,0 +1,13 @@
+{
+  "slug": "recruitment-funnel-report",
+  "name": "招聘漏斗月报与渠道 ROI",
+  "group": "hr",
+  "default_task": "老板要一页招聘的钱的去向。五个平台的导出、费用台账、入职名单、内推奖励记录都在这。\n\n漏斗每层的转化率、每个渠道的单人成本都算出来，便宜但留不住人的渠道给我看清。\n口径对不上的地方直接说，别硬算。\n\n产出三份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：RC-03_招聘漏斗与渠道 ROI 月报.xlsx（一页纸加漏斗逐层加渠道对照）、RC-03_渠道成本归集明细.xlsx（年费摊销、单次费用与单人成本，供财务复核）、RC-03_漏斗异常与优化建议.xlsx（逐层转化对照、瓶颈定位与待办）。",
+  "demo_files": [
+    "01_各平台后台导出_本季.xlsx",
+    "02_招聘费用台账_财务口径.xlsx",
+    "03_入职名单与留存_近两季.xlsx",
+    "04_内推奖金方案_未发出.txt"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/recruitment-funnel-report.html"
+}

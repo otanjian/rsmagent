@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/tax-risk-checklist.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/7GabM9Oud7p2jFkLMaxcba/0/pkg.zip",
+  "package_sha256": "5ffbaa7a774dd845b1b96699e7394dbab40b7a87875b65f1b47182689b149593",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "5ed0bd681cfbf6fd79f7157f42c2f3165a4aaa92a2bfe47ab3d933c704502278"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "3fbd75e8a6004733ade9bee9a1a89f63f87247eb02fbe03a0e66f7a87d026c92"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "8445d9a8fb8371276dea3a208693448125484eafba4e1842e06a42b7e07bdaa9"
+    },
+    {
+      "original": "输入参考文件/未开票收入台账.xlsx",
+      "path": "assets/demo/未开票收入台账.xlsx",
+      "sha256": "037cc18edadd72ca30b0413ec4343e7d874cc33be6e006b2b8427c354d04a633"
+    },
+    {
+      "original": "输入参考文件/账面收入与税负率.xlsx",
+      "path": "assets/demo/账面收入与税负率.xlsx",
+      "sha256": "c193ec2c55688301b741ac29c9192aec9c70cd3382b9198dc72e9f3a217a381b"
+    },
+    {
+      "original": "输入参考文件/进项发票台账_2025年7月.xlsx",
+      "path": "assets/demo/进项发票台账_2025年7月.xlsx",
+      "sha256": "8c8972836cec280b5bc4e04fb6520a1b87cced55eef525dfca3e9116b465a440"
+    },
+    {
+      "original": "输入参考文件/销项开票记录_2025年7月.xlsx",
+      "path": "assets/demo/销项开票记录_2025年7月.xlsx",
+      "sha256": "a539acf871205f39153134008e1005de113af1d67bdae7733acfa04369cc5dae"
+    }
+  ]
+}

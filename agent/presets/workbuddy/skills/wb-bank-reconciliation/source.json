@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/bank-reconciliation.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/UqToueL1SqfVsC6UyCuaa1/0/pkg.zip",
+  "package_sha256": "8394f1669473a8616fc699950b67061acd1903a704e8e90121028883a234c459",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "6145f938e4d9a3a9dca192370fae6090fe501c84acb42910c8c5e500a39a6dc9"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "a27bf137dcd2f211749d088294016929e348a8061ca230265d5a3578c3ac2fab"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "ba42db94cef8687297b01941044f9e9c8f4d0d6ae4b04c82c36a70c2287053a4"
+    },
+    {
+      "original": "输入参考文件/历史未达账项台账.xlsx",
+      "path": "assets/demo/历史未达账项台账.xlsx",
+      "sha256": "1f7e8b78d3bd98b8cca74a0e0426af2933b6a04fd8a2c6e031a66c7d9320067b"
+    },
+    {
+      "original": "输入参考文件/微信收款截图转录.txt",
+      "path": "assets/demo/微信收款截图转录.txt",
+      "sha256": "07099ce02eb16ffbbf0da832f481228e90152321021e9c4c3f9138df41743244"
+    },
+    {
+      "original": "输入参考文件/银行对账单_工行_2026年6月.xlsx",
+      "path": "assets/demo/银行对账单_工行_2026年6月.xlsx",
+      "sha256": "bae25a8ca9d4b8783031bc93e2b995620b3747680cdb1948ae9a7f31a9fd4530"
+    },
+    {
+      "original": "输入参考文件/银行日记账_2026年6月.xlsx",
+      "path": "assets/demo/银行日记账_2026年6月.xlsx",
+      "sha256": "a88c0ed07ad801897fbda446b6dc3c3ed556db78006a4915a0cbc43e25e67b3f"
+    }
+  ]
+}

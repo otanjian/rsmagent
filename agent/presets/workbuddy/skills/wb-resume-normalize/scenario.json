@@ -1,0 +1,14 @@
+{
+  "slug": "resume-normalize",
+  "name": "简历格式归一与结构化",
+  "group": "hr",
+  "default_task": "装配技师岗收到了 312 份简历，平台导出、邮箱、猎头的都有，格式乱七八糟。帮我做成一张能筛选的表。\n\n去年投过的人帮我标出来。简历里时间对不上、证书奇怪的，列个疑点清单给我。\n联系方式没有的单独说一声。\n\n我不需要你帮我打分排名，进谁的面我们自己圈。\n\n产出三份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：RC-01_简历结构化底表.xlsx（一人一行，含筛选状态留痕列）、RC-01_重复投递与历史候选池.xlsx（含去年终面被拒者与激活建议）、RC-01_简历疑点清单.xlsx（逐人疑点与类型标注，供人工判断，不下结论）。",
+  "demo_files": [
+    "01_BOSS直聘导出_装配技师.xlsx",
+    "02_邮箱投递简历_82份清单.xlsx",
+    "03_猎头推荐_装配技师_50份.xlsx",
+    "04_2025年简历库_装配技师.xlsx",
+    "05_岗位JD_装配技师.txt"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/resume-normalize.html"
+}

@@ -1,0 +1,14 @@
+{
+  "slug": "payroll-data-assembly",
+  "name": "算薪跨部门数据拼图",
+  "group": "hr",
+  "default_task": "月底算薪，五份数据都在这：考勤机导出、销售提成、车间计件、社保基数、上月的工资表。帮我拼这个月的工资核算表。\n\n格式不一样，人名顺序也不一样，你先对齐再说。\n对不上的、金额看着不对的，标出来我去问，别自己猜。\n\n产出三份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：PR-01_8月工资核算表.xlsx（法定栏位齐全，逐列口径注释，含财务复核栏）、PR-01_算薪异常清单.xlsx（逐条异常，含金额影响、确认责任人与待确认口径）、PR-01_五源对账记录.xlsx（人名对齐结果与三道对账线明细，留档备查）。",
+  "demo_files": [
+    "01_考勤机导出_2026-08.xlsx",
+    "02_销售部提成表_2026-08.xlsx",
+    "03_车间计件统计_2026-08.xlsx",
+    "04_社保公积金缴费明细_2026-08.xlsx",
+    "05_工资表_2026-07.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/payroll-data-assembly.html"
+}

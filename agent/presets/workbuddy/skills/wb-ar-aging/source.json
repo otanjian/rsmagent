@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/ar-aging.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/5qItKebpnKCChBmCVwOaVk/0/pkg.zip",
+  "package_sha256": "86723d49bb299ff1e5e08130e060c7cd7e3d35c95065c9cbf56fabf766808195",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "86cab3bdf19bf8d6674e6396cd3b5533802435dc340cb21af780f8fc7514dfdf"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "69f5b7f0e1982bd584acdbe03abb2cc1367a79d2f154b985f67fee463c41e6ae"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "70755f9183b1d4bf09d5aa4b837f1f6081656e9c028e59a8e1135c26754bd3de"
+    },
+    {
+      "original": "输入参考文件/历史核销台账.xlsx",
+      "path": "assets/demo/历史核销台账.xlsx",
+      "sha256": "a90429737996f41026ce33b780a2225340fe52a31dfd85c8954e76975f77e065"
+    },
+    {
+      "original": "输入参考文件/应收账款明细账_2026年6月.xlsx",
+      "path": "assets/demo/应收账款明细账_2026年6月.xlsx",
+      "sha256": "acd530c8316aa86c168baba84724b0de9f5de02bd7a17b117e061c7c68565def"
+    },
+    {
+      "original": "输入参考文件/银行回款流水_2026年6月.xlsx",
+      "path": "assets/demo/银行回款流水_2026年6月.xlsx",
+      "sha256": "1d508d53d13347f7a59e0798894fe3f0dc505d05f886d207acd0ecb0b550131c"
+    },
+    {
+      "original": "输入参考文件/销售开票记录_2026年6月.xlsx",
+      "path": "assets/demo/销售开票记录_2026年6月.xlsx",
+      "sha256": "32c92657fb084250903193211f98c6caab769d8e06775f3ed8d7f534e0d96a03"
+    }
+  ]
+}

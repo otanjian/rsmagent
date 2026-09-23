@@ -1,0 +1,53 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ots1af1M8J2fvk7OxWVwPg/17/deep-dives/bid-mandatory-clause.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/sFFQAv3VPTyqxfyNOPFjGf/0/pkg.zip",
+  "package_sha256": "a01358a1b7ee005ad400cfadb431a14818615dd36d478e0ecf6ced1d31850cc5",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "0c3acd41852f1c54d7c92fe0c33cda5a8f8ee764b0ea673f9d2cb42f5ebc762a"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "487f3fa72b5963a97f9f912d1384c1a35de99246ef30f717ba785022108d9819"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "d3460fd1d28edcb6d2ac9b0c47df3850776954d1e05633a0fb5c6b523a6878e4"
+    },
+    {
+      "original": "输入参考文件/01_招标文件正本条款摘录.txt",
+      "path": "assets/demo/01_招标文件正本条款摘录.txt",
+      "sha256": "1d8054b19ebde6d6ad203727da783a1cb4000672dc33d1ecc037308efcb5cc52"
+    },
+    {
+      "original": "输入参考文件/02_答疑澄清文件两份.txt",
+      "path": "assets/demo/02_答疑澄清文件两份.txt",
+      "sha256": "4666a8aef3c952418ee83289ad2c11501821b0be0372ae0b903e5a219973739e"
+    },
+    {
+      "original": "输入参考文件/03_我方资质证书与拟投入人员台账.xlsx",
+      "path": "assets/demo/03_我方资质证书与拟投入人员台账.xlsx",
+      "sha256": "7841e487fbcdc782466cd8bdf059647c737d6999094089b741da913cb2f00f3e"
+    },
+    {
+      "original": "输入参考文件/04_我方同类项目业绩台账.xlsx",
+      "path": "assets/demo/04_我方同类项目业绩台账.xlsx",
+      "sha256": "fc9f7492bfc01080d71cd02130276a8463f4ff29f5d0eaaba27d1d9264de0429"
+    },
+    {
+      "original": "输入参考文件/05_产品技术参数对照表.xlsx",
+      "path": "assets/demo/05_产品技术参数对照表.xlsx",
+      "sha256": "3030f9f5ee3bd8c27bece4d8c79e3db92feeb5b59248470cd4f4f85adaf969db"
+    },
+    {
+      "original": "输入参考文件/06_上次同类项目投标响应记录与评标反馈.xlsx",
+      "path": "assets/demo/06_上次同类项目投标响应记录与评标反馈.xlsx",
+      "sha256": "d46f981e4d02defbcdaa10fa1a295915561b4b83730f1b8d7d246a0df965c2b2"
+    }
+  ]
+}

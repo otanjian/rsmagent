@@ -1,0 +1,14 @@
+{
+  "slug": "contract-review",
+  "name": "合同条款确认",
+  "group": "manufacturing",
+  "default_task": "客户发来的合同我摘录成表了，帮我看看有没有坑。我们没有自己的标准合同模板，所以把通用红线清单和近两年签过的合同都放进来了，技能内置三份：待签合同条款摘录、通用条款红线清单、历史已签合同条款基线。哪些条款按行业惯例就不合理、哪些是相对我们平时签的被压得更狠，分开告诉我；能改的直接给我改好的话术，我要能复制进反馈邮件发给客户。别一上来把所有条款都标成高危，也别给我引法条。\n\n产出两份：**Excel（.xlsx）** 条款差异比对表.xlsx（原文、问题、命中红线、历史对比、商业影响、是否可让、建议文本逐列齐全）、**PDF** 合同条款风险提示.pdf（两页：需合并审查的条款组加三条致命项摘要，每条算成钱并给谈判优先级）。不要用 Markdown 或纯文本代替。",
+  "demo_files": [
+    "历史已签合同条款基线.xlsx",
+    "合同条款风险提示.pdf",
+    "待签合同条款摘录.xlsx",
+    "条款差异比对表.xlsx",
+    "通用条款红线清单.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/contract-review.html"
+}

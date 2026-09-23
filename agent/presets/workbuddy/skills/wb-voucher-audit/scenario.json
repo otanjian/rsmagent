@@ -1,0 +1,12 @@
+{
+  "slug": "voucher-audit",
+  "name": "凭证全量稽核扫描",
+  "group": "finance",
+  "default_task": "月末关账前把这批凭证全量稽核一遍。附件两份材料：软件导出的记账凭证数据、科目余额表。全量扫、不是抽样，每张凭证都要过——借贷不平、科目挂错或方向反、附件缺失与摘要乱填、断号这四类。科目余额表用来核科目方向和余额，别只拿凭证数据扫。\n\n只摆问题、不要动手改凭证，改不改我来定；科目归属不给最终结论；断号要先排除作废重录的空号，别把作废号当真断号报上来。\n\n产出两份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：HS-03_凭证稽核清单.xlsx（异常项按借贷不平、科目挂错或方向反、单据张数缺失与摘要乱填、断号四类分组，一条一行写清凭证号、问题、涉及金额、处理建议）、HS-03_借贷不平明细.xlsx（不平的逐张列出差额）。",
+  "demo_files": [
+    "凭证作废记录.txt",
+    "科目余额表_2026年6月.xlsx",
+    "记账凭证数据_2026年6月.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/voucher-audit.html"
+}

@@ -1,0 +1,114 @@
+{
+  "date": "2026-09-22",
+  "tenant_code": "test15",
+  "tenant_name": "AI租户1",
+  "source_revision": "184",
+  "installed_agents": 62,
+  "installed_skill_copies_match": 62,
+  "original_demo_files": 292,
+  "groups": {
+    "manufacturing": 20,
+    "hr": 15,
+    "finance": 12,
+    "sales": 15
+  },
+  "automated_tests_passed": 31,
+  "runtime": "tenant-local Python 3.12 with Excel/Word/PDF libraries; existing isolation policy unchanged",
+  "authorized_agents_skills_and_tools": 62,
+  "idempotent_second_install": "62 already_installed",
+  "live_smoke_samples": [
+    {
+      "slug": "bank-reconciliation",
+      "status": "generated_and_delivered_in_web_chat",
+      "files": [
+        {
+          "file": "RQ-01_历史未达清账跟踪.xlsx",
+          "sha256": "e0e6f4d80d079afc5e8d5a8a2e150202f22f087a839332e2f19caee65b77ab75",
+          "bytes": 7015
+        },
+        {
+          "file": "RQ-01_未达账项清单.xlsx",
+          "sha256": "ee001b4ed8cb9521a21afe0c20b7952a48a392bed7b507f09302b1200e82804c",
+          "bytes": 7251
+        },
+        {
+          "file": "RQ-01_银行余额调节表.xlsx",
+          "sha256": "65e94e0bb8b6897e96c9af24611a7d23f8cedc9884bb2388f78df5a353b22274",
+          "bytes": 7682
+        }
+      ]
+    },
+    {
+      "slug": "version-audit",
+      "status": "generated_and_delivered_in_web_chat",
+      "files": [
+        {
+          "file": "分部门整改通知稿.md",
+          "sha256": "166473d7da61ab54b693294d092874c1f3c14cbd177ca70c391d92fa1ec60da1",
+          "bytes": 3710
+        },
+        {
+          "file": "版本一致性巡检报告.xlsx",
+          "sha256": "9d14d6eb07a6530c88d34b296734f2012bbd2c81a1dacde83ca4a3002e1a55d8",
+          "bytes": 10259
+        }
+      ]
+    },
+    {
+      "slug": "roster-audit",
+      "status": "generated_and_delivered_in_web_chat",
+      "files": [
+        {
+          "file": "ER-03_员工花名册（重建版）.xlsx",
+          "sha256": "820d88a1256789a0cc0ed44b266f46cad4e963ea08a97387509c8250172c69b0",
+          "bytes": 13665
+        },
+        {
+          "file": "ER-03_栏位缺口清单.xlsx",
+          "sha256": "6d7c23cf04869bf601da56178e56a0d193f2e33325cfa49a3679813e09cbe023",
+          "bytes": 7411
+        },
+        {
+          "file": "ER-03_版本差异与外部交叉记录.xlsx",
+          "sha256": "e20f0a97a5487b36d54962d7b2ea08d6cde285d0a85411d9ed9e9a84a1c6fd7c",
+          "bytes": 9955
+        }
+      ]
+    },
+    {
+      "slug": "quote-discount-audit",
+      "status": "generated_and_delivered_in_web_chat",
+      "files": [
+        {
+          "file": "QC-01_历史报价折算对照表.xlsx",
+          "sha256": "3689551159992ff0139c258ebffe36608b6a8a541ad00ea865253cabbdb81f5f",
+          "bytes": 10928
+        },
+        {
+          "file": "QC-01_折扣核查与签批单.xlsx",
+          "sha256": "b3c27c2593e574b4103fdc84dc4a48698c88f747299f77c49ee6963a43eca38d",
+          "bytes": 18068
+        },
+        {
+          "file": "QC-01_授权层级判定表.xlsx",
+          "sha256": "452872442c5b431d9da72b9678365b2e358f74bdc3068d2021b50931e5724399",
+          "bytes": 11485
+        }
+      ]
+    }
+  ],
+  "sample_notes": {
+    "roster-audit": "首次运行暴露部署解释器越界；配置租户内运行环境后继续，已生成并发送三份文件"
+  },
+  "independent_spot_checks": {
+    "bank_adjusted_balance": "1314500.00 on both sides",
+    "version_diff": [
+      "SOP-A-06",
+      "DRW-M-PCB-001"
+    ],
+    "quote_standard_total": "2397000",
+    "quote_final_total": "1860000",
+    "quote_discount_amount": "537000"
+  },
+  "scope_limit": "全量检查覆盖安装、资料完整性、权限与文件工具；模型完整业务流程抽测 4 项，其余 58 项未逐一运行完整演示，不能视为所有真实业务结果均已验收。"
+}

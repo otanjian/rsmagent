@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/probation-evidence.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/Ui08277i8wZPnBMrRasMGe/0/pkg.zip",
+  "package_sha256": "38a49c1b491e7d906e52e3a4cc51ba187c19d63b49a9d1097400d7332b19047c",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "422cb70fc2cece9104e0a4bd523ef08a703f6d1a732830472f5f91a8ff0c09ef"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "36eb56e0c93dc5ce7155d954775d64ace4e2b040b9f663fad12646e9daf126c1"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "76e516bc36aa65a076c394e7653faf9ad622a53415592a92c88cd0b00d9153fa"
+    },
+    {
+      "original": "输入参考文件/01_吴梦琪_入职材料与JD.xlsx",
+      "path": "assets/demo/01_吴梦琪_入职材料与JD.xlsx",
+      "sha256": "9983a0b946dbb1ed804c60b8397d7c9b350bfece53bb07c2fb22517ecaf6e62d"
+    },
+    {
+      "original": "输入参考文件/02_吴梦琪_周报汇总.xlsx",
+      "path": "assets/demo/02_吴梦琪_周报汇总.xlsx",
+      "sha256": "f671f4ec1e0fc30790cb299e7350b258ade5b25b7865a59ec0dba677d767a66c"
+    },
+    {
+      "original": "输入参考文件/03_业务经理_微信评价.txt",
+      "path": "assets/demo/03_业务经理_微信评价.txt",
+      "sha256": "188a63075a7c932b38a1360934256e461f977fce03691cdbfdc9721e74250c80"
+    },
+    {
+      "original": "输入参考文件/04_去年辞退案例_装配岗.txt",
+      "path": "assets/demo/04_去年辞退案例_装配岗.txt",
+      "sha256": "fc4f6642cbd22da219a268c7a5a8dfba80f0f43374cbd952a2ba370eb41b7180"
+    }
+  ]
+}

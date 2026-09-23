@@ -1,0 +1,13 @@
+{
+  "slug": "reconciliation",
+  "name": "对账差异核对",
+  "group": "manufacturing",
+  "default_task": "某主机厂发来 7 月对账单，我方出货明细也导出来了，两边合计对不上。材料都放一起了：客户对账单、销售出货明细、销售价格表、送货单回执台账。客户用的是他们自己的零件号和繁体列名、含税单价，我方是本厂料号、未税单价；送货单号写法也不统一，有带 A 后缀的、有简写的。逐笔找出差异，每笔告诉我客户写的是多少、我方是多少、该怎么处置、责任归谁；差额要能加得起来——分项加总必须等于两边合计的差额。\n\n产出两份：**Excel（.xlsx）** 对账差异核对报告.xlsx（逐笔差异加五类差异分类汇总含加总验算加凭证索引）、**Markdown（.md）** 对客回函.md（可直接发给客户财务，逐笔列出差异与依据）。不要用对话式总结代替。",
+  "demo_files": [
+    "客户对账单_某主机厂7月.xlsx",
+    "送货单回执台账.xlsx",
+    "销售价格表.xlsx",
+    "销售出货明细.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/reconciliation.html"
+}

@@ -1,0 +1,38 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/payslip-anomaly.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/gQ6REpxgCRF7ZT0rZghqzv/0/pkg.zip",
+  "package_sha256": "96a9e07c8361e1c38110b203ff59bcd3152025ee1e20aec5f72dcf47027d49a9",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "53e76819c5acbeea96577a6db452b379f8797c744a15822d03c9d078b26dd71b"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "2a2c08807e60a97571b0b91801adcf9dd2e44702b36db5410c2d3c4d68ddb17d"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "806ef2d3ce00949b08a3cf1e603ac6266e8b4d561dde58d683aed22f5d221c01"
+    },
+    {
+      "original": "输入参考文件/01_工资表_2026-08.xlsx",
+      "path": "assets/demo/01_工资表_2026-08.xlsx",
+      "sha256": "211ceee13a8c671b0a5d45e4b4d31cca7ecfbe6926b1fccf9c0f2e8cfb849439"
+    },
+    {
+      "original": "输入参考文件/02_工资表_2026-07_财务批注版.xlsx",
+      "path": "assets/demo/02_工资表_2026-07_财务批注版.xlsx",
+      "sha256": "f98fb8019107dbc71a17fb57671bc0bf0f8d8aa80dbb18e58a7e976ceb8d60ee"
+    },
+    {
+      "original": "输入参考文件/03_8月入离职与状态变动.xlsx",
+      "path": "assets/demo/03_8月入离职与状态变动.xlsx",
+      "sha256": "f7aca28723e1dd4b5ea57844606fd1b274c74e7d692a4c98f4b50cdd19c243a9"
+    }
+  ]
+}

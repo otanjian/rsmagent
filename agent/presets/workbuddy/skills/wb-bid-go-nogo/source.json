@@ -1,0 +1,53 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ots1af1M8J2fvk7OxWVwPg/17/deep-dives/bid-go-nogo.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/MsT54yiCCFjDJ6AVdcDHUC/0/pkg.zip",
+  "package_sha256": "c55eacdafd7145c2bdb625190d586c45f94041ccf9e46d992050740a837dfd92",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "15cdfad05b9dff77487eb7e10718286737ba026a6eb78d4805cd155525eb1ce8"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "42951deb254f845d7a40cce4c5aadd6bded811aa38fb4b50b17a2d62f8293752"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "d17369ba16a41fef7de28ed4e3a2183d30ab1cde890c3dbd79e4090a268d2598"
+    },
+    {
+      "original": "输入参考文件/01_四份招标公告关键信息汇总.xlsx",
+      "path": "assets/demo/01_四份招标公告关键信息汇总.xlsx",
+      "sha256": "9d2752a6410187af18c9854f5d798f72adb0e2a9de172496a8cd6576e45a26fc"
+    },
+    {
+      "original": "输入参考文件/02_四份招标公告资格条款摘录.txt",
+      "path": "assets/demo/02_四份招标公告资格条款摘录.txt",
+      "sha256": "d2bc7ab81045c9a462a38a080a72e2135d7e248ab0e271b8938847fb9f7309db"
+    },
+    {
+      "original": "输入参考文件/03_我方资质证书与同类业绩台账.xlsx",
+      "path": "assets/demo/03_我方资质证书与同类业绩台账.xlsx",
+      "sha256": "07738a63a62936092dc33a0763f4a437185f5106f30c4774f76476ce5f2f7552"
+    },
+    {
+      "original": "输入参考文件/04_在建项目垫资占用明细.xlsx",
+      "path": "assets/demo/04_在建项目垫资占用明细.xlsx",
+      "sha256": "8d6492d66857873b3e2bc327af2566499c02f488a8aa1a4be763efd072a0cc7a"
+    },
+    {
+      "original": "输入参考文件/05_业主方公开信息检索记录.xlsx",
+      "path": "assets/demo/05_业主方公开信息检索记录.xlsx",
+      "sha256": "6a0e9a43dfde1c1f27960d306d089275afc30723bfcd1a6d18f8c411dbd5f73d"
+    },
+    {
+      "original": "输入参考文件/06_上季度投标投入与结果台账.xlsx",
+      "path": "assets/demo/06_上季度投标投入与结果台账.xlsx",
+      "sha256": "bb83e5f76a2e0445d0d1462be6060d1ba67bc0b77e6ad64db8b8d249e869d9df"
+    }
+  ]
+}

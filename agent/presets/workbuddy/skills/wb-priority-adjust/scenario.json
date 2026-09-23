@@ -1,0 +1,13 @@
+{
+  "slug": "priority-adjust",
+  "name": "排产与插单调整",
+  "group": "manufacturing",
+  "default_task": "按 5.1 的分析结论，把华东能源 SO-20260708-001 对应的工单 WO-20260712-085 优先级从「普通」调整为「紧急」，原因：华东能源战略急单保交期。数据都放一起了：订单清单、工单清单、齐套报表、产能负荷表。调整后请记录调整时间、调整人、调整原因，并提示相关工序的调整节奏。\n\n产出两份：**Excel（.xlsx）** 排产调整通知.xlsx（工单号、原优先级到新优先级、原因、调整时间、调整人，可回退）、**纯文本（.txt）** IM推送通知稿.txt（同步装配一线、喷涂、包装工序，各自写清要调什么）。不要用对话式总结代替。",
+  "demo_files": [
+    "产能负荷表.xlsx",
+    "工单清单.xlsx",
+    "订单清单.xlsx",
+    "齐套报表.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/priority-adjust.html"
+}

@@ -1,0 +1,13 @@
+{
+  "slug": "material-chase",
+  "name": "来料跟催",
+  "group": "manufacturing",
+  "default_task": "我是采购，手上 18 张在途采购单，帮我排一下今天该催谁。四份表都放一起了：在途采购单、供应商履约台账、工单需求计划、库存快照。别按逾期天数排——逾期久的可能一点不急，没逾期的可能今天就得催。每张单都要算清楚：这批料晚到会卡哪张工单、哪个客户，库存还能撑几天；按承诺日加上这家供应商的历史平均延误，推一下实际大概哪天到。\n\n产出两份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：在途单风险分级与到货预测.xlsx（四色分级每张带判定依据算式、供应商履约画像、到货预测）、分供应商跟催话术与待办清单.xlsx（话术要带上他家准时率，别写「请尽快」；待办带责任人、时限与验收标准）。",
+  "demo_files": [
+    "供应商履约台账.xlsx",
+    "在途采购单.xlsx",
+    "工单需求计划.xlsx",
+    "库存快照.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/material-chase.html"
+}

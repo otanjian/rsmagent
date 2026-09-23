@@ -1,0 +1,48 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/biz-review.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/zL3602QLMAGGXMdEd7psSh/0/pkg.zip",
+  "package_sha256": "4b7e111d06bbabf75265bcbe2eb853ef9fab46d6c99c41708a7dea81fcd7ac19",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "f324dc1515c41e06f06722e2c9b7c36ad642912ee55720bfdb722d25994cce2b"
+    },
+    {
+      "original": "references/归因下钻规则.md",
+      "path": "references/归因下钻规则.md",
+      "sha256": "2e0233f8988e827348248c3889607a3602a2e3d67eb59355a3f803abba4555d8"
+    },
+    {
+      "original": "references/指标定义与阈值.md",
+      "path": "references/指标定义与阈值.md",
+      "sha256": "6c728e818822cdd26dce0e02edbe6d9e213447007e78640b8940d4300c9f2fb1"
+    },
+    {
+      "original": "输入参考文件/交付履约明细.xlsx",
+      "path": "assets/demo/交付履约明细.xlsx",
+      "sha256": "941a6f2bec72701ee4321166009cd4cb46e0f1677a8937fed4c0acf550a974ce"
+    },
+    {
+      "original": "输入参考文件/库存与呆滞.xlsx",
+      "path": "assets/demo/库存与呆滞.xlsx",
+      "sha256": "160448eeeb21e78e59d2e00ddb810110d8e45c6018b0206948f6642f17597942"
+    },
+    {
+      "original": "输入参考文件/成本与毛利.xlsx",
+      "path": "assets/demo/成本与毛利.xlsx",
+      "sha256": "9f7576ddd5f1e84e85eaf32a844c95c0f67cab739a66b34ba421d98d0ae6dd52"
+    },
+    {
+      "original": "输入参考文件/订单月度汇总.xlsx",
+      "path": "assets/demo/订单月度汇总.xlsx",
+      "sha256": "5d9acf10b662604f07be7f9b78205627f90a624792fa37d0b0d34ba7addaa9b7"
+    },
+    {
+      "original": "输入参考文件/质量异常汇总.xlsx",
+      "path": "assets/demo/质量异常汇总.xlsx",
+      "sha256": "006a2dd9891b818260f6583b05e2117f9e9e5e44a323c8b280d4505a3e0fe4a8"
+    }
+  ]
+}

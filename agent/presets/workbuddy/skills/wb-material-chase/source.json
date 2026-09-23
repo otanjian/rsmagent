@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/material-chase.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/10UoS29aRxJ07aagWBm3Pn/0/pkg.zip",
+  "package_sha256": "312ac970b675091b65396515049f2d487553beee5dadfca106ab70e949203679",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "08ce1ed20bef44704340e0adfa18eb57e6c868b12f9ad5a1313aeb7c5bfe0247"
+    },
+    {
+      "original": "references/跟催话术模板.md",
+      "path": "references/跟催话术模板.md",
+      "sha256": "77ee374d5fcac339fc74bf502c37a33c84906910712a3714cdfa4babbd1f7238"
+    },
+    {
+      "original": "references/风险分级规则.md",
+      "path": "references/风险分级规则.md",
+      "sha256": "ddb7fd47fd11de8a223cfa6e50732a15e90104e5a74f07a833d8bb84a6e127fc"
+    },
+    {
+      "original": "输入参考文件/供应商履约台账.xlsx",
+      "path": "assets/demo/供应商履约台账.xlsx",
+      "sha256": "2a60c821172888928365211532aaa00c9eca016f66d982ec5598369a8549e541"
+    },
+    {
+      "original": "输入参考文件/在途采购单.xlsx",
+      "path": "assets/demo/在途采购单.xlsx",
+      "sha256": "0894fbe6852bc1637eb7c2266a938b23c93d456863d89d2f18619afdcaea589f"
+    },
+    {
+      "original": "输入参考文件/工单需求计划.xlsx",
+      "path": "assets/demo/工单需求计划.xlsx",
+      "sha256": "f5bf4c9d055c076961542cfb783111b554102edbac12e3fa4f2dc74784b9ae10"
+    },
+    {
+      "original": "输入参考文件/库存快照.xlsx",
+      "path": "assets/demo/库存快照.xlsx",
+      "sha256": "7a49eb132284557f97fadf19faf0548a512c9d0e226fa3a7706fcfe7ce0c3864"
+    }
+  ]
+}

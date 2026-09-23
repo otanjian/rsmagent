@@ -1,0 +1,58 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/profit-risk.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/KwT0qomjWtKmCq7bCaERHV/0/pkg.zip",
+  "package_sha256": "6f3406edf31a96ffc99a44f43da5d23543079b75e7bcc11da622cd86f3f2ae94",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "0ac8abeb0e1ca01066b8e5dc8b5ef5af460fa77322ccf0d3fe81276bf331a02d"
+    },
+    {
+      "original": "references/四项增量取数与阈值.md",
+      "path": "references/四项增量取数与阈值.md",
+      "sha256": "c3f9f842f465969430f67aa56cb451dfb953b97ff47f8b9a5417ae56c4989109"
+    },
+    {
+      "original": "references/预警表模板.md",
+      "path": "references/预警表模板.md",
+      "sha256": "afc7aea0ba64f3a6da5c4f49e0ab07541d2a647cec41746c8e7dda7139004bd7"
+    },
+    {
+      "original": "输入参考文件/合同条款风险提示.pdf",
+      "path": "assets/demo/合同条款风险提示.pdf",
+      "sha256": "67a9d6209baa2f428e36e33b91e575e72bcd3f7d2ae1014afbbbc2a0229fd060"
+    },
+    {
+      "original": "输入参考文件/在制订单与报价测算.xlsx",
+      "path": "assets/demo/在制订单与报价测算.xlsx",
+      "sha256": "ffa8cbb71e3c856a0647058f08449ebd4b94cec814c2b79f13c6f1052f35294c"
+    },
+    {
+      "original": "输入参考文件/外协加工对账.xlsx",
+      "path": "assets/demo/外协加工对账.xlsx",
+      "sha256": "75f8dc118e8559402505e4a41d7c5fd60d77a387da001292f29ed7e9d5a46abe"
+    },
+    {
+      "original": "输入参考文件/条款差异比对表.xlsx",
+      "path": "assets/demo/条款差异比对表.xlsx",
+      "sha256": "538919324de26301586ed6c0f3778c5805c88fc302418123c9ff7034dbb41b3c"
+    },
+    {
+      "original": "输入参考文件/物流与加急运费.xlsx",
+      "path": "assets/demo/物流与加急运费.xlsx",
+      "sha256": "d2a41df68a51bc974565257bfadc098364836440011c6a2430f68d15c2032af9"
+    },
+    {
+      "original": "输入参考文件/返工记录与标准工时.xlsx",
+      "path": "assets/demo/返工记录与标准工时.xlsx",
+      "sha256": "19d58f910b7fb960e31cc1198bfede18cfd0fb53a387c847dba350cff6f8f722"
+    },
+    {
+      "original": "输入参考文件/领料与超领记录.xlsx",
+      "path": "assets/demo/领料与超领记录.xlsx",
+      "sha256": "862fcdc2c350e16f241008703dedcc94d5f61cff2af7dcb41190de18702b9a3a"
+    }
+  ]
+}

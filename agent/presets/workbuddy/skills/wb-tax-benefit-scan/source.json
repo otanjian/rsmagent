@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/tax-benefit-scan.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/sqgkKjCbkJfyrtOrZclh7H/0/pkg.zip",
+  "package_sha256": "52247df7e6aaab3721ebbfe47826e7639ebe328524cf2e6ef09513b58120da58",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "24289b54fdcde7be7647d946d1031271cf72ea07603735d3ccd3683fec5c40e9"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "1f5faf54b5aec028ed2388ef2817d8e73bb31af3f1ebf956ff76aaeb0488ae7e"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "5ca5d410ebcfce04a3bcce18cb10668d45cd1f32ffeec3ab540d1c61c4eeb2fd"
+    },
+    {
+      "original": "输入参考文件/2024年度企业所得税申报表.xlsx",
+      "path": "assets/demo/2024年度企业所得税申报表.xlsx",
+      "sha256": "b12dec36653fb3b9da908a54af6165866c0d24b21d12650a23aff015d27bd87a"
+    },
+    {
+      "original": "输入参考文件/2025年度财务报表.xlsx",
+      "path": "assets/demo/2025年度财务报表.xlsx",
+      "sha256": "4417e67086248e087e45444e7f1b9ff8c30343a05c2706fd17d268b640838613"
+    },
+    {
+      "original": "输入参考文件/固定资产与残保金台账.xlsx",
+      "path": "assets/demo/固定资产与残保金台账.xlsx",
+      "sha256": "d75355a87d3b9a0247bfb6bf843fab8fa60841027ad87a7658a28d5bed701e26"
+    },
+    {
+      "original": "输入参考文件/研发费用明细.xlsx",
+      "path": "assets/demo/研发费用明细.xlsx",
+      "sha256": "8fcd0c4aaa51fe258f0c64e7c759487d93badda4df7947f71fffec8b1d850ba8"
+    }
+  ]
+}

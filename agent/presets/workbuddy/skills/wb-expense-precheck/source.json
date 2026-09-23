@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/expense-precheck.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/oavzDiI4PnNpv75oV1Tozo/0/pkg.zip",
+  "package_sha256": "f090aaafefc295578be7f501bc10ebb38f6568d6477d39a3fd48b77d5e1d6286",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "3f9ae345271ffccd6c2f32e21c67ad3a3a3ac59cf80ea36f47b87801e28a3f1b"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "d1778c23bc7ae996dad794abf6af9864487c97ff40336b542d505092d1b01dda"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "98785f2cbe9bc1bda8106c15a47c69c8e9a38b3ccb943519468ba7d5b11ea60a"
+    },
+    {
+      "original": "输入参考文件/公司报销制度与费用标准.txt",
+      "path": "assets/demo/公司报销制度与费用标准.txt",
+      "sha256": "209186c2f0eac5bfbcd87474c3399f8631932ce968eb6ce83bf02a48a2fb3d8f"
+    },
+    {
+      "original": "输入参考文件/历史进项税退回记录.xlsx",
+      "path": "assets/demo/历史进项税退回记录.xlsx",
+      "sha256": "94f5a638c88bf1ce4b546af9e0d3af0fcea50ed72971e600733756f0e18dfae2"
+    },
+    {
+      "original": "输入参考文件/发票信息台账_2026年6月.xlsx",
+      "path": "assets/demo/发票信息台账_2026年6月.xlsx",
+      "sha256": "a9c8e9efcf4c1bb762115a5b2af801614905a7adc0501868549fce11dd642e7e"
+    },
+    {
+      "original": "输入参考文件/费用报销单_2026年6月.xlsx",
+      "path": "assets/demo/费用报销单_2026年6月.xlsx",
+      "sha256": "90577c9ea4e7ef532caeb40d949bfb9dbfa16cb4586cadcd9c33809b4f0c4ec8"
+    }
+  ]
+}

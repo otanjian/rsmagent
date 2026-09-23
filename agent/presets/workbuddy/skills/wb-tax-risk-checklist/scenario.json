@@ -1,0 +1,13 @@
+{
+  "slug": "tax-risk-checklist",
+  "name": "纳税申报前风险清单",
+  "group": "finance",
+  "default_task": "申报之前先把风险扫一遍。技能内置四份材料：销项开票记录、进项发票台账、未开票收入台账、账面收入与税负率数据。逐项过：进销项对不对得上、有没有没开票的收入漏申报、税负率异常、三流一致的初筛，再对照金税四期那 7 类高风险行为逐条自查。\n\n只写「品名不符」「三流可疑」这种事实描述，不要下虚开定性；不要替我提交申报；改不改、报不报我自己定。\n\n产出三份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：TX-02_纳税申报前风险清单.xlsx（异常项按金额×风险排序，一条写清是什么风险、涉及金额、出处、现在该怎么处置）、TX-02_未开票收入排查表.xlsx（账面收入和开票收入的缺口逐笔标注）、TX-02_待处置发票清单.xlsx（品名不符、三流可疑的发票逐张列）。",
+  "demo_files": [
+    "未开票收入台账.xlsx",
+    "账面收入与税负率.xlsx",
+    "进项发票台账_2025年7月.xlsx",
+    "销项开票记录_2025年7月.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/hPAUJKV8TPAtMB4ZYl32yb/16/deep-dives/tax-risk-checklist.html"
+}

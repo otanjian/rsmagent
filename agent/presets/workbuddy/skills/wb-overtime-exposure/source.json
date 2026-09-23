@@ -1,0 +1,43 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/overtime-exposure.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/pXkbBKu8k3A4WJBhTxVoDG/0/pkg.zip",
+  "package_sha256": "7c8a4047c2aa21cf3bf14bacb5831fbad09ccac426b2bd73b6a5d0278f54feab",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "4d733a65825ee31af8efd83bfd14b384d2d4595ac750ad8682e3b2119657973c"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "b96e8761a17f897cb9e14ae0fa9c68d871abe14ab3aca228fee1c929b9aed2a2"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "92eccd7019b258d25531375a951450a5518997295b85def82241f4d9dfad426f"
+    },
+    {
+      "original": "输入参考文件/01_考勤原始导出_2026-05至08.xlsx",
+      "path": "assets/demo/01_考勤原始导出_2026-05至08.xlsx",
+      "sha256": "aa485325381ab13d6f2248e91ba5110051cc646121bd7a4fcffbc2d4858c1050"
+    },
+    {
+      "original": "输入参考文件/02_工资表_工资结构节选.xlsx",
+      "path": "assets/demo/02_工资表_工资结构节选.xlsx",
+      "sha256": "e8d71e7822bc1fda50e7dfc7f315b1cbc88f3b9f0457664aa8f3b2c7d936e4c6"
+    },
+    {
+      "original": "输入参考文件/03_排班表_2026.xlsx",
+      "path": "assets/demo/03_排班表_2026.xlsx",
+      "sha256": "742b38a28af94ee8c9c260adefb17d1c42c964e64f13d7c8233dba39314274b7"
+    },
+    {
+      "original": "输入参考文件/04_加班审批记录.txt",
+      "path": "assets/demo/04_加班审批记录.txt",
+      "sha256": "fe79c1f36effec5923535e478e09bef9d216c91f09d9e77620367a5f46d41592"
+    }
+  ]
+}

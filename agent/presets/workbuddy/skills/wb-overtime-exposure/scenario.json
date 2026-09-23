@@ -1,0 +1,13 @@
+{
+  "slug": "overtime-exposure",
+  "name": "加班费敞口测算",
+  "group": "hr",
+  "default_task": "车间这两个月周六全员加班，都是口头安排的，没有审批单。老板要一个数：加班费的敞口到底有多少。\n\n考勤原始记录、工资表、排班表都在这。\n两种基数口径都算给我，没审批的部分单独列。哪天是法定节假日你也帮我盯一下。\n\n下个月怎么把口子堵上，给我个方案。\n\n产出三份 **Excel（.xlsx）文件**（不要用 Markdown 或纯文本代替）：PR-04_加班费敞口测算报告.xlsx（工作日延长、休息日、法定节假日三类工时分列，双基数口径并行，含月度敞口走势）、PR-04_未审批加班清单.xlsx（逐人逐月，标注举证风险与优先补审批建议）、PR-04_加班留痕修复方案.xlsx（加班审批补位加月度考勤签字落地，含责任人与验收标准）。",
+  "demo_files": [
+    "01_考勤原始导出_2026-05至08.xlsx",
+    "02_工资表_工资结构节选.xlsx",
+    "03_排班表_2026.xlsx",
+    "04_加班审批记录.txt"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ALPypL0fZCtq6kc2StM8wC/8/deep-dives/overtime-exposure.html"
+}

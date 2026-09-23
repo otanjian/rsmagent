@@ -1,0 +1,73 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/sop-gen.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/y7QRUjn1Jh0myVGMxF3x5I/0/pkg.zip",
+  "package_sha256": "2e63e60be9c5696b1fe0163f8b88f3858fb183585a82e9ba91b9fd07ac42f755",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "bfdb68cb2d1d8c1f0e6139b0ccdc2aee0d398a9d62325336a3ff329b70760eb9"
+    },
+    {
+      "original": "references/check_dimensions.md",
+      "path": "references/check_dimensions.md",
+      "sha256": "086d7aa4dc5719b52eeb975b493659d3eff6e61a46f0ea4fb0e741838010603d"
+    },
+    {
+      "original": "references/deliverable_templates.md",
+      "path": "references/deliverable_templates.md",
+      "sha256": "13606cc2ae1bb47723212ea640c3792d7dbb543daa252127926f621fa33e8659"
+    },
+    {
+      "original": "references/version_bump_rules.md",
+      "path": "references/version_bump_rules.md",
+      "sha256": "8dd827db498b948ad69489b502bb80f8e2fe61b71df2762b2ee8feeb5a3f72e7"
+    },
+    {
+      "original": "输入参考文件/SOP变更影响清单与发放回收登记表.xlsx",
+      "path": "assets/demo/SOP变更影响清单与发放回收登记表.xlsx",
+      "sha256": "64e1845cae605900bf03a9fdf9bda4e61e9c76a06896c66e4adc073085c9a7e4"
+    },
+    {
+      "original": "输入参考文件/SOP变更说明_V2.4至V3.0.txt",
+      "path": "assets/demo/SOP变更说明_V2.4至V3.0.txt",
+      "sha256": "bcc2251ba736389545940103f128697dff6d5724d69019bcf0d2ef18598273ba"
+    },
+    {
+      "original": "输入参考文件/SOP校验报告_SOP-WLD-CAB02.xlsx",
+      "path": "assets/demo/SOP校验报告_SOP-WLD-CAB02.xlsx",
+      "sha256": "1ea236f06ae4e0cd0fca04d83207fccb24679d4948b298a8c48f5246d1397f75"
+    },
+    {
+      "original": "输入参考文件/作业指导书_SOP-WLD-CAB02_V3.0.pdf",
+      "path": "assets/demo/作业指导书_SOP-WLD-CAB02_V3.0.pdf",
+      "sha256": "31df72b3f2749917c139242c0dd5eba7f779bbb038993a74a70e5ed21ed66449"
+    },
+    {
+      "original": "输入参考文件/历史异常记录.xlsx",
+      "path": "assets/demo/历史异常记录.xlsx",
+      "sha256": "e045c802b749ffdfebb438205ae08b5c33a41623e03eba11ee66b854b0d559eb"
+    },
+    {
+      "original": "输入参考文件/图纸技术要求_DWG-CAB-02_RevC.docx",
+      "path": "assets/demo/图纸技术要求_DWG-CAB-02_RevC.docx",
+      "sha256": "6625c88721f93f85ae8c79de7d71b2212a687b2e0bf22276efe62d7e6f826276"
+    },
+    {
+      "original": "输入参考文件/工艺路线卡_P-CAB-02.xlsx",
+      "path": "assets/demo/工艺路线卡_P-CAB-02.xlsx",
+      "sha256": "47ec79b19a074dca6895a2ee34965d20516949db2c8b1a3dbb06444f266c0792"
+    },
+    {
+      "original": "输入参考文件/控制计划_CP-CAB02_V2.2.xlsx",
+      "path": "assets/demo/控制计划_CP-CAB02_V2.2.xlsx",
+      "sha256": "94b35bb09d897301d7e19f393e5055bfe21a22391ecae94071ee2262e8c433f2"
+    },
+    {
+      "original": "输入参考文件/现行SOP_V2.4.docx",
+      "path": "assets/demo/现行SOP_V2.4.docx",
+      "sha256": "877943ac15e1450a5d7cfde86f0417a3e59b71729e7159b9aaadcb1e70a24190"
+    }
+  ]
+}

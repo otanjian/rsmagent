@@ -1,0 +1,16 @@
+{
+  "slug": "profit-risk",
+  "name": "利润风险提示",
+  "group": "manufacturing",
+  "default_task": "在制的这几张单，帮我看下有没有哪张的毛利已经跌下来了。报价时的成本测算、领料与超领记录、外协加工对账、物流与加急运费、返工记录与标准工时我都放一起了。工时那块我们算不准，你别硬算——能估的估一下但要标出来是估的；运费里有几笔当时没挂订单号，你按客户和发货日期看能不能对上。跌得多的那张，告诉我钱花在哪几项、大概该找哪个部门问。接不接这个结果我自己判断，你别替我下结论。\n\n产出两份：**Excel（.xlsx）** 在制订单毛利预警.xlsx（两张表：订单毛利预警含正常对照行、增量成本明细逐笔算式与可信度标记）、**PDF** 利润风险提示.pdf（一页给老板：跌破的订单、钱花在哪几项、责任面与跨单提前提醒）。不要用 Markdown 或纯文本代替。",
+  "demo_files": [
+    "合同条款风险提示.pdf",
+    "在制订单与报价测算.xlsx",
+    "外协加工对账.xlsx",
+    "条款差异比对表.xlsx",
+    "物流与加急运费.xlsx",
+    "返工记录与标准工时.xlsx",
+    "领料与超领记录.xlsx"
+  ],
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/XDAj9uPGyFKYk1zicA86ni/27/deep-dives/profit-risk.html"
+}

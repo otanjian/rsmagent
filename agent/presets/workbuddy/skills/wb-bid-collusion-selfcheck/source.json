@@ -1,0 +1,53 @@
+{
+  "source": "https://www.workbuddy.link/p/ZljbYQzFpALFLcPwKPlct1",
+  "detail_url": "https://workbuddy-space-static.codebuddy.work/page/ots1af1M8J2fvk7OxWVwPg/17/deep-dives/bid-collusion-selfcheck.html",
+  "package_url": "https://workbuddy-space-static.codebuddy.work/page/WmWlRqQeMtUiFxDhnxwMzT/0/pkg.zip",
+  "package_sha256": "5cf659ec0d9a41236515c8aed0c8fca8c1dbd73fa3630d37e956258be117e4fc",
+  "files": [
+    {
+      "original": "SKILL.md",
+      "path": "workflow.md",
+      "sha256": "e56840c193bf424fd1c60f7696cc50b25ad8f9fac7eae583edf6810e3ea280a8"
+    },
+    {
+      "original": "references/judgement_rules.md",
+      "path": "references/judgement_rules.md",
+      "sha256": "cc28dcb3f31136fd7fd7fb01dd53124b150a3d6a4587fd16dafa493189b05bff"
+    },
+    {
+      "original": "references/output_template.md",
+      "path": "references/output_template.md",
+      "sha256": "d5a433b4fdd2d1240fb48b28ef00c48f6e64f0a386d3f695a69bd010a9ecee38"
+    },
+    {
+      "original": "输入参考文件/01_本项目投标人名单与潜在投标人线索.xlsx",
+      "path": "assets/demo/01_本项目投标人名单与潜在投标人线索.xlsx",
+      "sha256": "80c98431df30fdf72f8f3f128f2c084d403ae36ea7006d40d00e59f14e5fda20"
+    },
+    {
+      "original": "输入参考文件/02_我方及关联企业工商公开信息.xlsx",
+      "path": "assets/demo/02_我方及关联企业工商公开信息.xlsx",
+      "sha256": "5004001254a08e8bebaf7517ca52351df0484fe913f8e80c0fc2b7f7686e0def"
+    },
+    {
+      "original": "输入参考文件/03_第三方服务商委托台账.xlsx",
+      "path": "assets/demo/03_第三方服务商委托台账.xlsx",
+      "sha256": "9f60d0636a010286db543011c1c9f507571b5a37aa9d67445295682d8d4720e2"
+    },
+    {
+      "original": "输入参考文件/04_标书编制与上传环境记录.xlsx",
+      "path": "assets/demo/04_标书编制与上传环境记录.xlsx",
+      "sha256": "a4a217e4f7178c12a9394d289836953356b7ce6be7972924ff64f0c001fdfec3"
+    },
+    {
+      "original": "输入参考文件/05_公开处罚案例认定口径摘录.txt",
+      "path": "assets/demo/05_公开处罚案例认定口径摘录.txt",
+      "sha256": "00fad21701b155c5262a17c62afa1e2348880ef9e30c80a6661e143985fb4337"
+    },
+    {
+      "original": "输入参考文件/06_前年460万设备包被质疑事件记录.xlsx",
+      "path": "assets/demo/06_前年460万设备包被质疑事件记录.xlsx",
+      "sha256": "6adfdcfa8ac2abebbb6394db6adc723651e6705c1fd3df377f88d056dcf7c48b"
+    }
+  ]
+}
