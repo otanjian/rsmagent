@@ -1,0 +1,22 @@
+$def with (v)
+<main id="main">
+$if not v.ok:
+    <header class="page-hero"><div class="section-container">
+    <nav class="breadcrumb" aria-label="breadcrumb"><a href="$(v.url())">$(v.t('nav.home'))</a><span aria-hidden="true">/</span><a href="$(v.url('scenarios'))">$(v.t('scenarios.title'))</a></nav>
+    <h1>$(v.t('scenario_doc.not_found'))</h1><p>$(v.t('scenario_doc.not_found_desc'))</p>
+    </div></header>
+    <section class="section"><div class="section-container"><div class="cta-actions" style="justify-content:center">
+    <a class="btn btn-primary" href="$(v.url('scenarios'))">$(v.t('scenario_doc.back'))</a>
+    </div></div></section>
+$else:
+    $:(v.scenario_doc_hero())
+    <section class="section"><div class="section-container">
+    $ body = v.scenario_doc_body()
+    <article class="doc-article">
+    <p class="doc-notice">$(v.t('scenario_doc.notice'))</p>
+    $:(v.scenario_doc_toc(body))
+    <div class="doc-body sdoc-body">$:(body)</div>
+    </article>
+    </div></section>
+    $:(v.scenario_payload_block())
+</main>

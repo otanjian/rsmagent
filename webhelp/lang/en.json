@@ -1,11 +1,12 @@
 {
     "meta": {
-        "description": "RongAI is an enterprise-grade AI foundation built on the open-source CowAgent project, so enterprises truly own their own AI platform. The assistant plans tasks, calls tools and skills, and keeps growing through memory and knowledge; on top of that it adds multi-tenancy, fine-grained RBAC, audit, approval, credential and quota controls, ready for teams and production.",
+        "description": "Rongda AI Platform is an enterprise-grade AI foundation built on the open-source CowAgent project, so enterprises truly own their own AI platform. The assistant plans tasks, calls tools and skills, and keeps growing through memory and knowledge; on top of that it adds multi-tenancy, fine-grained RBAC, audit, approval, credential and quota controls, ready for teams and production.",
         "keywords": "enterprise AI platform,AI foundation,LLM,Agent Harness,multi-tenant,RBAC,audit log,approval,resource quota,execution isolation,open source",
         "title_home": "Enterprise AI Platform · Multi-tenancy & RBAC",
         "title_features": "Core Capabilities",
         "title_enterprise": "Enterprise Governance",
         "title_quickstart": "Quick Start",
+        "title_scenarios": "Use Cases",
         "title_architecture": "Architecture",
         "title_about": "About"
     },
@@ -13,8 +14,58 @@
         "home": "Home",
         "features": "Capabilities",
         "enterprise": "Enterprise",
+        "scenarios": "Use Cases",
         "architecture": "Architecture",
-        "about": "About"
+        "about": "About Us"
+    },
+    "scenarios": {
+        "title": "Use Cases",
+        "lead": "Rongda AI Platform includes scenario agents for manufacturing, HR, finance, sales and business operations. Choose an agent by role or business need, try its built-in demo data, or upload your own files to produce analyses, checklists and document drafts.",
+        "count_label": "one-click scenarios",
+        "intro_title": "How to use a scenario agent",
+        "intro_body": "Click “Run it now” to open the corresponding agent in Rongda AI Platform. The conversation starts with “What can you do?”. Then ask it to use the built-in demo data, or upload your business files and describe your task. View and download the results in the conversation.",
+        "intro_note": "Sign in and select your tenant first. You can also select the agent by name under Agents in the platform sidebar. If it is missing, ask your tenant administrator to check your access.",
+        "groups": {
+            "manufacturing": "Manufacturing & Industry",
+            "hr": "Human Resources",
+            "finance": "Finance",
+            "sales": "Sales & Business"
+        },
+        "roles_label": "Roles",
+        "filter_label": "Filter by role",
+        "filter_all": "All",
+        "search_placeholder": "Search scenarios / pain keywords",
+        "search_label": "Search scenarios",
+        "pain_label": "Pain point:",
+        "explain_label": "About this scenario",
+        "hint_label": "Use your own data:",
+        "unit": "scenarios",
+        "try": "Run it now",
+        "try_message": "What can you do?",
+        "detail": "View the playbook",
+        "source_label": "Powered by:",
+        "source_name": "Built-in agents in Rongda AI Platform",
+        "cta_title": "Ready to work with your own business files?",
+        "cta_subtitle": "Select the corresponding agent in Rongda AI Platform, upload your files, and specify the scope, business rules and output format. Continue the conversation to add materials, check evidence or refine the results.",
+        "cta_open": "Open Rongda AI Platform",
+        "cta_manual": "Read the user guide"
+    },
+    "scenario_doc": {
+        "tabs_label": "Scenario detail sections",
+        "kinds": {
+            "intro": "Overview",
+            "tasks": "Suggested tasks",
+            "demo": "Scenario demo"
+        },
+        "toc": "On this page",
+        "aside_title": "All scenarios",
+        "back": "Back to all scenarios",
+        "prev": "Previous scenario",
+        "next": "Next scenario",
+        "notice": "This scenario is available in Rongda AI Platform. Click “Run it now” to learn about the agent, then use a suggested task with built-in demo data or your own uploaded files. The scenario demo illustrates the workflow and output format; actual results depend on the current files and checks.",
+        "source": "Scenario usage guides and demo cases for Rongda AI Platform.",
+        "not_found": "Scenario not found",
+        "not_found_desc": "This scenario is either not included or the address is no longer valid. Please start again from the Use Cases page."
     },
     "common": {
         "skip_to_content": "Skip to main content",
@@ -31,10 +82,10 @@
         "badge": "Built on CowAgent · Enterprise governance added",
         "title_line1": "The Enterprise AI Foundation,",
         "title_line2": "Truly Own Your AI Platform",
-        "desc": "RongAI Agent is an enterprise-grade AI platform built by Rongcheng. It unifies models, knowledge, permissions and applications, moving enterprises from \"using AI\" to \"owning AI\". On-premise deployment keeps data and permissions in-house. Autonomous planning, long-term memory, tools and skills, a knowledge base and multimodal messaging, plus cloud or local models, take AI from \"can chat\" to \"can get things done\"."
+        "desc": "Rongda AI Platform Agent is an enterprise-grade AI platform built by Rongcheng. It unifies models, knowledge, permissions and applications, moving enterprises from \"using AI\" to \"owning AI\". On-premise deployment keeps data and permissions in-house. Autonomous planning, long-term memory, tools and skills, a knowledge base and multimodal messaging, plus cloud or local models, take AI from \"can chat\" to \"can get things done\"."
     },
     "demo": {
-        "aria": "RongAI console chat interface"
+        "aria": "Rongda AI Platform console chat interface"
     },
     "quickstart": {
         "subtitle": "Install, configure and start with a single command — built for developers and 24/7 servers",
@@ -662,7 +713,7 @@
         ]
     },
     "about": {
-        "lead": "RongAI is an open-source super AI assistant and Agent Harness. The name means “great capacity through inclusiveness”: it embraces many models, many channels and many capabilities. Built on the open-source CowAgent project, it adds an enterprise layer so the same assistant works for an individual and safely inside teams and production.",
+        "lead": "Rongda AI Platform is an open-source super AI assistant and Agent Harness. The name means “great capacity through inclusiveness”: it embraces many models, many channels and many capabilities. Built on the open-source CowAgent project, it adds an enterprise layer so the same assistant works for an individual and safely inside teams and production.",
         "mission_title": "What we believe",
         "mission": {
             "open": "Open source: MIT licensed — auditable, forkable and self-hostable.",
@@ -671,7 +722,7 @@
             "local": "Your data: local storage by default, with control handed back to you."
         },
         "upstream_title": "Relationship to upstream",
-        "upstream_desc": "The assistant capabilities of RongAI (task planning, memory, knowledge base, skills, tools, multi-model, multi-channel, multi-agent) come from the open-source CowAgent project. This repository layers an enterprise identity and authorization system onto that runtime mainline; it does not copy upstream runtime configuration, credentials or customer data, nor overwrite upstream implementation files wholesale.",
+        "upstream_desc": "The assistant capabilities of Rongda AI Platform (task planning, memory, knowledge base, skills, tools, multi-model, multi-channel, multi-agent) come from the open-source CowAgent project. This repository layers an enterprise identity and authorization system onto that runtime mainline; it does not copy upstream runtime configuration, credentials or customer data, nor overwrite upstream implementation files wholesale.",
         "upstream_card": "Assistant capabilities come from the upstream open-source community; the enterprise identity and authorization layer is added by this repository on the runtime mainline, so governance can keep evolving independently as upstream upgrades. This site links to no external website; obtain upstream material separately if needed.",
         "disclaimer_title": "Disclaimer",
         "disclaimer": [

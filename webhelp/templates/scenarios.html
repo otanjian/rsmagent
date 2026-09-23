@@ -1,0 +1,45 @@
+$def with (v)
+<main id="main">
+$:(v.page_hero('meta.title_scenarios', 'scenarios.lead'))
+<section class="section section--scenarios">
+<div class="section-container">
+<aside class="sdoc-note sdoc-note--info">
+<h2 class="sdoc-note-title">$(v.t('scenarios.intro_title'))</h2>
+<div class="sdoc-note-body">
+<p>$(v.t('scenarios.intro_body'))</p>
+<p>$(v.t('scenarios.intro_note'))</p>
+</div>
+</aside>
+<label class="scenario-search" for="scenarioSearch">
+<span class="scenario-search-icon" aria-hidden="true">$:(v.icon('search'))</span>
+<input id="scenarioSearch" type="search" enterkeyhint="search" autocomplete="off"
+       placeholder="$(v.t('scenarios.search_placeholder'))"
+       aria-label="$(v.t('scenarios.search_label'))" />
+</label>
+<div class="scenario-filters" id="scenarioRoleFilters" role="group" aria-label="$(v.t('scenarios.filter_label'))">
+<button type="button" class="scenario-chip is-active" data-role="" aria-pressed="true">$(v.t('scenarios.filter_all')) <span class="scenario-chip-count">$(v.scenario_count())</span></button>
+$for role in v.scenario_role_filters():
+    <button type="button" class="scenario-chip" data-role="$(role['id'])" aria-pressed="false">$(role['id']) <span class="scenario-chip-count">$(role['count'])</span></button>
+</div>
+<div class="features-grid scenario-grid">
+$for group in v.scenario_groups():
+    $for item in group['items']:
+        $:(v.scenario_card(item))
+</div>
+</div>
+</section>
+<!-- ===== 行动区 ===== -->
+<section class="section section--soft section--scenarios-cta">
+<div class="section-container">
+<div class="cta-banner reveal">
+<h2>$(v.t('scenarios.cta_title'))</h2>
+<p>$(v.t('scenarios.cta_subtitle'))</p>
+<div class="cta-actions">
+<a class="btn btn-primary" href="/">$(v.t('scenarios.cta_open'))</a>
+<a class="btn btn-cloud" href="$(v.url('manual'))">$(v.t('scenarios.cta_manual'))</a>
+</div>
+</div>
+</div>
+</section>
+$:(v.scenario_payload_block())
+</main>
