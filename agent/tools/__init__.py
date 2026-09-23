@@ -19,6 +19,7 @@ from agent.tools.memory.memory_add import MemoryAddTool
 # Import self-evolution tools
 from agent.tools.evolution_undo.evolution_undo import EvolutionUndoTool
 from agent.tools.agent_delegate.agent_delegate import AgentDelegateTool
+from agent.tools.requirements_delivery import RequirementsDeliveryTool
 
 # Import sub agent tools
 from agent.tools.subagent.subagent import SubagentTool
@@ -164,6 +165,7 @@ __all__ = [
     'EvolutionUndoTool',
     'SubagentTool',
     'AgentDelegateTool',
+    'RequirementsDeliveryTool',
     'EnvConfig',
     'SchedulerTool',
     'WebSearch',

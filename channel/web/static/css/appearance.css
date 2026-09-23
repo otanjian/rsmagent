@@ -808,6 +808,7 @@ html[data-web-palette] .home-intro .home-greeting {
     line-height: 1.34;
     letter-spacing: -.035em;
     text-wrap: balance;
+    overflow-wrap: anywhere;
 }
 html[data-web-palette] .home-intro .home-description {
     max-width: 660px;
@@ -815,6 +816,8 @@ html[data-web-palette] .home-intro .home-description {
     color: var(--web-text-muted);
     font-size: 16px;
     line-height: 1.8;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 html[data-web-palette] .home-intro .home-brand-description { max-width: 660px; margin: 10px auto 0; color: var(--web-text-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 html[data-web-palette] #chat-main.chat-home #chat-input-area {

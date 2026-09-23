@@ -1014,6 +1014,7 @@ function applyI18n() {
     if (typeof relocalizeWorkspacePanel === 'function') relocalizeWorkspacePanel();
     _renderSidebarAccount();
     renderAppearancePreferences();
+    if (typeof paintWelcomeAgentIntro === 'function') paintWelcomeAgentIntro();
 }
 
 // Single entry point for switching language.
@@ -2919,6 +2920,7 @@ async function fetchAgentWorkbench() {
         agent_type: a.agent_type,
         // Digital-employee projection fields (positioned to render on cards).
         position: a.position || '', category: a.category || '', tags: agentWorkbenchTags(a),
+        greeting: typeof a.greeting === 'string' ? a.greeting : '',
     })).sort((a, b) => Number(b.is_default) - Number(a.is_default));
     // The server's diagnosis of an empty roster rides along on the array so the
     // load/apply contract stays a plain list. ``no_agents`` and ``null`` (an
@@ -4736,6 +4738,7 @@ function highlightMentions(root) {
 function renderComposerIdentity() {
     const agent = findAgent(activeAgentId) || { id: activeAgentId || defaultAgentId, name: activeAgentId || 'Agent' };
     paintChatAgentIdentity(agent);
+    if (typeof paintWelcomeAgentIntro === 'function') paintWelcomeAgentIntro();
     const wrap = document.getElementById('composer-identity');
     const btn = document.getElementById('composer-agent-btn');
     if (!wrap || !btn) return;
@@ -5693,6 +5696,26 @@ function bindWelcomeSuggestions(root) {
         });
     });
 }
+// Introductory copy belongs to the empty welcome screen, not the transcript.
+// Painting it never sends a message or starts an Agent run.
+function paintWelcomeAgentIntro() {
+    const welcome = document.getElementById('welcome-screen');
+    if (!welcome || codingPaneMounted()) return;
+    const heading = welcome.querySelector('.home-greeting');
+    const description = welcome.querySelector('#welcome-subtitle');
+    if (!heading || !description) return;
+    // Prefer the use-range record refreshed by Start Chat over management data.
+    const agent = (chatAgentCatalog || []).find(a => a.id === activeAgentId) || findAgent(activeAgentId);
+    const ordinary = agent && agent.agent_type !== 'coding';
+    const text = value => typeof value === 'string' ? value.trim() : '';
+    heading.textContent = ordinary
+        ? t('home_agent_greeting').replace('{name}', () => agent.name || agent.id)
+        : t('home_greeting');
+    description.textContent = ordinary
+        ? text(agent.greeting) || text(agent.description) || t('home_agent_description')
+        : t('home_description');
+}
+
 function renderWelcomeScreen() {
     const welcome = document.createElement('div');
     welcome.id = 'welcome-screen';
@@ -5702,6 +5725,7 @@ function renderWelcomeScreen() {
     messagesDiv.appendChild(welcome);
     bindWelcomeSuggestions(welcome);
     applyBrandToDocument();
+    paintWelcomeAgentIntro();
     syncChatHomeLayout();
     document.getElementById('chat-main').scrollTop = 0;
 }
