@@ -443,8 +443,20 @@ class DbAuthLogoutHandler:
         token = _session_token()
         try:
             svc = _get_service()
+            # Resolve the subject *before* revoking: afterwards the session is
+            # gone and the trail would have to record an anonymous logout.
+            principal = svc.verify_session(token) if token else None
             if token:
                 svc.revoke_session(token)
+            if principal:
+                svc.record_audit(
+                    actor_user_id=principal["user"]["id"],
+                    actor_username=principal["user"]["username"],
+                    tenant_id=None,
+                    action="auth.logout",
+                    target=f"user:{principal['user']['id']}",
+                    redacted_changes={},
+                )
         except (IdentityStoreError, Exception):
             return _identity_unavailable()
         web.setcookie("cow_session", "", expires=-1, path="/")

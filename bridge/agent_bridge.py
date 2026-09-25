@@ -15,6 +15,7 @@ from agent.protocol import (
     get_cancel_registry,
     get_steer_registry,
 )
+from agent.token_usage.instrument import meter_llm_call
 from bridge.agent_event_handler import AgentEventHandler
 from bridge.agent_initializer import AgentInitializer
 from bridge.bridge import Bridge
@@ -517,7 +518,9 @@ class AgentLLMModel(LLMModel):
                     if effort:
                         kwargs['reasoning_effort'] = effort
 
-                response = self.bot.call_with_tools(**kwargs)
+                response = meter_llm_call(
+                    self, lambda: self.bot.call_with_tools(**kwargs), request.messages
+                )
                 return self._format_response(response)
             else:
                 # Fallback to regular call
@@ -586,7 +589,9 @@ class AgentLLMModel(LLMModel):
                     if effort:
                         kwargs['reasoning_effort'] = effort
 
-                stream = self.bot.call_with_tools(**kwargs)
+                stream = meter_llm_call(
+                    self, lambda: self.bot.call_with_tools(**kwargs), request.messages
+                )
                 
                 # Convert stream format to our expected format
                 for chunk in stream:

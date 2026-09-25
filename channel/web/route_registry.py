@@ -163,6 +163,17 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/api/tenant/channels/([^/]+)/active", "TenantChannelActiveHandler", "fork:tenant-console", {"POST": P("tenant", comment="enable/disable a channel in the caller's range")}),
     RouteEntry("/api/tenant/channels/([^/]+)", "TenantChannelHandler", "fork:tenant-console", {"POST": P("tenant", comment="edit a channel in the caller's range")}),
     RouteEntry("/api/admin/overview", "AdminOverviewHandler", "fork:admin-console", {"GET": P("tenant", comment="admin console KPI overview (platform/tenant_admin)")}),
+    # 审计日志 / Token 消耗 (change add-audit-and-token-console). Both are
+    # operator surfaces: policy ``personal`` because the *scope* is the caller's
+    # qualification, not the request's tenant header — a platform admin reading
+    # across tenants has no reason to have selected one, while a tenant admin's
+    # own scope is derived from the selection when it is present. The handler
+    # resolves the context itself (``channel/web/admin_audit_handlers.py``) and
+    # refuses anyone who is neither, so the route policy grants nothing on its
+    # own.
+    RouteEntry("/api/admin/audit/events", "AdminAuditEventsHandler", "fork:admin-console", {"GET": P("personal", comment="identity audit trail, paged and filtered (platform admin: all tenants; tenant admin: own tenant)")}),
+    RouteEntry("/api/admin/audit/actions", "AdminAuditActionsHandler", "fork:admin-console", {"GET": P("personal", comment="distinct audit action names in scope, for the console's filter")}),
+    RouteEntry("/api/admin/token-usage", "AdminTokenUsageHandler", "fork:admin-console", {"GET": P("personal", comment="LLM token usage: summary / details / by-user / call logs (platform admin: all tenants; tenant admin: own tenant)")}),
     # External-system connections (change add-external-system-access, tasks
     # 3.2-3.4). The scope is in the path, never in the body: ``/tenant`` carries
     # the tenant read/manage permission, ``/platform`` is a platform-admin

@@ -371,29 +371,35 @@
                     </div>
                 </div>
 
-                <!-- 平台运维〔平台范围〕 -->
-                <div class="menu-group open admin-menu-group sidebar-hidden-admin-area sidebar-hidden-platform-scope" data-group="platform-ops">
+                <!-- 平台管理. The platform boundary is per ITEM here, not on the
+                     group: a tenant administrator is offered 审计日志 / Token
+                     消耗 (their own tenant's recorded activity, and the API
+                     scopes them to it) while 租户管理 / 平台用户管理 / 品牌设置 /
+                     运行日志 stay platform-only. Putting the class on the group
+                     would either hide all six from them, or -- if simply
+                     dropped -- expose 租户管理 across tenants. -->
+                <div class="menu-group open admin-menu-group sidebar-hidden-admin-area" data-group="platform-ops">
                     <button type="button" class="admin-menu-group-toggle" aria-expanded="true">
-                        <span data-i18n="nav_group_platform_ops">平台运维</span>
+                        <span data-i18n="nav_group_platform_ops">平台管理</span>
                         <i class="fas fa-chevron-down chevron" aria-hidden="true"></i>
                     </button>
                     <div class="menu-group-items">
-                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
+                        <a class="sidebar-item platform-scope-only flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
                            data-view="tenant">
                             <i class="fas fa-building item-icon text-xs w-5 text-center"></i>
                             <span data-i18n="menu_tenant">租户管理</span>
                         </a>
-                        <a class="sidebar-item perm-only-platform hidden flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
+                        <a class="sidebar-item platform-scope-only perm-only-platform hidden flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
                            data-view="platform" data-perm="platform">
                             <i class="fas fa-user-cog item-icon text-xs w-5 text-center"></i>
-                            <span data-i18n="menu_platform">系统设置</span>
+                            <span data-i18n="menu_platform">平台用户管理</span>
                         </a>
-                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
+                        <a class="sidebar-item platform-scope-only flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
                            data-view="branding">
                             <i class="fas fa-palette item-icon text-xs w-5 text-center"></i>
                             <span data-i18n="menu_branding">品牌设置</span>
                         </a>
-                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
+                        <a class="sidebar-item platform-scope-only flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
                            data-view="logs">
                             <i class="fas fa-terminal item-icon text-xs w-5 text-center"></i>
                             <span data-i18n="menu_logs">运行日志</span>
@@ -401,7 +407,16 @@
                         <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
                            data-view="audit">
                             <i class="fas fa-shield-alt item-icon text-xs w-5 text-center"></i>
-                            <span data-i18n="menu_audit">审计</span>
+                            <span data-i18n="menu_audit">审计日志</span>
+                        </a>
+                        <!-- Token 消耗 (change add-audit-and-token-console). Same
+                             group as 审计日志: both are read-only operator views
+                             over what the platform recorded, and the source
+                             deployment keeps them side by side under 监控. -->
+                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
+                           data-view="token_usage">
+                            <i class="fas fa-coins item-icon text-xs w-5 text-center"></i>
+                            <span data-i18n="menu_token_usage">Token 消耗</span>
                         </a>
                     </div>
                 </div>
@@ -2191,11 +2206,11 @@
     <div id="view-platform" class="view">
         <div class="p-6 h-full overflow-y-auto">
             <div class="flex items-center justify-between mb-6">
-                <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="platform_title">平台账号</h2>
+                <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="platform_title">平台用户管理</h2>
                 <span class="text-xs text-slate-400 dark:text-slate-500" data-i18n="platform_admin_only">仅平台管理员可见</span>
             </div>
             <div class="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <input id="platform-user-search" type="text" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500" placeholder="搜索平台账号" data-i18n-placeholder="platform_search_placeholder">
+                <input id="platform-user-search" type="text" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500" placeholder="搜索平台用户" data-i18n-placeholder="platform_search_placeholder">
                 <select id="platform-user-status" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100">
                     <option value="" data-i18n="filter_all">全部</option>
                     <option value="active" data-i18n="active">启用</option>
@@ -2289,27 +2304,248 @@
     </div>
 
     <!-- ============ System Settings - Audit view ============ -->
+    <!-- 审计日志 (change add-audit-and-token-console). Ported from the source
+         deployment's #view-audit: same page header, filter row and seven-column
+         table. Two adaptations are deliberate and are noted where they are:
+         the columns are 详情 rather than IP (this fork's audit trail records no
+         client address, and an always-empty column reads as a bug), and the
+         table is paged server-side (the source fetched a flat limit of 200). -->
     <div id="view-audit" class="view">
         <div class="p-6 h-full overflow-y-auto">
-            <div class="flex items-center justify-between mb-6">
-                <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="audit_title">身份审计</h2>
-                <span class="text-xs text-slate-400 dark:text-slate-500" data-i18n="audit_scope_hint">平台管理员查看全部，租户管理员仅当前租户</span>
+            <div class="max-w-6xl mx-auto">
+                <div class="flex items-center gap-3.5 mb-6">
+                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500/15 to-indigo-500/5 dark:from-indigo-500/20 dark:to-indigo-500/5 border border-indigo-500/10 dark:border-indigo-500/20 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-scroll text-indigo-500 text-lg"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-semibold tracking-[-0.01em] text-slate-800 dark:text-slate-100" data-i18n="audit_title">审计日志</h2>
+                        <p class="text-sm text-slate-500 dark:text-slate-400 mt-0.5" data-i18n="audit_scope_hint">平台管理员查看全部，租户管理员仅当前租户</p>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 p-4 mb-4">
+                    <div class="flex flex-wrap items-end gap-3">
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="audit_filter_actor">用户</label>
+                            <input id="audit-filter-actor" type="text"
+                                   class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors"
+                                   placeholder="all" data-i18n-placeholder="audit_actor_placeholder">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="audit_filter_action">动作</label>
+                            <input id="audit-filter-action" type="text"
+                                   class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors"
+                                   placeholder="auth.login" data-i18n-placeholder="audit_action_placeholder">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="audit_filter_status">状态</label>
+                            <select id="audit-filter-status"
+                                    class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors">
+                                <option value="" data-i18n="audit_all">全部</option>
+                                <option value="success" data-i18n="audit_success">成功</option>
+                                <option value="failure" data-i18n="audit_failure">失败</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="audit_filter_start">开始日期</label>
+                            <input id="audit-filter-start" type="date"
+                                   class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="audit_filter_end">结束日期</label>
+                            <input id="audit-filter-end" type="date"
+                                   class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors">
+                        </div>
+                        <div class="flex-1"></div>
+                        <button id="audit-refresh" type="button"
+                                class="inline-flex items-center gap-1.5 px-4 h-10 rounded-xl bg-primary-500 hover:bg-primary-600 active:scale-[0.98] text-white text-sm font-medium transition-all shadow-sm shadow-primary-500/25 cursor-pointer">
+                            <i class="fas fa-rotate-right text-xs"></i>
+                            <span data-i18n="audit_refresh">刷新</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-slate-50/50 dark:bg-white/5 text-slate-600 dark:text-slate-300">
+                                <tr>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="audit_col_time">时间</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="audit_col_tenant">租户</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="audit_col_actor">用户</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="audit_col_action">动作</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="audit_col_resource">资源</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="audit_col_status">状态</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="audit_col_detail">详情</th>
+                                </tr>
+                            </thead>
+                            <tbody id="audit-table-body" class="divide-y divide-slate-100 dark:divide-white/5">
+                                <tr><td colspan="7" class="px-4 py-8 text-center text-slate-500" data-i18n="audit_empty">暂无审计记录</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="audit-pagination" class="mt-4 flex items-center justify-between"></div>
+                <div id="audit-status" class="mt-2 text-sm text-primary-500 opacity-0 transition-opacity duration-300 text-left"></div>
             </div>
-            <div class="mb-4 grid grid-cols-1 sm:grid-cols-4 gap-2">
-                <input id="audit-actor" type="text" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500" placeholder="操作者" data-i18n-placeholder="audit_actor_placeholder">
-                <input id="audit-action" type="text" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500" placeholder="动作" data-i18n-placeholder="audit_action_placeholder">
-                <select id="audit-result" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100">
-                    <option value="" data-i18n="filter_all">全部</option>
-                    <option value="success" data-i18n="audit_result_success">成功</option>
-                    <option value="denied" data-i18n="audit_result_denied">拒绝</option>
-                </select>
-                <button id="audit-apply" class="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium" data-i18n="audit_apply">筛选</button>
+        </div>
+    </div>
+
+    <!-- Token 消耗 (change add-audit-and-token-console). Ported from the source
+         deployment's #view-token_usage: three summary cards, three tab panels
+         (明细 / 按用户汇总 / 调用日志) and the same filter row. The source's model
+         field is free text and so is this one; the user select is filled from
+         the actors that actually have usage in the selected range rather than
+         from every account in the tenant. -->
+    <div id="view-token_usage" class="view">
+        <div class="p-6 h-full overflow-y-auto">
+            <div class="max-w-6xl mx-auto">
+                <div class="flex items-center gap-3.5 mb-6">
+                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-teal-500/15 to-teal-500/5 dark:from-teal-500/20 dark:to-teal-500/5 border border-teal-500/10 dark:border-teal-500/20 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-coins text-teal-500 text-lg"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-semibold tracking-[-0.01em] text-slate-800 dark:text-slate-100" data-i18n="token_usage_title">Token 消耗</h2>
+                        <p class="text-sm text-slate-500 dark:text-slate-400 mt-0.5" data-i18n="token_usage_desc">按模型与用户统计 LLM Token 使用情况</p>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 p-4 mb-4">
+                    <div class="flex flex-wrap items-end gap-3">
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="token_usage_start">开始日期</label>
+                            <input id="token-usage-start" type="date"
+                                   class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="token_usage_end">结束日期</label>
+                            <input id="token-usage-end" type="date"
+                                   class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="token_usage_model">模型</label>
+                            <input id="token-usage-model" type="text"
+                                   class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors"
+                                   placeholder="gpt-4o">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="token_usage_actor">用户</label>
+                            <select id="token-usage-actor"
+                                    class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors min-w-[140px]">
+                                <option value="" data-i18n="token_usage_all_users">全部用户</option>
+                            </select>
+                        </div>
+                        <div class="flex-1"></div>
+                        <button id="token-usage-refresh" type="button"
+                                class="inline-flex items-center gap-1.5 px-4 h-10 rounded-xl bg-primary-500 hover:bg-primary-600 active:scale-[0.98] text-white text-sm font-medium transition-all shadow-sm shadow-primary-500/25 cursor-pointer">
+                            <i class="fas fa-rotate-right text-xs"></i>
+                            <span data-i18n="token_usage_refresh">刷新</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="token-usage-tabs" class="inline-flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 gap-1 mb-4">
+                    <button type="button" data-token-usage-tab="details" onclick="switchTokenUsageTab('details')" class="token-usage-tab-btn flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm cursor-pointer transition-all">
+                        <i class="fas fa-list text-xs"></i><span data-i18n="token_usage_details">明细</span>
+                    </button>
+                    <button type="button" data-token-usage-tab="by-user" onclick="switchTokenUsageTab('by-user')" class="token-usage-tab-btn flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer transition-all">
+                        <i class="fas fa-users text-xs"></i><span data-i18n="token_usage_user_summary">按用户汇总</span>
+                    </button>
+                    <button type="button" data-token-usage-tab="call-logs" onclick="switchTokenUsageTab('call-logs')" class="token-usage-tab-btn flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer transition-all">
+                        <i class="fas fa-clock-rotate-left text-xs"></i><span data-i18n="token_usage_call_logs">调用日志</span>
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div class="bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 p-4">
+                        <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                            <span class="w-6 h-6 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center flex-shrink-0"><i class="fas fa-arrow-up text-[10px]"></i></span>
+                            <span data-i18n="token_usage_prompt">Prompt Tokens</span>
+                        </div>
+                        <div id="token-usage-prompt" class="text-2xl font-bold text-slate-800 dark:text-slate-100 mt-2 tabular-nums">0</div>
+                    </div>
+                    <div class="bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 p-4">
+                        <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                            <span class="w-6 h-6 rounded-lg bg-purple-500/10 text-purple-500 flex items-center justify-center flex-shrink-0"><i class="fas fa-arrow-down text-[10px]"></i></span>
+                            <span data-i18n="token_usage_completion">Completion Tokens</span>
+                        </div>
+                        <div id="token-usage-completion" class="text-2xl font-bold text-slate-800 dark:text-slate-100 mt-2 tabular-nums">0</div>
+                    </div>
+                    <div class="bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 p-4">
+                        <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                            <span class="w-6 h-6 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center flex-shrink-0"><i class="fas fa-bolt text-[10px]"></i></span>
+                            <span data-i18n="token_usage_calls">调用次数</span>
+                        </div>
+                        <div id="token-usage-calls" class="text-2xl font-bold text-slate-800 dark:text-slate-100 mt-2 tabular-nums">0</div>
+                    </div>
+                </div>
+
+                <div id="token-usage-details-panel" class="bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-slate-50/50 dark:bg-white/5 text-slate-600 dark:text-slate-300">
+                                <tr>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_date">日期</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_tenant">租户</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_model">模型</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_provider">提供商</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_prompt">Prompt</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_completion">Completion</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_calls">调用</th>
+                                </tr>
+                            </thead>
+                            <tbody id="token-usage-table-body" class="divide-y divide-slate-100 dark:divide-white/5">
+                                <tr><td colspan="7" class="px-4 py-8 text-center text-slate-500" data-i18n="token_usage_empty">暂无 Token 消耗记录</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="token-usage-by-user-panel" class="hidden bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-slate-50/50 dark:bg-white/5 text-slate-600 dark:text-slate-300">
+                                <tr>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_actor">用户</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_prompt">Prompt</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_completion">Completion</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_calls">调用</th>
+                                </tr>
+                            </thead>
+                            <tbody id="token-usage-by-user-body" class="divide-y divide-slate-100 dark:divide-white/5">
+                                <tr><td colspan="4" class="px-4 py-8 text-center text-slate-500" data-i18n="token_usage_empty">暂无 Token 消耗记录</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="token-usage-call-logs-panel" class="hidden bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-slate-50/50 dark:bg-white/5 text-slate-600 dark:text-slate-300">
+                                <tr>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_date">时间</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_tenant">租户</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_actor">用户</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_model">模型</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_input_summary">输入摘要</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_output_summary">输出摘要</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_prompt">Prompt</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_completion">Completion</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-center" data-i18n="token_usage_col_status">状态</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_duration">耗时(ms)</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_times">次数</th>
+                                </tr>
+                            </thead>
+                            <tbody id="token-usage-call-logs-body" class="divide-y divide-slate-100 dark:divide-white/5">
+                                <tr><td colspan="11" class="px-4 py-8 text-center text-slate-500" data-i18n="token_usage_empty">暂无调用记录</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="token-usage-status" class="mt-2 text-sm text-primary-500 opacity-0 transition-opacity duration-300 text-left"></div>
             </div>
-            <div id="audit-list" class="space-y-2">
-                <div class="text-sm text-slate-400 dark:text-slate-500" data-i18n="tenant_loading">加载中…</div>
-            </div>
-            <div id="audit-pagination" class="mt-4 flex items-center justify-between"></div>
-            <div id="audit-status" class="mt-4 text-sm text-primary-500 opacity-0 transition-opacity duration-300 text-left"></div>
         </div>
     </div>
 
@@ -2750,6 +2986,12 @@
     <script defer src="assets/js/i18n/admin-console.js"></script>
     <script defer src="assets/js/i18n/agents.js"></script>
     <script defer src="assets/js/i18n/appearance.js"></script>
+    <!-- 审计日志 / Token 消耗 (change add-audit-and-token-console). Must be in this
+         block, not next to the view module further down: console.js snapshots
+         window.__cowI18N__ into its lookup table when it loads, so a namespace
+         registered afterwards resolves every key to itself and the page renders
+         "audit_title" / "token_usage_title" instead of the labels. -->
+    <script defer src="assets/js/i18n/audit-console.js"></script>
     <script defer src="assets/js/i18n/branding.js"></script>
     <script defer src="assets/js/i18n/core.js"></script>
     <script defer src="assets/js/i18n/external-connections.js"></script>
@@ -2802,6 +3044,12 @@
     <script defer src="assets/js/scenes/index.js"></script>
     <script defer src="assets/js/workspace.js"></script>
     <script defer src="assets/js/identity-admin.js"></script>
+    <!-- 审计日志 / Token 消耗 (change add-audit-and-token-console): the view
+         module. Loaded after console.js, whose `registerConsoleView` it uses to
+         add its two views, and after identity-admin.js, which no longer
+         registers 审计日志. Its i18n namespace is deliberately NOT here -- see
+         the per-domain i18n block above. -->
+    <script defer src="assets/js/audit-console.js"></script>
     <script defer src="assets/js/todos.js"></script>
     <!-- Fork patch layer for the upstream scheduled-task page (change
          port-upstream-tasks-page): the capabilities gate, the

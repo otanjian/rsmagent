@@ -167,7 +167,12 @@ class MenuGrantEnforcementTests(_Fixture):
             self.assertFalse(any(entry["actions"].values()), (key, entry))
 
     def test_the_platform_accounts_page_is_not_offered_to_a_tenant_admin(self):
-        """平台账号 is the platform qualification's page, not the tenant one."""
+        """The platform-account directory is the platform qualification's page.
+
+        The sidebar row is 平台用户管理 (it was mislabelled 系统设置); either way
+        it belongs to the platform qualification, not to the tenant one — a
+        tenant administrator keeps only its own three pages below.
+        """
         self.svc.create_member(
             actor_user_id=self.root["id"], tenant_id=self.ta,
             operation="create-new", username="acmeadmin", display_name="Acme Admin",

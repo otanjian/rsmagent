@@ -197,3 +197,35 @@ test('the sidebar entry still exists in chat.html for both admin scopes', () => 
     assert.ok(groupTag.includes('sidebar-hidden-admin-area'), groupTag);
     assert.ok(!groupTag.includes('sidebar-hidden-platform-scope'), groupTag);
 });
+
+test('平台管理 gates its platform-only rows per item, not per group', () => {
+    // The group must stay reachable for a tenant administrator, because it now
+    // holds 审计日志 / Token 消耗. So the platform boundary cannot live on the
+    // group: that would either hide all six rows from them, or -- if simply
+    // dropped -- expose 租户管理, which spans every tenant. It lives on the four
+    // platform-only rows instead. See _isPlatformOnlyEntry in console.js.
+    const html = fs.readFileSync(path.join(__dirname, '../channel/web/chat.html'), 'utf8');
+    const groupStart = html.indexOf('data-group="platform-ops"');
+    assert.ok(groupStart >= 0, 'the 平台管理 group exists');
+    const tagStart = html.lastIndexOf('class="menu-group ', groupStart);
+    const groupTag = html.slice(tagStart, html.indexOf('>', tagStart));
+    assert.ok(groupTag.includes('sidebar-hidden-admin-area'), groupTag);
+    assert.ok(!groupTag.includes('sidebar-hidden-platform-scope'),
+        `平台管理 must not be platform-gated as a group: ${groupTag}`);
+
+    const body = html.slice(html.indexOf('>', groupStart),
+                            html.indexOf('</nav>', groupStart));
+    const rowFor = view => {
+        const at = body.indexOf(`data-view="${view}"`);
+        assert.ok(at >= 0, `${view} row exists inside 平台管理`);
+        return body.slice(body.lastIndexOf('<a ', at), body.indexOf('>', at));
+    };
+    for (const view of ['tenant', 'platform', 'branding', 'logs']) {
+        assert.ok(rowFor(view).includes('platform-scope-only'),
+            `${view} is platform-only and must carry the per-item marker`);
+    }
+    for (const view of ['audit', 'token_usage']) {
+        assert.ok(!rowFor(view).includes('platform-scope-only'),
+            `${view} must stay reachable below platform scope`);
+    }
+});

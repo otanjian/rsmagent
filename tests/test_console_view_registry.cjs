@@ -13,11 +13,15 @@ const vm = require('node:vm');
 const read = p => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
 const consoleJs = read('channel/web/static/js/console.js');
 const identityAdmin = read('channel/web/static/js/identity-admin.js');
+const auditConsole = read('channel/web/static/js/audit-console.js');
 const todos = read('channel/web/static/js/todos.js');
 
 const FORK_LOADERS = ['loadPlatformUsersView', 'loadTenantView', 'loadMembersView',
-    'loadRolesView', 'loadOrgView', 'loadAuditView', 'loadTodosView'];
-const FORK_VIEW_IDS = ['platform', 'tenant', 'system_user', 'roles', 'org', 'audit'];
+    'loadRolesView', 'loadOrgView', 'loadTodosView'];
+const FORK_VIEW_IDS = ['platform', 'tenant', 'system_user', 'roles', 'org'];
+// 审计日志 / Token 消耗 live in their own module because they read this fork's
+// centralized `identity.db` tables instead of identity-admin's per-tenant caches.
+const AUDIT_CONSOLE_VIEW_IDS = ['audit', 'token_usage'];
 
 function extractFunction(src, name) {
     const head = `function ${name}(`;
@@ -118,6 +122,15 @@ test('identity-admin.js registers every fork admin view', () => {
         assert.match(identityAdmin, re, `${id} must be registered in identity-admin.js`);
     }
     assert.match(identityAdmin, /typeof window\.registerConsoleView === 'function'/,
+        'registration must be guarded so standalone contract tests still load the file');
+});
+
+test('audit-console.js owns the 审计日志 and Token 消耗 views', () => {
+    for (const id of AUDIT_CONSOLE_VIEW_IDS) {
+        const re = new RegExp("registerConsoleView\\(\\{\\s*id: '" + id + "',[\\s\\S]*?load:");
+        assert.match(auditConsole, re, `${id} must be registered in audit-console.js`);
+    }
+    assert.match(auditConsole, /typeof window\.registerConsoleView === 'function'/,
         'registration must be guarded so standalone contract tests still load the file');
 });
 

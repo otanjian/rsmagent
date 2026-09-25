@@ -127,6 +127,15 @@ _SIGNED_CONSOLE_PAGES: Dict[str, Dict[str, object]] = {
     "admin.tenants": {"permission": "", "scope": "platform", "label": "租户管理"},
     "admin.branding": {"permission": "", "scope": "platform", "label": "品牌设置"},
     "admin.settings": {"permission": "", "scope": "platform", "label": "系统设置"},
+    # 审计日志 / Token 消耗 (change add-audit-and-token-console). Both are read in
+    # as many words by ``channel/web/admin_audit_handlers.py``, which refuses a
+    # caller who is neither a platform admin nor the tenant's administrator —
+    # so signing them here with no read permission is deliberate: the gate that
+    # matters is the handler's, not a functional permission a custom role could
+    # be handed without the qualification that makes the read safe.
+    "admin.audit": {"permission": "", "scope": "platform", "label": "审计日志"},
+    "admin.token_usage": {"permission": "", "scope": "platform",
+                          "label": "Token 消耗"},
 }
 
 #: Console pages owned by the built-in ``tenant_admin`` qualification itself —
@@ -2925,6 +2934,22 @@ class IdentityService:
                  int(time.time()) + (ttl if ttl is not None else session_ttl_seconds(restricted)),
                  int(restricted)),
             )
+            # A successful login is an identity event like any other, so it is
+            # written on the same connection as the session it created: there is
+            # no window in which a session exists that the trail cannot explain.
+            # Only the restricted flag is recorded — never the credential, and
+            # never the token.
+            self._audit.record(
+                actor_user_id=current["id"],
+                actor_username=current["username"],
+                tenant_id=None,
+                target_tenant_id=None,
+                action="auth.login",
+                target=f"user:{current['id']}",
+                redacted_changes={"restricted": restricted},
+                result="success",
+                con=con,
+            )
             con.commit()
             # keep the authoritative values from the locked read
             user = current
@@ -3875,6 +3900,38 @@ class IdentityService:
                     "actions": {
                         "manage": bool(mode == "all" or is_platform_admin),
                     },
+                }
+                continue
+            # 审计日志 / Token 消耗 (change add-audit-and-token-console). Both are
+            # read in as many words by ``channel/web/admin_audit_handlers.py``,
+            # which derives the read scope from the caller's qualification and
+            # refuses anyone who is neither a platform admin nor the current
+            # tenant's administrator. The projection answers with exactly those
+            # two qualifications, so a page reported available is always a page
+            # the handler will serve: the platform operator reads every tenant
+            # (``?tenant=`` narrows), the tenant's administrator reads its own
+            # tenant and nothing else.
+            #
+            # The entries live in 平台管理, but the platform boundary is per item,
+            # not per group (``chat.html``): a tenant administrator is offered
+            # these two while 租户管理 / 平台用户管理 / 品牌设置 / 运行日志 stay
+            # platform-only (``console.js``: ``_isPlatformOnlyEntry``). Widening
+            # the group instead would hand 租户管理 -- every tenant -- to a tenant
+            # administrator.
+            #
+            # ``scope`` stays ``platform``. The console reads that value as "this
+            # is not a business entry point" and so must not let an operator page
+            # be what opens a console shell (``_qualifyAdminConsoleEntry``); a
+            # tenant administrator qualifies for the shell through 组织与权限
+            # regardless.
+            if pid in ("admin.audit", "admin.token_usage"):
+                permitted = bool(mode == "all" or is_platform_admin or is_admin)
+                result[pid] = {
+                    "available": permitted,
+                    "read_allowed": permitted,
+                    "scope": meta.get("scope", "platform"),
+                    "reason": "" if permitted else "no_permission",
+                    "actions": {},
                 }
                 continue
             result[pid] = {
@@ -7149,6 +7206,50 @@ class IdentityService:
             "SELECT COUNT(*) AS c FROM audit_events" + where_sql, count_params
         )[0]["c"]
         return {"items": [dict(r) for r in rows], "total": total, "page": page}
+
+    # --- audit console reads (change add-audit-and-token-console) ----------
+
+    def query_audit_events(
+        self,
+        *,
+        scope: str,
+        tenant_id: Optional[str] = None,
+        actions: Optional[List[str]] = None,
+        result: Optional[str] = None,
+        exclude_result: Optional[str] = None,
+        actor_user_id: Optional[str] = None,
+        actor_username: Optional[str] = None,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """Paged, filtered audit read for the console.
+
+        Thin seam over :meth:`AuditStore.query_events` so the Web layer does not
+        open ``identity.db`` itself. ``scope`` is named by the *caller* and must
+        already be justified: ``"all"`` is the cross-tenant platform read, and
+        nothing here re-derives it from ``tenant_id`` — a missing tenant must
+        never widen a read (see ``AuditStore.query_events``).
+        """
+        return self._audit.query_events(
+            scope=scope,
+            tenant_id=tenant_id,
+            actions=actions,
+            result=result,
+            exclude_result=exclude_result,
+            actor_user_id=actor_user_id,
+            actor_username=actor_username,
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+            offset=offset,
+        )
+
+    def audit_action_names(self, *, scope: str,
+                           tenant_id: Optional[str] = None) -> List[str]:
+        """Distinct action names in scope, for the console's filter dropdown."""
+        return self._audit.distinct_actions(scope=scope, tenant_id=tenant_id)
 
     # --- credentials (open-database-runtime 7.x) --------------------------
 

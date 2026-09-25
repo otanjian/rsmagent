@@ -15,7 +15,7 @@ import json
 import secrets
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from auth.store import IdentityStore
 
@@ -106,9 +106,15 @@ def denied_event(
 #: Fields that may be filtered on in ``query_tenant`` (safe, non-secret).
 QUERYABLE_FIELDS = ("tenant_id", "target_tenant_id", "action", "result")
 
+#: Read scopes for the console query. See ``AuditStore.query_events``.
+QUERY_SCOPES = ("tenant", "platform", "all")
+
 
 class AuditStore:
     """Append-only audit events, scoped per tenant for authorized queries."""
+
+    #: Read scopes; see :meth:`query_events` for what each one selects.
+    SCOPES = QUERY_SCOPES
 
     def __init__(self, db_path: str):
         self._store = IdentityStore(db_path)
@@ -176,3 +182,148 @@ class AuditStore:
             (limit,),
         )
         return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Console read (paged, filtered)
+    # ------------------------------------------------------------------
+
+    def query_events(
+        self,
+        *,
+        scope: str = "tenant",
+        tenant_id: Optional[str] = None,
+        actions: Optional[Sequence[str]] = None,
+        result: Optional[str] = None,
+        exclude_result: Optional[str] = None,
+        actor_user_id: Optional[str] = None,
+        actor_username: Optional[str] = None,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """Return one page of events plus the unpaged total, for the console.
+
+        The scope is named rather than inferred. ``tenant_id=None`` meaning
+        "every tenant" is how a tenant-scoped caller ends up reading the whole
+        platform, so it is spelled ``scope="all"`` and each caller has to say
+        it out loud — and the caller is responsible for having established that
+        the request is allowed to.
+
+        * ``"tenant"`` — exactly ``tenant_id`` (required).
+        * ``"platform"`` — platform-scoped events only (``tenant_id IS NULL``).
+        * ``"all"`` — no tenant restriction; the platform-admin cross-tenant read.
+
+        ``total`` is a separate ``COUNT(*)`` on the same filter, so the page can
+        show "N of M" without fetching the rest. ``redacted_changes`` is parsed
+        for the caller; it was already stripped of secrets by
+        :func:`sanitize_payload` at write time, and nothing here re-widens that.
+        """
+        if scope not in self.SCOPES:
+            raise AuditError(f"unknown audit scope: {scope!r}")
+        if scope == "tenant" and not tenant_id:
+            raise AuditError("scope 'tenant' requires a tenant_id")
+
+        clauses: List[str] = []
+        params: List[Any] = []
+        if scope == "tenant":
+            clauses.append("tenant_id = ?")
+            params.append(tenant_id)
+        elif scope == "platform":
+            clauses.append("tenant_id IS NULL")
+        if actions:
+            clauses.append("action IN (" + ",".join("?" for _ in actions) + ")")
+            params.extend(actions)
+        if result:
+            clauses.append("result = ?")
+            params.append(result)
+        if exclude_result:
+            # "失败" in the console is a binary choice over a column with more
+            # than two values (``success`` / ``denied`` / ``error``, and whatever
+            # a future writer adds). Comparing against a hard-coded list of the
+            # non-success values would silently stop matching the moment a new
+            # one appears, so the negation is expressed as one.
+            clauses.append("result <> ?")
+            params.append(exclude_result)
+        if actor_user_id:
+            clauses.append("actor_user_id = ?")
+            params.append(actor_user_id)
+        if actor_username:
+            # A filter box, not an address: an operator looking for "who did
+            # this" usually has a fragment of a name, and an exact match would
+            # silently return nothing. ``%``/``_`` in the input are escaped so a
+            # stray character cannot turn into a wildcard.
+            pattern = str(actor_username).replace("\\", "\\\\") \
+                .replace("%", "\\%").replace("_", "\\_")
+            clauses.append("actor_username LIKE ? ESCAPE '\\'")
+            params.append(f"%{pattern}%")
+        if start_time is not None:
+            clauses.append("time >= ?")
+            params.append(int(start_time))
+        if end_time is not None:
+            clauses.append("time <= ?")
+            params.append(int(end_time))
+
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+        limit = max(1, min(int(limit), 500))
+        offset = max(0, int(offset))
+
+        total_row = self._store.execute(
+            f"SELECT COUNT(*) FROM audit_events {where}", params
+        )
+        total = (total_row[0][0] if total_row else 0) or 0
+
+        rows = self._store.execute(
+            f"SELECT * FROM audit_events {where}"
+            " ORDER BY time DESC, id DESC LIMIT ? OFFSET ?",
+            list(params) + [limit, offset],
+        )
+
+        events = []
+        for row in rows:
+            event = dict(row)
+            raw = event.get("redacted_changes") or "{}"
+            try:
+                event["changes"] = json.loads(raw)
+            except Exception:
+                # A row written before this reader existed, or hand-edited.
+                # Showing nothing beats failing the whole page over one row.
+                event["changes"] = {}
+            events.append(event)
+
+        return {
+            "events": events,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    def distinct_actions(self, *, scope: str = "tenant",
+                         tenant_id: Optional[str] = None) -> List[str]:
+        """Distinct action names in scope, for the console's filter dropdown.
+
+        Derived from the table rather than a hard-coded list, so a new action
+        becomes filterable the moment it is first written — there is no second
+        place to remember to update.
+        """
+        if scope not in self.SCOPES:
+            raise AuditError(f"unknown audit scope: {scope!r}")
+        if scope == "tenant":
+            if not tenant_id:
+                raise AuditError("scope 'tenant' requires a tenant_id")
+            rows = self._store.execute(
+                "SELECT DISTINCT action FROM audit_events WHERE tenant_id = ?"
+                " ORDER BY action",
+                (tenant_id,),
+            )
+        elif scope == "platform":
+            rows = self._store.execute(
+                "SELECT DISTINCT action FROM audit_events WHERE tenant_id IS NULL"
+                " ORDER BY action"
+            )
+        else:
+            rows = self._store.execute(
+                "SELECT DISTINCT action FROM audit_events ORDER BY action"
+            )
+        return [r[0] for r in rows if r[0]]

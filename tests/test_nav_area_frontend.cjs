@@ -92,7 +92,7 @@ test('console entry qualification follows the formal page projection', () => {
     }), false);
 
     // Platform-scope pages are not business entry points: they never admit on
-    // their own, so a member cannot reach the console through 平台运维.
+    // their own, so a member cannot reach the console through 平台管理.
     assert.equal(qualify({
         identityMode: 'database',
         pages: { 'admin.logs': { available: true, read_allowed: true, scope: 'platform' } },

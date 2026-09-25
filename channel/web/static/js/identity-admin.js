@@ -119,9 +119,12 @@
     let _platformUserPage = 1;
     let _platformUserPageSize = 20;
     let _platformUserFilters = { q: '', status: '' };
-    let _auditFilters = { actor: '', action: '', result: '', since: '', until: '' };
-    let _auditPage = 1;
-    let _auditPageSize = 25;
+
+    // The identity audit view moved to its own module
+    // (``assets/js/audit-console.js``, change add-audit-and-token-console). It
+    // is no longer registered from here: it now reads a dedicated, filtered
+    // endpoint and shares its page with 平台管理's other operator surface, so it
+    // owns its own filters/page state next to the code that uses them.
 
     // Platform-admin target-tenant role editing scope (task 3.2). When a
     // platform admin edits another tenant's roles, this holds that tenant id;
@@ -4205,47 +4208,11 @@
         setTimeout(function () { loadMembersView(); }, 50);
     }
 
-    // ---- Audit view (task 5.7) --------------------------------------------
-    async function loadAuditView() {
-        const list = document.getElementById('audit-list');
-        if (!list) return;
-        list.innerHTML = '<div class="text-sm text-slate-400 dark:text-slate-500">' + t('tenant_loading') + '</div>';
-        const f = _auditFilters;
-        f.actor = (document.getElementById('audit-actor') || {}).value || '';
-        f.action = (document.getElementById('audit-action') || {}).value || '';
-        f.result = (document.getElementById('audit-result') || {}).value || '';
-        const query = qs({
-            actor: f.actor, action: f.action, result: f.result,
-            since: f.since, until: f.until,
-            page: _auditPage, page_size: _auditPageSize,
-        });
-        try {
-            const data = await apiFetch('/api/identity/audit?' + query);
-            const items = data.items || [];
-            if (!items.length) {
-                list.innerHTML = '<div class="text-sm text-slate-400">' + t('audit_empty') + '</div>';
-                renderPagination(document.getElementById('audit-pagination'), _auditPage, _auditPageSize, data.total || 0, function (p) { _auditPage = p; loadAuditView(); });
-                return;
-            }
-            const rows = items.map(function (ev) {
-                let changes = '';
-                try { const ch = JSON.parse(ev.redacted_changes || '{}'); changes = Object.keys(ch).map(function (k) { return k + '=' + String(ch[k]); }).join(', '); } catch (e) {}
-                const actionHex = ev.action && ev.action.indexOf('.') > 0 ? '' : '';
-                return '<div class="px-4 py-3 rounded-lg border border-slate-200 dark:border-white/10">'
-                    + '<div class="flex items-center justify-between"><div class="text-sm font-medium text-slate-800 dark:text-slate-100">' + escapeHtml(ev.action) + '</div>'
-                    + '<div class="text-xs ' + (ev.result === 'denied' ? 'text-red-500' : 'text-slate-400') + '">' + escapeHtml(ev.result) + '</div></div>'
-                    + '<div class="mt-1 text-xs text-slate-400">' + escapeHtml(ev.actor_username || '-') + ' · ' + new Date((ev.time || 0) * 1000).toLocaleString() + '</div>'
-                    + (changes ? '<div class="mt-1 text-xs text-slate-400 break-all">' + escapeHtml(changes) + '</div>' : '')
-                    + '</div>';
-            }).join('');
-            list.innerHTML = rows;
-            renderPagination(document.getElementById('audit-pagination'), _auditPage, _auditPageSize, data.total || 0, function (p) { _auditPage = p; loadAuditView(); });
-        } catch (err) {
-            if (err.message === 'stale-response') return;
-            list.innerHTML = '<div class="text-sm text-red-500">' + t('load_error') + ': ' + escapeHtml(err.message) + '</div>';
-            status(document.getElementById('audit-status'), err.message, false);
-        }
-    }
+    // ---- Audit view --------------------------------------------------------
+    // Moved to ``assets/js/audit-console.js`` (change
+    // add-audit-and-token-console). It reads a dedicated, filtered endpoint and
+    // renders the paged table the ported page needs, so it owns its own state
+    // next to that code instead of adding a fifth loader to this file.
 
     // ---- row action dispatcher (used by inline onclick) -------------------
     function adminRowAction(kind, action, id) {
@@ -4334,13 +4301,6 @@
         if (tfilter) tfilter.addEventListener('change', function () { loadTenantView(); });
 
         // Audit apply button + inputs.
-        const applyBtn = document.getElementById('audit-apply');
-        if (applyBtn) applyBtn.addEventListener('click', function () { _auditPage = 1; loadAuditView(); });
-        ['audit-actor', 'audit-action', 'audit-result'].forEach(function (id) {
-            const el = document.getElementById(id);
-            if (el) el.addEventListener('change', function () { _auditPage = 1; loadAuditView(); });
-        });
-
         // Org tree expand/collapse (delegated).
         const org = document.getElementById('org-tree');
         if (org) org.addEventListener('click', function (e) {
@@ -4362,7 +4322,6 @@
     window.loadRolesView = loadRolesView;
     window.loadOrgView = loadOrgView;
     window.loadPlatformUsersView = loadPlatformUsersView;
-    window.loadAuditView = loadAuditView;
     // Register the fork admin views with console.js (change
     // fork-decoupling-and-tenant-hardening, task 8.6) so navigation iterates a
     // view registry instead of the core file hard-coding fork-only branches.
@@ -4374,7 +4333,6 @@
         window.registerConsoleView({ id: 'roles', label: 'menu_roles', load: loadRolesView, repaint: loadRolesView });
         window.registerConsoleView({ id: 'org', label: 'menu_org', load: loadOrgView, repaint: loadOrgView });
         window.registerConsoleView({ id: 'platform', label: 'menu_platform', load: loadPlatformUsersView, repaint: loadPlatformUsersView });
-        window.registerConsoleView({ id: 'audit', label: 'menu_audit', load: loadAuditView, repaint: loadAuditView });
     }
     window.bumpTenantGeneration = bumpTenantGeneration;
     window.adminRowAction = adminRowAction;

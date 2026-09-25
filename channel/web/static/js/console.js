@@ -1508,7 +1508,12 @@ const VIEW_META = {
     platform:    { group: 'nav_group_platform_ops', page: 'menu_platform', console: 'admin.tenants' },
     branding:    { group: 'nav_group_platform_ops', page: 'menu_branding', console: 'admin.branding' },
     logs:        { group: 'nav_group_platform_ops', page: 'menu_logs', console: 'admin.logs' },
-    audit:       { group: 'nav_group_platform_ops', page: 'menu_audit', console: 'admin.settings' },
+    // 审计日志 / Token 消耗 (change add-audit-and-token-console). The audit view
+    // used to be signed as ``admin.settings`` — it borrowed the settings page id
+    // because it was the only operator surface in that group. It now has its own
+    // id, so a menu grant can offer 审计日志 without also claiming 系统设置.
+    audit:       { group: 'nav_group_platform_ops', page: 'menu_audit', console: 'admin.audit' },
+    token_usage: { group: 'nav_group_platform_ops', page: 'menu_token_usage', console: 'admin.token_usage' },
     'admin-home': { group: 'nav_admin_console', page: 'nav_admin_overview', console: null },
 };
 
@@ -12985,7 +12990,7 @@ function enterConfigView() {
 }
 
 // =====================================================================
-// Branding View (系统设置 → 品牌设置)
+// Branding View (平台管理 → 品牌设置)
 // =====================================================================
 let brandingDraft = null;       // { brand_name, logo_description, logo_action, logoFile, logoPreviewUrl, hasLogoChange }
 let brandingBaseline = null;    // last successful published snapshot (the form baseline)
@@ -20176,7 +20181,7 @@ function _qualifyAdminConsoleEntry(opts) {
         // hides that entry, so counting it would open an empty console.
         if (info.reason === 'capability_disabled') return false;
         // Platform-scope pages are not business entry points: a member cannot
-        // reach the console through 平台运维.
+        // reach the console through 平台管理.
         if (String(info.scope || '') === 'platform') return false;
         if (allMode) return true;
         return info.available === true || info.read_allowed === true;
@@ -20764,11 +20769,23 @@ function _viewNavDenied(viewId) {
     return { reason: 'denied' };
 }
 
-// Gate the permission-sensitive sidebar entries (task 5.7/5.8). The "platform
-// accounts" entry is visible only to a platform admin. The "identity audit"
-// entry is visible only to a platform admin OR the current tenant's tenant_admin
-// (or anyone holding a tenant-scoped audit privilege). Rows that fail the check
-// are hidden; the authorization decision always stays server-side.
+// Is this sidebar entry platform-only? The marker is per ITEM, not per group:
+// 平台管理 mixes platform management (租户管理 / 平台用户管理 / 品牌设置 / 运行日志)
+// with the tenant-scoped operator views (审计日志 / Token 消耗), and only the
+// former is off-limits below platform scope. ``data-view="platform"`` is the
+// original spelling (formerly 系统设置) and ``.platform-scope-only`` the shared
+// marker; both are recognised so neither row has to be the odd one out.
+function _isPlatformOnlyEntry(item) {
+    if (!item) return false;
+    if (item.getAttribute('data-view') === 'platform') return true;
+    return item.classList.contains('platform-scope-only');
+}
+
+// Gate the permission-sensitive sidebar entries (task 5.7/5.8). Platform-only
+// entries are visible only to a platform admin; the tenant-scoped operator views
+// living in the same group reach a tenant administrator through the
+// authoritative page projection instead. Rows that fail the check are hidden;
+// the authorization decision always stays server-side.
 function _applySidebarPermissions(self) {
     // is_platform_admin still comes from the verified /auth/me self profile
     // (it is NOT tenant-scoped, so /auth/context cannot report it). The current
@@ -20879,15 +20896,25 @@ function _applySidebarPermissions(self) {
                 const items = group.querySelectorAll('.sidebar-item[data-view]');
                 let reachable = false;
                 items.forEach(item => {
-                    if (!item.classList.contains('hidden')) reachable = true;
+                    if (item.classList.contains('hidden')) return;
+                    // A platform-only entry is not offered below platform scope
+                    // (the platform pass below hides it). Counting it here would
+                    // keep an otherwise-empty 平台管理 heading alive: for a tenant
+                    // administrator, whose group now holds only 审计日志 / Token
+                    // 消耗, and for a member, whose group holds nothing at all.
+                    if (!isPlatformAdmin && _isPlatformOnlyEntry(item)) return;
+                    reachable = true;
                 });
                 group.classList.toggle('hidden', !reachable);
             });
     }
 
-    // Per-item: platform entries only for a platform admin.
-    const platformEl = document.querySelector('.sidebar-item[data-view="platform"]');
-    if (platformEl) platformEl.classList.toggle('hidden', !isPlatformAdmin);
+    // Per-item: platform-only entries for a platform admin only (see
+    // _isPlatformOnlyEntry). Runs after the group pass so it decides the final
+    // state of these rows regardless of what the projection reported for them.
+    document.querySelectorAll('#sidebar-nav .sidebar-item').forEach(el => {
+        if (_isPlatformOnlyEntry(el)) el.classList.toggle('hidden', !isPlatformAdmin);
+    });
 
     // Permission passes only toggle visibility, but they run after entry and on
     // every projection refresh; re-asserting the refined layout here keeps the

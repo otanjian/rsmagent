@@ -556,6 +556,12 @@ BUILTIN_MENU_DEFAULTS: Dict[str, Tuple[str, ...]] = {
         "workbench.todos",
         "admin.members", "admin.organization",
         "admin.roles",
+        # Read-only operator views over the current tenant's recorded activity
+        # (change add-audit-and-token-console). They sit in 平台管理 beside the
+        # platform-only 租户管理 / 平台用户管理 / 品牌设置 / 运行日志, so only these
+        # two are granted here: the console gates the group's platform-only rows
+        # per item (``_isPlatformOnlyEntry``), not the group as a whole.
+        "admin.audit", "admin.token_usage",
     )),
 }
 

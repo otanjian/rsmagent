@@ -1919,6 +1919,156 @@ def _migration_32(con: sqlite3.Connection) -> None:
 _migrations.append(_migration_32)
 
 
+def _migration_33(con: sqlite3.Connection) -> None:
+    """Token-usage accounting: a per-day aggregate plus a per-call log.
+
+    The console's «Token 消耗» page needs both a shape it can sum cheaply and a
+    shape it can page through, so there are two tables rather than one —
+    mirroring the source deployment (``oneagent-multi-rc``) so the two consoles
+    stay comparable:
+
+    * ``token_usage`` — one row per ``date/tenant/user/provider/model``, with
+      the counters accumulated in place. The summary cards, the «明细» tab and
+      the «按用户汇总» tab all read this one table. Making the daily key a
+      ``UNIQUE`` constraint is what lets the writer be a single ``ON CONFLICT``
+      statement; the source's read-modify-write is not safe when two workers
+      flush at the same moment.
+    * ``llm_call_logs`` — one row per LLM call, for the «调用日志» tab. Summary
+      text, status and duration are per-call facts that cannot be recovered
+      from an aggregate.
+
+    Both carry ``tenant_id``. The source is a single-tenant deployment, so
+    dropping this column would turn every tenant-scoped read into a
+    cross-tenant leak. ``''`` means "no tenant in scope" — never ``NULL``,
+    which would defeat the ``UNIQUE`` key through NULL-comparison semantics.
+
+    Identity is stored twice on purpose, following ``audit_events``:
+    ``actor_user_id`` is the stable key (joins, filtering, surviving a rename)
+    while ``actor_username`` is the display value, so the console does not have
+    to resolve every row through the users table.
+
+    Neither table is append-only, unlike ``audit_events``: ``token_usage`` rows
+    are updated in place by design, and a retention job may prune call logs
+    that are not evidence of anything.
+
+    The migration also adds the two ``audit_events`` indexes the audit console
+    needs (by action, by actor), which the tenancy and time indexes from
+    migration 1 do not serve.
+
+    The ``id`` columns are plain ``INTEGER PRIMARY KEY`` -- a rowid alias that
+    already auto-assigns -- and deliberately *not* ``AUTOINCREMENT``. Two
+    reasons: it matches how every other table here is declared (``audit_events``
+    keys on a TEXT id; nothing in this file uses ``AUTOINCREMENT``), and
+    ``AUTOINCREMENT`` would materialize SQLite's internal ``sqlite_sequence``
+    table in ``identity.db``. That table is what
+    ``tests/test_identity_migration_drill.py::_reset_to_pre_migration`` trips
+    over: it drops every table found in ``sqlite_master`` to rebuild a
+    pre-migration file, and SQLite refuses ``DROP TABLE sqlite_sequence`` with
+    "table sqlite_sequence may not be dropped". Re-adding ``AUTOINCREMENT`` here
+    would fail that drill again.
+    """
+    con.executescript(
+        """
+        CREATE TABLE token_usage (
+            id                INTEGER PRIMARY KEY,
+            date              TEXT    NOT NULL,
+            tenant_id         TEXT    NOT NULL DEFAULT '',
+            actor_user_id     TEXT    NOT NULL DEFAULT '',
+            actor_username    TEXT    NOT NULL DEFAULT '',
+            session_id        TEXT    NOT NULL DEFAULT '',
+            provider          TEXT    NOT NULL DEFAULT '',
+            model             TEXT    NOT NULL DEFAULT '',
+            prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+            completion_tokens INTEGER NOT NULL DEFAULT 0,
+            total_tokens      INTEGER NOT NULL DEFAULT 0,
+            call_count        INTEGER NOT NULL DEFAULT 1,
+            created_at        INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+
+        CREATE UNIQUE INDEX idx_token_usage_key
+            ON token_usage (date, tenant_id, actor_user_id, provider, model);
+        CREATE INDEX idx_token_usage_tenant_date
+            ON token_usage (tenant_id, date DESC);
+        CREATE INDEX idx_token_usage_model ON token_usage (model);
+
+        CREATE TABLE llm_call_logs (
+            id                INTEGER PRIMARY KEY,
+            created_at        INTEGER NOT NULL DEFAULT (unixepoch()),
+            tenant_id         TEXT    NOT NULL DEFAULT '',
+            actor_user_id     TEXT    NOT NULL DEFAULT '',
+            actor_username    TEXT    NOT NULL DEFAULT '',
+            session_id        TEXT    NOT NULL DEFAULT '',
+            provider          TEXT    NOT NULL DEFAULT '',
+            model             TEXT    NOT NULL DEFAULT '',
+            prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+            completion_tokens INTEGER NOT NULL DEFAULT 0,
+            total_tokens      INTEGER NOT NULL DEFAULT 0,
+            input_summary     TEXT    NOT NULL DEFAULT '',
+            output_summary    TEXT    NOT NULL DEFAULT '',
+            status            TEXT    NOT NULL DEFAULT 'success',
+            duration_ms       INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE INDEX idx_llm_call_logs_tenant_created
+            ON llm_call_logs (tenant_id, created_at DESC);
+        CREATE INDEX idx_llm_call_logs_model ON llm_call_logs (model);
+        CREATE INDEX idx_llm_call_logs_session ON llm_call_logs (session_id);
+
+        -- The audit console filters by action and by actor, which the two
+        -- indexes from migration 1 (tenant, time) do not serve.
+        CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_events(action);
+        CREATE INDEX IF NOT EXISTS idx_audit_actor_user ON audit_events(actor_user_id);
+        """
+    )
+
+
+_migrations.append(_migration_33)
+
+
+def _migration_34(con: sqlite3.Connection) -> None:
+    """Open 审计日志 / Token 消耗 for the built-in ``tenant_admin`` role.
+
+    Change ``add-audit-and-token-console`` registers ``admin.audit`` /
+    ``admin.token_usage`` and first kept them platform-only. The platform
+    boundary has since moved to the individual entries (``chat.html``), so a
+    tenant administrator is offered both -- scoped by the handler to its own
+    tenant -- while 租户管理 / 平台用户管理 / 品牌设置 / 运行日志 stay platform-only.
+
+    New tenants pick the two pages up from ``BUILTIN_MENU_DEFAULTS``. An
+    already-provisioned tenant needs this one-shot backfill or the entries stay
+    hidden forever: the built-in roles hold seeded ``menu`` grants, and gating is
+    restrictive, so a page absent from that set is denied however readable it is.
+
+    Same discipline as ``_migration_27`` / ``_migration_30``: only built-in
+    ``tenant_admin`` rows that already carry a ``menu`` grant are touched. A role
+    with none is still governed by functional permissions alone, and adding a
+    grant would switch gating *on* and hide the rest of its console. ``member``
+    is not touched at all -- an ordinary member is refused both pages by the
+    handler, so a grant would advertise a surface that answers 403.
+    """
+    for row in con.execute(
+            "SELECT id, tenant_id FROM roles WHERE builtin=1"
+            " AND code='tenant_admin'").fetchall():
+        if not con.execute(
+                "SELECT 1 FROM role_resource_grants WHERE role_id=?"
+                " AND resource_kind='menu'", (row["id"],)).fetchone():
+            continue
+        for page in ("admin.audit", "admin.token_usage"):
+            grant = "nav:%s" % page
+            con.execute(
+                "INSERT INTO role_resource_grants(id, tenant_id, role_id,"
+                " resource_kind, resource_id, action)"
+                " SELECT ?, ?, ?, 'menu', ?, 'view'"
+                " WHERE NOT EXISTS (SELECT 1 FROM role_resource_grants"
+                "  WHERE role_id=? AND resource_kind='menu' AND resource_id=?)",
+                ("grant-menu-%s-%s" % (row["id"], page), row["tenant_id"],
+                 row["id"], grant, row["id"], grant),
+            )
+
+
+_migrations.append(_migration_34)
+
+
 class IdentityStoreError(RuntimeError):
     """Raised when the identity store cannot be opened or migrated."""
 

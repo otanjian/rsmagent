@@ -67,6 +67,10 @@ function boot({ ctx = null, isPlatformAdmin = false, groups = [], area = 'workbe
         '#sidebar-nav .menu-group.sidebar-hidden-admin-area': adminGroups,
         '#sidebar-nav .sidebar-hidden-platform-scope': platformGroups,
         '#sidebar-nav .sidebar-item[data-view]': allItems,
+        // The platform boundary is per item now: _applySidebarPermissions hides
+        // the `.platform-scope-only` rows (and data-view="platform") through this
+        // selector, and the empty-group pass must not count them.
+        '#sidebar-nav .sidebar-item': allItems,
     };
     const navOpenAdmin = makeEl();
     const sandbox = {
@@ -77,6 +81,12 @@ function boot({ ctx = null, isPlatformAdmin = false, groups = [], area = 'workbe
             system_user: { console: 'admin.members' },
             org: { console: 'admin.organization' },
             roles: { console: 'admin.roles' },
+            tenant: { console: 'admin.tenants' },
+            platform: { console: 'admin.settings' },
+            branding: { console: 'admin.branding' },
+            logs: { console: 'admin.logs' },
+            audit: { console: 'admin.audit' },
+            token_usage: { console: 'admin.token_usage' },
         },
         document: {
             getElementById(id) { return id === 'nav-open-admin' ? navOpenAdmin : null; },
@@ -99,6 +109,7 @@ function boot({ ctx = null, isPlatformAdmin = false, groups = [], area = 'workbe
     vm.runInNewContext(
         [fnSource('_consolePageForView'), fnSource('_viewNavDenied'),
          fnSource('_sidebarRecentDenied'), fnSource('_qualifyAdminConsoleEntry'),
+         fnSource('_isPlatformOnlyEntry'),
          fnSource('_applySidebarPermissions')].join('\n'),
         sandbox);
     return { sandbox, groups, navOpenAdmin, ctxRef };
@@ -224,4 +235,104 @@ test('group visibility is recomputed, never accumulated', () => {
     sandbox._applySidebarPermissions();
     assert.equal(agentDev.el.classList.contains('hidden'), true);
     assert.equal(orgPerm.el.classList.contains('hidden'), true);
+});
+
+// ---------------------------------------------------------------------------
+// 平台管理: the platform boundary is per item, not per group
+// (change add-audit-and-token-console). The group carries no platform class any
+// more, so a tenant administrator reaches it -- and must find only the
+// tenant-scoped operator views inside, never 租户管理 (which spans every tenant).
+// ---------------------------------------------------------------------------
+
+// What the real backend projects for a tenant administrator
+// (auth.service._console_pages_projection): the two operator views are
+// available; the four platform-only pages report a *read* grant -- their
+// declared permission is "" -- so the per-item gate, not the projection, is what
+// has to keep them out of the sidebar.
+const PLATFORM_PAGES_FOR_TENANT_ADMIN = {
+    'admin.tenants': { available: false, read_allowed: true, scope: 'platform', reason: 'deferred', actions: {} },
+    'admin.settings': { available: false, read_allowed: true, scope: 'platform', reason: 'deferred', actions: {} },
+    'admin.branding': { available: false, read_allowed: true, scope: 'platform', reason: 'deferred', actions: {} },
+    'admin.logs': { available: false, read_allowed: true, scope: 'platform', reason: 'deferred', actions: {} },
+    'admin.audit': { available: true, read_allowed: true, scope: 'platform', reason: '', actions: {} },
+    'admin.token_usage': { available: true, read_allowed: true, scope: 'platform', reason: '', actions: {} },
+};
+
+const PLATFORM_ONLY_VIEWS = ['tenant', 'platform', 'branding', 'logs'];
+
+function platformOpsGroup() {
+    const item = (view, platformOnly) => {
+        const el = makeEl({ 'data-view': view });
+        if (platformOnly) el.classList.add('platform-scope-only');
+        return el;
+    };
+    return {
+        // No platform class on the group element: that is the point of the change.
+        el: makeEl({ 'data-group': 'platform-ops' }),
+        items: [...PLATFORM_ONLY_VIEWS.map(v => item(v, true)),
+                item('audit', false), item('token_usage', false)],
+    };
+}
+
+const offered = item => !item.classList.contains('hidden');
+
+function itemsByView(group) {
+    return Object.fromEntries(group.items.map(i => [i.getAttribute('data-view'), i]));
+}
+
+test('a platform admin gets every 平台管理 entry', () => {
+    const group = platformOpsGroup();
+    const { sandbox } = boot({
+        ctx: { authorization_mode: 'all', console_pages: PLATFORM_PAGES_FOR_TENANT_ADMIN },
+        isPlatformAdmin: true,
+        groups: [group],
+    });
+    sandbox._applySidebarPermissions();
+    assert.equal(group.el.classList.contains('hidden'), false);
+    for (const [view, item] of Object.entries(itemsByView(group))) {
+        assert.ok(offered(item), `${view} must be offered to a platform admin`);
+    }
+});
+
+test('a tenant admin gets 平台管理 with only the two operator views', () => {
+    const group = platformOpsGroup();
+    const { sandbox } = boot({
+        ctx: {
+            authorization_mode: 'role',
+            is_tenant_admin: true,
+            console_pages: PLATFORM_PAGES_FOR_TENANT_ADMIN,
+        },
+        groups: [group],
+    });
+    sandbox._applySidebarPermissions();
+    assert.equal(group.el.classList.contains('hidden'), false,
+        '审计日志 / Token 消耗 must keep the 平台管理 heading alive for a tenant admin');
+    const byView = itemsByView(group);
+    assert.ok(offered(byView.audit), '审计日志 must be offered to a tenant admin');
+    assert.ok(offered(byView.token_usage), 'Token 消耗 must be offered to a tenant admin');
+    for (const view of PLATFORM_ONLY_VIEWS) {
+        assert.equal(offered(byView[view]), false,
+            `${view} is platform-only and must not reach a tenant admin`);
+    }
+});
+
+test('an ordinary member gets no 平台管理 heading at all', () => {
+    // The projection refuses both operator views for a member, and the four
+    // platform-only rows must not be what keeps the heading on screen -- the
+    // empty-group rule has to hide it.
+    const group = platformOpsGroup();
+    const denied = { ...DENIED_MEMBERS, scope: 'platform' };
+    const { sandbox } = boot({
+        ctx: {
+            authorization_mode: 'role',
+            console_pages: {
+                ...PLATFORM_PAGES_FOR_TENANT_ADMIN,
+                'admin.audit': denied, 'admin.token_usage': denied,
+            },
+        },
+        groups: [group],
+    });
+    sandbox._applySidebarPermissions();
+    assert.equal(group.el.classList.contains('hidden'), true,
+        'an empty 平台管理 heading must not be left behind for a member');
 });

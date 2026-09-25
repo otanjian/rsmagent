@@ -96,6 +96,11 @@ from channel.web.admin_handlers import (
     _int_or_zero,
 )
 from channel.web.admin_overview import AdminOverviewHandler
+from channel.web.admin_audit_handlers import (
+    AdminAuditActionsHandler,
+    AdminAuditEventsHandler,
+)
+from channel.web.admin_token_usage_handlers import AdminTokenUsageHandler
 from channel.web.external_connection_handlers import (
     ExternalConnectionCatalogHandler,
     ExternalConnectionDraftTestHandler,

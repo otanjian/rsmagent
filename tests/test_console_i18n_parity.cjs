@@ -18,6 +18,7 @@ const vm = require('node:vm');
 const ROOT = path.join(__dirname, '..');
 const I18N_DIR = path.join(ROOT, 'channel/web/static/js/i18n');
 const CONSOLE = path.join(ROOT, 'channel/web/static/js/console.js');
+const CHAT_HTML = path.join(ROOT, 'channel/web/chat.html');
 const FIXTURE = path.join(__dirname, 'fixtures/console_i18n_snapshot.json');
 
 function namespaceFiles() {
@@ -114,5 +115,23 @@ test('console.js no longer carries a domain dictionary itself', () => {
         'tasks_tab_records', 'appearance_title', 'home_greeting']) {
         assert.ok(!new RegExp('\\b' + key + '\\s*:').test(source),
             `console.js must not define the domain key ${key}`);
+    }
+});
+
+test('every i18n namespace loads before console.js merges the table', () => {
+    // console.js snapshots window.__cowI18N__ into its `I18N` lookup exactly once,
+    // when the file executes (see mergeI18nNamespaces). A namespace registered
+    // after that point still *exists* — the catalogs are complete and every other
+    // assertion here passes — but every lookup falls through to the key itself,
+    // so the page renders "audit_title" instead of "审计日志". Document order in
+    // chat.html is therefore part of this contract, not a style choice.
+    const html = fs.readFileSync(CHAT_HTML, 'utf8');
+    const consoleAt = html.indexOf('assets/js/console.js');
+    assert.ok(consoleAt > 0, 'chat.html loads assets/js/console.js');
+    const refs = [...html.matchAll(/src="(assets\/js\/i18n\/[^"?]+)/g)].map(m => m[1]);
+    assert.ok(refs.length >= 2, 'chat.html loads the per-domain i18n namespaces');
+    for (const ref of refs) {
+        assert.ok(html.indexOf(ref) < consoleAt,
+            `${ref} must be loaded before assets/js/console.js merges the i18n table`);
     }
 });

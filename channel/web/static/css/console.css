@@ -5976,7 +5976,7 @@ button.composer-menu-item.joined:hover .joined-remove { display: inline; color: 
 .dark .chat-agent-name { color: #f1f5f9; }
 
 /* =================================================================== */
-/* Branding view (系统设置 → 品牌设置)                                  */
+/* Branding view (平台管理 → 品牌设置)                                  */
 /* =================================================================== */
 .branding-logo-preview img {
     width: 100%;
