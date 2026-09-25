@@ -174,6 +174,59 @@ test('IME composition waits for committed input without replacing the search inp
     assert.equal(input, node('agent-workbench-search'));
 });
 
+test('the committed word filters even when the event carries the pre-edit text', async () => {
+    // The reported defect: the box shows 财务 while the list still shows every
+    // Agent. A commit whose event payload is the pinyin (or empty) used to set
+    // the query from that payload, so the visible text never drove the filter.
+    const { ctx, node } = setup(async () => response(filterAgents()));
+    await ctx.loadAgentWorkbench();
+    const input = node('agent-workbench-search');
+    input.value = '对账';
+    ctx.onAgentWorkbenchSearch({ target: { value: 'caiwu' }, isComposing: false });
+    assert.equal(vm.runInContext('_wbSearchQuery', ctx), '对账');
+    assert.match(node('agent-workbench-grid').innerHTML, /data-agent-id="finance"/);
+    assert.doesNotMatch(node('agent-workbench-grid').innerHTML, /data-agent-id="sap"/);
+});
+
+test('a dropped compositionend cannot freeze later keystrokes', async () => {
+    // Only compositionstart arrived, so the flag stayed set. The next committed
+    // input event is proof the composition is over and must be honoured instead
+    // of leaving the search dead for the rest of the session.
+    const { ctx, node } = setup(async () => response(filterAgents()));
+    await ctx.loadAgentWorkbench();
+    const input = node('agent-workbench-search');
+    vm.runInContext('_wbSearchComposing = true', ctx);
+    input.value = '对账';
+    ctx.onAgentWorkbenchSearch({ target: { value: '对账' }, isComposing: false });
+    assert.equal(vm.runInContext('_wbSearchComposing', ctx), false);
+    assert.equal(vm.runInContext('_wbSearchQuery', ctx), '对账');
+    assert.doesNotMatch(node('agent-workbench-grid').innerHTML, /data-agent-id="sap"/);
+});
+
+test('Enter commits the search and IME Enter still picks the candidate', async () => {
+    const { ctx, node } = setup(async () => response(filterAgents()));
+    await ctx.loadAgentWorkbench();
+    const input = node('agent-workbench-search');
+    input.value = '财务';
+    let prevented = false;
+    ctx.onAgentWorkbenchSearchKeydown({ key: 'Enter', target: input, isComposing: false,
+        preventDefault: () => { prevented = true; } });
+    assert.equal(prevented, true, 'Enter is handled instead of falling through');
+    assert.equal(vm.runInContext('_wbSearchQuery', ctx), '财务');
+    assert.match(node('agent-workbench-grid').innerHTML, /data-agent-id="finance"/);
+    assert.doesNotMatch(node('agent-workbench-grid').innerHTML, /data-agent-id="sap"/);
+
+    // Enter that confirms a candidate is not a submit: the pre-edit text must
+    // not replace the last committed query.
+    vm.runInContext('_wbSearchComposing = true', ctx);
+    input.value = 'cai';
+    prevented = false;
+    ctx.onAgentWorkbenchSearchKeydown({ key: 'Enter', target: input, isComposing: true,
+        preventDefault: () => { prevented = true; } });
+    assert.equal(prevented, false);
+    assert.equal(vm.runInContext('_wbSearchQuery', ctx), '财务');
+});
+
 test('identity changes clear previous filters and invalidate delayed list replies', async () => {
     const pending = deferred();
     let delay = false;
