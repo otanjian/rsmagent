@@ -394,6 +394,84 @@ class WorkspaceWriteHandler:
                 return json.dumps({"status": "error", "message": str(e)})
 
 
+def _ensure_own_user_dir(agent_id: str) -> bool:
+    """Create ``<agent workspace>/user/<user id>`` for the current identity.
+
+    The per-user container of a shared Agent (change
+    ``isolate-shared-agent-user-data``) comes into existence only once
+    something is filed into it, so a member who has not uploaded anything yet
+    would find the console's file panel landing on a directory that is not
+    there. Materializing the caller's *own* directory — empty and idempotent —
+    is what lets the panel stay where that member's files actually live.
+
+    The user id comes from the verified request identity and nowhere else, and
+    the Agent's workspace is resolved from the registry, so neither the body nor
+    a session's opened project directory can redirect the creation. A malformed
+    user id, or a ``user`` container that is a symlink or a file, is refused
+    rather than silently downgraded to the shared directory: falling back would
+    turn a bad identity into a cross-user write.
+
+    Returns ``False`` when the request carries no end user (nothing to make).
+    """
+    from common.runtime_identity import current_identity
+    from common.state_dir import StateDirError, agent_user_root
+    ident = current_identity()
+    if agent_id and ident.agent_id != agent_id:
+        ident = ident.derive(agent_id=agent_id)
+    try:
+        root = agent_user_root(ident, ensure=True)
+    except StateDirError as e:
+        logger.warning(f"[WebChannel] user directory refused: {e}")
+        raise web.HTTPError(
+            "403 Forbidden", {"Content-Type": "application/json"},
+            json.dumps({"status": "error", "message": "refused",
+                        "code": "unsafe_user_directory"}))
+    return root is not None
+
+
+class WorkspaceUserDirHandler:
+    """Make sure the caller's own per-user directory of a shared Agent exists.
+
+    The console's file panel anchors a tenant-shared Agent at that member's
+    ``user/<user id>`` folder (spec ``platform-file-browsing``), which is where
+    the platform files the member uploads and is handed back actually live. That
+    folder is only created by a write, so the panel asks for it explicitly once
+    before listing instead of relying on a read to have a side effect.
+
+    The directory is always the caller's own: ``user_id`` is taken from the
+    verified identity, never from the body, so this route cannot address another
+    member's subtree even if a client asks it to. ``agent`` goes through the
+    same tenant-binding / private-owner / owned-session checks as every other
+    workspace route.
+    """
+
+    def POST(self):
+        from channel.web.web_channel import _db_scope
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        with _db_scope() as ctx:
+            # A console write funnels through the unified origin/CSRF gate before
+            # any identity or filesystem work, like every other management write.
+            from channel.web.auth_handlers import require_management_write
+            require_management_write()
+            try:
+                body = json.loads(web.data() or b'{}')
+                agent_id = _workspace_request_scope(
+                    ctx, body.get("session") or None, body.get("agent") or None)
+                if not agent_id:
+                    return json.dumps({"status": "error",
+                                       "message": "agent is required"})
+                if not _ensure_own_user_dir(agent_id):
+                    return json.dumps({"status": "error", "code": "no_user",
+                                       "message": "no authenticated user"})
+                return json.dumps({"status": "success", "agent": agent_id},
+                                  ensure_ascii=False)
+            except web.HTTPError:
+                raise
+            except Exception as e:
+                logger.error(f"[WebChannel] Workspace user dir error: {e}")
+                return json.dumps({"status": "error", "message": str(e)})
+
+
 class ProjectsHandler:
     """List the project picker state for a session (current + recents)."""
 

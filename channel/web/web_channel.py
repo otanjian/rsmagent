@@ -278,6 +278,7 @@ from channel.web.fork.handlers.workspace import (
     WorkspaceResolveHandler,
     WorkspaceSearchHandler,
     WorkspaceTreeHandler,
+    WorkspaceUserDirHandler,
     WorkspaceWriteHandler,
 )
 
@@ -543,6 +544,7 @@ from channel.web.fork.handlers.workspace import (
     WorkspaceResolveHandler,
     WorkspaceSearchHandler,
     WorkspaceTreeHandler,
+    WorkspaceUserDirHandler,
     WorkspaceWriteHandler,
     _project_brand_name,
     _project_field,

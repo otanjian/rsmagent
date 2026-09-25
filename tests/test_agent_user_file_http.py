@@ -253,3 +253,86 @@ def test_an_ordinary_shared_file_still_serves_the_whole_tenant(web):
                            token=web.login(username), tenant=False)
         assert response.status.startswith("200"), body_of(response)
         assert response.data == b"shared-report"
+
+
+# -- the file panel's landing sequence (change
+# ``land-shared-agent-panel-on-own-files``)
+#
+# The panel asks the roster what kind of Agent it is looking at, and for a
+# shared one it asks for the caller's own folder to exist before it lists that
+# folder. Both steps are ordinary routes, so what these tests measure is the
+# sequence the browser really performs rather than either half in isolation.
+
+def workbench_rows(web, username):
+    response = web.get("/api/agents?view=workbench", token=web.login(username))
+    assert response.status.startswith("200"), body_of(response)
+    return {row["id"]: row for row in web.json(response)["agents"]}
+
+
+def test_the_use_range_roster_says_which_kind_of_agent_it_is(web):
+    """The panel branches on this field, so the read it chats from must carry it.
+
+    The management catalogue cannot answer for a plain member (its range is
+    their own private Agents), and exclusion from the personal list would be an
+    inference rather than a fact.
+    """
+    assert workbench_rows(web, "alice")[AGENT]["visibility"] == "tenant"
+
+
+def test_the_panels_landing_sequence_makes_then_lists_the_callers_folder(web):
+    """A member who never filed anything has no folder: make it, then list it."""
+    alice = web.login("alice")
+    landing = "agents/%s/user/%s" % (AGENT, web.alice)
+    assert not os.path.isdir(os.path.join(web.workspace, "user", web.alice))
+
+    made = web.post("/api/workspace/user-dir", {"agent": AGENT}, token=alice)
+    assert made.status.startswith("200"), body_of(made)
+    assert web.json(made)["status"] == "success"
+
+    listed = web.get(
+        "/api/workspace/tree?path=%s&agent=%s" % (landing, AGENT), token=alice)
+    assert listed.status.startswith("200"), body_of(listed)
+    assert web.json(listed)["entries"] == []
+
+
+def test_the_body_cannot_choose_whose_folder_gets_made(web):
+    """Naming a colleague in the body must not address their subtree."""
+    response = web.post("/api/workspace/user-dir",
+                        {"agent": AGENT, "user_id": web.bob,
+                         "user": web.bob, "path": "user/" + web.bob},
+                        token=web.login("alice"))
+    assert response.status.startswith("200"), body_of(response)
+
+    owner = os.path.join(web.workspace, "user", web.alice)
+    assert os.path.isdir(owner)
+    assert not os.path.exists(os.path.join(web.workspace, "user", web.bob))
+
+    # ``user`` therefore still lists nothing but the caller's own folder.
+    listed = web.get(
+        "/api/workspace/tree?path=agents/%s/user&agent=%s" % (AGENT, AGENT),
+        token=web.login("alice"))
+    assert listed.status.startswith("200"), body_of(listed)
+    assert {e["name"] for e in web.json(listed)["entries"]} == {web.alice}
+
+
+def test_making_the_folder_twice_leaves_the_members_files_alone(web):
+    """The panel may ask again on every open; it must stay a no-op."""
+    alice_file = seed(web, web.alice, "uploads", "return.pdf", content=b"mine")
+    alice = web.login("alice")
+
+    for _ in range(2):
+        response = web.post("/api/workspace/user-dir", {"agent": AGENT}, token=alice)
+        assert response.status.startswith("200"), body_of(response)
+
+    with open(alice_file, "rb") as handle:
+        assert handle.read() == b"mine"
+
+
+def test_an_agent_the_caller_cannot_address_is_refused(web):
+    """The folder is made for the Agent named in the request, under the same
+    binding rules as every other workspace call -- an unknown one is refused,
+    and nothing is created anywhere."""
+    response = web.post("/api/workspace/user-dir", {"agent": "not-my-agent"},
+                        token=web.login("alice"))
+    assert response.status.split()[0] in ("403", "404"), body_of(response)
+    assert not os.path.exists(os.path.join(web.workspace, "user"))

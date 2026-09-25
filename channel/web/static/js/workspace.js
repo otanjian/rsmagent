@@ -38,6 +38,11 @@ let wsAgentOverride = '';
 // The caller's own private Agent id, memoized once known. `undefined` means
 // "not asked yet" so an empty answer is retried rather than cached.
 let wsOwnAgentId;
+// The caller's own end-user id (``usr_...``), memoized once known. `undefined`
+// means "not asked yet"; '' is a real answer — this deployment has no end-user
+// identity (a legacy single-user install) — and the panel then stays on the
+// Agent's own folder, exactly as it did before the per-user layout existed.
+let wsOwnUserIdCache;
 
 /**
  * Which "scope" the panel is currently showing, bumped whenever that scope
@@ -71,6 +76,13 @@ function wsScopeStale(epoch) {
 // workspace is set to).
 const WS_AGENT_DIR = 'agents';
 
+// The protected per-user container inside an Agent's workspace — the same
+// directory `common.state_dir.agent_user_root` resolves. A tenant-shared Agent
+// keeps every member's platform files (uploads, delivered results, scratch
+// work) under `user/<user id>/`, and the file surface refuses one member the
+// other's subtree.
+const WS_USER_DIR = 'user';
+
 /** The Agent the panel is browsing for; '' before the roster is known. */
 function wsScopedAgentId() {
     return wsAgentOverride
@@ -83,9 +95,52 @@ function wsAgentDirPath(agentId) {
     return id ? `${WS_AGENT_DIR}/${id}` : '';
 }
 
-/** The directory the panel opens on: the active Agent's own folder. */
+/**
+ * ``'private'`` or ``'tenant'`` for an Agent the console knows about, else ''.
+ *
+ * Read off the rosters the console already holds (the use range the chat
+ * pickers work from, then the management catalogue). The value is the server's
+ * own derivation, repeated — the console never infers who a shared Agent
+ * belongs to — and a row neither roster has stays '' rather than being assumed
+ * to be either state.
+ */
+function wsAgentVisibility(agentId) {
+    if (!agentId) return '';
+    const rosters = [];
+    if (typeof chatAgentCatalog !== 'undefined' && chatAgentCatalog) rosters.push(chatAgentCatalog);
+    if (typeof agentCatalog !== 'undefined' && agentCatalog) rosters.push(agentCatalog);
+    for (const roster of rosters) {
+        const row = roster.find(a => a && a.id === agentId);
+        if (row && typeof row.visibility === 'string' && row.visibility) return row.visibility;
+    }
+    return '';
+}
+
+/**
+ * This caller's own file folder inside a tenant-shared Agent, or ''.
+ *
+ * A shared Agent keeps the things every member shares (`AGENT.md`,
+ * `knowledge/`, `memory/`) at its own root, and each member's own uploads and
+ * delivered results under `user/<user id>`. Opening the panel on the shared
+ * root would show a member a folder that is not theirs, so a shared Agent opens
+ * on the caller's own subtree instead.
+ *
+ * Empty whenever the answer would be a guess: a private Agent has no such split
+ * (its whole root is the owner's), an unknown roster row is not treated as
+ * shared, and an unknown user id is not invented.
+ */
+function wsOwnUserDirPath(agentId) {
+    const dir = wsAgentDirPath(agentId);
+    if (!dir || !wsOwnUserIdCache) return '';
+    if (wsAgentVisibility(agentId) !== 'tenant') return '';
+    return `${dir}/${WS_USER_DIR}/${wsOwnUserIdCache}`;
+}
+
+/** The directory the panel opens on: the caller's own folder of a shared Agent,
+ *  otherwise the Agent's own folder. */
 function wsAgentLandingPath() {
-    return wsAgentDirPath(wsScopedAgentId());
+    const agentId = wsScopedAgentId();
+    return wsOwnUserDirPath(agentId) || wsAgentDirPath(agentId);
 }
 
 // =====================================================================
@@ -243,7 +298,7 @@ function toggleWorkspacePanel() {
 }
 
 /**
- * Land the file list on the active Agent's own folder.
+ * Land the file list on the folder the panel opens on.
  *
  * Opening the panel asks for that Agent's files, so whatever the previous visit
  * left behind is dropped first: the file previewed then (which used to make the
@@ -251,18 +306,27 @@ function toggleWorkspacePanel() {
  * fallback Agent chosen then. The rows on screen belong to that old folder, so
  * the list is emptied here — that is what makes the tab switch below re-list
  * instead of showing stale entries as if they were this Agent's own.
+ *
+ * A tenant-shared Agent opens on the caller's own `user/<user id>` folder, so
+ * the caller's user id has to be known before the path can be derived; only
+ * then is the landing path computed and the tab switched. Another scope change
+ * (a different Agent or session) landing meanwhile takes the panel over, and
+ * this visit renders nothing (see `wsScopeEpoch`).
  */
 function showActiveAgentWorkspace() {
     // A read in flight for the previous visit's Agent (or the previous session)
     // must not land in this one.
-    wsNewScopeEpoch();
+    const epoch = wsNewScopeEpoch();
     // The fallback Agent of a previous visit is dropped *before* the landing
     // path is derived, so the folder shown is the active Agent's own.
     wsAgentOverride = '';
-    wsCurrentDir = wsAgentLandingPath();
     const list = document.getElementById('ws-file-list');
     if (list && list.childElementCount) list.innerHTML = '';
-    switchWorkspaceTab('files');
+    wsOwnUserId().then(() => {
+        if (wsScopeStale(epoch)) return;
+        wsCurrentDir = wsAgentLandingPath();
+        switchWorkspaceTab('files');
+    });
 }
 
 function switchWorkspaceTab(tab) {
@@ -996,13 +1060,19 @@ function refreshWorkspaceTree() {
  *  on a switch. */
 function resetWorkspaceToAgentRoot() {
     // A listing in flight for the old Agent belongs to the old scope.
-    wsNewScopeEpoch();
+    const epoch = wsNewScopeEpoch();
     // The new Agent may well be one the caller can browse, so the previous
     // Agent's fallback must not outlive the switch — and the landing path is the
     // new Agent's folder, never the old fallback's.
     wsAgentOverride = '';
-    wsCurrentDir = wsAgentLandingPath();
-    if (wsPanelOpen) refreshWorkspaceTree();
+    // A tenant-shared Agent lands on the caller's own `user/<user id>` folder,
+    // so the path cannot be derived before that id is known. A switch that
+    // happens meanwhile supersedes this one (see `wsScopeEpoch`).
+    wsOwnUserId().then(() => {
+        if (wsScopeStale(epoch)) return;
+        wsCurrentDir = wsAgentLandingPath();
+        if (wsPanelOpen) refreshWorkspaceTree();
+    });
 }
 
 // =====================================================================
@@ -1025,6 +1095,56 @@ function wsShouldFallBackToOwnAgent(e) {
 function wsIsRefusal(e) {
     const status = e && e.status;
     return status === 403 || status === 404;
+}
+
+// =====================================================================
+// Identity: whose files the panel is showing
+// =====================================================================
+/**
+ * The caller's own end-user id, or '' when this deployment has none.
+ *
+ * `/auth/me` is the projection the console's own account menu reads, so this is
+ * the same id the file surface keys `user/<user id>` by. Asked once per page:
+ * the answer cannot change without a login, which reloads the page, and an
+ * empty answer is a fact about the deployment rather than a failure to retry.
+ */
+async function wsOwnUserId() {
+    if (wsOwnUserIdCache !== undefined) return wsOwnUserIdCache;
+    try {
+        const res = await fetch('/auth/me', { credentials: 'same-origin', cache: 'no-store' });
+        const data = await res.json();
+        const user = (data && data.status === 'success' && data.user) || {};
+        wsOwnUserIdCache = user.id ? String(user.id) : '';
+    } catch (_) {
+        wsOwnUserIdCache = '';
+    }
+    return wsOwnUserIdCache;
+}
+
+/**
+ * Ask the server to create this caller's own folder inside the addressed Agent.
+ *
+ * That folder is created by a write, so a member who has never filed anything
+ * would land on a path that does not exist yet. The user id is the server's own
+ * reading of the verified identity — the body names only the Agent — so this
+ * can never create, or even address, another member's subtree. `session` and
+ * `agent` travel the same way they do for every other workspace call, so the
+ * server applies the same tenant-binding, private-owner and owned-session
+ * checks it applies to the panel's reads.
+ */
+async function wsEnsureUserDir() {
+    const body = {};
+    if (typeof sessionId !== 'undefined' && sessionId) body.session = sessionId;
+    const agentId = wsScopedAgentId();
+    if (agentId) body.agent = agentId;
+    const res = await fetch('/api/workspace/user-dir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.status !== 'success') throw new Error(data.message || 'ensure failed');
+    return true;
 }
 
 /**
@@ -1097,19 +1217,50 @@ async function loadWorkspaceDir(relPath) {
     list.innerHTML = `<div class="workspace-empty"><i class="fas fa-spinner fa-spin"></i></div>`;
     const epoch = wsScopeEpoch;
     const landing = !!relPath && relPath === wsAgentLandingPath();
-    const candidates = landing ? [relPath, ''] : [relPath || ''];
+    // A tenant-shared Agent opens on the caller's own `user/<user id>` folder,
+    // which only a write creates. When that landing is missing, the Agent's own
+    // folder is the honest next answer and the workspace root the last one — the
+    // same degradation a private Agent already has, one level deeper.
+    const ownUserLanding = landing && !!wsOwnUserDirPath(wsScopedAgentId());
+    const candidates = landing
+        ? (ownUserLanding ? [relPath, wsAgentDirPath(wsScopedAgentId()), ''] : [relPath, ''])
+        : [relPath || ''];
     let data = null;
     let failure = null;
     // One landing asks about the caller's private Agent at most once: a second
     // candidate runs into the same refusal, so probing again would only ask the
-    // same question and repeat the answer.
+    // same question and repeat the answer. Creating the caller's own folder is
+    // asked for at most once for the same reason.
     let fallbackTried = false;
+    let ensureTried = false;
     for (const candidate of candidates) {
         try {
             data = await wsTreeRequest(candidate);
             break;
         } catch (e) {
             failure = e;
+            // The caller's own folder is absent rather than refused: have the
+            // server create it (empty, idempotent) and ask once more before
+            // treating the landing as missing. Only the landing itself is
+            // retried — the candidates after it are a different answer, not a
+            // second attempt at the same question.
+            if (candidate === relPath && ownUserLanding && !ensureTried && !wsIsRefusal(e)) {
+                ensureTried = true;
+                let created = false;
+                try {
+                    created = await wsEnsureUserDir();
+                } catch (_) {
+                    created = false;
+                }
+                if (created) {
+                    try {
+                        data = await wsTreeRequest(candidate);
+                        break;
+                    } catch (e2) {
+                        failure = e2;
+                    }
+                }
+            }
             if (fallbackTried || !wsShouldFallBackToOwnAgent(e)) continue;
             fallbackTried = true;
             if (!(await wsFallBackToOwnAgent())) continue;
@@ -1498,24 +1649,29 @@ function relocalizeWorkspacePanel() {
 function wsOnSessionSwitch() {
     // Nothing in flight for the previous session may render here (see
     // wsScopeEpoch): the panel is scoped to a session's Agent.
-    wsNewScopeEpoch();
+    const epoch = wsNewScopeEpoch();
     // The next session may address an Agent the caller *can* browse, so the
     // previous one's fallback must not carry over — and the landing path below
     // is the new session's Agent's own folder, not the old fallback's.
     wsAgentOverride = '';
-    wsCurrentDir = wsAgentLandingPath();
     wsCurrentRoot = '';
     wsSearchMode = false;
     wsCurrentFile = null;
     wsTurnArtifacts = [];
     wsDiscardEditState();
     wsUpdateHeaderActions();
-    if (!wsPanelOpen) return;
-    if (wsActiveTab === 'files') {
-        loadWorkspaceDir(wsCurrentDir);
-    } else {
-        wsSetPreviewEmpty(t('ws_preview_empty'));
-    }
+    // A shared Agent lands on the caller's own `user/<user id>` folder, so the
+    // reload waits for that id; a session switch meanwhile supersedes this one.
+    wsOwnUserId().then(() => {
+        if (wsScopeStale(epoch)) return;
+        wsCurrentDir = wsAgentLandingPath();
+        if (!wsPanelOpen) return;
+        if (wsActiveTab === 'files') {
+            loadWorkspaceDir(wsCurrentDir);
+        } else {
+            wsSetPreviewEmpty(t('ws_preview_empty'));
+        }
+    });
 }
 
 // =====================================================================

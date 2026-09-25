@@ -33,6 +33,9 @@ function element(childCount = 0) {
  * @param {object} payload - response for every request, unless `routes` overrides it.
  * @param {object} [routes] - payload by URL substring, so a test can answer the
  *   personal-Agent probe and the fallback tree differently from the refused one.
+ *   A value may be a function of the URL when a test needs the answer to change
+ *   between two requests (e.g. a folder that appears once it has been created);
+ *   the first matching key in insertion order wins, so narrower keys go first.
  */
 function makeCtx(payload, routes = {}) {
     const nodes = new Map();
@@ -57,7 +60,8 @@ function makeCtx(payload, routes = {}) {
         fetch: async (url) => {
             requests.push(url);
             const key = Object.keys(routes).find(k => url.includes(k));
-            const body = key ? routes[key] : payload;
+            const raw = key ? routes[key] : payload;
+            const body = typeof raw === 'function' ? raw(url) : raw;
             return { ok: body.status === 'success', status: body.http || 200,
                 json: async () => body };
         },
@@ -147,6 +151,12 @@ const flush = async () => {
 const withAgent = (ctx, id = AGENT) =>
     poke(ctx, `activeAgentId = ${JSON.stringify(id)};`);
 
+// The panel also reads the caller's own identity once per page (`/auth/me`) —
+// that is what tells it whether the Agent is tenant-shared and where that
+// member's files live. The assertions about *how many folders were asked for*
+// count those requests only.
+const folderRequests = requests => requests.filter(u => u.includes('/api/workspace/'));
+
 test('the panel button opens on the active Agent own folder', async () => {
     const { ctx, nodes, requests } = makeCtx(ROOT_TREE, { [dirQ(AGENT)]: agentTree(AGENT) });
     withAgent(ctx);
@@ -160,8 +170,9 @@ test('the panel button opens on the active Agent own folder', async () => {
     assert.match(nodes.get('ws-file-list').innerHTML, /knowledge/);
     // One listing, asked for the Agent's folder — not the root, and not the
     // directory the previous visit had drilled into.
-    assert.equal(requests.length, 1, requests.join('\n'));
-    assert.match(requests[0], new RegExp(`path=${dirQ(AGENT)}`));
+    const asked = folderRequests(requests);
+    assert.equal(asked.length, 1, requests.join('\n'));
+    assert.match(asked[0], new RegExp(`path=${dirQ(AGENT)}`));
     assert.equal(peek(ctx, 'wsCurrentDir'), `agents/${AGENT}`);
 });
 
@@ -242,8 +253,9 @@ test('switching Agent drops the fallback and lands on the new Agent folder', asy
     await flush();
     assert.equal(peek(ctx, 'wsAgentOverride'), '');
     assert.equal(peek(ctx, 'wsCurrentDir'), 'agents/other');
-    assert.equal(requests.length, 1, requests.join('\n'));
-    assert.match(requests[0], new RegExp(`path=${dirQ('other')}`));
+    const asked = folderRequests(requests);
+    assert.equal(asked.length, 1, requests.join('\n'));
+    assert.match(asked[0], new RegExp(`path=${dirQ('other')}`));
 });
 
 test('a session switch lands on the new session Agent folder', async () => {
@@ -254,8 +266,118 @@ test('a session switch lands on the new session Agent folder', async () => {
     ctx.wsOnSessionSwitch();
     await flush();
     assert.equal(peek(ctx, 'wsAgentOverride'), '');
-    assert.equal(requests.length, 1, requests.join('\n'));
-    assert.match(requests[0], new RegExp(`path=${dirQ(AGENT)}`));
+    const asked = folderRequests(requests);
+    assert.equal(asked.length, 1, requests.join('\n'));
+    assert.match(asked[0], new RegExp(`path=${dirQ(AGENT)}`));
+});
+
+// ---------------------------------------------------------------------------
+// A tenant-shared Agent opens on the caller's own folder. What every member
+// shares (AGENT.md, knowledge/, memory/) sits at the Agent's root, while each
+// member's uploads and delivered results live in user/<user id> — their own
+// subtree, and the only one the file surface will serve them.
+// ---------------------------------------------------------------------------
+
+const SHARED = 'shared-agent';
+const UID = 'usr_me';
+const ME = { status: 'success', user: { id: UID } };
+const userDirQ = (id, uid = UID) => encodeURIComponent(`agents/${id}/user/${uid}`);
+const userTree = (id, uid = UID) => ({ status: 'success', path: `agents/${id}/user/${uid}`,
+    root: '/ws/t1',
+    entries: [{ name: 'uploads', path: `agents/${id}/user/${uid}/uploads`, is_dir: true,
+        size: 0, kind: 'directory' }] });
+// The roster the console already holds, carrying the server's own answer about
+// who the object belongs to.
+const rosterSays = (ctx, id, visibility) =>
+    poke(ctx, `chatAgentCatalog = [{id: ${JSON.stringify(id)}, visibility: ${JSON.stringify(visibility)}}];`);
+const asCaller = (ctx, uid = UID) =>
+    poke(ctx, `wsOwnUserIdCache = ${JSON.stringify(uid)};`);
+
+test('a shared Agent opens on the caller own folder', async () => {
+    const { ctx, nodes, requests } = makeCtx(ROOT_TREE,
+        { '/auth/me': ME, [userDirQ(SHARED)]: userTree(SHARED) });
+    rosterSays(ctx, SHARED, 'tenant');
+    withAgent(ctx, SHARED);
+    nodes.set('ws-file-list', element(2));
+    nodes.set('workspace-panel', element());
+    ctx.toggleWorkspacePanel();
+    await flush();
+    assert.equal(peek(ctx, 'wsCurrentDir'), `agents/${SHARED}/user/${UID}`);
+    assert.match(nodes.get('ws-file-list').innerHTML, /uploads/);
+    // One listing, and it is the caller's own folder — not the shared root the
+    // Agent's own files sit in.
+    const asked = folderRequests(requests);
+    assert.equal(asked.length, 1, requests.join('\n'));
+    assert.match(asked[0], new RegExp(`path=${userDirQ(SHARED)}`));
+});
+
+test('a private Agent keeps opening on the Agent own folder', async () => {
+    const { ctx, nodes } = makeCtx(agentTree(AGENT));
+    rosterSays(ctx, AGENT, 'private');
+    asCaller(ctx);
+    withAgent(ctx);
+    nodes.set('ws-file-list', element());
+    await ctx.loadWorkspaceDir(`agents/${AGENT}`);
+    assert.equal(peek(ctx, 'wsCurrentDir'), `agents/${AGENT}`);
+});
+
+test('an Agent the roster did not report is not treated as shared', async () => {
+    const { ctx, nodes } = makeCtx(agentTree(AGENT));
+    poke(ctx, `chatAgentCatalog = [{id: ${JSON.stringify(AGENT)}}];`);
+    asCaller(ctx);
+    withAgent(ctx);
+    nodes.set('ws-file-list', element());
+    await ctx.loadWorkspaceDir(`agents/${AGENT}`);
+    assert.equal(peek(ctx, 'wsCurrentDir'), `agents/${AGENT}`);
+});
+
+test('the caller own folder is created once and the panel stays there', async () => {
+    // The folder only comes into existence with the first write, so a member who
+    // has never filed anything lands on a path that is not there yet.
+    let created = false;
+    const { ctx, nodes, requests } = makeCtx(ROOT_TREE, {
+        'user-dir': () => { created = true; return { status: 'success' }; },
+        [userDirQ(SHARED)]: () => (created ? userTree(SHARED) : MISSING),
+    });
+    rosterSays(ctx, SHARED, 'tenant');
+    asCaller(ctx);
+    withAgent(ctx, SHARED);
+    nodes.set('ws-file-list', element());
+    await ctx.loadWorkspaceDir(`agents/${SHARED}/user/${UID}`);
+    assert.ok(created, 'the caller folder was never asked for');
+    assert.equal(peek(ctx, 'wsCurrentDir'), `agents/${SHARED}/user/${UID}`);
+    assert.match(nodes.get('ws-file-list').innerHTML, /uploads/);
+    // Asked once, then listed again — a second create would be the same question.
+    assert.equal(requests.filter(u => u.includes('user-dir')).length, 1, requests.join('\n'));
+});
+
+test('a caller folder that cannot be made falls back to the Agent own folder', async () => {
+    const { ctx, nodes, requests } = makeCtx(ROOT_TREE, {
+        'user-dir': { status: 'error', http: 403, message: 'refused' },
+        [userDirQ(SHARED)]: MISSING,
+        [dirQ(SHARED)]: agentTree(SHARED),
+    });
+    rosterSays(ctx, SHARED, 'tenant');
+    asCaller(ctx);
+    withAgent(ctx, SHARED);
+    nodes.set('ws-file-list', element());
+    await ctx.loadWorkspaceDir(`agents/${SHARED}/user/${UID}`);
+    assert.equal(requests.filter(u => u.includes('user-dir')).length, 1, requests.join('\n'));
+    assert.equal(peek(ctx, 'wsCurrentDir'), `agents/${SHARED}`);
+    assert.match(nodes.get('ws-file-list').innerHTML, /knowledge/);
+});
+
+test('a refused shared Agent folder still falls back to the caller own private Agent', async () => {
+    const { ctx, nodes } = makeCtx(REFUSED,
+        { 'view=personal': PERSONAL, [dirQ('mine')]: agentTree('mine') });
+    rosterSays(ctx, SHARED, 'tenant');
+    asCaller(ctx);
+    withAgent(ctx, SHARED);
+    nodes.set('ws-file-list', element());
+    await ctx.loadWorkspaceDir(`agents/${SHARED}/user/${UID}`);
+    // A permission answer is not "the folder is missing", so nothing is created.
+    assert.equal(peek(ctx, 'wsAgentOverride'), 'mine');
+    assert.equal(peek(ctx, 'wsCurrentDir'), 'agents/mine');
 });
 
 // ---------------------------------------------------------------------------

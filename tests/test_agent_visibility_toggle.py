@@ -24,6 +24,7 @@ from auth.object_scope import ObjectScope
 from auth.runtime import RequestContext
 from auth.service import IdentityService, IdentityServiceError
 from channel.web.web_channel import _tenant_agents_admin_projection
+from channel.web.web_channel import _tenant_agents_projection
 
 
 def _db():
@@ -414,6 +415,53 @@ class AgentVisibilityProjectionTests(_WebCtxCase):
         row = self._rows(self.tadmin, is_admin=True)["rock-agent"]
         self.assertEqual(row["visibility"], "tenant")
         self.assertTrue(row["can_unshare"])
+
+
+class AgentWorkbenchVisibilityTests(_WebCtxCase):
+    """The chat roster the console actually chats from carries the same fact.
+
+    The file panel lands on the caller's own ``user/<user id>`` folder exactly
+    when the Agent is tenant-shared, so the *use-range* read has to report the
+    two states too — not only the management catalogue, whose range for a plain
+    member holds their own private Agents and would never show the shared row
+    they are chatting with.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.svc, self.tid, self.root = _seed()
+        self.rock = _member(self.svc, self.root, self.tid, "rock")
+        self.cara = _member(self.svc, self.root, self.tid, "cara")
+        self.svc.bind_agent(tenant_id=self.tid, agent_id="shared-agent")
+        self.svc.bind_agent(tenant_id=self.tid, agent_id="rock-agent",
+                            private_owner_user_id=self.rock,
+                            origin="user_created")
+        self.profiles = [
+            _FakeProfile("shared-agent", "Shared Agent"),
+            _FakeProfile("rock-agent", "Rock Agent"),
+        ]
+
+    def _rows(self, user_id):
+        from unittest.mock import patch
+        import channel.web.web_channel as wc
+
+        ctx = _ctx(self.svc, user_id, self.tid)
+        rows = [(profile, "shared-agent", True, None) for profile in self.profiles]
+        with _RegistryScope(self.profiles), \
+             patch("auth.service.get_identity_service", return_value=self.svc), \
+             patch.object(wc, "_iter_tenant_agents", return_value=iter(rows)):
+            data = _tenant_agents_projection(ctx)
+        return {row["id"]: row for row in data["agents"]}
+
+    def test_the_use_range_reports_both_states(self):
+        rows = self._rows(self.cara)
+        self.assertEqual(rows["shared-agent"]["visibility"], "tenant")
+        self.assertEqual(rows["rock-agent"]["visibility"], "private")
+
+    def test_the_state_follows_the_conversion(self):
+        self.svc.set_agent_visibility(
+            agent_id="rock-agent", actor_user_id=self.rock, visibility="tenant")
+        self.assertEqual(self._rows(self.rock)["rock-agent"]["visibility"], "tenant")
 
 
 if __name__ == "__main__":

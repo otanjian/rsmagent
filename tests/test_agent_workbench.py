@@ -156,7 +156,8 @@ class TestWorkbenchProjection(unittest.TestCase):
         self.assertEqual(data["status"], "success")
         self.assertEqual(len(data["agents"]), 2)  # archived excluded
         fields = {"id", "name", "description", "avatar", "agent_type", "is_default",
-                  "can_chat", "unavailable_reason", "position", "category", "tags", "greeting"}
+                  "can_chat", "unavailable_reason", "position", "category", "tags",
+                  "greeting", "visibility"}
         for agent in data["agents"]:
             self.assertEqual(set(agent.keys()), fields,
                              "workbench projection must be a strict whitelist")

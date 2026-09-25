@@ -223,6 +223,7 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/api/workspace/meta", "WorkspaceMetaHandler", "upstream", {"GET": P("tenant", comment="workspace meta (console file panel; handler scopes to the caller's tenant root)")}),
     RouteEntry("/api/workspace/read", "WorkspaceReadHandler", "upstream", {"GET": P("tenant", comment="workspace read (console editor; handler scopes to the caller's tenant root)")}),
     RouteEntry("/api/workspace/write", "WorkspaceWriteHandler", "upstream", {"POST": P("tenant", comment="workspace write (console editor save; origin/CSRF + tenant root boundary)")}),
+    RouteEntry("/api/workspace/user-dir", "WorkspaceUserDirHandler", "fork:workspace-user-dir", {"POST": P("tenant", comment="materialize the caller's own user/<user_id> folder of the addressed Agent before the file panel anchors there; the user id comes from the verified identity, never the body")}),
     RouteEntry("/api/projects", "ProjectsHandler", "upstream", {"GET": P("tenant", comment="projects")}),
     RouteEntry("/api/projects/select", "ProjectSelectHandler", "upstream", {"POST": P("tenant", comment="project select")}),
     RouteEntry("/api/projects/create", "ProjectCreateHandler", "upstream", {"POST": P("tenant", comment="project create")}),

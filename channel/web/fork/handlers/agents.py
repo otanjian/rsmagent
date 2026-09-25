@@ -185,6 +185,24 @@ def _agent_binding_for(ctx: "RequestContext", agent_id: str) -> Optional[Dict]:
     return get_identity_service().get_agent_binding(agent_id)
 
 
+def _agent_visibility(ctx: "RequestContext", agent_id: str,
+                      binding: Optional[Dict] = None) -> str:
+    """``'private'`` or ``'tenant'`` — which of the two states an Agent is in.
+
+    An empty ``private_owner_user_id`` *is* "tenant-shared" (the historical,
+    ownerless binding); the badge, the panel's landing folder and the
+    share/unshare affordances all read this one derivation so they cannot
+    disagree about what the object is. Reported as a fact about the object, not
+    a permission: it says who may see it, never what the caller may do with it.
+
+    ``binding`` lets a caller that already resolved the row (the management
+    projection reads it for ``can_share``/``can_unshare`` too) reuse it instead
+    of asking the identity service a second time.
+    """
+    row = _agent_binding_for(ctx, agent_id) if binding is None else binding
+    return "private" if (row or {}).get("private_owner_user_id") else "tenant"
+
+
 def _tenant_agent_candidates(ctx: "RequestContext", *, include_disabled: bool = False):
     """Yield ``(profile, tenant_default)`` for the tenant's bound Agents.
 
@@ -312,6 +330,13 @@ def _tenant_agents_projection(ctx: "Optional[RequestContext]") -> Dict:
             # directory is *not* here: the gallery has no use for it and it
             # would leak one tenant's layout to another.
             "agent_type": profile.agent_type,
+            # Whether this object is tenant-shared or somebody's private one.
+            # The console needs it to know *where* a session's files live: a
+            # shared Agent keeps each member's files in user/<user_id>, a
+            # private one under the Agent's own root. Derived server-side, like
+            # every other ownership fact, so the client never infers it from
+            # "which roster happened to list this row".
+            "visibility": _agent_visibility(ctx, profile.id),
         })
     data: Dict = {"agents": agents}
     if not agents:
@@ -407,7 +432,9 @@ def _tenant_agents_admin_projection(ctx: "Optional[RequestContext]") -> Dict:
         # ``is_admin`` is the scope's own notion of "may manage a shared object",
         # reused so the button and the predicate that gates it cannot drift.
         is_admin = bool(ObjectScope.from_context(ctx).is_admin)
-        data["visibility"] = "private" if owner_user_id else "tenant"
+        # One derivation shared with the workbench read, so the badge and the
+        # panel's landing folder can never disagree about what this object is.
+        data["visibility"] = _agent_visibility(ctx, profile.id, binding=visibility_binding)
         # Only the owner's own private row can reach here: the management scope
         # already excludes another member's private object, administrators
         # included (spec ``user-private-agent-management``). So ``is_admin`` has
@@ -452,6 +479,108 @@ def _agent_bound_to_tenant(ctx: "Optional[RequestContext]", agent_id: str) -> bo
     from auth.service import get_identity_service
     binding = get_identity_service().get_agent_binding(agent_id)
     return bool(binding and binding.get("tenant_id") == ctx.tenant_id)
+
+
+#: Agent mutations that write their own audit event in the identity service.
+#: Recording a second row here would make one change look like two edits, and
+#: the service's row is the better one (it commits in the same transaction as
+#: the binding it describes).
+_SELF_AUDITED_AGENT_ACTIONS = frozenset(
+    {"set_default", "set_user_default", "set_visibility"}
+)
+
+#: The other lifecycle mutations, in the ``resource.action`` naming the identity
+#: service already uses for its own events (``agent.bind``, ``member.create``…).
+_AGENT_AUDIT_ACTIONS = {
+    "create": "agent.create",
+    "update": "agent.update",
+    "archive": "agent.archive",
+    "delete": "agent.delete",
+    "set_knowledge_mode": "agent.knowledge_mode.set",
+    "bind_channel_instance": "agent.bind_channel_instance",
+}
+
+
+def _audit_agent_action(ctx, action: str, agent_id: str, body: Dict,
+                        result: Any) -> None:
+    """Record an Agent lifecycle change on the audit trail.
+
+    Best-effort: the mutation has already succeeded and committed by the time
+    this runs, so failing the request over a trail write would be worse than the
+    missing row — it would report a saved Agent as an error to a caller who would
+    then save it again.
+    """
+    if action in _SELF_AUDITED_AGENT_ACTIONS:
+        return
+    audit_action = _AGENT_AUDIT_ACTIONS.get(action)
+    if not audit_action or ctx is None:
+        return
+    user_id = getattr(ctx, "user_id", None)
+    if not user_id:
+        return
+    try:
+        from auth.service import get_identity_service
+
+        # The changed fields, not the whole body: a body carries avatars,
+        # skill lists and knowledge ids, and ``sanitize_payload`` truncates long
+        # strings but would still fill the trail with noise. ``result`` is only
+        # consulted for the new name/visibility, which is what a reader of the
+        # trail actually wants to see for an Agent edit.
+        changes: Dict[str, Any] = {"action": action}
+        if isinstance(body, dict):
+            for field_name in ("name", "enabled", "make_default", "agent_type",
+                               "clone_from", "visibility"):
+                if field_name in body:
+                    changes[field_name] = body.get(field_name)
+        if action == "set_knowledge_mode":
+            changes["mode"] = (body or {}).get("mode")
+        if action == "bind_channel_instance":
+            changes["instance_id"] = (body or {}).get("instance_id")
+        if isinstance(result, dict) and result.get("scope"):
+            changes["scope"] = result.get("scope")
+
+        get_identity_service().record_audit(
+            actor_user_id=user_id,
+            actor_username=getattr(ctx, "username", None) or None,
+            tenant_id=getattr(ctx, "tenant_id", None),
+            action=audit_action,
+            target=f"agent:{agent_id}",
+            redacted_changes=changes,
+        )
+    except Exception as exc:
+        logger.warning("[WebChannel] agent audit write failed: %s", exc)
+
+
+def _audit_agent_denied(ctx, action: str, agent_id: str, body: Dict) -> None:
+    """Record a refused (403) Agent mutation.
+
+    Best-effort for the same reason as ``_audit_agent_action``: the refusal is
+    the answer the caller must receive, and a trail fault must not turn a correct
+    "no" into a server error.
+    """
+    if ctx is None:
+        return
+    user_id = getattr(ctx, "user_id", None)
+    if not user_id:
+        return
+    try:
+        from auth.service import get_identity_service
+
+        changes: Dict[str, Any] = {"action": action}
+        for field_name in ("name", "make_default", "visibility"):
+            if isinstance(body, dict) and field_name in body:
+                changes[field_name] = body.get(field_name)
+        get_identity_service().record_audit(
+            actor_user_id=user_id,
+            actor_username=getattr(ctx, "username", None) or None,
+            tenant_id=getattr(ctx, "tenant_id", None),
+            action=_AGENT_AUDIT_ACTIONS.get(action, f"agent.{action}") + ".denied",
+            target=f"agent:{agent_id}",
+            redacted_changes=changes,
+            result="denied",
+        )
+    except Exception as exc:
+        logger.warning("[WebChannel] agent denial audit write failed: %s", exc)
 
 
 class AgentsHandler:
@@ -522,6 +651,12 @@ class AgentsHandler:
         from channel.web.web_channel import _require_deletable_provenance
         from channel.web.web_channel import _require_platform_console
         web.header('Content-Type', 'application/json; charset=utf-8')
+        # Bound before the try so the refusal branch can always name the actor and
+        # the attempt: a guard may raise before these are parsed.
+        ctx = None
+        body: Dict = {}
+        action = ""
+        agent_id = ""
         try:
             with _db_scope() as ctx:
                 body = json.loads(web.data())
@@ -843,15 +978,24 @@ class AgentsHandler:
                     revision_after = service.snapshot().get("revision")
                 except Exception:
                     revision_after = None
+                _audit_agent_action(ctx, action, agent_id, body, result)
                 return json.dumps(
                     {"status": "success", "result": result, "revision": revision_after},
                     ensure_ascii=False,
                 )
-        except web.HTTPError:
+        except web.HTTPError as exc:
             # A guard's structured refusal (403/404/409… with its machine-readable
             # ``code``) must reach the client as-is. The generic branch below
             # stringifies it to ``"403"`` and drops the code, which turns an
             # authorization refusal into an opaque handler error.
+            #
+            # An authorization refusal is worth keeping: "who tried to do what and
+            # was told no" is the question the audit page exists to answer. A 404
+            # for an unknown Agent is not: it is what a stale console tab produces
+            # all day, and recording it would bury the refusals. Only 403 is
+            # written, and never at the cost of the refusal itself.
+            if "403" in str(getattr(exc, "status", "")):
+                _audit_agent_denied(ctx, action, agent_id, body)
             raise
         except Exception as e:
             from agent.admin import StaleRosterError
@@ -860,6 +1004,30 @@ class AgentsHandler:
                 web.ctx.status = "409 Conflict"
                 code = "stale_roster"
             logger.error(f"[WebChannel] Agents POST error: {e}")
+            # An attempted mutation that died is part of the story the trail has
+            # to tell: "agent.create, result=error" is why the console shows an
+            # Agent that half-exists. Recorded best-effort, then answered as
+            # before — the client's error body must not change because of this.
+            if action in _AGENT_AUDIT_ACTIONS:
+                try:
+                    from auth.service import get_identity_service
+                    if getattr(ctx, "user_id", None):
+                        get_identity_service().record_audit(
+                            actor_user_id=ctx.user_id,
+                            actor_username=getattr(ctx, "username", None) or None,
+                            tenant_id=getattr(ctx, "tenant_id", None),
+                            action=_AGENT_AUDIT_ACTIONS[action],
+                            target=f"agent:{agent_id}",
+                            redacted_changes={
+                                "action": action,
+                                "error": type(e).__name__,
+                                "code": code,
+                            },
+                            result="error",
+                        )
+                except Exception as audit_exc:
+                    logger.warning(
+                        "[WebChannel] agent failure audit write failed: %s", audit_exc)
             return json.dumps({"status": "error", "message": str(e), "code": code})
 
 
