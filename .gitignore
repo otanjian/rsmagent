@@ -147,3 +147,8 @@ README*.md
 # rules and context. Re-include it explicitly.
 !openspec/config.yaml
 
+
+# The local marketing demo is its own repository (`marketing-demo/.git`) holding
+# nothing but build output. Committing it here would record a gitlink with no
+# remote to fetch, so a fresh clone could not materialise it; it stays local.
+/marketing-demo/
