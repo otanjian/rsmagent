@@ -778,13 +778,25 @@ def instance_runtime_state(instance_id: str) -> Dict[str, Any]:
 def _runtime_manager():
     """The process's ChannelManager, or None when this process runs no channels.
 
-    Resolved through the app module the same way the platform channel handlers
-    do, so an imported ``channel_instances`` never has to own the manager.
-    """
-    import sys
+    Read from ``common.channel_registry``, the same source the platform channel
+    handlers use: the manager is published there by ``app.py`` and stays
+    reachable without any module having to own it.
 
-    app_module = sys.modules.get("__main__") or sys.modules.get("app")
-    return getattr(app_module, "_channel_mgr", None) if app_module else None
+    Resolving it off the app module does not work. ``app.py`` runs as
+    ``python app.py`` and has no module-level ``_channel_mgr`` at all, so the
+    lookup answered None in every real process — and because the three callers
+    of this function all share it, that one None disabled the *whole* console
+    apply path: creating an instance stored the row without ever opening its
+    connection, rotating credentials left the old ones serving, and stopping or
+    deleting left the bot connected. Nothing reported an error; the effect only
+    appeared after a process restart.
+    """
+    try:
+        from common.channel_registry import get_channel_manager
+
+        return get_channel_manager()
+    except Exception:  # noqa: BLE001 - an unresolvable manager is "no manager"
+        return None
 
 
 def _stop_instance_runtime(instance_id: str) -> None:
