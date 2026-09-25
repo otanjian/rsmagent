@@ -1767,6 +1767,90 @@ class IdentityService:
         return {"agent_id": agent_id, "tenant_id": tenant_id,
                 "private_owner_user_id": owner_user_id, "changed": True}
 
+    def set_agent_visibility(
+        self,
+        *,
+        agent_id: str,
+        actor_user_id: str,
+        visibility: str,
+        owner_user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Move an Agent between "private to one member" and "tenant-shared".
+
+        The console's self-service twin of :meth:`make_agent_tenant_shared` and
+        :meth:`restore_private_agent_owner`. Both primitives keep their
+        admin-only gating — operators, the CLI and their tests depend on it — so
+        this adds the one direction they deliberately do not serve: *the owner
+        sharing their own Agent*, expressed here rather than by widening either
+        primitive's gate.
+
+        ``visibility="tenant"``: the Agent's current private owner, or the
+        tenant's administration, may drop the owner. Sharing hands the object
+        over — the former owner loses their management range with it (spec
+        ``user-private-agent-management``) — so repeating the call as that owner
+        is a refusal rather than a no-op; an administrator repeating it is
+        idempotent.
+
+        ``visibility="private"``: only the tenant's administration may narrow a
+        read range, and it must name the owner explicitly. Recovery is not
+        transfer. The checks are :meth:`restore_private_agent_owner`'s (the
+        tenant default stays shared, the owner must be a member of the Agent's
+        tenant, an already-owned Agent is never re-pointed), so the CLI and the
+        console cannot drift apart on what "make it private again" means.
+        """
+        if not agent_id:
+            raise IdentityServiceError("agent_id is required", code="invalid_agent_id")
+        if visibility not in ("private", "tenant"):
+            raise IdentityServiceError(
+                "visibility must be 'private' or 'tenant'",
+                code="bad_request", status=400)
+        binding = self.get_agent_binding(agent_id)
+        if not binding:
+            raise IdentityServiceError("agent not bound to a tenant",
+                                       code="not_found", status=404)
+        tenant_id = binding["tenant_id"]
+        current_owner = binding.get("private_owner_user_id")
+
+        if visibility == "tenant":
+            is_owner = current_owner is not None and current_owner == actor_user_id
+            if not (is_owner or self._is_control(actor_user_id, tenant_id)):
+                raise IdentityServiceError("forbidden", code="forbidden", status=403)
+            if current_owner is None:
+                return {"agent_id": agent_id, "tenant_id": tenant_id,
+                        "private_owner_user_id": None, "visibility": "tenant",
+                        "changed": False}
+            # The write itself, not the primitive: ``make_agent_tenant_shared``
+            # gates on ``_require_tenant_admin``, which is exactly the caller this
+            # path exists to serve, so delegating would refuse the owner. The
+            # audit action stays the same, so an Agent shared from the console and
+            # one shared by an operator read identically in the audit trail.
+            with self._tx() as con:
+                con.execute(
+                    "UPDATE agent_bindings SET private_owner_user_id=NULL"
+                    " WHERE agent_id=?",
+                    (agent_id,))
+                self._audit_in_tx(
+                    con,
+                    actor_username=None, actor_user_id=actor_user_id,
+                    tenant_id=None, target_tenant_id=tenant_id,
+                    action="agent.make_tenant_shared", target=f"agent:{agent_id}",
+                    redacted_changes={"private_owner_user_id": None},
+                    result="success")
+                con.commit()
+            return {"agent_id": agent_id, "tenant_id": tenant_id,
+                    "private_owner_user_id": None, "visibility": "tenant",
+                    "changed": True}
+
+        self._require_tenant_admin(actor_user_id, tenant_id)
+        if not owner_user_id:
+            raise IdentityServiceError(
+                "owner_user_id is required to make an Agent private",
+                code="bad_request", status=400)
+        restored = self.restore_private_agent_owner(
+            agent_id=agent_id, owner_user_id=owner_user_id,
+            actor_user_id=actor_user_id, reason="console set_visibility")
+        return {**restored, "visibility": "private"}
+
     def release_illegal_tenant_defaults(self) -> Dict[str, Any]:
         """Release tenant defaults that could never have resolved, keeping owners.
 

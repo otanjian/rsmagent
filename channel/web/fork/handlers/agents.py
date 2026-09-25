@@ -355,6 +355,7 @@ def _tenant_agents_admin_projection(ctx: "Optional[RequestContext]") -> Dict:
     """
     from channel.web.web_channel import _iter_tenant_agents
     from channel.web.web_channel import _knowledge_write_authorized
+    from channel.web.web_channel import _agent_binding_for
     from channel.web.web_channel import _resolve_default_agent
     from channel.web.web_channel import _tenant_default_agent_id
     from channel.web.web_channel import _user_default_pointer
@@ -394,6 +395,29 @@ def _tenant_agents_admin_projection(ctx: "Optional[RequestContext]") -> Dict:
         # The console renders its write affordances from this, so it never
         # offers an action the request would 403.
         data["can_write_knowledge"] = _knowledge_write_authorized(ctx, profile.id)
+        # 可见性: which of the two states this object is in, and which conversion
+        # *this caller* may actually make. Derived here rather than on the client
+        # (design D4) — same reason as ``can_write_knowledge`` above: the console
+        # must never render a button whose request would be refused.
+        #
+        # ``private_owner_user_id`` empty *is* "shared" (unchanged semantics);
+        # the badge is a read of that one column, not a second source of truth.
+        visibility_binding = _agent_binding_for(ctx, profile.id)
+        owner_user_id = (visibility_binding or {}).get("private_owner_user_id")
+        # ``is_admin`` is the scope's own notion of "may manage a shared object",
+        # reused so the button and the predicate that gates it cannot drift.
+        is_admin = bool(ObjectScope.from_context(ctx).is_admin)
+        data["visibility"] = "private" if owner_user_id else "tenant"
+        # Only the owner's own private row can reach here: the management scope
+        # already excludes another member's private object, administrators
+        # included (spec ``user-private-agent-management``). So ``is_admin`` has
+        # nothing to add on the share side.
+        data["can_share"] = bool(
+            owner_user_id is not None
+            and owner_user_id == getattr(ctx, "user_id", None))
+        # Narrowing a read range again is administration, never the owner's own
+        # call — sharing handed the object over, it was not lent.
+        data["can_unshare"] = bool(owner_user_id is None and is_admin)
         agents.append(data)
     return {"agents": agents, "default_agent_id": _tenant_default_agent_id(ctx),
             "user_default": user_default,
@@ -716,6 +740,57 @@ class AgentsHandler:
                     # it doesn't participate in the roster revision guard.
                     _require_agent_action(ctx, agent_id, "edit", "agent.edit")
                     result = service.set_knowledge_mode(agent_id, body.get("mode", ""))
+                elif action == "set_visibility":
+                    # 私有 ↔ 租户共享 (change ``show-and-toggle-agent-visibility``).
+                    # The binding lives in the identity database, so this is not a
+                    # roster edit: it neither participates in the roster revision
+                    # guard nor needs any Agent's cached runtime dropped — hence
+                    # the early return below, like ``bind_channel_instance``.
+                    #
+                    # Who may make the move is decided by the service, not here:
+                    # the one direction this adds over the operator primitives is
+                    # *the owner sharing their own object*, and expressing that as
+                    # a resource grant would be wrong (it is ownership, not a
+                    # grant — see ``set_agent_visibility``).
+                    from auth.service import IdentityServiceError, get_identity_service
+                    if ctx is None or not ctx.tenant_id:
+                        _raise_forbidden()
+                    # Binding first, so a foreign (or missing) Agent is "not
+                    # found" rather than "forbidden": every other path that
+                    # addresses an Agent by id says 404 for another tenant's
+                    # object, and answering 403 here would both disagree with them
+                    # and confirm that the id exists somewhere the caller cannot
+                    # see. ``_require_tenant_agent_binding`` is not used directly
+                    # because an empty id makes it fall back to the tenant's
+                    # default Agent — here that would convert the wrong object —
+                    # and its 404 body carries no machine-readable ``code``.
+                    if not agent_id:
+                        return json.dumps(
+                            {"status": "error", "code": "invalid_agent_id",
+                             "message": "agent id is required"},
+                            ensure_ascii=False)
+                    if not _agent_bound_to_tenant(ctx, agent_id):
+                        raise web.HTTPError(
+                            "404 Not Found", {"Content-Type": "application/json"},
+                            json.dumps({"status": "error", "message": "agent not found",
+                                        "code": "not_found"}))
+                    try:
+                        result = get_identity_service().set_agent_visibility(
+                            agent_id=agent_id, actor_user_id=ctx.user_id,
+                            visibility=str(body.get("visibility") or ""),
+                            owner_user_id=(body.get("owner_user_id") or None),
+                        )
+                    except IdentityServiceError as exc:
+                        # A business refusal with its own code (403 forbidden, 409
+                        # agent_is_tenant_default / agent_already_owned, 400
+                        # bad_request) must reach the console as-is, not degrade
+                        # into the handler's opaque 200-with-status:error.
+                        from channel.web.auth_handlers import _error
+                        _error(exc.args[0], exc.status, exc.code)
+                    return json.dumps(
+                        {"status": "success", "result": result},
+                        ensure_ascii=False,
+                    )
                 elif action == "bind_channel_instance":
                     # The instance roster (channel_instances[].agent_id in the
                     # shared team.json) decides where *every* tenant's inbound IM
