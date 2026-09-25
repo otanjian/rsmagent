@@ -144,6 +144,9 @@ class InterfaceTests(_Fixture):
         # The built-in tool registry is loaded from source; the tenant admin
         # must see the catalog, not an empty grant-filtered list.
         self.assertTrue(data["tools"], data)
+        tools = {tool["name"]: tool for tool in data["tools"]}
+        self.assertTrue(tools["requirements_delivery"]["requires_explicit_binding"])
+        self.assertFalse(tools["read"]["requires_explicit_binding"])
 
     def test_a_plain_member_is_refused_the_skills_catalog(self):
         self._patch_db()

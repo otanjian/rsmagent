@@ -21,6 +21,7 @@ _CREATE_LOCK = threading.RLock()
 class RequirementsDeliveryTool(BaseTool):
     name = "requirements_delivery"
     self_authorized = True
+    requires_explicit_binding = True
     description = (
         "客户需求交付：catalog 查看当前用户可用的基础工具和已有智能体；"
         "create_agent 按业务设计创建当前登录用户的私有智能体（相同 project_key 幂等）；"
@@ -76,15 +77,32 @@ class RequirementsDeliveryTool(BaseTool):
         if not (ctx.is_platform_admin or ctx.is_tenant_admin or "chat.use" in ctx.permissions):
             raise PermissionError("无对话权限")
         binding = svc.get_agent_binding(ident.agent_id)
-        if (not binding or binding["tenant_id"] != ident.tenant_id
-                or not svc.check_resource_action(ident.user_id, ident.tenant_id,
-                                                "agent", ident.agent_id, "use")):
+        if not self._can_use_agent(svc, ctx, binding):
             raise PermissionError("无权使用当前顾问")
         profile = get_agent_registry().get(ident.agent_id)
         # Opt-in only: adding this builtin must not widen every existing agent.
         if self.name not in (profile.tools_allowlist or []) or self.name in (profile.tools_denylist or []):
             raise PermissionError("当前智能体未配置需求交付工具")
         return svc, ctx, profile
+
+    @staticmethod
+    def _can_use_agent(svc, ctx, binding):
+        from auth.object_scope import ObjectScope, USE
+
+        # Match Web chat: scope/ownership is checked before admin exemptions.
+        if not ObjectScope.from_context(ctx).allows_agent(binding, action=USE):
+            return False
+        if ctx.is_platform_admin or ctx.is_tenant_admin:
+            return True
+        agent_id = binding["agent_id"]
+        if svc.check_resource_action(ctx.user_id, ctx.tenant_id, "agent",
+                                     "agent:" + agent_id, "use", permission="agent.use"):
+            return True
+        # The shared default is also reachable with the functional permission,
+        # just as at the authenticated Web chat entry point.
+        return (not binding.get("private_owner_user_id")
+                and "agent.use" in ctx.permissions
+                and svc.resolve_default_agent(ctx.tenant_id, ctx.user_id)["agent_id"] == agent_id)
 
     def _allowed_tools(self, svc, ctx, profile):
         from agent.tools.tool_manager import ToolManager
@@ -99,8 +117,11 @@ class RequirementsDeliveryTool(BaseTool):
         for name in sorted(CHILD_TOOLS):
             if not is_tool_allowed(name, caps):
                 continue
-            if not svc.check_resource_action(ctx.user_id, ctx.tenant_id, "tool",
-                                             "builtin:" + name, "execute", permission="tool.execute"):
+            resource_id = "builtin:" + name
+            if not (svc.check_resource_action(ctx.user_id, ctx.tenant_id, "tool",
+                                              resource_id, "execute", permission="tool.execute")
+                    or svc.tenant_admin_may_execute_tool(ctx.user_id, ctx.tenant_id,
+                                                        resource_id, agent_id=profile.id)):
                 continue
             if name not in manager.tool_classes:
                 continue
@@ -127,11 +148,7 @@ class RequirementsDeliveryTool(BaseTool):
                 agents = []
                 for binding in svc.agents_for_tenant(ctx.tenant_id):
                     aid = binding["agent_id"]
-                    owner = binding.get("private_owner_user_id")
-                    if owner and owner != ctx.user_id:
-                        continue
-                    if not (ctx.is_platform_admin or ctx.is_tenant_admin or svc.check_resource_action(
-                            ctx.user_id, ctx.tenant_id, "agent", aid, "use")):
+                    if not self._can_use_agent(svc, ctx, binding):
                         continue
                     item = roster.get(aid)
                     if not item or not item.get("enabled", True):

@@ -96,6 +96,10 @@ class BaseTool:
     # can create their own todo/reminder in chat just as the console page lets
     # them - without the administrator having to grant the tool explicitly.
     self_authorized: bool = False
+    # Default tool inheritance must not imply an explicit opt-in. Expose this
+    # in the management catalog so the checkbox can persist the required
+    # Agent allowlist entry. Each opt-in tool still enforces it at runtime.
+    requires_explicit_binding: bool = False
 
     def renders_own_cards(self, arguments: dict) -> bool:
         """Whether this call reports itself, so the caller should stay quiet.

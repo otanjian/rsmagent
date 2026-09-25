@@ -108,6 +108,94 @@ def test_existing_agents_do_not_implicitly_gain_delivery(env):
         assert RequirementsDeliveryTool().execute(spec()).status == "error"
 
 
+@pytest.mark.parametrize("allowlist", [None, []])
+def test_explicit_selection_makes_delivery_visible_to_model_next_turn(env, allowlist):
+    from agent.protocol.agent_stream import AgentStreamExecutor
+
+    _, admin, identity, _, _ = env
+    tool = RequirementsDeliveryTool()
+    executor = AgentStreamExecutor(agent=None, model=None, system_prompt="", tools=[tool])
+    admin.update_agent("advisor", tools_allowlist=allowlist)
+    with use_identity(identity):
+        assert executor._select_tools_for_injection() == []
+        assert tool.execute({"action": "catalog"}).status == "error"
+        admin.update_agent("advisor", tools_allowlist=["read", "write", "requirements_delivery"])
+        assert executor._select_tools_for_injection() == [tool]
+        assert tool.execute({"action": "catalog"}).status == "success"
+        admin.update_agent("advisor", tools_denylist=["requirements_delivery"])
+        assert executor._select_tools_for_injection() == []
+        assert tool.execute({"action": "catalog"}).status == "error"
+
+
+def member_identity(env, roles):
+    svc, _, identity, _, _ = env
+    svc.create_member(actor_user_id=identity.user_id, tenant_id=identity.tenant_id,
+                      operation="create-new", username="colleague", display_name="Colleague",
+                      temporary_password="TemporaryPassword123!", roles=roles)
+    initial = svc.login("colleague", "TemporaryPassword123!")
+    svc.change_password(initial.token, "TemporaryPassword123!", "FinalPassword123!")
+    login = svc.login("colleague", "FinalPassword123!")
+    return identity.derive(user_id=login.user_id,
+                           web_auth_session_id=svc.verify_session(login.token)["session"]["id"])
+
+
+def test_tenant_admin_can_use_shared_advisor_without_per_agent_grant(env, monkeypatch):
+    svc, _, owner, _, _ = env
+    svc.make_agent_tenant_shared(agent_id="advisor", actor_user_id=owner.user_id)
+    identity = member_identity(env, ["tenant_admin"])
+    # The web entry point admits tenant admins even without per-object grants.
+    original = svc.check_resource_action
+    monkeypatch.setattr(svc, "check_resource_action",
+                        lambda u, t, kind, *a, **k: False if kind == "agent" else original(u, t, kind, *a, **k))
+    with use_identity(identity):
+        tool = RequirementsDeliveryTool()
+        assert tool.is_available()
+        result = tool.execute({"action": "catalog"})
+        assert result.status == "success", result.result
+        assert "advisor" in [a["id"] for a in result.result["agents"]]
+
+
+def test_member_with_namespaced_agent_grant_can_use_and_find_advisor(env):
+    svc, _, owner, _, _ = env
+    svc.make_agent_tenant_shared(agent_id="advisor", actor_user_id=owner.user_id)
+    svc.create_role(owner.user_id, owner.tenant_id, "advisor_user", "Advisor User",
+                    permissions=["chat.use", "agent.use"], resource_grants=[{
+                        "resource_kind": "agent", "resource_id": "agent:advisor", "action": "use"}])
+    identity = member_identity(env, ["advisor_user"])
+    assert svc.check_resource_action(identity.user_id, identity.tenant_id,
+                                     "agent", "agent:advisor", "use", permission="agent.use")
+    with use_identity(identity):
+        tool = RequirementsDeliveryTool()
+        assert tool.is_available()
+        result = tool.execute({"action": "catalog"})
+        assert result.status == "success", result.result
+        assert "advisor" in [a["id"] for a in result.result["agents"]]
+
+
+def test_tenant_admin_cannot_use_another_users_private_advisor(env):
+    identity = member_identity(env, ["tenant_admin"])
+    with use_identity(identity):
+        assert not RequirementsDeliveryTool().is_available()
+        assert RequirementsDeliveryTool().execute({"action": "catalog"}).status == "error"
+
+
+def test_tenant_admin_tool_catalog_matches_execution_exemption(env, monkeypatch):
+    svc, _, owner, _, _ = env
+    svc.make_agent_tenant_shared(agent_id="advisor", actor_user_id=owner.user_id)
+    svc.set_tenant_resource_grants(actor_user_id=owner.user_id, tenant_id=owner.tenant_id,
+                                   grants=[{"resource_kind": "tool", "resource_id": "builtin:read", "action": "execute"}],
+                                   expected_version=svc.get_tenant(owner.tenant_id)["version"])
+    identity = member_identity(env, ["tenant_admin"])
+    # Role-level tool grants can be absent while the tenant still has read.
+    original = svc.check_resource_action
+    monkeypatch.setattr(svc, "check_resource_action",
+                        lambda u, t, kind, *a, **k: False if kind == "tool" else original(u, t, kind, *a, **k))
+    with use_identity(identity):
+        result = RequirementsDeliveryTool().execute({"action": "catalog"})
+        assert result.status == "success", result.result
+        assert "read" in result.result["tools"]
+
+
 def test_failed_prompt_write_compensates_unbound_agent(env, monkeypatch):
     svc, admin, identity, _, source = env
     def fail(*a, **k):

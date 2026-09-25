@@ -45,9 +45,11 @@ class ToolsHandler:
                             "resource_id": f"builtin:{name}",
                             "name": name,
                             "description": desc,
+                            "requires_explicit_binding": bool(cls.requires_explicit_binding),
                         })
                     except Exception:
-                        tools.append({"resource_id": f"builtin:{name}", "name": name, "description": ""})
+                        tools.append({"resource_id": f"builtin:{name}", "name": name, "description": "",
+                                      "requires_explicit_binding": bool(getattr(cls, "requires_explicit_binding", False))})
                 # MCP tools: namespaced by their connection/server name, matching
                 # the auth catalog projection convention.
                 mcp_instances = getattr(tm, "_mcp_tool_instances", None) or {}
@@ -402,5 +404,4 @@ class SkillContentHandler:
         except Exception as e:
             logger.error(f"[WebChannel] Skill write error: {e}")
             return json.dumps({"status": "error", "message": str(e)})
-
 
