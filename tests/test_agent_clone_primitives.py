@@ -17,6 +17,16 @@ import pytest
 from agent import team
 from agent.admin import CLONED_FILES, AgentAdminError, AgentAdminService, StaleRosterError
 from agent.registry import AgentRegistry, set_agent_registry
+from common import i18n
+from common.i18n import ZH
+
+
+@pytest.fixture
+def lang():
+    """Restore the process language after each test; these tests flip it."""
+    original = i18n.get_language()
+    yield i18n.set_language
+    i18n.set_language(original)
 
 
 def _pin(settings):
@@ -120,6 +130,76 @@ def test_clone_copies_the_persona_and_leaves_runtime_state_behind(admin):
         assert (nested / filename).is_file()
     assert (nested / "scheduler").is_dir()
     assert set(CLONED_FILES) == {"AGENT.md", "USER.md", "RULE.md", "BOOTSTRAP.md"}
+
+
+def test_clone_retargets_the_layout_section_to_its_own_workspace(admin, lang):
+    """A copied RULE.md must not document the workspace it was copied from.
+
+    ``{{WORKSPACE_LAYOUT}}`` is substituted when a workspace is scaffolded, so
+    the source's RULE.md names the *source* directory. Copied verbatim, the
+    clone reads that path as its own and would write its private files there.
+    """
+    lang(ZH)
+    service, root, _ = admin
+    service.create_agent("sales", "Sales")
+    source_rule = (root / "agents" / "sales" / "RULE.md").read_text(encoding="utf-8")
+    assert "agents/sales/" in source_rule
+
+    service.clone_agent("sales", "sales-globex")
+
+    rule = (root / "agents" / "sales-globex" / "RULE.md").read_text(encoding="utf-8")
+    assert "agents/sales-globex/" in rule
+    # The tree row is the directory the clone actually owns.
+    assert "└── sales-globex/" in rule
+    assert "agents/sales/" not in rule
+    # The source is not retargeted: only the copy is.
+    assert (root / "agents" / "sales" / "RULE.md").read_text(
+        encoding="utf-8") == source_rule
+
+
+def test_clone_keeps_text_appended_below_the_layout_section(admin, lang):
+    """The section is the deployment's; what a source added under it is not.
+
+    A workspace records its knowledge-base mode (among other things) right
+    after the section, so re-rendering has to stop at the section's last line.
+    """
+    lang(ZH)
+    service, root, _ = admin
+    service.create_agent("sales", "Sales")
+    rule_path = root / "agents" / "sales" / "RULE.md"
+    lines = rule_path.read_text(encoding="utf-8").split("\n")
+    closer = next(
+        i for i, line in enumerate(lines) if line.startswith("- **每位用户私有**"))
+    lines.insert(closer + 1, "本智能体当前为「独立」模式。")
+    rule_path.write_text("\n".join(lines), encoding="utf-8")
+
+    service.clone_agent("sales", "sales-globex")
+
+    rule = (root / "agents" / "sales-globex" / "RULE.md").read_text(encoding="utf-8")
+    assert "本智能体当前为「独立」模式。" in rule
+    assert "agents/sales-globex/" in rule
+
+
+def test_clone_turns_a_root_layout_into_the_clones_agent_layout(admin, lang):
+    """Cloning the default Agent moves the copy out of the shared root.
+
+    That is a different tree, not just a different name: the source's section
+    says the workspace *is* the root, which is false for ``agents/<id>``.
+    """
+    lang(ZH)
+    from agent.prompt.workspace import _get_rule_template
+
+    service, root, _ = admin
+    # The default Agent's workspace is not under ``agents/``, so the template
+    # rendered for it describes the single-Agent layout.
+    (root / "primary" / "RULE.md").write_text(
+        _get_rule_template(str(root / "primary")), encoding="utf-8")
+
+    service.clone_agent("primary", "primary-globex")
+
+    rule = (root / "agents" / "primary-globex" / "RULE.md").read_text(encoding="utf-8")
+    assert "你的工作区就是共享根" not in rule
+    assert "agents/primary-globex/" in rule
 
 
 def test_cloning_the_default_agent_into_its_own_subtree_terminates(admin):

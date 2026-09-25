@@ -9,7 +9,7 @@
     "upstream_logo": "assets/img/cow-logo.png"
   },
   "version": "2.3",
-  "site_url": "",
+  "site_url": "https://rd.rsmxm.com.cn/help",
   "demo_image": "assets/img/home-demo-console.jpg",
   "nav": {
     "index": "nav.home",

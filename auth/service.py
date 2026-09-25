@@ -2436,7 +2436,45 @@ class IdentityService:
             return set()
         grants = self._role_grants_for_membership(membership["id"])
         allowed = resource_ids_for(grants, kind, action)
+        if kind == "model":
+            allowed = self._within_tenant_model_limit(tenant_id, action, allowed)
         return allowed | owned
+
+    def _within_tenant_model_limit(self, tenant_id: str, action: str, allowed: set) -> set:
+        """Narrow a member's ``model`` grants to the tenant's allocatable limit.
+
+        ``tenant_resource_grants`` is the platform's ceiling for a tenant: the
+        models the tenant may allocate at all. Narrowing it does not rewrite the
+        roles that already held a wider set — a role is only rewritten when
+        someone edits it — so without this step a stale ``role_resource_grants``
+        row would keep a model the platform removed from the tenant usable, and
+        the chat picker would go on offering it. A grant may not confer access to
+        a resource that was taken out of the tenant's allocation (design §5:
+        不能因 grant 存在就访问被移出的资源).
+
+        Applied to ``model`` alone: model is the one kind whose ``_project_owned_ids``
+        is ``None`` ("global, controlled by tenant grants"). Tenant-owned MCP
+        tools are deliberately absent from ``tenant_resource_grants``, and a
+        tenant admin's tool exemption is decided elsewhere, so a ceiling here
+        would be wrong for ``tool``.
+
+        Both tables are written from the same catalog ``resource_id``
+        (``provider:{pid}:{code}``), so the ids compare as-is.
+        """
+        limit = resource_ids_for(self._tenant_grants(tenant_id), "model", action)
+        return {rid for rid in allowed if rid in limit}
+
+    def _tenant_model_ids(self, tenant_id: str) -> set:
+        """The model ids the platform allocated to a tenant, across every action.
+
+        The *union* form of :meth:`_within_tenant_model_limit`'s limit, for
+        read-only projections that answer "does this tenant have any model at
+        all" rather than one action's question.
+        """
+        limit: set = set()
+        for action in RESOURCE_ACTIONS["model"]:
+            limit |= resource_ids_for(self._tenant_grants(tenant_id), "model", action)
+        return limit
 
     def grantable_resource_ids(self, tenant_id: str, kind: str, action: str,
                                owned_ids) -> set:
@@ -3388,7 +3426,8 @@ class IdentityService:
             "status": "success",
             "effective_permissions": sorted(permissions),
             "authorization_mode": mode,
-            "resource_actions": self._effective_resource_actions(permissions, grants, mode),
+            "resource_actions": self._effective_resource_actions(permissions, grants, mode,
+                                                                 tenant_id=tenant_id),
             "is_tenant_admin": is_admin,
             "consumers": self._consumer_availability(),
             # Per-action service availability (design D2). Additive: an old
@@ -3410,7 +3449,8 @@ class IdentityService:
         from auth.capability_matrix import feature_action_availability
         return feature_action_availability()
 
-    def _effective_resource_actions(self, permissions, grants, mode) -> Dict[str, List[str]]:
+    def _effective_resource_actions(self, permissions, grants, mode,
+                                    tenant_id=None) -> Dict[str, List[str]]:
         """Report which resource actions are available per kind.
 
         For a platform admin this reports the enabled actions for each known
@@ -3418,7 +3458,13 @@ class IdentityService:
         AND a grant must exist — the report is an intersection, not a grant.
         Known kinds/actions only: unknown names never appear, so ``all`` cannot
         be used to call arbitrary names.
+
+        ``model`` is additionally capped by the tenant's allocatable limit: a
+        role grant outside it is not exercisable (see
+        :meth:`_within_tenant_model_limit`), so reporting the action would
+        advertise something the request would refuse.
         """
+        model_limit = self._tenant_model_ids(tenant_id) if tenant_id else None
         out: Dict[str, List[str]] = {}
         for kind, actions in RESOURCE_ACTIONS.items():
             allowed = []
@@ -3426,11 +3472,21 @@ class IdentityService:
                 perm = _resource_permission(kind, action)
                 if mode == "all":
                     allowed.append(action)
-                elif perm and perm in permissions and resource_ids_for(grants, kind, action):
+                elif perm and perm in permissions and self._granted_for_action(
+                        grants, kind, action, model_limit):
                     allowed.append(action)
             if allowed:
                 out[kind] = allowed
         return out
+
+    @staticmethod
+    def _granted_for_action(grants, kind: str, action: str,
+                            model_limit: Optional[set]) -> bool:
+        """Whether any grant exists for kind+action, tenant limit respected."""
+        ids = resource_ids_for(grants, kind, action)
+        if kind == "model" and model_limit is not None:
+            ids = {rid for rid in ids if rid in model_limit}
+        return bool(ids)
 
     def _console_pages_projection(self, user, tenant, permissions, role_codes, is_admin,
                                   grants=None, mode="role") -> Dict[str, Any]:
@@ -3489,6 +3545,12 @@ class IdentityService:
                 return True
             return f"nav:{pid}" in menu_grants
 
+        # The tenant's allocatable model limit is a ceiling on model grants (see
+        # ``_within_tenant_model_limit``). The console projection has to ask the
+        # same intersected question the endpoint and the runtime gate ask, or the
+        # page would open onto rows that are no longer there.
+        model_limit = self._tenant_model_ids(tenant["id"]) if mode != "all" else None
+
         def resource_state(kind: str, action: str, perm: str) -> bool:
             """True when the identity may read this resource kind (catalog open)."""
             if mode == "all":
@@ -3496,7 +3558,7 @@ class IdentityService:
             if perm and perm not in permissions:
                 return False
             # A catalog read requires an explicit read grant (or kind grant).
-            return resource_ids_for(grants, kind, action) != set()
+            return self._granted_for_action(grants, kind, action, model_limit)
 
         def model_catalog_open() -> bool:
             """Whether the caller has any model they may read *or* use.
@@ -3507,7 +3569,8 @@ class IdentityService:
             ``read`` alone would hide it from a member whose only model grant is
             ``use`` while the endpoint behind the page returns rows — the
             "page closed, data open" disagreement this projection exists to
-            prevent.
+            prevent. Both sides apply the tenant's model limit, so a grant the
+            tenant may no longer allocate opens neither.
             """
             if mode == "all":
                 return True
@@ -3515,7 +3578,7 @@ class IdentityService:
                 perm = _resource_permission("model", action)
                 if perm and perm not in permissions:
                     continue
-                if resource_ids_for(grants, "model", action) != set():
+                if self._granted_for_action(grants, "model", action, model_limit):
                     return True
             return False
 
@@ -3538,7 +3601,9 @@ class IdentityService:
                 # the page is open while this report says the directory is shut.
                 "catalog": model_catalog_open(),
                 "config": (mode == "all") or is_platform_admin,
-                "execution": (mode == "all") or ("model.use" in permissions and resource_ids_for(grants, "model", "use") != set()),
+                "execution": (mode == "all") or ("model.use" in permissions
+                                                 and self._granted_for_action(
+                                                     grants, "model", "use", model_limit)),
             },
             "agents": {
                 "catalog": (mode == "all") or ("agent.read" in permissions and resource_ids_for(grants, "agent", "read") != set()),
@@ -5016,6 +5081,55 @@ class IdentityService:
             subject=subject,
         )
 
+    def _validated_identity_triple(self, provider: str, issuer: str,
+                                   subject: str) -> tuple:
+        """Normalize and validate an external identity triple.
+
+        Split out of :meth:`_bind_external_identity_row` so the surfaces that
+        establish a binding *inside* their own transaction (the automatic sender
+        claim) enforce byte-identical rules to the administrative insert. A
+        second copy of this check is how a "subject too long" refusal would one
+        day apply on one path and not the other.
+        """
+        provider = (provider or "").strip().lower()
+        issuer = (issuer or "").strip()
+        subject = (subject or "").strip()
+        if not _PROVIDER_RE.fullmatch(provider):
+            raise IdentityServiceError(
+                "invalid provider", code="bad_request", status=400)
+        if not subject or len(subject) > 512 or len(issuer) > 256:
+            raise IdentityServiceError(
+                "subject is required and issuer/subject are too long",
+                code="bad_request", status=400)
+        return provider, issuer, subject
+
+    def _resolve_identity_binding(self, *, user_id: str, provider: str,
+                                  issuer: str, subject: str) -> str:
+        """The ``external_identities`` row for this triple, created when new.
+
+        Every path that establishes a personal route goes through this, so the
+        two invariants that make a binding safe cannot drift: one triple belongs
+        to exactly one user (a triple bound elsewhere is a conflict, never a
+        silent rebind), and a new row is created through the same validated,
+        audited insert the administrative surfaces use.
+        """
+        provider, issuer, subject = self._validated_identity_triple(
+            provider, issuer, subject)
+        existing = self._store.execute(
+            "SELECT id, user_id FROM external_identities"
+            " WHERE provider=? AND issuer=? AND subject=?",
+            (provider, issuer, subject),
+        )
+        if existing:
+            if existing[0]["user_id"] != user_id:
+                raise IdentityServiceError(
+                    "external identity is already bound",
+                    code="conflict", status=409)
+            return existing[0]["id"]
+        return self._bind_external_identity_row(
+            actor_user_id=user_id, user_id=user_id,
+            provider=provider, issuer=issuer, subject=subject)["id"]
+
     def _bind_external_identity_row(
         self,
         *,
@@ -5031,16 +5145,30 @@ class IdentityService:
         clear pending attempts identically — a divergence here would be a
         security-relevant difference between the two entry points.
         """
-        provider = (provider or "").strip().lower()
-        issuer = (issuer or "").strip()
-        subject = (subject or "").strip()
-        if not _PROVIDER_RE.fullmatch(provider):
-            raise IdentityServiceError(
-                "invalid provider", code="bad_request", status=400)
-        if not subject or len(subject) > 512 or len(issuer) > 256:
-            raise IdentityServiceError(
-                "subject is required and issuer/subject are too long",
-                code="bad_request", status=400)
+        with self._tx() as con:
+            return self._bind_external_identity_in_tx(
+                con, actor_user_id=actor_user_id, user_id=user_id,
+                provider=provider, issuer=issuer, subject=subject)
+
+    def _bind_external_identity_in_tx(
+        self,
+        con,
+        *,
+        actor_user_id: str,
+        user_id: str,
+        provider: str,
+        issuer: str,
+        subject: str,
+    ) -> Dict[str, Any]:
+        """The insert body of :meth:`_bind_external_identity_row`.
+
+        Callable inside a *caller's* transaction so a write that must be one
+        atomic step with the binding (the automatic sender claim stamps the
+        instance in the same transaction) does not have to open a second
+        connection — which would deadlock against its own write lock.
+        """
+        provider, issuer, subject = self._validated_identity_triple(
+            provider, issuer, subject)
         target = self._find_user_by_id(user_id)
         if not target:
             raise IdentityServiceError("user not found", code="not_found", status=404)
@@ -5048,37 +5176,36 @@ class IdentityService:
             raise IdentityServiceError("user is inactive", code="bad_request", status=400)
         actor = self._find_user_by_id(actor_user_id) or {}
         binding_id = self._new_id("ext")
-        with self._tx() as con:
-            try:
-                con.execute(
-                    "INSERT INTO external_identities"
-                    " (id, user_id, provider, issuer, subject)"
-                    " VALUES (?,?,?,?,?)",
-                    (binding_id, user_id, provider, issuer, subject),
-                )
-            except sqlite3.IntegrityError:
-                raise IdentityServiceError(
-                    "external identity is already bound",
-                    code="conflict", status=409)
-            self._audit_in_tx(
-                con,
-                actor_user_id=actor_user_id,
-                actor_username=actor.get("username"),
-                action="external_identity.bind",
-                target=f"user:{user_id}",
-                redacted_changes={
-                    "provider": provider, "issuer": issuer,
-                    "subject": subject, "binding_id": binding_id,
-                },
-            )
-            # The triple is no longer pending: the next inbound resolves to a
-            # user, so keeping it in the "waiting to be bound" list would invite
-            # an administrator to bind it twice.
+        try:
             con.execute(
-                "DELETE FROM external_identity_attempts"
-                " WHERE provider=? AND issuer=? AND subject=?",
-                (provider, issuer, subject),
+                "INSERT INTO external_identities"
+                " (id, user_id, provider, issuer, subject)"
+                " VALUES (?,?,?,?,?)",
+                (binding_id, user_id, provider, issuer, subject),
             )
+        except sqlite3.IntegrityError:
+            raise IdentityServiceError(
+                "external identity is already bound",
+                code="conflict", status=409)
+        self._audit_in_tx(
+            con,
+            actor_user_id=actor_user_id,
+            actor_username=actor.get("username"),
+            action="external_identity.bind",
+            target=f"user:{user_id}",
+            redacted_changes={
+                "provider": provider, "issuer": issuer,
+                "subject": subject, "binding_id": binding_id,
+            },
+        )
+        # The triple is no longer pending: the next inbound resolves to a
+        # user, so keeping it in the "waiting to be bound" list would invite
+        # an administrator to bind it twice.
+        con.execute(
+            "DELETE FROM external_identity_attempts"
+            " WHERE provider=? AND issuer=? AND subject=?",
+            (provider, issuer, subject),
+        )
         return {
             "id": binding_id, "user_id": user_id, "provider": provider,
             "issuer": issuer, "subject": subject,
@@ -5628,27 +5755,8 @@ class IdentityService:
                 raise IdentityServiceError(
                     "a personal route on a shared instance must target your own"
                     " private agent", code="forbidden", status=403)
-        provider = (provider or "").strip().lower()
-        issuer = (issuer or "").strip()
-        subject = (subject or "").strip()
-        existing = self._store.execute(
-            "SELECT id, user_id FROM external_identities"
-            " WHERE provider=? AND issuer=? AND subject=?",
-            (provider, issuer, subject),
-        )
-        if existing:
-            if existing[0]["user_id"] != user_id:
-                raise IdentityServiceError(
-                    "external identity is already bound",
-                    code="conflict", status=409)
-            identity_id = existing[0]["id"]
-        else:
-            # Same validation, audit and pending-attempt cleanup as the admin
-            # surfaces; a divergence here would be a security-relevant
-            # difference between the self-service and administrative paths.
-            identity_id = self._bind_external_identity_row(
-                actor_user_id=user_id, user_id=user_id,
-                provider=provider, issuer=issuer, subject=subject)["id"]
+        identity_id = self._resolve_identity_binding(
+            user_id=user_id, provider=provider, issuer=issuer, subject=subject)
         with self._tx() as con:
             con.execute(
                 "INSERT INTO personal_channel_links(tenant_id, user_id,"
@@ -5659,9 +5767,26 @@ class IdentityService:
                 " target_agent_id=excluded.target_agent_id",
                 (tenant_id, user_id, instance_id, identity_id, target_agent_id),
             )
+            self._stamp_sender_binding_in_tx(con, instance_id)
             con.commit()
         return self.personal_channel_link(
             tenant_id=tenant_id, user_id=user_id, instance_id=instance_id)
+
+    def _stamp_sender_binding_in_tx(self, con, instance_id: str) -> None:
+        """Mark that this instance has established its sender identity once.
+
+        Written by *every* path that creates a route, not only the automatic
+        claim: after an owner unbinds, "the first sender claims the instance"
+        must not re-open, or unbinding would hand the channel to whoever
+        messages next. ``COALESCE`` keeps the earliest moment, so a re-link is
+        not recorded as a new first binding.
+        """
+        con.execute(
+            "UPDATE tenant_channel_instances"
+            " SET sender_binding_at=COALESCE(sender_binding_at, unixepoch())"
+            " WHERE id=?",
+            (instance_id,),
+        )
 
     def unlink_personal_channel(self, *, tenant_id: str, user_id: str,
                                 instance_id: str) -> None:
@@ -8505,10 +8630,18 @@ class IdentityService:
         ``instance_id`` because that is how an inbound message and a hot restart
         name their channel; the owning ``tenant_id`` comes back with the row and
         is the authoritative anchor (see ``channel/external_identity.py``).
+
+        ``created_by`` and ``sender_binding_at`` are part of that metadata and not
+        an internal detail: the automatic sender binding decides "whose account
+        is this channel's" from ``created_by`` on a shared instance, and
+        ``sender_binding_at`` is the only state in which it may claim one at all.
+        A caller that had to open its own query for either would be a second
+        definition of the same rule.
         """
         rows = self._store.execute(
             "SELECT id, tenant_id, channel_type, display_name, agent_id, active,"
-            " version, scope, owner_user_id, governance_disabled_at,"
+            " version, scope, owner_user_id, created_by, sender_binding_at,"
+            " governance_disabled_at,"
             " governance_disabled_by FROM tenant_channel_instances"
             " WHERE id=?",
             (instance_id,),
@@ -10010,6 +10143,288 @@ class IdentityService:
         self._reconcile_personal_runtime(instance_id)
         return {"instance_id": instance_id, "link": None}
 
+    # --- automatic sender binding (change auto-bind-channel-sender) --------
+
+    def claim_instance_for_sender(
+        self, *, instance_id: str, provider: str, issuer: str, subject: str,
+        is_group: bool = False,
+    ) -> Dict[str, Any]:
+        """Bind a never-bound instance to the sender who wrote first.
+
+        The rule this implements: whoever sets a channel up should not have to
+        prove their account with a binding code — the first private message *is*
+        the proof of which account is behind the channel. The member the sender
+        is bound to is the instance's **responsible member** (its owner for a
+        personal instance, its creator for a shared one), never "whoever typed
+        first": the observed triple is bound *to* that member.
+
+        Returns ``{"claimed", "reason", "user_id", "scope", "agent_id"}``. Every
+        *expected* refusal comes back as a ``reason`` rather than an exception,
+        because the caller is deciding a message and needs a reason, not a stack
+        trace — including the race where a concurrent writer takes the triple
+        between the check and the write (the transaction rolls back first, so a
+        refusal never leaves a half-claim). An unexpected error still propagates:
+        silently reporting a bug as "not claimable" would hide it behind a notice
+        the operator cannot act on. ``claimed`` false is not a verdict on the
+        message: the caller keeps its own refusal (the unbound notice for a shared
+        instance, ``not_linked`` for a personal one).
+
+        Every refusal below is deliberate, and each closes a way the rule could
+        be turned into a takeover:
+
+        * **group chats** — a group has no single account to prove;
+        * **an instance that was ever bound** (``sender_binding_at``) — without
+          this, unbinding would hand the channel to the next stranger;
+        * **an unusable container** — stopped, governance-paused, credential
+          revoked, or a personal type whose runtime is not accepted: the same
+          gates the inbound decision applies, so a claim cannot outlive them;
+        * **a responsible member who is gone or cannot use the target** — such a
+          claim would create a route the very next line refuses;
+        * **a triple already bound to a different user** — one external identity
+          belongs to one person, and messaging a bot must never re-point the
+          account it names.
+
+        The claim itself is one transaction: the identity binding (when the
+        triple is new), the personal route, the ``sender_binding_at`` stamp and
+        the audit row all land together, and the stamp is re-checked under the
+        write lock — so two senders racing for one virgin instance cannot both
+        be told they won.
+        """
+        instance = self.get_tenant_channel_instance_row(instance_id) or {}
+        scope = str(instance.get("scope") or "tenant")
+
+        def verdict(claimed: bool, reason: str, user_id: str = "",
+                    agent_id: str = "") -> Dict[str, Any]:
+            return {"claimed": claimed, "reason": reason, "user_id": user_id,
+                    "scope": scope, "agent_id": agent_id}
+
+        if not instance or instance.get("tenant_id") is None:
+            return verdict(False, "not_found")
+        tenant_id = str(instance["tenant_id"])
+        if is_group:
+            return verdict(False, "group_not_personal")
+        if not instance.get("active"):
+            return verdict(False, "instance_disabled")
+        if instance.get("governance_disabled_at") is not None:
+            return verdict(False, "governance_disabled")
+        if not self._instance_credential_active(instance_id):
+            return verdict(False, "credential_revoked")
+        agent_id = str(instance.get("agent_id") or "")
+        if scope == "user":
+            from channel.channel_instances import personal_runtime_enabled
+
+            if not personal_runtime_enabled(str(instance.get("channel_type") or "")):
+                return verdict(False, "channel_type_not_ready")
+            responsible = str(instance.get("owner_user_id") or "")
+        else:
+            responsible = str(instance.get("created_by") or "")
+        if not responsible:
+            # A personal row without an owner is served by nobody, and a shared
+            # row without a creator names no member to anchor the sender to.
+            return verdict(False, "no_responsible_member")
+        if not self._member_active(responsible, tenant_id):
+            return verdict(False, "member_inactive")
+        if scope == "user":
+            if not agent_id:
+                return verdict(False, "no_target_agent")
+            if not self.is_private_agent_owner(tenant_id, responsible, agent_id):
+                return verdict(False, "target_not_owned")
+            if not self._member_can_use_agent(responsible, tenant_id, agent_id):
+                return verdict(False, "target_not_authorized")
+        try:
+            provider, issuer, subject = self._validated_identity_triple(
+                provider, issuer, subject)
+        except IdentityServiceError:
+            return verdict(False, "bad_identity")
+        existing = self._store.execute(
+            "SELECT id, user_id FROM external_identities"
+            " WHERE provider=? AND issuer=? AND subject=?",
+            (provider, issuer, subject),
+        )
+        if existing and str(existing[0]["user_id"]) != responsible:
+            return verdict(False, "identity_conflict")
+        identity_id = str(existing[0]["id"]) if existing else ""
+        try:
+            with self._tx() as con:
+                row = con.execute(
+                    "SELECT sender_binding_at FROM tenant_channel_instances"
+                    " WHERE id=? AND tenant_id=?",
+                    (instance_id, tenant_id),
+                ).fetchone()
+                if row is None:
+                    return verdict(False, "not_found")
+                if row["sender_binding_at"] is not None:
+                    # Somebody (or a race with another sender) already
+                    # established this instance's identity. Nothing is written,
+                    # so the early return cannot leave a half-claim behind.
+                    return verdict(False, "already_bound")
+                if not identity_id:
+                    identity_id = self._bind_external_identity_in_tx(
+                        con, actor_user_id=responsible, user_id=responsible,
+                        provider=provider, issuer=issuer, subject=subject)["id"]
+                self._stamp_sender_binding_in_tx(con, instance_id)
+                if scope == "user":
+                    # The route's target stays the instance's own ``agent_id``
+                    # (the empty string here means exactly that): a claim decides
+                    # *whose* account speaks, never which Agent answers.
+                    con.execute(
+                        "INSERT INTO personal_channel_links(tenant_id, user_id,"
+                        " instance_id, external_identity_id, active,"
+                        " target_agent_id)"
+                        " VALUES (?,?,?,?,1,'')"
+                        " ON CONFLICT(tenant_id, user_id, instance_id)"
+                        " DO UPDATE SET"
+                        " external_identity_id=excluded.external_identity_id,"
+                        " active=1",
+                        (tenant_id, responsible, instance_id, identity_id),
+                    )
+                self._audit_in_tx(
+                    con, actor_user_id=responsible, tenant_id=tenant_id,
+                    target_tenant_id=tenant_id,
+                    action="channel.sender.auto_bind",
+                    target=f"channel_instance:{instance_id}",
+                    redacted_changes={"provider": provider, "issuer": issuer,
+                                      "subject": subject, "scope": scope,
+                                      "reason": "first_sender"},
+                    result="success")
+                con.commit()
+        except IdentityServiceError as error:
+            # A concurrent writer bound this triple (or the instance) between the
+            # check above and the write. The transaction rolled back, so this is
+            # a refusal with nothing written — never a half-claim and never an
+            # exception on a path that is deciding a message.
+            return verdict(False, str(getattr(error, "code", "") or "conflict"))
+        except sqlite3.Error:
+            return verdict(False, "unavailable")
+        logger.info(
+            f"[Identity] auto-bound the first sender of '{instance_id}' to"
+            f" {responsible} (scope={scope})"
+        )
+        return verdict(True, "claimed", user_id=responsible, agent_id=agent_id)
+
+    def bind_scanner_identity(
+        self, *, instance_id: str, tenant_id: str, provider: str,
+        issuer: str, subject: str,
+    ) -> Dict[str, Any]:
+        """Bind the account that *completed the scan*, at creation time.
+
+        A vendor that hands back the scanning account's own identity has already
+        proved two things at once: the operator was present (which is what the
+        one-time grant rests on) and which account they are. Storing that fact
+        here means the scanner's first message is served without a binding code
+        and without waiting for the first-sender rule.
+
+        Deliberately **not** a claim by message: there is no message. It is the
+        same "attach the sender identity of a never-bound instance" write, minus
+        the racing-senders question, and it stamps ``sender_binding_at`` exactly
+        like every other route — so a scanner-identity bind closes the
+        first-sender rule rather than leaving a second way in.
+
+        Only a type whose inbound actually *carries* an identity stamp can use
+        this: a provider whose messages arrive unstamped could be bound here and
+        then never matched, which would silently close the automatic rule while
+        still refusing the owner. Such a type is skipped with a reason.
+        """
+        from channel.channel_instances import (
+            inbound_identity_admissible, personal_runtime_enabled)
+
+        instance = self.get_tenant_channel_instance_row(instance_id) or {}
+        if not instance or str(instance.get("tenant_id") or "") != str(tenant_id or ""):
+            return {"bound": False, "reason": "not_found", "user_id": ""}
+        channel_type = str(instance.get("channel_type") or "")
+        if not inbound_identity_admissible(channel_type):
+            # Weixin-class providers: the scan knows the account, the inbound
+            # path has no stamp to compare it with. Binding would be a fact
+            # nothing can read, so it is skipped and said so out loud.
+            return {"bound": False, "reason": "type_has_no_inbound_identity",
+                    "user_id": ""}
+        scope = str(instance.get("scope") or "tenant")
+        if scope == "user" and not personal_runtime_enabled(channel_type):
+            return {"bound": False, "reason": "channel_type_not_ready",
+                    "user_id": ""}
+        responsible = (str(instance.get("owner_user_id") or "")
+                       if scope == "user" else str(instance.get("created_by") or ""))
+        if not responsible or not self._member_active(responsible, tenant_id):
+            return {"bound": False, "reason": "no_responsible_member",
+                    "user_id": ""}
+        agent_id = str(instance.get("agent_id") or "")
+        if scope == "user":
+            if not agent_id:
+                return {"bound": False, "reason": "no_target_agent", "user_id": ""}
+            if not self.is_private_agent_owner(tenant_id, responsible, agent_id):
+                return {"bound": False, "reason": "target_not_owned",
+                        "user_id": ""}
+            if not self._member_can_use_agent(responsible, tenant_id, agent_id):
+                return {"bound": False, "reason": "target_not_authorized",
+                        "user_id": ""}
+        try:
+            provider, issuer, subject = self._validated_identity_triple(
+                provider, issuer, subject)
+        except IdentityServiceError:
+            return {"bound": False, "reason": "bad_identity", "user_id": ""}
+        existing = self._store.execute(
+            "SELECT id, user_id FROM external_identities"
+            " WHERE provider=? AND issuer=? AND subject=?",
+            (provider, issuer, subject),
+        )
+        if existing and str(existing[0]["user_id"]) != responsible:
+            return {"bound": False, "reason": "identity_conflict", "user_id": ""}
+        identity_id = str(existing[0]["id"]) if existing else ""
+        try:
+            with self._tx() as con:
+                row = con.execute(
+                    "SELECT sender_binding_at FROM tenant_channel_instances"
+                    " WHERE id=? AND tenant_id=?",
+                    (instance_id, tenant_id),
+                ).fetchone()
+                if row is None:
+                    return {"bound": False, "reason": "not_found", "user_id": ""}
+                if row["sender_binding_at"] is not None:
+                    # A retried commit (or a link that landed first) already
+                    # bound this instance. Idempotent, and it must not re-stamp.
+                    return {"bound": False, "reason": "already_bound",
+                            "user_id": responsible}
+                if not identity_id:
+                    identity_id = self._bind_external_identity_in_tx(
+                        con, actor_user_id=responsible, user_id=responsible,
+                        provider=provider, issuer=issuer, subject=subject)["id"]
+                self._stamp_sender_binding_in_tx(con, instance_id)
+                if scope == "user":
+                    con.execute(
+                        "INSERT INTO personal_channel_links(tenant_id, user_id,"
+                        " instance_id, external_identity_id, active,"
+                        " target_agent_id)"
+                        " VALUES (?,?,?,?,1,'')"
+                        " ON CONFLICT(tenant_id, user_id, instance_id)"
+                        " DO UPDATE SET"
+                        " external_identity_id=excluded.external_identity_id,"
+                        " active=1",
+                        (tenant_id, responsible, instance_id, identity_id),
+                    )
+                self._audit_in_tx(
+                    con, actor_user_id=responsible, tenant_id=tenant_id,
+                    target_tenant_id=tenant_id,
+                    action="channel.sender.auto_bind",
+                    target=f"channel_instance:{instance_id}",
+                    redacted_changes={"provider": provider, "issuer": issuer,
+                                      "subject": subject, "scope": scope,
+                                      "reason": "scanner_identity"},
+                    result="success")
+                con.commit()
+        except IdentityServiceError as error:
+            # A concurrent writer took the triple between the check and the
+            # write. Rolled back, so it is a refusal with nothing written.
+            return {"bound": False,
+                    "reason": str(getattr(error, "code", "") or "conflict"),
+                    "user_id": ""}
+        except sqlite3.Error:
+            return {"bound": False, "reason": "unavailable", "user_id": ""}
+        logger.info(
+            f"[Identity] bound the scanning account of '{instance_id}' to"
+            f" {responsible} (scope={scope})"
+        )
+        return {"bound": True, "reason": "bound", "user_id": responsible}
+
     def resolve_personal_channel_inbound(
         self, *, instance_id: str, provider: str, issuer: str, subject: str,
         is_group: bool = False,
@@ -10069,8 +10484,25 @@ class IdentityService:
         route = self.personal_channel_link(
             tenant_id=tenant_id, user_id=owner_user_id, instance_id=instance_id)
         if not route:
-            return {"allowed": False, "reason": "not_linked",
-                    "owner_user_id": owner_user_id, "agent_id": agent_id}
+            # Never bound: the first private sender claims the instance, so the
+            # person who set the channel up does not need a binding code. The
+            # claim is a *prelude* to this same decision — it re-reads the route
+            # it just created and keeps every gate below, so an instance that was
+            # claimed but whose target is no longer usable is still refused.
+            claim = self.claim_instance_for_sender(
+                instance_id=instance_id, provider=provider, issuer=issuer,
+                subject=subject, is_group=is_group)
+            if claim.get("claimed"):
+                logger.info(
+                    f"[Identity] personal instance '{instance_id}' claimed by"
+                    f" its first sender (user={claim.get('user_id')})"
+                )
+                route = self.personal_channel_link(
+                    tenant_id=tenant_id, user_id=owner_user_id,
+                    instance_id=instance_id)
+            if not route:
+                return {"allowed": False, "reason": "not_linked",
+                        "owner_user_id": owner_user_id, "agent_id": agent_id}
         if not self._same_external_identity(route, provider, issuer, subject):
             # A different sender on the owner's own bot: never served, and never
             # answered as the owner.

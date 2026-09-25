@@ -36,10 +36,71 @@ MAX_CORE_FILE_BYTES = 1024 * 1024
 # conversations, and put the skill library into N places that then drift.
 CLONED_FILES = ("AGENT.md", "USER.md", "RULE.md", "BOOTSTRAP.md")
 
+# The section a scaffolded RULE.md carries to describe its deployment, and the
+# line that closes it. A copy of that file has the section already rendered, so
+# it names the workspace the file came *from* -- see _retarget_layout_section.
+_LAYOUT_HEADINGS = ("## 工作空间目录结构", "## Workspace directory structure")
+_LAYOUT_CLOSERS = ("- **每位用户私有**", "- **Private to each user**")
+
 # The keys this service owns. Anything else in the settings it is handed
 # belongs to another console page and is never written from here.
 ROSTER_KEYS = team.TEAM_KEYS
 _UNSET = object()
+
+
+def _retarget_layout_section(text: str, workspace: str) -> str:
+    """Re-render a copied RULE.md's layout section for ``workspace``.
+
+    ``{{WORKSPACE_LAYOUT}}`` is substituted when a workspace is first
+    scaffolded, so the section a clone inherits names the directory it was
+    copied *from*. Left as is, the clone reads that path as its own and writes
+    its private files there. Re-rendering from the destination path fixes the
+    name and the layout together, because a clone whose source was the shared
+    root has a different *tree*, not merely a different directory name.
+
+    Text outside the section is left alone, so whatever a source appended
+    below it (its knowledge-base mode, operator notes) survives; a hand-written
+    RULE.md with no section comes back byte-identical.
+    """
+    from agent.prompt.workspace import workspace_layout_section
+
+    newline = "\r\n" if "\r\n" in text else "\n"
+    lines = text.split(newline)
+    heading = next(
+        (i for i, line in enumerate(lines) if line.strip() in _LAYOUT_HEADINGS),
+        None,
+    )
+    if heading is None:
+        return text
+    closer = next(
+        (i for i in range(heading, len(lines))
+         if lines[i].startswith(_LAYOUT_CLOSERS)),
+        None,
+    )
+    if closer is None:
+        return text
+    section = workspace_layout_section(workspace).split("\n")
+    return newline.join(lines[:heading] + section + lines[closer + 1:])
+
+
+def _retarget_cloned_layout(destination: Path) -> None:
+    """Apply :func:`_retarget_layout_section` to a freshly copied RULE.md.
+
+    Read and written as bytes so a clone keeps the source's newline style
+    instead of having it rewritten to the host's.
+    """
+    path = destination / "RULE.md"
+    try:
+        original = path.read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return
+    updated = _retarget_layout_section(original, str(destination))
+    if updated == original:
+        return
+    try:
+        path.write_bytes(updated.encode("utf-8"))
+    except OSError as e:
+        logger.warning(f"[AgentAdmin] Could not retarget the layout in {path}: {e}")
 
 
 class AgentAdminError(ValueError):
@@ -403,6 +464,9 @@ class AgentAdminService:
             candidate = source / filename
             if candidate.is_file():
                 shutil.copy2(candidate, destination / filename)
+        # RULE.md is the one cloned file that describes the deployment rather
+        # than the persona, and its layout section was rendered for the source.
+        _retarget_cloned_layout(destination)
 
     def _reject_overlapping_workspace(
         self, workspace: Path, registry: AgentRegistry, sanctioned: Path

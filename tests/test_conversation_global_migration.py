@@ -247,3 +247,131 @@ def test_secondary_agent_store_binds_global_even_under_identity_scope(tmp_path, 
         assert Path(s._db_path) == global_db, f"bound {s._db_path}, expected global"
         assert s._agent_id == "pm-agent"
     assert not (pm_ws / "memory" / "long-term" / "index.db").exists()
+
+
+def _seed_tenanted_db(workspace: Path, session_id: str, text: str,
+                      owner: str, tenant_id: str) -> None:
+    """A source DB in the fork's post-dimension shape.
+
+    Same conversation tables as ``_seed_legacy_db``, but with the tenancy
+    dimension (``owner``/``tenant_id``) populated, which is what every store
+    this fork has written since the dimension landed looks like.
+    """
+    db_dir = workspace / "memory" / "long-term"
+    db_dir.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_dir / "index.db"))
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE sessions (
+                session_id        TEXT NOT NULL,
+                channel_type      TEXT NOT NULL DEFAULT '',
+                title             TEXT NOT NULL DEFAULT '',
+                context_start_seq INTEGER NOT NULL DEFAULT 0,
+                created_at        INTEGER NOT NULL,
+                last_active       INTEGER NOT NULL,
+                msg_count         INTEGER NOT NULL DEFAULT 0,
+                pinned            INTEGER NOT NULL DEFAULT 0,
+                archived          INTEGER NOT NULL DEFAULT 0,
+                owner             TEXT NOT NULL DEFAULT '',
+                tenant_id         TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (session_id)
+            );
+            CREATE TABLE messages (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                seq        INTEGER NOT NULL,
+                role       TEXT NOT NULL,
+                content    TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                extras     TEXT NOT NULL DEFAULT '',
+                run_id     TEXT NOT NULL DEFAULT '',
+                owner      TEXT NOT NULL DEFAULT '',
+                tenant_id  TEXT NOT NULL DEFAULT '',
+                UNIQUE (session_id, seq)
+            );
+            """
+        )
+        conn.execute(
+            "INSERT INTO sessions (session_id, channel_type, created_at, last_active,"
+            " msg_count, owner, tenant_id) VALUES (?, 'web', 1, 1, 1, ?, ?)",
+            (session_id, owner, tenant_id),
+        )
+        conn.execute(
+            "INSERT INTO messages (session_id, seq, role, content, created_at,"
+            " owner, tenant_id) VALUES (?, 0, 'user', ?, 1, ?, ?)",
+            (session_id, f'[{{"type":"text","text":"{text}"}}]', owner, tenant_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_merge_carries_the_tenancy_dimension_into_the_global_file(tmp_path, restore_registry):
+    """Regression: the merge selected only the upstream columns, so every merged
+    row landed with an empty ``owner``/``tenant_id``.
+
+    Those columns are the *filter* every read applies, so the history was on
+    disk and still invisible to the tenant that owned it — the console reported
+    "no history" for conversations that had never been deleted. Readable-again
+    is the whole contract: assert the stamps, not just the row count.
+    """
+    _install_registry(tmp_path, ["default", "research"], "default")
+    default_ws = tmp_path / "default"
+    research_ws = tmp_path / "research"
+
+    _seed_legacy_db(default_ws, "d1", "default-msg")
+    _seed_tenanted_db(research_ws, "r1", "research-msg", "usr_a", "tnt_a")
+
+    migrate_conversations_to_global(kickoff_async=False)
+
+    global_db = default_ws / "memory" / "long-term" / "index.db"
+    conn = sqlite3.connect(str(global_db))
+    try:
+        session_stamp = conn.execute(
+            "SELECT owner, tenant_id FROM sessions"
+            " WHERE agent_id = 'research' AND session_id = 'r1'"
+        ).fetchone()
+        message_stamp = conn.execute(
+            "SELECT owner, tenant_id FROM messages"
+            " WHERE agent_id = 'research' AND session_id = 'r1'"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert session_stamp == ("usr_a", "tnt_a"), (
+        f"the merge dropped the session's tenancy stamp: {session_stamp}"
+    )
+    assert message_stamp == ("usr_a", "tnt_a"), (
+        f"the merge dropped the messages' tenancy stamp: {message_stamp}"
+    )
+
+
+def test_merge_tolerates_a_source_predating_the_tenancy_columns(tmp_path, restore_registry):
+    """A source with no ``owner``/``tenant_id`` at all still merges.
+
+    The columns are discovered from the source rather than assumed, so an older
+    Agent file copies them as the empty string instead of failing that Agent's
+    whole migration.
+    """
+    _install_registry(tmp_path, ["default", "research"], "default")
+    default_ws = tmp_path / "default"
+    research_ws = tmp_path / "research"
+    _seed_legacy_db(default_ws, "d1", "default-msg")
+    _seed_legacy_db(research_ws, "r1", "research-msg")
+
+    migrate_conversations_to_global(kickoff_async=False)
+
+    global_db = default_ws / "memory" / "long-term" / "index.db"
+    conn = sqlite3.connect(str(global_db))
+    try:
+        stamp = conn.execute(
+            "SELECT owner, tenant_id FROM sessions"
+            " WHERE agent_id = 'research' AND session_id = 'r1'"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert stamp == ("", ""), f"expected empty stamps, got {stamp}"
+    # The conversation still arrives, which is what the migration is for.
+    assert get_conversation_store(str(research_ws)).load_messages("r1")

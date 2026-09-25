@@ -253,13 +253,32 @@ def test_a_tenant_with_no_agent_is_refused_without_running_anything(f, monkeypat
 
 # --- 6.7 the existing gates still hold ------------------------------------
 
-def test_an_unbound_sender_is_still_refused(f, monkeypatch):
-    context = _ctx(ACME_APP_ID, "ou_stranger", f.acme_instance["id"])
-    channel, consumed = _preflight(f, monkeypatch, context, f.acme_agent)
+def test_a_stranger_claims_an_unbound_instance_and_the_next_one_is_refused(
+        f, monkeypatch):
+    """Change ``auto-bind-channel-sender``: the *first* private sender is bound.
 
-    assert consumed is True
-    assert len(channel.sent) == 1
-    assert not (context.get("runtime_identity") or {}).get("user_id")
+    A tenant instance that has never been bound attaches its first sender to the
+    member who created it — that is what makes "the account that set the channel
+    up just works" true. Once that has happened the instance is stamped, so the
+    next unknown account is back to being refused, and the claim cannot be
+    replayed by whoever happens to write next.
+    """
+    first = _ctx(ACME_APP_ID, "ou_stranger", f.acme_instance["id"])
+    channel, consumed = _preflight(f, monkeypatch, first, f.acme_agent)
+
+    assert consumed is False
+    assert first["runtime_identity"]["user_id"] == f.root, (
+        "the account is bound to the instance's creator, not to the stranger")
+    assert first["runtime_identity"]["tenant_id"] == f.acme
+    assert f.service.get_tenant_channel_instance_row(
+        f.acme_instance["id"])["sender_binding_at"] is not None
+
+    second = _ctx(ACME_APP_ID, "ou_second_stranger", f.acme_instance["id"])
+    channel2, consumed2 = _preflight(f, monkeypatch, second, f.acme_agent)
+
+    assert consumed2 is True
+    assert len(channel2.sent) == 1
+    assert not (second.get("runtime_identity") or {}).get("user_id")
 
 
 def test_another_tenants_member_is_still_refused(f, monkeypatch):

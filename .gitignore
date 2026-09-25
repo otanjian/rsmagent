@@ -48,6 +48,12 @@ client_config.json
 # test-account plaintext password. Never share.
 /启动说明.md
 
+# Local-only deploy/start/stop helpers with this machine's absolute paths
+# (repo root, system python, nginx). Deployment-specific. No PHP any more.
+/start-all.ps1
+/stop-all.ps1
+/deploy.ps1
+
 # Local POC demo artifacts (plan HTML, demo scripts, screenshots, recordings).
 # Never commit these to the remote repository.
 /doc/

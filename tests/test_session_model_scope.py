@@ -66,6 +66,18 @@ def _seed(svc):
 
 
 def _member_with_model_grant(svc, root, tenant, code, key="deepseek"):
+    # The tenant ceiling comes first: ``tenant_resource_grants`` bounds what the
+    # tenant may allocate at all, so a role grant is only effective inside it
+    # (see ``IdentityService.resource_ids_for``).
+    svc.set_tenant_resource_grants(
+        actor_user_id=root["id"], tenant_id=tenant["id"],
+        grants=[
+            {"resource_kind": "model", "resource_id": f"provider:{key}:{code}",
+             "action": "read"},
+            {"resource_kind": "model", "resource_id": f"provider:{key}:{code}",
+             "action": "use"},
+        ],
+        expected_version=tenant["version"])
     role = svc.create_role(
         root["id"], tenant["id"], "modeler", "Modeler", ["model.read", "model.use"],
         resource_grants=[
@@ -119,6 +131,7 @@ class SessionSettingsScopeTests(unittest.TestCase):
         self.db_path = _db_path()
         self.svc = IdentityService(self.db_path)
         root, tenant = _seed(self.svc)
+        self.root = root
         self.tenant = tenant
         self.member = _member_with_model_grant(
             self.svc, root, tenant, "deepseek-v4-flash")
@@ -151,6 +164,25 @@ class SessionSettingsScopeTests(unittest.TestCase):
     def test_only_granted_model_is_offered(self):
         state = self._state()
         self.assertEqual(self._offered(state), ["deepseek-v4-flash"])
+
+    def test_model_removed_from_the_tenant_allocation_is_not_offered(self):
+        """The picker must not offer a model the platform took out of the tenant.
+
+        Narrowing ``tenant_resource_grants`` does not rewrite the roles that held
+        a wider set, so the stale ``role_resource_grants`` row would otherwise
+        keep the model in the menu — the tenant admin sees a model the tenant was
+        never allocated (and can no longer allocate).
+        """
+        self.svc.set_tenant_resource_grants(
+            actor_user_id=self.root["id"], tenant_id=self.tenant["id"],
+            grants=[{"resource_kind": "model",
+                     "resource_id": "provider:deepseek:deepseek-v4-flash-vision-exp",
+                     "action": "use"}],
+            expected_version=self.svc.get_tenant(self.tenant["id"])["version"])
+        state = self._state()
+        self.assertEqual(self._offered(state), [],
+                         "a model outside the tenant allocation is not offered")
+        self.assertTrue(state["model"].get("selection_required"))
 
     def test_session_pin_within_grants_is_kept(self):
         state = self._state({"model": "deepseek-v4-flash", "provider": "deepseek"})

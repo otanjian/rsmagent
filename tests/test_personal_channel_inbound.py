@@ -25,6 +25,7 @@ import pytest
 from bridge.reply import ReplyType
 from channel import external_identity as ex
 from channel.chat_channel import ChatChannel
+from common.const import WECOM_BOT
 
 MASTER_KEY = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
 ROOT_PW = "Str0ngAdminPass"
@@ -878,25 +879,39 @@ def test_a_deactivated_members_instance_is_stopped_not_just_refused(f, monkeypat
 
 
 class TestPersonalExecutionSwitch:
-    """The shipped posture: personal execution is off until it is verified.
+    """The shipped posture: only a recorded type may connect, and only if open.
 
     Task 7.5 is a statement about *what is deployed*, so it is asserted against
     the module constants themselves rather than through a patched fixture: a
     deployment that turns a channel type on has to change these declarations
     deliberately, and nothing else can widen them.
+
+    ``wecom_bot`` is the one type recorded so far (change
+    ``enable-personal-wecom-bot-runtime``, evidence
+    ``1-runtime-acceptance.md``). Recording it is necessary and never
+    sufficient: the deployment master switch still decides, which is asserted
+    separately below.
     """
 
-    def test_the_shipped_switch_is_closed(self):
+    def test_the_shipped_switch_is_closed(self, monkeypatch):
+        from channel import channel_instances as ci
         from channel.channel_instances import (
             PERSONAL_RUNTIME_ACCEPTED_TYPES, PUBLIC_PERSONAL_INGRESS_TYPES,
             personal_runtime_enabled, public_personal_ingress_ready)
 
-        assert PERSONAL_RUNTIME_ACCEPTED_TYPES == frozenset()
+        assert PERSONAL_RUNTIME_ACCEPTED_TYPES == frozenset({WECOM_BOT})
         assert PUBLIC_PERSONAL_INGRESS_TYPES == frozenset()
-        for channel_type in ("feishu", "dingtalk", "wecom_bot", "web"):
+        # Nothing without a recorded acceptance may connect, and withdrawing
+        # the master switch closes even the recorded one.
+        monkeypatch.setattr("config.conf", lambda: {"personal_channel_runtime": False})
+        for channel_type in ("feishu", "dingtalk", WECOM_BOT, "web"):
             assert personal_runtime_enabled(channel_type) is False
             assert public_personal_ingress_ready(channel_type) is False
         assert personal_runtime_enabled("") is False
+        monkeypatch.setattr("config.conf", lambda: {"personal_channel_runtime": True})
+        assert ci.personal_runtime_enabled(WECOM_BOT) is True
+        for channel_type in ("feishu", "dingtalk", "web"):
+            assert personal_runtime_enabled(channel_type) is False
 
     def test_configuration_can_only_narrow_the_switch(self, monkeypatch):
         """A config value naming a type outside the accepted set adds nothing.
@@ -1140,6 +1155,188 @@ def test_a_bound_instance_keeps_its_target_when_the_tenant_default_changes(
     assert _runtime(plain_context)["agent_id"] == moved_to, (
         "without a binding the tenant default is the answer — which is why a "
         "binding has to be preserved at all")
+
+
+# --- auto-bind: the sender account is attached to the channel ------------
+# change ``auto-bind-channel-sender``. The rule: an instance that has never been
+# bound attaches its **first private sender** to the member who is responsible
+# for it (its owner on a personal instance, its creator on a shared one), so the
+# person who set the channel up does not have to fetch a binding code first.
+
+
+def _link_for(f, instance_id, user_id=None):
+    return f.service.personal_channel_link(
+        tenant_id=f.acme, user_id=user_id or f.alice, instance_id=instance_id)
+
+
+def _stamp(f, instance_id):
+    return f.service.get_tenant_channel_instance_row(instance_id)["sender_binding_at"]
+
+
+def test_a_personal_instance_is_claimed_by_its_first_private_message(f):
+    instance = _personal_instance(f)
+    channel = _ThinChannel()
+    context = _context(instance_id=instance["id"])
+
+    consumed = channel._preflight_external_inbound(context)
+
+    assert consumed is False, "the first message must be served, not refused"
+    assert channel.sent == [], "a claim is not worth an extra bubble"
+    assert _runtime(context)["user_id"] == f.alice
+    assert _runtime(context)["agent_id"] == f.alice_agent
+    route = _link_for(f, instance["id"])
+    assert route and str(route["subject"]) == "ou_alice"
+    assert _stamp(f, instance["id"]) is not None, (
+        "the instance records that it has been bound; otherwise unbinding "
+        "would reopen it to whoever messages next")
+
+
+def test_the_first_sender_is_bound_to_the_instances_owner(f):
+    """Whoever writes first does not become the owner — the owner does.
+
+    This is the rule *and* its cost, stated plainly: an unknown account that
+    messages a never-bound channel first is served as the instance's owner. The
+    handles for that are the audit row this claim writes, the console's unlink,
+    and ``sender_binding_at``, which keeps the rule from re-opening afterwards.
+    """
+    instance = _personal_instance(f)
+    channel = _ThinChannel()
+    context = _context(instance_id=instance["id"], subject="ou_whoever")
+
+    consumed = channel._preflight_external_inbound(context)
+
+    assert consumed is False
+    assert _runtime(context)["user_id"] == f.alice, (
+        "the message is served as the owner, not as the unknown sender")
+    assert str(_link_for(f, instance["id"])["subject"]) == "ou_whoever", (
+        "the observed account is what got bound")
+
+
+def test_a_second_account_is_refused_once_the_instance_is_claimed(f):
+    instance = _personal_instance(f)
+    channel = _ThinChannel()
+    assert channel._preflight_external_inbound(
+        _context(instance_id=instance["id"])) is False
+
+    late = _context(instance_id=instance["id"], subject="ou_late")
+
+    assert channel._preflight_external_inbound(late) is True
+    assert _notice(channel) == ex.deny_notice(ex.PERSONAL_SENDER_MISMATCH)
+    assert _runtime(late) == {}
+
+
+def test_a_group_message_cannot_claim_an_instance(f):
+    """A group has no single account to prove, so it may not claim anything."""
+    instance = _personal_instance(f)
+    channel = _ThinChannel()
+
+    assert channel._preflight_external_inbound(
+        _context(instance_id=instance["id"], is_group=True)) is True
+    assert _notice(channel) == ex.deny_notice(ex.PERSONAL_GROUP)
+    assert _stamp(f, instance["id"]) is None
+    assert _link_for(f, instance["id"]) is None
+
+
+def test_an_account_bound_to_someone_else_cannot_claim_an_instance(f):
+    """One external identity belongs to one person, and a message never repoints it."""
+    instance = _personal_instance(f)
+    f.service.bind_external_identity(
+        actor_user_id=f.root, user_id=f.bob, provider="feishu",
+        issuer=PERSONAL_APP, subject="ou_someone_elses")
+    channel = _ThinChannel()
+
+    assert channel._preflight_external_inbound(
+        _context(instance_id=instance["id"], subject="ou_someone_elses")) is True
+    assert _notice(channel) == ex.deny_notice(ex.PERSONAL_NOT_LINKED)
+    assert _stamp(f, instance["id"]) is None, (
+        "a refused claim must not consume the instance's one claim")
+
+
+def test_a_governance_stopped_instance_cannot_be_claimed(f):
+    instance = _personal_instance(f)
+    f.service.set_personal_instance_governance(
+        actor_user_id=f.root, tenant_id=f.acme, instance_id=instance["id"],
+        disabled=True, recent_password=ROOT_PW, reason="policy")
+    channel = _ThinChannel()
+
+    assert channel._preflight_external_inbound(
+        _context(instance_id=instance["id"])) is True
+    assert _notice(channel) == ex.deny_notice(ex.PERSONAL_UNAVAILABLE)
+    assert _link_for(f, instance["id"]) is None
+
+
+def test_unbinding_does_not_reopen_the_instance_to_a_stranger(f):
+    """The claim is a one-shot, and this is why.
+
+    Without the record, "the first sender claims it" would mean "the first sender
+    *after the last unbinding* claims it" — so an owner taking their account back
+    would hand the channel to the next person who messages it.
+    """
+    instance = _personal_instance(f)
+    channel = _ThinChannel()
+    assert channel._preflight_external_inbound(
+        _context(instance_id=instance["id"])) is False
+
+    f.service.unlink_personal_channel_instance(
+        actor_user_id=f.alice, tenant_id=f.acme, instance_id=instance["id"])
+    context = _context(instance_id=instance["id"], subject="ou_stranger")
+
+    assert channel._preflight_external_inbound(context) is True
+    assert _notice(channel) == ex.deny_notice(ex.PERSONAL_NOT_LINKED)
+    assert _runtime(context) == {}
+    assert _link_for(f, instance["id"]) is None
+    # ...and the owner is expected to mint a code, not to be served silently as
+    # somebody they are not.
+    assert channel._preflight_external_inbound(
+        _context(instance_id=instance["id"])) is True
+    assert _notice(channel) == ex.deny_notice(ex.PERSONAL_NOT_LINKED)
+
+
+def test_a_shared_instance_is_claimed_by_its_first_private_sender(f):
+    """Same rule on a shared channel, anchored on the member who created it."""
+    shared = _shared_instance(f)
+    channel = _ThinChannel()
+    channel.apply_instance(instance_id=shared["id"],
+                           bound_agent_id=f.tenant_agent)
+    context = _context(instance_id=shared["id"], issuer=SHARED_APP,
+                       subject="ou_first_visitor")
+    channel.stamp_instance_context(context)
+
+    consumed = channel._preflight_external_inbound(context)
+
+    assert consumed is False
+    assert _runtime(context)["user_id"] == f.root, (
+        "the account is attached to the channel's creator")
+    assert _runtime(context)["agent_id"] == f.tenant_agent
+    assert _stamp(f, shared["id"]) is not None
+
+    # Falsifiability from the other side: the *next* unknown account is not the
+    # creator, so it stays unbound and is told to ask an administrator.
+    second = _ThinChannel()
+    second.apply_instance(instance_id=shared["id"],
+                          bound_agent_id=f.tenant_agent)
+    other = _context(instance_id=shared["id"], issuer=SHARED_APP,
+                     subject="ou_second_visitor")
+    second.stamp_instance_context(other)
+
+    assert second._preflight_external_inbound(other) is True
+    assert _notice(second) == ex.deny_notice(ex.UNBOUND)
+    assert _runtime(other) == {}
+
+
+def test_a_group_message_cannot_claim_a_shared_instance(f):
+    shared = _shared_instance(f)
+    channel = _ThinChannel()
+    channel.apply_instance(instance_id=shared["id"],
+                           bound_agent_id=f.tenant_agent)
+    context = _context(instance_id=shared["id"], issuer=SHARED_APP,
+                       subject="ou_group_visitor", is_group=True)
+    channel.stamp_instance_context(context)
+
+    assert channel._preflight_external_inbound(context) is True
+    assert _stamp(f, shared["id"]) is None
+    assert f.service.find_user_for_external_identity(
+        "feishu", SHARED_APP, "ou_group_visitor") is None
 
 
 if __name__ == "__main__":

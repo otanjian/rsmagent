@@ -185,6 +185,79 @@ def provider_result(answer: Mapping[str, Any]) -> Dict[str, str]:
     return result
 
 
+#: The vendor fields that name *who scanned*, which is not a credential and is
+#: therefore not part of the type's credential contract: ``ilink_bot_id`` is the
+#: bot the scan authorized (the ``issuer`` half of a binding triple, the same
+#: value the channel's own inbound stamp would carry) and ``ilink_user_id`` is
+#: the account that completed the scan (the ``subject`` half).
+VENDOR_BOT_ID_FIELD = "ilink_bot_id"
+VENDOR_USER_ID_FIELD = "ilink_user_id"
+
+
+def scanner_identity(answer: Mapping[str, Any]) -> Optional[Dict[str, str]]:
+    """The scanning account's identity triple, when the vendor names it.
+
+    A completed scan proves presence (which is what the one-time grant rests on)
+    *and* says which account was present, so that account can be bound when the
+    instance is created instead of waiting for its first message. The two halves
+    are read from the same fields this type's inbound would stamp with, so the
+    fact stored here is the fact a later message is compared against.
+
+    ``None`` when the vendor omits either half. An identity that cannot be
+    matched is worse than none: it would close the first-sender rule while still
+    refusing the owner, which is exactly the "配置就绪 ≠ 执行就绪" trap the runtime
+    switches already exist to avoid. Whether the deployment can *use* such an
+    identity at all is :func:`bind_scanner_identity`'s decision, not this one's.
+    """
+    if not isinstance(answer, Mapping):
+        return None
+    issuer = str(answer.get(VENDOR_BOT_ID_FIELD) or "").strip()
+    subject = str(answer.get(VENDOR_USER_ID_FIELD) or "").strip()
+    if not issuer or not subject:
+        return None
+    return {"provider": PROVIDER, "issuer": issuer, "subject": subject}
+
+
+def bind_scanner_identity(service: Any, *, instance_id: str, tenant_id: str,
+                          identity: Mapping[str, Any]) -> Dict[str, Any]:
+    """Bind the scanning account to the instance a completed scan just created.
+
+    Called after the create committed, and never raising: the instance exists and
+    the scan succeeded, so a binding that cannot be written must not turn a saved
+    channel into a failed scan. Nothing is lost by that — the owner still has the
+    binding code, and an instance left unbound here is still claimed by its first
+    sender.
+
+    The service decides everything that matters (which member the account
+    belongs to, whether the instance is still claimable, and — importantly —
+    whether this channel type's inbound carries an identity stamp at all). This
+    function only reports the outcome, because a *skipped* bind is the answer
+    most deployments get and it has to be readable in the log: "my first message
+    is still refused" must not require reproducing the scan.
+    """
+    if not instance_id:
+        return {"bound": False, "reason": "no_instance", "user_id": ""}
+    try:
+        result = service.bind_scanner_identity(
+            instance_id=instance_id, tenant_id=tenant_id,
+            provider=str((identity or {}).get("provider") or PROVIDER),
+            issuer=str((identity or {}).get("issuer") or ""),
+            subject=str((identity or {}).get("subject") or ""),
+        )
+    except Exception as error:  # noqa: BLE001 - the row already committed
+        logger.warning(
+            f"[WeixinScan] scanner identity bind failed for '{instance_id}'"
+            f" ({type(error).__name__})"
+        )
+        return {"bound": False, "reason": "bind_failed", "user_id": ""}
+    if not result.get("bound"):
+        logger.info(
+            f"[WeixinScan] scanner identity not bound for '{instance_id}':"
+            f" {result.get('reason')}"
+        )
+    return result
+
+
 def credential_contract() -> Dict[str, Any]:
     """This type's credential declaration, from the one place that owns it."""
     from channel.channel_instances import credential_contract as _contract

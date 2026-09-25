@@ -2993,6 +2993,21 @@ def _merge_secondary_agents() -> None:
                 conn.close()
 
 
+def _attached_columns(conn: sqlite3.Connection, table: str) -> set:
+    """The columns ``table`` has in the attached source database (``src``).
+
+    The fork's tenancy dimension rides along with the merge, so the copy reads
+    the source's column list instead of assuming it. The dimension is a
+    *filter* on every read, which makes omitting it here not a cosmetic loss
+    but silent data loss: the merged rows are present yet unreadable to the
+    tenant that owns them.
+    """
+    try:
+        return {row[1] for row in conn.execute(f"PRAGMA src.table_info({table})")}
+    except sqlite3.Error:
+        return set()
+
+
 def _merge_one_agent(conn: sqlite3.Connection, src_path: str, agent_id: str) -> None:
     """Attach a source Agent DB and copy its conversation rows in, tagged."""
     conn.execute("ATTACH DATABASE ? AS src", (src_path,))
@@ -3003,15 +3018,28 @@ def _merge_one_agent(conn: sqlite3.Connection, src_path: str, agent_id: str) -> 
                 "SELECT name FROM src.sqlite_master WHERE type='table'"
             ).fetchall()
         }
+        # Older sources predate the fork's tenancy dimension; absent, the
+        # column copies as the empty string the schema defaults to.
+        src_session_cols = _attached_columns(conn, "sessions")
+        src_message_cols = _attached_columns(conn, "messages")
+        session_owner = "COALESCE(owner, '')" if "owner" in src_session_cols else "''"
+        session_tenant = (
+            "COALESCE(tenant_id, '')" if "tenant_id" in src_session_cols else "''"
+        )
+        message_owner = "COALESCE(owner, '')" if "owner" in src_message_cols else "''"
+        message_tenant = (
+            "COALESCE(tenant_id, '')" if "tenant_id" in src_message_cols else "''"
+        )
         with conn:
             if "sessions" in src_tables:
                 conn.execute(
-                    """
+                    f"""
                     INSERT OR IGNORE INTO sessions
                         (agent_id, session_id, channel_type, title, context_start_seq,
-                         created_at, last_active, msg_count, pinned)
+                         created_at, last_active, msg_count, pinned, owner, tenant_id)
                     SELECT ?, session_id, channel_type, title, context_start_seq,
-                           created_at, last_active, msg_count, pinned
+                           created_at, last_active, msg_count, pinned,
+                           {session_owner}, {session_tenant}
                     FROM src.sessions
                     """,
                     (agent_id,),
@@ -3020,11 +3048,13 @@ def _merge_one_agent(conn: sqlite3.Connection, src_path: str, agent_id: str) -> 
                 # id -> NULL so the global file re-issues AUTOINCREMENT ids and
                 # cross-file ids never collide; dedupe is on (agent_id, session_id, seq).
                 conn.execute(
-                    """
+                    f"""
                     INSERT OR IGNORE INTO messages
-                        (agent_id, session_id, seq, role, content, created_at, extras, run_id)
+                        (agent_id, session_id, seq, role, content, created_at, extras,
+                         run_id, owner, tenant_id)
                     SELECT ?, session_id, seq, role, content, created_at,
-                           COALESCE(extras, ''), COALESCE(run_id, '')
+                           COALESCE(extras, ''), COALESCE(run_id, ''),
+                           {message_owner}, {message_tenant}
                     FROM src.messages
                     """,
                     (agent_id,),

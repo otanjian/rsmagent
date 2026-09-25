@@ -3650,6 +3650,63 @@
         });
     }
 
+    //: Kinds whose assignable set is the platform's tenant limit rather than a
+    //: tenant-owned scope (see auth/service.py `_project_owned_ids`: model and
+    //: tool are "global, controlled by tenant grants"). Only these can go stale
+    //: *after* a role was saved, because only the platform can shrink the limit
+    //: underneath it. menu/skill/agent resolve from page scope or tenant-owned
+    //: objects, which the tenant admin maintains itself.
+    const _LIMIT_SCOPED_KINDS = ['model', 'tool'];
+
+    // A saved role keeps the grants it was written with, but the platform can
+    // narrow a tenant's model/tool limit afterwards. A dropped id then never
+    // appears in the assignable catalog, so the picker can neither render nor
+    // uncheck it — yet `_resCount` still counted it in the tab badge and
+    // `_collectResourceGrants` wrote it straight back on the next save. That is
+    // the "只有一个模型，数量却是 3" mismatch. Reconcile the selections against
+    // the assignable catalog so the badge, the list and the saved grants agree.
+    // Nothing is persisted here (no dirty flag) and nothing is re-rendered: the
+    // leftovers stop being counted and stop being re-saved.
+    function _reconcileRoleSelections(kind, data) {
+        const st = _resourceState[kind];
+        if (!st || st.reconciled) return;
+        if (_LIMIT_SCOPED_KINDS.indexOf(kind) < 0) {
+            st.reconciled = true;
+            return;
+        }
+        // A filtered or truncated page proves nothing about the ids it omits.
+        if (st.q) return;
+        const items = data.items || [];
+        if ((data.total || 0) > items.length) {
+            // Only a slice of the catalog is on screen: ask for all of it once,
+            // without holding up the render that is already using this page.
+            _loadResourceCatalog(kind, '', 1, Math.max(data.total || 0, 1))
+                .then(function (full) { _applyRoleSelectionReconcile(kind, full.items || []); })
+                .catch(function () {});
+            return;
+        }
+        _applyRoleSelectionReconcile(kind, items);
+    }
+
+    function _applyRoleSelectionReconcile(kind, items) {
+        const st = _resourceState[kind];
+        if (!st) return;
+        st.reconciled = true;
+        if (!st.selected.size) return;
+        const assignable = new Set(items.map(function (it) { return it.resource_id; }));
+        let dropped = false;
+        Array.from(st.selected).forEach(function (rid) {
+            if (assignable.has(rid)) return;
+            st.selected.delete(rid);
+            dropped = true;
+        });
+        if (!dropped) return;
+        updateRoleEditorBadges();
+        // A default may only point at a still-granted model (spec 5.1), so a
+        // dropped model must not survive as a default either.
+        if (kind === 'model') _refreshRoleModelDefaults();
+    }
+
     async function _renderRoleKindList(kind) {
         const manage = document.getElementById('role-res-manage-' + kind);
         const list = document.getElementById('role-res-list-' + kind);
@@ -3664,6 +3721,7 @@
             const actions = data.resource_actions || _resourceActions[kind] || [];
             st.actions = actions;
             st.loaded = true;
+            _reconcileRoleSelections(kind, data);
             if (!items.length) {
                 list.innerHTML = '<div class="text-xs text-slate-400 py-2">' + escapeHtml(t('admin_resources_none')) + '</div>';
             } else {

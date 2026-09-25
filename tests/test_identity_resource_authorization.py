@@ -371,6 +371,18 @@ class ModelUseGateTests(unittest.TestCase):
     """
 
     def _member_with_model_grant(self, svc, root, tenant, model_code, model_key="deepseek"):
+        # The tenant ceiling comes first: ``tenant_resource_grants`` bounds what
+        # the tenant may allocate at all, so a role grant is only effective
+        # inside it (see ``IdentityService.resource_ids_for``).
+        svc.set_tenant_resource_grants(
+            actor_user_id=root["id"], tenant_id=tenant["id"],
+            grants=[
+                {"resource_kind": "model", "resource_id": f"provider:{model_key}:{model_code}",
+                 "action": "read"},
+                {"resource_kind": "model", "resource_id": f"provider:{model_key}:{model_code}",
+                 "action": "use"},
+            ],
+            expected_version=tenant["version"])
         role = svc.create_role(
             root["id"], tenant["id"], "modeler", "Modeler",
             ["model.read", "model.use"],
@@ -413,6 +425,46 @@ class ModelUseGateTests(unittest.TestCase):
                 self.assertIsNotNone(model._model_use_denial("deepseek-v4-other"))
                 # The gate must produce a RuntimeError (not silent fallthrough).
                 self.assertRaises(RuntimeError, model._require_model_use, "deepseek-v4-other")
+
+    def test_tenant_limit_narrows_a_stale_role_grant(self):
+        """A role grant left over from a wider allocation must not survive the limit.
+
+        ``tenant_resource_grants`` is the platform's ceiling for a tenant, and
+        narrowing it does not rewrite the roles that held a wider set. The stale
+        ``role_resource_grants`` row must therefore not keep the model authorized
+        — otherwise the console keeps offering a model the platform removed from
+        the tenant (and the runtime keeps accepting it).
+        """
+        from unittest import mock
+        import auth.service as asvc
+        from common.runtime_identity import RuntimeIdentity, use_identity
+
+        svc = IdentityService(_db())
+        root, tenant = _seed(svc)
+        member = self._member_with_model_grant(svc, root, tenant, "deepseek-v4-flash")
+        m = svc._find_user_by_id(member["user_id"])
+        # The role still carries provider:deepseek:deepseek-v4-flash.
+        self.assertTrue(any(
+            g["resource_id"] == "provider:deepseek:deepseek-v4-flash"
+            and g["action"] == "use"
+            for g in svc.grants_for(m["id"], tenant["id"])))
+
+        # The platform re-allocates the tenant down to a different model.
+        svc.set_tenant_resource_grants(
+            actor_user_id=root["id"], tenant_id=tenant["id"],
+            grants=[{"resource_kind": "model",
+                     "resource_id": "provider:deepseek:deepseek-v4-pro",
+                     "action": "use"}],
+            expected_version=svc.get_tenant(tenant["id"])["version"])
+
+        self.assertEqual(
+            svc.resource_ids_for(m["id"], tenant["id"], "model", "use",
+                                 permission="model.use"),
+            set(), "the tenant ceiling outranks the stale role grant")
+        model = self._make_model("deepseek-v4-flash")
+        with use_identity(RuntimeIdentity(user_id=m["id"], tenant_id=tenant["id"])):
+            with mock.patch.object(asvc, "get_identity_service", return_value=svc):
+                self.assertIsNotNone(model._model_use_denial("deepseek-v4-flash"))
 
     def test_empty_grant_set_denies_every_model(self):
         from unittest import mock

@@ -1882,6 +1882,43 @@ def _migration_31(con: sqlite3.Connection) -> None:
 _migrations.append(_migration_31)
 
 
+def _migration_32(con: sqlite3.Connection) -> None:
+    """Record when a channel instance first established its sender identity.
+
+    Change ``auto-bind-channel-sender``: an instance that has never been bound
+    lets its **first private-chat sender** claim it — that is what makes "the
+    account that set the channel up just works" true without a binding code.
+
+    "First" has to survive an unlink, or the rule becomes a takeover window:
+    whoever messages next after the owner unbinds would claim the instance. So
+    the moment *any* route is established (a redeemed binding code, a console
+    link, a scanner-identity bind at creation, or the automatic claim itself),
+    the instance is stamped here and can never be claimed again. The binding
+    code / console flow stays available as the recovery path.
+
+    Nullable with no default, and ``NULL`` is the claimable state. Rows that
+    predate this column are therefore claimable, which is deliberate: the
+    deliverable this implements is "an existing, never-bound channel starts
+    working on the first message", and a deployment that had to re-create its
+    channels first would not get it. What the backfill does close is the case
+    the column can still *see*: an instance that currently holds a route has
+    been bound, so it is stamped and can never be re-claimed by a stranger.
+    An instance unlinked *before* this upgrade is indistinguishable from one
+    that was never bound, and stays claimable — a documented residual, bounded
+    by the audit row every claim writes and by the console's unlink.
+    """
+    con.executescript(
+        """
+        ALTER TABLE tenant_channel_instances ADD COLUMN sender_binding_at INTEGER;
+        UPDATE tenant_channel_instances SET sender_binding_at = unixepoch()
+         WHERE id IN (SELECT instance_id FROM personal_channel_links);
+        """
+    )
+
+
+_migrations.append(_migration_32)
+
+
 class IdentityStoreError(RuntimeError):
     """Raised when the identity store cannot be opened or migrated."""
 

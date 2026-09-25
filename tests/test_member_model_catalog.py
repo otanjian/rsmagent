@@ -90,9 +90,37 @@ class _Fixture(unittest.TestCase):
             actor_user_id=self.root["id"], tenant_id=self.ta,
             code=code, name=code, permissions=["model.read", "model.use"])
 
+    def _allocate_to_tenant(self, resource_id, action, grant_id=None):
+        """Allocate a model to the tenant — the platform's ceiling.
+
+        ``tenant_resource_grants`` bounds what a tenant may allocate at all, and
+        a member's effective grants are their roles' grants *intersected* with it
+        (``IdentityService.resource_ids_for``). A fixture that grants a role a
+        model without allocating it to the tenant describes a state the console
+        can no longer produce, so every role grant here is paired with the
+        matching tenant allocation.
+        """
+        with self.svc._store.connect() as con:
+            con.execute(
+                "INSERT INTO tenant_resource_grants(id, tenant_id, resource_kind,"
+                " resource_id, action) VALUES(?,?,?,?,?)",
+                (grant_id or ("t-" + action + "-" + resource_id), self.ta,
+                 "model", resource_id, action))
+            con.commit()
+
+    def _deallocate_from_tenant(self, resource_id, action):
+        """Take a model back out of the tenant's allocatable limit."""
+        with self.svc._store.connect() as con:
+            con.execute(
+                "DELETE FROM tenant_resource_grants WHERE tenant_id=?"
+                " AND resource_kind='model' AND resource_id=? AND action=?",
+                (self.ta, resource_id, action))
+            con.commit()
+
     def _grant(self, role_code, resource_id, action, grant_id=None):
         role = [r for r in self.svc.list_roles(self.ta)
                 if r["code"] == role_code][0]
+        self._allocate_to_tenant(resource_id, action)
         with self.svc._store.connect() as con:
             con.execute(
                 "INSERT INTO role_resource_grants(id, tenant_id, role_id,"
@@ -244,6 +272,25 @@ class InterfaceTests(_Fixture):
         self._patch_db()
         body = self._catalog(self.token_ungranted)
         self.assertEqual(body["items"], [], body)
+
+    def test_a_model_taken_out_of_the_tenant_allocation_leaves_the_catalog(self):
+        """The tenant allocation is a ceiling, not just an assignment menu.
+
+        Narrowing ``tenant_resource_grants`` does not rewrite the roles that held
+        a wider set, so without the intersection the stale ``role_resource_grants``
+        row would keep the model in the member's catalog — and in the chat model
+        picker — after the platform removed it from the tenant.
+        """
+        self._patch_db()
+        self._grant_one_model("use")
+        resource_id = "provider:deepseek:deepseek-v4-flash"
+        self.assertEqual([row["name"] for row in self._catalog(self.token_granted)["items"]],
+                         ["deepseek-v4-flash"])
+
+        self._deallocate_from_tenant(resource_id, "use")
+        body = self._catalog(self.token_granted)
+        self.assertEqual(body["items"], [], body)
+        self.assertFalse(self._page(self.token_granted)["available"])
 
     def test_a_member_still_cannot_reach_the_public_model_service(self):
         """The member catalog must not become a door into the platform surface.

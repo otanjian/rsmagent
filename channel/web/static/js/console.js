@@ -2744,12 +2744,48 @@ function agentWorkbenchFilterResult(agents, query, selectedTag) {
     };
 }
 
+// The filter reads the value the input actually holds, not the copy the event
+// carries. On an IME commit the composition event can still describe the
+// pre-edit text (the pinyin), while the box already shows the committed word:
+// filtering by the event's copy then matches the pinyin or, once the commit
+// lands, nothing at all — the box says 财务 and the list never moves until the
+// next plain keystroke (which is why deleting a character appeared to fix it).
+function _wbSearchValue(event) {
+    const input = document.getElementById('agent-workbench-search');
+    if (input && typeof input.value === 'string') return input.value;
+    const target = event && event.target;
+    return target && typeof target.value === 'string' ? target.value : '';
+}
+
 function onAgentWorkbenchSearch(event) {
-    if (_wbSearchComposing || event.isComposing) return;
-    _wbSearchQuery = event.target.value;
+    // A keystroke inside a composition is pre-edit text: the pinyin, not the
+    // word being written, so it must not narrow the list.
+    if (event && event.isComposing) return;
+    // A committed input event proves the composition ended. Recovering the flag
+    // here keeps a dropped ``compositionend`` from freezing the search: every
+    // later plain keystroke would otherwise be ignored as well.
+    if (event && event.isComposing === false) _wbSearchComposing = false;
+    if (_wbSearchComposing) return;
+    _wbSearchQuery = _wbSearchValue(event);
     paintAgentWorkbench();
     const grid = document.getElementById('agent-workbench-grid');
     if (grid) grid.scrollTop = 0;
+}
+
+// Enter commits the query immediately. The field is a search box, so「回车即搜索」
+// has to do what a committed keystroke does; before this the key had no handler
+// and the default search event reached no one. An Enter that picks an IME
+// candidate is not a submit and is left to the composition.
+function onAgentWorkbenchSearchKeydown(event) {
+    if (event.key === 'Escape' && !event.isComposing && event.keyCode !== 229) {
+        event.preventDefault();
+        clearAgentWorkbenchSearch();
+        return;
+    }
+    if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
+    event.preventDefault();
+    _wbSearchComposing = false;
+    onAgentWorkbenchSearch(event);
 }
 
 function clearAgentWorkbenchSearch(all = false) {

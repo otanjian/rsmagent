@@ -1390,7 +1390,16 @@ def personal_channel_types() -> List[Dict[str, Any]]:
 #: provider round trip was observed (task 7.5 raises the record), so this set is
 #: empty until that evidence exists — a declaration mistake must not be able to
 #: start routing a member's private conversations on an unverified boundary.
-PERSONAL_RUNTIME_ACCEPTED_TYPES: frozenset = frozenset()
+#:
+#: ``wecom_bot`` was recorded here on 2026-09-20 after the acceptance listed in
+#: ``openspec/changes/enable-personal-wecom-bot-runtime/evidence/1-runtime-acceptance.md``
+#: (a real tenant-owned bot connection observed in a process that actually
+#: assembles ``_channel_mgr``, with the adapter's identity stamp proven by
+#: ``inbound_identity_admissible``). Adding a type here only permits a member's
+#: own connection to *start*; the deployment master switch
+#: (``personal_channel_runtime``) still has to be on, and the console still has
+#: to bind the sender's account before any message routes.
+PERSONAL_RUNTIME_ACCEPTED_TYPES: frozenset = frozenset({const.WECOM_BOT})
 
 #: Channel types that may carry a member's own private-chat route on a **shared**
 #: instance (task 7.2). Same reasoning as above: empty until a real acceptance

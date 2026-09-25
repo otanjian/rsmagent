@@ -1150,9 +1150,10 @@
                             <input id="agent-workbench-search" type="search" autocomplete="off" enterkeyhint="search"
                                    data-i18n-placeholder="agent_workbench_search_placeholder" placeholder="搜索智能体名称、职责、标签…"
                                    aria-label="搜索智能体" oninput="onAgentWorkbenchSearch(event)"
+                                   onchange="onAgentWorkbenchSearch(event)" onsearch="onAgentWorkbenchSearch(event)"
                                    oncompositionstart="_wbSearchComposing = true"
                                    oncompositionend="_wbSearchComposing = false; onAgentWorkbenchSearch(event)"
-                                   onkeydown="if (event.key === 'Escape' && !event.isComposing) { event.preventDefault(); clearAgentWorkbenchSearch(); }">
+                                   onkeydown="onAgentWorkbenchSearchKeydown(event)">
                             <button id="agent-workbench-search-clear" type="button" hidden aria-label="清除搜索"
                                     onclick="clearAgentWorkbenchSearch()"><i class="fas fa-times" aria-hidden="true"></i></button>
                         </div>
