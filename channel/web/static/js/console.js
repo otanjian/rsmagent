@@ -2618,11 +2618,18 @@ function renderAgentsGrid() {
         const selected = agent.id === selectedAdminAgentId;
         const desc = (agent.description || '').trim();
         // Status chips float in the top-right corner so a "default" or
-        // "archived" card is exactly as tall as every other card.
-        const corner = agent.id === defaultAgentId
-            ? `<span class="agent-card-badge agent-chip-on">${escapeHtml(t('agents_default'))}</span>`
-            : (!agent.enabled ? `<span class="agent-card-badge">${escapeHtml(t('agents_archived'))}</span>` : '');
-        return `<div class="agent-card${selected ? ' selected' : ''}${agent.enabled ? '' : ' archived'}" onclick="openAgentDetail('${escapeHtml(agent.id)}')">
+        // "archived" card is exactly as tall as every other card. The visibility
+        // chip stacks under them (`.agent-card-badges`) rather than replacing
+        // them: "私有" and "我的默认" are two facts about one object, and
+        // collapsing them into one branch would hide the second.
+        const badges = [
+            agent.id === defaultAgentId
+                ? `<span class="agent-card-badge agent-chip-on">${escapeHtml(t('agents_default'))}</span>`
+                : (!agent.enabled ? `<span class="agent-card-badge">${escapeHtml(t('agents_archived'))}</span>` : ''),
+            agentVisibilityBadgeHTML(agent),
+        ].filter(Boolean).join('');
+        const corner = badges ? `<span class="agent-card-badges">${badges}</span>` : '';
+        return `<div class="agent-card${selected ? ' selected' : ''}${agent.enabled ? '' : ' archived'}${agent.visibility ? ' has-visibility' : ''}" onclick="openAgentDetail('${escapeHtml(agent.id)}')">
             ${corner}
             <div class="agent-card-top">
                 ${agentAvatarHTML(agent, 32)}
@@ -3313,6 +3320,7 @@ function renderAgentDetail() {
             <div class="flex items-center gap-2">
                 <span class="text-lg font-semibold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(agent.name)}</span>
                 ${codingAgentTypeHint(coding ? '' : 'hidden')}
+                ${agentVisibilityBadgeHTML(agent, { inline: true })}
             </div>
             <div class="text-xs text-slate-400 font-mono truncate">${escapeHtml(agent.id)}</div>
         </div>`;
@@ -3364,16 +3372,6 @@ function renderAgentDetail() {
                    placeholder="${escapeHtml(t('agents_position_placeholder'))}">
         </div>
         <div class="agent-field">
-            <label class="agent-field-label">${escapeHtml(t('agents_category'))}</label>
-            <div id="agent-edit-category" class="cfg-dropdown" tabindex="0">
-                <div class="cfg-dropdown-selected">
-                    <span class="cfg-dropdown-text">${escapeHtml(agent.category || t('agents_category_none'))}</span>
-                    <i class="fas fa-chevron-down cfg-dropdown-arrow"></i>
-                </div>
-                <div class="cfg-dropdown-menu"></div>
-            </div>
-        </div>
-        <div class="agent-field">
             <label class="agent-field-label">${escapeHtml(t('agents_tags'))}</label>
             <input id="agent-edit-tags" value="${escapeHtml((agent.tags || []).join(', '))}" class="agent-input"
                    placeholder="${escapeHtml(t('agents_tags_placeholder'))}">
@@ -3386,16 +3384,6 @@ function renderAgentDetail() {
             ${fieldLabelWithTip(t('agents_persona'), t('agents_persona_hint'))}
             <textarea id="agent-edit-persona" rows="3"
                    class="agent-input agent-textarea">${escapeHtml(agent.persona_summary || '')}</textarea>
-        </div>
-        <div class="agent-field">
-            <label class="agent-field-label">${escapeHtml(t('agents_scene'))}</label>
-            <div id="agent-edit-scene" class="cfg-dropdown" tabindex="0">
-                <div class="cfg-dropdown-selected">
-                    <span class="cfg-dropdown-text">${escapeHtml(agent.scene_id || t('agents_scene_none'))}</span>
-                    <i class="fas fa-chevron-down cfg-dropdown-arrow"></i>
-                </div>
-                <div class="cfg-dropdown-menu"></div>
-            </div>
         </div>
         <div class="agent-field">
             <label class="agent-field-label">${escapeHtml(t('agents_model'))}</label>
@@ -3429,10 +3417,14 @@ function renderAgentDetail() {
         <div class="agent-detail-actions">
             <button type="button" onclick="saveAgentProfile()" class="agent-btn agent-btn-primary">${escapeHtml(t('save'))}</button>
             <button type="button" onclick="startChatWithAgent('${escapeHtml(agent.id)}')" class="agent-btn agent-btn-ghost">${escapeHtml(t('agents_chat'))}</button>
+            ${agentVisibilityActionsHTML(agent)}
             ${isMyDefault || agent.enabled === false ? '' : `<button type="button" onclick="setAgentAsMyDefault('${escapeHtml(agent.id)}')" class="agent-btn agent-btn-ghost">${escapeHtml(t('agents_set_my_default'))}</button>`}
             ${tenantDefaultManageable && !isDefault ? `<button type="button" onclick="setAgentAsDefault('${escapeHtml(agent.id)}')" class="agent-btn agent-btn-ghost">${escapeHtml(t('agents_set_tenant_default'))}</button>` : ''}
             ${isDefault ? '' : `<button type="button" onclick="deleteAgent('${escapeHtml(agent.id)}')" class="agent-btn agent-btn-danger agent-detail-delete">${escapeHtml(t('agents_delete'))}</button>`}
         </div>
+        <!-- 归属人选择区：只在 can_unshare 时由 startAgentUnshare 填出来，平常是空的，
+             所以「恢复为私有」的确认动作不会给不能做这件事的人留下任何残留控件。 -->
+        <div id="agent-visibility-owner" class="agent-visibility-owner hidden"></div>
         <div id="agent-profile-status" class="agent-field-hint mt-3"></div>`;
 
     renderAvatarPicker('agent-edit-avatar', agent, (file) => uploadAgentAvatar(agent.id, file));
@@ -3450,10 +3442,40 @@ function renderAgentDetail() {
     // A save may re-render this pane several times; re-apply an in-flight
     // "saved" confirmation so it survives instead of being wiped.
     paintAgentSavedFlash();
-    // Populate the scene + category dropdowns from the scene catalog, then
-    // re-init so the current selection is preserved against the wide option set.
-    refreshAgentCategoryDropdown();
-    if (!isDefault) refreshAgentSceneDropdown();
+}
+
+/* =====================================================================
+   Agent visibility (私有 / 租户共享)
+   =====================================================================
+   共享沿用既有口径：后端 ``agent_bindings.private_owner_user_id`` 为空即租户共享。
+   这是与「默认 / 已归档」**并列的一条独立轴** —— 一个对象可以同时是「私有」且「我的
+   默认」，所以它是另一枚徽标，而不是把既有角标改成分支。
+
+   ``can_share`` / ``can_unshare`` 由服务端按调用者派生（设计 D4）。界面不推断资格，
+   因此这里只会出现后端一定接受的动作：归属人看到「转为租户共享」，租户管理员看到
+   「恢复为私有」，其他人两个都看不到。
+*/
+function agentVisibilityBadgeHTML(agent, options) {
+    if (!agent || !agent.visibility) return '';
+    const shared = agent.visibility === 'tenant';
+    // The list corner is a stacked chip (see ``agent-card-badges``); the detail
+    // header needs the same pill inline, where the corner positioning would put
+    // it on top of the name.
+    const base = (options && options.inline) ? 'agent-visibility-chip' : 'agent-card-badge';
+    const label = t(shared ? 'agents_visibility_tenant' : 'agents_visibility_private');
+    return `<span class="${base} agent-visibility-${shared ? 'tenant' : 'private'}">${escapeHtml(label)}</span>`;
+}
+
+function agentVisibilityActionsHTML(agent) {
+    if (!agent) return '';
+    const id = escapeHtml(agent.id);
+    if (agent.can_share) {
+        return `<button type="button" onclick="shareAgent('${id}')" class="agent-btn agent-btn-ghost">${escapeHtml(t('agents_share'))}</button>`;
+    }
+    if (agent.can_unshare) {
+        return `<button type="button" onclick="startAgentUnshare('${id}')" class="agent-btn agent-btn-ghost">${escapeHtml(t('agents_unshare'))}</button>`;
+    }
+    return '';
 }
 
 /* A live preview beside an upload button, in the page's own styling rather than
@@ -3503,51 +3525,6 @@ function agentModelDropdownOptions(agent) {
     return opts;
 }
 
-// Scene catalog options for the Agent detail pane. Fetched lazily and cached;
-// a missing scene module yields no options, so the selector simply offers "none".
-let _sceneCatalogCache = null;
-function sceneCatalog() {
-    if (_sceneCatalogCache !== null) return Promise.resolve(_sceneCatalogCache);
-    return fetch('/api/scenes').then(r => r.json()).then(d => {
-        _sceneCatalogCache = d && d.scenes ? d.scenes : [];
-        return _sceneCatalogCache;
-    }).catch(() => { _sceneCatalogCache = []; return []; });
-}
-function sceneCatalogOptions() {
-    return [{ value: '', label: t('agents_scene_none') }];
-}
-function refreshAgentSceneDropdown() {
-    const dd = document.getElementById('agent-edit-scene');
-    if (!dd) return;
-    const agent = findAgent(selectedAdminAgentId);
-    sceneCatalog().then(scenes => {
-        const opts = [{ value: '', label: t('agents_scene_none') }].concat(
-            scenes.map(s => ({ value: s.id, label: (s.name || s.id) }))
-        );
-        const current = (agent && agent.scene_id) || '';
-        initDropdown(dd, opts, current, () => {}, { placeholder: t('agents_scene_none') });
-    });
-}
-function sceneCategoryOptions() {
-    // Category may be typed freely; the dropdown offers the scene categories
-    // (empty allowed). The first row clears back to no category.
-    return [{ value: '', label: t('agents_category_none') }];
-}
-function refreshAgentCategoryDropdown() {
-    const dd = document.getElementById('agent-edit-category');
-    if (!dd) return;
-    const agent = findAgent(selectedAdminAgentId);
-    sceneCatalog().then(scenes => {
-        const seen = [];
-        scenes.forEach(s => { const c = s.category; if (c && seen.indexOf(c) === -1) seen.push(c); });
-        const opts = [{ value: '', label: t('agents_category_none') }].concat(
-            seen.map(c => ({ value: c, label: c }))
-        );
-        const current = (agent && agent.category) || '';
-        initDropdown(dd, opts, current, () => {}, { placeholder: t('agents_category_none') });
-    });
-}
-
 // Persist an Agent's skill selection. Writes are serialized per Agent and
 // coalesce to the latest desired state, so ticking several boxes quickly sends
 // them in order (each with the revision the previous one returned) instead of
@@ -3586,12 +3563,19 @@ function saveAgentSkills(agent, skills) {
 // Persist capabilities (skills / sops / tools allow+deny) in one update, so
 // toggling related controls does not send several racing writes. The roster
 // revision is carried on each call; on success we adopt the returned revision.
+const _capabilitySaveState = {};
 function saveAgentCapabilities(agent, fields) {
     // Apply optimistically so the pane reflects the new state immediately.
     if ('skills' in fields) agent.skills = fields.skills;
     if ('sops' in fields) agent.sops = fields.sops;
     if ('tools_allowlist' in fields) agent.tools_allowlist = fields.tools_allowlist;
     if ('tools_denylist' in fields) agent.tools_denylist = fields.tools_denylist;
+    const st = _capabilitySaveState[agent.id] || (_capabilitySaveState[agent.id] = { inflight: false, pending: null });
+    if (st.inflight) {
+        st.pending = Object.assign(st.pending || {}, fields);
+        return;
+    }
+    st.inflight = true;
     const body = Object.assign({ action: 'update', id: agent.id, revision: rosterRevision }, fields);
     fetch('/api/agents', {
         method: 'POST',
@@ -3604,7 +3588,17 @@ function saveAgentCapabilities(agent, fields) {
             const status = document.getElementById('agent-editor-status');
             if (status) status.textContent = data.message || 'Update failed';
         }
-    }).catch(() => {});
+    }).catch(() => {
+        const status = document.getElementById('agent-editor-status');
+        if (status) status.textContent = t('agents_save_failed');
+    }).then(() => {
+        st.inflight = false;
+        if (st.pending) {
+            const next = st.pending;
+            st.pending = null;
+            saveAgentCapabilities(agent, next);
+        }
+    });
 }
 
 // Switch an Agent between the shared knowledge base and its own. This is a
@@ -3643,21 +3637,173 @@ async function setAgentKnowledgeMode(agentId, mode) {
     }
 }
 
+/* 私有 → 租户共享。先确认，并把真正的后果说清楚：这既是一次**发布**（本租户所有成员
+   都能看到并按各自授权使用），也是一次**交出**（归属人不再独占维护它）。后者最容易被
+   顺手点「确定」的人忽略，所以它写在提示正文里，而不是只在文档里。 */
+function shareAgent(agentId) {
+    const agent = findAgent(agentId);
+    if (!agent || !agent.can_share) return;
+    showConfirmDialog({
+        title: t('agents_share_confirm_title'),
+        message: t('agents_share_confirm_body'),
+        okText: t('agents_share'),
+        // Returned so a caller (and the tests) can await the write; the dialog
+        // itself only ignores the value.
+        onConfirm: () => postAgentVisibility(agentId, 'tenant', ''),
+    });
+}
+
+/* 共享 → 私有：归属人必须由管理员显式指定 —— 服务端把「恢复」定义成窄化可读范围，
+   而不是转让，所以它不会替你猜。归属人从既有 /api/tenant/members 里选（该接口本身
+   就只对租户管理员开放，而 can_unshare 也只对管理员为真）。 */
+async function startAgentUnshare(agentId) {
+    const agent = findAgent(agentId);
+    const row = document.getElementById('agent-visibility-owner');
+    if (!agent || !agent.can_unshare || !row) return;
+    row.classList.remove('hidden');
+    row.innerHTML = `<div class="agent-field-hint">${escapeHtml(t('agents_unshare_loading'))}</div>`;
+    let members = [];
+    try {
+        const res = await fetch('/api/tenant/members?page_size=200');
+        const data = await res.json();
+        members = (data && data.items) || [];
+    } catch (e) {
+        members = [];
+    }
+    const options = members
+        .filter(m => m && m.user_id && m.active !== 0)
+        .map(m => `<option value="${escapeHtml(m.user_id)}">${escapeHtml(m.display_name || m.username || m.user_id)}</option>`)
+        .join('');
+    row.innerHTML = `
+        <div class="agent-field">
+            <label class="agent-field-label">${escapeHtml(t('agents_unshare_owner_label'))}</label>
+            <div class="flex items-center gap-2">
+                <select id="agent-unshare-owner" class="agent-input">
+                    <option value="">${escapeHtml(t('agents_unshare_owner_placeholder'))}</option>
+                    ${options}
+                </select>
+                <button type="button" class="agent-btn agent-btn-primary" onclick="confirmAgentUnshare('${escapeHtml(agent.id)}')">${escapeHtml(t('save'))}</button>
+                <button type="button" class="agent-btn agent-btn-ghost" onclick="cancelAgentUnshare()">${escapeHtml(t('channels_cancel'))}</button>
+            </div>
+            <p class="agent-field-hint">${escapeHtml(t('agents_unshare_owner_hint'))}</p>
+        </div>`;
+}
+
+function cancelAgentUnshare() {
+    const row = document.getElementById('agent-visibility-owner');
+    if (!row) return;
+    row.classList.add('hidden');
+    row.innerHTML = '';
+}
+
+function confirmAgentUnshare(agentId) {
+    const picker = document.getElementById('agent-unshare-owner');
+    const ownerUserId = picker ? picker.value : '';
+    // 没选归属人就不提交。服务端也会拒绝（bad_request），但没必要先发一个注定失败的
+    // 请求，再让用户从错误里反推「原来要选人」。
+    if (!ownerUserId) {
+        const status = document.getElementById('agent-profile-status');
+        if (status) status.textContent = t('agents_unshare_owner_required');
+        return;
+    }
+    postAgentVisibility(agentId, 'private', ownerUserId);
+}
+
+/* 两个方向共用一个写入口：同一个动作、同一套错误码处理，避免两条路径对同一份拒绝
+   给出不同说法。成功后重新拉列表 —— 徽标、按钮、以及「这个对象是否还在我的管理范围
+   里」都由列表决定，就地改一行会让一个已经交出去的对象继续留在页面上。 */
+async function postAgentVisibility(agentId, visibility, ownerUserId) {
+    const status = document.getElementById('agent-profile-status');
+    if (status) status.textContent = t('agents_visibility_working');
+    const body = { action: 'set_visibility', id: agentId, visibility };
+    if (ownerUserId) body.owner_user_id = ownerUserId;
+    let data = null;
+    try {
+        const res = await fetch('/api/agents', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        data = await res.json();
+    } catch (e) {
+        data = null;
+    }
+    // A refusal must never read as success, and must not leave the pane's
+    // optimistic state claiming the object moved: the list is re-read only on
+    // success, so a failure keeps the rows exactly as the server last described
+    // them.
+    if (!data || data.status !== 'success') {
+        if (status) status.textContent = agentVisibilityErrorText(data);
+        return false;
+    }
+    cancelAgentUnshare();
+    await loadAgentCatalog();
+    // Both directions usually take the object out of *this* caller's management
+    // range — sharing hands it to the whole tenant, restoring hands it to one
+    // member — so the pane is often already gone here. The row leaving the list
+    // is then the confirmation, and it is exactly what the dialog promised.
+    const statusNow = document.getElementById('agent-profile-status');
+    if (statusNow) {
+        statusNow.textContent = t(visibility === 'tenant' ? 'agents_share_done' : 'agents_unshare_done');
+    }
+    return true;
+}
+
+/* 服务端的业务拒绝都带稳定 code，按 code 说话而不是把英文 message 抛给用户。 */
+function agentVisibilityErrorText(data) {
+    const code = data && data.code;
+    if (code === 'agent_is_tenant_default') return t('agents_unshare_tenant_default');
+    if (code === 'forbidden') return t('agents_visibility_forbidden');
+    if (code === 'not_found') return t('agents_visibility_not_found');
+    if (code === 'bad_request' || code === 'invalid_agent_id') return t('agents_visibility_failed');
+    return (data && data.message) || t('agents_visibility_failed');
+}
+
 function renderAgentCapabilitiesPane() {
     const pane = document.getElementById('agent-detail-skills');
     const agent = findAgent(selectedAdminAgentId);
     if (!pane || !agent) return;
-    // tools_denylist is optional on older agents; default to [] so we never
-    // read .length on undefined. (tools_allowlist null means "no allowlist".)
-    const allowlist = agent.tools_allowlist ?? null;
-    const denylist = agent.tools_denylist ?? [];
+    // The keyword is per Agent: switching Agents starts from the full catalog
+    // again, while repainting the same Agent (a tool toggle) keeps what was
+    // typed. `_capabilitySearch` lives below this function so the pane's own
+    // unit tests, which load a slice of console.js, keep it in scope.
+    if (_capabilitySearch.agentId !== agent.id) {
+        _capabilitySearch.agentId = agent.id;
+        _capabilitySearch.query = '';
+    }
+    // The tool selection state is derived from the Agent on each pass, because
+    // the row painter is also reached from the keyword handler (after a save
+    // moved the allow/deny lists) and not only from a full repaint.
+    const toolState = () => {
+        const tools = installedTools || [];
+        const allowSet = new Set(agent.tools_allowlist || []);
+        const denySet = new Set(agent.tools_denylist || []);
+        // Static assets can update before the server restarts. Older catalogs
+        // omit this flag, but delivery already enforced explicit binding then.
+        const requiresExplicitBinding = tool => tool.requires_explicit_binding
+            ?? (tool.name === 'requirements_delivery');
+        const toolSelected = tool => ((!allowSet.size && !requiresExplicitBinding(tool))
+            || allowSet.has(tool.name)) && !denySet.has(tool.name);
+        return { tools, requiresExplicitBinding, toolSelected };
+    };
     const render = () => {
         const all = agent.skills == null;
-        const picked = new Set(all ? [] : agent.skills);
-        const sops = agent.sops || [];
-        const allowSet = new Set(allowlist || []);
-        const denySet = new Set(denylist);
+        const { tools, requiresExplicitBinding, toolSelected } = toolState();
+        const selectedToolCount = tools.filter(toolSelected).length;
+        const allTools = tools.length > 0 && selectedToolCount === tools.length;
         pane.innerHTML = `
+            <div class="agent-cap-search">
+                <i class="fas fa-magnifying-glass agent-cap-search-icon"></i>
+                <input type="text" id="agent-cap-search" class="agent-cap-search-input"
+                    autocomplete="off" spellcheck="false"
+                    placeholder="${escapeHtml(t('agents_cap_search_placeholder'))}"
+                    value="${escapeHtml(_capabilitySearch.query)}">
+                <button type="button" id="agent-cap-search-clear" class="agent-cap-search-clear"
+                    aria-label="${escapeHtml(t('agents_cap_search_clear'))}"
+                    title="${escapeHtml(t('agents_cap_search_clear'))}"${_capabilitySearch.query ? '' : ' hidden'}>
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </div>
             <div class="agent-cap-section">
                 <div class="agent-cap-title">${escapeHtml(t('agents_skills_label'))}</div>
                 <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 mb-3">
@@ -3665,98 +3811,154 @@ function renderAgentCapabilitiesPane() {
                     <span>${escapeHtml(t('agents_skills_all'))}</span>
                 </label>
                 <p class="text-xs text-slate-400 mb-3">${escapeHtml(t('agents_skills_pick'))}</p>
-                ${(installedSkills || []).map(skill => {
-                    const name = skill.name || skill.id;
-                    const checked = all || picked.has(name);
-                    return `<label class="agent-skill-row">
-                        <input type="checkbox" class="agent-skill-item" value="${escapeHtml(name)}" ${checked ? 'checked' : ''} ${all ? 'disabled' : ''}>
-                        <div>
-                            <div class="text-sm text-slate-700 dark:text-slate-200">${escapeHtml(skill.display_name || name)}</div>
-                            <div class="text-xs text-slate-400">${escapeHtml(skill.description || '')}</div>
-                        </div>
-                    </label>`;
-                }).join('')}
-            </div>
-            <div class="agent-cap-section">
-                <div class="agent-cap-title">${escapeHtml(t('agents_sops_label'))}</div>
-                <p class="text-xs text-slate-400 mb-2">${escapeHtml(t('agents_sops_hint'))}</p>
-                <div class="flex flex-wrap gap-2 mb-2" id="agent-sops-list">
-                    ${sops.map(id => `<span class="agent-tag">${escapeHtml(id)}<button type="button" class="agent-tag-x" data-sop="${escapeHtml(id)}">&times;</button></span>`).join('')}
-                </div>
-                <div class="flex gap-2">
-                    <input id="agent-sop-input" placeholder="${escapeHtml(t('agents_sops_placeholder'))}" class="agent-input" style="max-width: 240px;">
-                    <button type="button" id="agent-sop-add" class="agent-btn agent-btn-ghost">${escapeHtml(t('agents_sops_add'))}</button>
-                </div>
+                <div id="agent-skills-list"></div>
             </div>
             <div class="agent-cap-section">
                 <div class="agent-cap-title">${escapeHtml(t('agents_tools_label'))}</div>
+                <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 mb-3">
+                    <input type="checkbox" id="agent-tools-all" ${allTools ? 'checked' : ''} ${tools.length ? '' : 'disabled'}>
+                    <span>${escapeHtml(t('agents_tools_all'))}</span>
+                </label>
                 <p class="text-xs text-slate-400 mb-2">${escapeHtml(t('agents_tools_hint'))}</p>
-                <div class="agent-tool-grid" id="agent-tools-allow">
-                    ${(installedTools || []).map(tool => {
-                        const a = allowSet.has(tool.name);
-                        const d = denySet.has(tool.name);
-                        return `<div class="agent-tool-row">
-                            <span class="agent-tool-chip"><input type="checkbox" class="agent-tool-allow" value="${escapeHtml(tool.name)}" ${a ? 'checked' : ''} ${d ? 'disabled' : ''}>${escapeHtml(t('agents_allow'))}</span>
-                            <span class="agent-tool-chip"><input type="checkbox" class="agent-tool-deny" value="${escapeHtml(tool.name)}" ${d ? 'checked' : ''} ${a ? 'disabled' : ''}>${escapeHtml(t('agents_deny'))}</span>
-                            <div class="min-w-0 flex-1">
-                                <div class="text-sm text-slate-700 dark:text-slate-200 font-mono">${escapeHtml(tool.name)}</div>
-                                <div class="text-xs text-slate-400 truncate">${escapeHtml((tool.description || '').split('\n')[0])}</div>
-                            </div>
-                        </div>`;
-                    }).join('')}
-                </div>
-                <p class="text-xs text-slate-400 mt-2">${escapeHtml(t('agents_tools_none_hint'))}</p>
+                <div class="agent-tool-grid" id="agent-tools-list"></div>
             </div>`;
+        // The keyword box lives outside both lists so typing never rebuilds it:
+        // a rebuilt input would drop focus, the caret and any IME composition.
+        const searchInput = document.getElementById('agent-cap-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                _capabilitySearch.query = searchInput.value || '';
+                paintCapabilityLists();
+            });
+        }
+        const searchClear = document.getElementById('agent-cap-search-clear');
+        if (searchClear) {
+            searchClear.addEventListener('click', () => {
+                _capabilitySearch.query = '';
+                if (searchInput) { searchInput.value = ''; searchInput.focus(); }
+                paintCapabilityLists();
+            });
+        }
         document.getElementById('agent-skills-all')?.addEventListener('change', (e) => {
             const next = e.target.checked ? null : [];
             saveAgentCapabilities(agent, { skills: next });
-            render();
+            paintSkillList();  // repaint the rows in place — no reload, no flicker
         });
-        pane.querySelectorAll('.agent-skill-item').forEach(box => {
-            box.addEventListener('change', () => {
-                const names = Array.from(pane.querySelectorAll('.agent-skill-item:checked')).map(el => el.value);
-                saveAgentCapabilities(agent, { skills: names });
-            });
-        });
-        // SOP add/remove
-        document.getElementById('agent-sop-add')?.addEventListener('click', () => {
-            const input = document.getElementById('agent-sop-input');
-            const val = (input && input.value || '').trim();
-            if (!val) return;
-            const next = Array.from(new Set([...sops, val]));
-            saveAgentCapabilities(agent, { sops: next });
-            if (input) input.value = '';
-            render();
-        });
-        pane.querySelectorAll('.agent-tag-x[data-sop]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const id = btn.getAttribute('data-sop');
-                const next = sops.filter(x => x !== id);
-                saveAgentCapabilities(agent, { sops: next });
+        const toolsAllBox = document.getElementById('agent-tools-all');
+        if (toolsAllBox) {
+            toolsAllBox.indeterminate = selectedToolCount > 0 && !allTools;
+            toolsAllBox.addEventListener('change', () => {
+                const nextDeny = new Set(agent.tools_denylist || []);
+                tools.forEach(tool => {
+                    if (toolsAllBox.checked) nextDeny.delete(tool.name);
+                    else nextDeny.add(tool.name);
+                });
+                // Selecting all must also opt in to tools that cannot inherit
+                // defaults. Keep allowlist entries outside the visible catalog.
+                const nextAllow = toolsAllBox.checked
+                    ? (tools.some(requiresExplicitBinding)
+                        ? Array.from(new Set([...(agent.tools_allowlist || []), ...tools.map(tool => tool.name)]))
+                        : null)
+                    : (agent.tools_allowlist ?? null);
+                saveAgentCapabilities(agent, {
+                    tools_allowlist: nextAllow,
+                    tools_denylist: Array.from(nextDeny),
+                });
                 render();
             });
-        });
-        // Tool allow/deny toggles
-        pane.querySelectorAll('.agent-tool-allow').forEach(box => {
+        }
+        paintCapabilityLists();
+    };
+    // Rows are drawn on their own so a keystroke never rebuilds the keyword
+    // box. The working set is the Agent's *full* selection, not the visible
+    // rows: a keyword hides rows, and a hidden row must still be submitted when
+    // a visible one is toggled (otherwise filtering silently unbinds skills).
+    function paintSkillList() {
+        const list = document.getElementById('agent-skills-list');
+        if (!list) return;
+        const all = agent.skills == null;
+        const picked = new Set(all ? [] : (agent.skills || []));
+        const matches = (installedSkills || []).filter(skill => skillMatchesQuery(skill, _capabilitySearch.query));
+        if (!matches.length) {
+            list.innerHTML = _capabilitySearch.query
+                ? `<p class="agent-skill-no-match">${escapeHtml(t('agents_skills_search_empty'))}</p>`
+                : '';
+        } else {
+            list.innerHTML = matches.map(skill => {
+                const name = skill.name || skill.id;
+                const checked = all || picked.has(name);
+                return `<label class="agent-skill-row">
+                    <input type="checkbox" class="agent-skill-item" value="${escapeHtml(name)}" ${checked ? 'checked' : ''} ${all ? 'disabled' : ''}>
+                    <div>
+                        <div class="text-sm text-slate-700 dark:text-slate-200">${escapeHtml(skill.display_name || name)}</div>
+                        <div class="text-xs text-slate-400">${escapeHtml(skill.description || '')}</div>
+                    </div>
+                </label>`;
+            }).join('');
+            list.querySelectorAll('.agent-skill-item').forEach(box => {
+                box.addEventListener('change', () => {
+                    if (box.checked) picked.add(box.value); else picked.delete(box.value);
+                    saveAgentCapabilities(agent, { skills: orderAgentSkillNames(picked) });
+                });
+            });
+        }
+        const clear = document.getElementById('agent-cap-search-clear');
+        if (clear) clear.hidden = !_capabilitySearch.query;
+    }
+    // The tool catalogue is repainted the same way, so one keyword narrows both
+    // lists without either repaint touching the box the user is typing in.
+    function paintToolList() {
+        const list = document.getElementById('agent-tools-list');
+        if (!list) return;
+        const { tools, requiresExplicitBinding, toolSelected } = toolState();
+        const matches = tools.filter(tool => toolMatchesQuery(tool, _capabilitySearch.query));
+        if (!matches.length) {
+            list.innerHTML = _capabilitySearch.query
+                ? `<p class="agent-skill-no-match">${escapeHtml(t('agents_tools_search_empty'))}</p>`
+                : '';
+            return;
+        }
+        list.innerHTML = matches.map(tool => {
+            return `<label class="agent-skill-row agent-tool-row">
+                <input type="checkbox" class="agent-tool-item" value="${escapeHtml(tool.name)}" ${toolSelected(tool) ? 'checked' : ''}>
+                <div class="min-w-0 flex-1">
+                    <div class="text-sm text-slate-700 dark:text-slate-200 font-mono">${escapeHtml(tool.name)}</div>
+                    <div class="text-xs text-slate-400 truncate">${escapeHtml((tool.description || '').split('\n')[0])}</div>
+                </div>
+            </label>`;
+        }).join('');
+        list.querySelectorAll('.agent-tool-item').forEach(box => {
             box.addEventListener('change', () => {
                 const name = box.value;
                 const nextAllow = new Set(agent.tools_allowlist || []);
-                if (box.checked) nextAllow.add(name);
-                else if (agent.tools_allowlist != null) nextAllow.delete(name);
-                saveAgentCapabilities(agent, { tools_allowlist: agent.tools_allowlist == null ? [name] : Array.from(nextAllow) });
-                render();
-            });
-        });
-        pane.querySelectorAll('.agent-tool-deny').forEach(box => {
-            box.addEventListener('change', () => {
-                const name = box.value;
                 const nextDeny = new Set(agent.tools_denylist || []);
-                if (box.checked) nextDeny.add(name); else nextDeny.delete(name);
-                saveAgentCapabilities(agent, { tools_denylist: Array.from(nextDeny) });
+                if (box.checked) {
+                    nextDeny.delete(name);
+                    const tool = tools.find(tool => tool.name === name);
+                    if (!nextAllow.size && tool && requiresExplicitBinding(tool)) {
+                        // Switching from inherited defaults to an explicit
+                        // allowlist must retain the other selected tools.
+                        tools.filter(toolSelected).forEach(tool => nextAllow.add(tool.name));
+                        nextAllow.add(name);
+                    }
+                    if (nextAllow.size) nextAllow.add(name);
+                } else {
+                    // Empty allowlists inherit defaults, so exclusions must be
+                    // saved as denials even when the last tool is unchecked.
+                    nextDeny.add(name);
+                }
+                saveAgentCapabilities(agent, {
+                    tools_allowlist: nextAllow.size ? Array.from(nextAllow) : null,
+                    tools_denylist: Array.from(nextDeny),
+                });
                 render();
             });
         });
-    };
+    }
+    function paintCapabilityLists() {
+        paintSkillList();
+        paintToolList();
+    }
     const ready = () => {
         if (installedSkills.length && installedTools.length) { render(); return; }
         Promise.all([
@@ -3767,6 +3969,68 @@ function renderAgentCapabilitiesPane() {
         });
     };
     ready();
+}
+
+// Keyword state for the 能力 tab's capability search, which narrows both the
+// skill list and the tool catalogue. Kept per Agent so switching Agents starts
+// from the full catalog while repainting the same Agent (a tool toggle) keeps
+// what was typed. Declared here, between the two pane renderers, so the
+// front-end tests that load a slice of this file keep it in scope.
+let _capabilitySearch = { agentId: '', query: '' };
+
+// The fuzzy primitives behind the capability search.
+//
+// Names are short identifiers, so they accept either a contiguous run of
+// characters ("wiki") or the query's characters in order with separators
+// ignored ("kw" -> "knowledge-wiki"). Descriptions are long prose: matching
+// them by subsequence would make nearly any query hit nearly any row, so they
+// only accept a contiguous run.
+function _fuzzyIdentifierHit(text, needle, compactNeedle) {
+    const hay = String(text == null ? '' : text).toLowerCase();
+    if (!hay) return false;
+    if (hay.includes(needle)) return true;
+    const compact = hay.replace(/[\s\-_]+/g, '');
+    if (!compactNeedle) return false;
+    if (compact.includes(compactNeedle)) return true;
+    let i = 0;
+    for (let c = 0; c < compact.length && i < compactNeedle.length; c++) {
+        if (compact[c] === compactNeedle[i]) i++;
+    }
+    return i === compactNeedle.length;
+}
+
+function _fuzzyTextHit(text, needle) {
+    return String(text == null ? '' : text).toLowerCase().includes(needle);
+}
+
+function skillMatchesQuery(skill, query) {
+    const needle = String(query == null ? '' : query).trim().toLowerCase();
+    if (!needle) return true;
+    const compactNeedle = needle.replace(/[\s\-_]+/g, '');
+    return _fuzzyIdentifierHit(skill.name || skill.id, needle, compactNeedle)
+        || _fuzzyIdentifierHit(skill.display_name, needle, compactNeedle)
+        || _fuzzyTextHit(skill.description, needle);
+}
+
+function toolMatchesQuery(tool, query) {
+    const needle = String(query == null ? '' : query).trim().toLowerCase();
+    if (!needle) return true;
+    const compactNeedle = needle.replace(/[\s\-_]+/g, '');
+    return _fuzzyIdentifierHit(tool.name || tool.id, needle, compactNeedle)
+        || _fuzzyTextHit(tool.description, needle);
+}
+
+// Submit selections in catalog order, keeping names that are still bound but
+// no longer installed at the end rather than dropping them on the next edit.
+function orderAgentSkillNames(picked) {
+    const names = [];
+    const seen = new Set();
+    (installedSkills || []).forEach(skill => {
+        const name = skill.name || skill.id;
+        if (picked.has(name) && !seen.has(name)) { seen.add(name); names.push(name); }
+    });
+    picked.forEach(name => { if (!seen.has(name)) { seen.add(name); names.push(name); } });
+    return names;
 }
 
 function renderAgentTasksPane() {

@@ -26,13 +26,24 @@ function node(value = '', dd = false) {
     };
 }
 
+//: Controls the console no longer renders. `getElementById` finds nothing for
+//: them, which is exactly why `saveAgentProfile` falls back to the Agent's
+//: stored values instead of reading -- and clearing -- an absent control.
+const WITHDRAWN_IDS = new Set(['agent-edit-category', 'agent-edit-scene']);
+
 function setup({ agent, fetchImpl }) {
     const nodes = new Map();
     const events = [];
     const ctx = {
         console, selectedAdminAgentId: agent.id, rosterRevision: 'r1', _agentSavedFlashUntil: 0,
         defaultAgentId: 'other',
-        document: { getElementById(id) { if (!nodes.has(id)) nodes.set(id, node()); return nodes.get(id); } },
+        document: {
+            getElementById(id) {
+                if (WITHDRAWN_IDS.has(id)) return null;
+                if (!nodes.has(id)) nodes.set(id, node());
+                return nodes.get(id);
+            },
+        },
         t: key => ({ save: '保存', agents_save_failed: '保存失败' })[key] || key,
         escapeHtml: x => String(x),
         findAgent: id => (id === agent.id ? agent : null),
@@ -43,8 +54,7 @@ function setup({ agent, fetchImpl }) {
         _identityMode: () => 'legacy',
     };
     vm.createContext(ctx);
-    // Load saveAgentProfile + its helpers (scene catalog, dropdown, saved flash).
-    vm.runInContext(section('let _sceneCatalogCache = null;', 'function saveAgentSkills('), ctx);
+    // Load saveAgentProfile and the flash helper's neighbour call it reaches.
     vm.runInContext(section('function saveAgentProfile()', 'function paintAgentSavedFlash('), ctx);
     vm.runInContext("function getDropdownValue(el) { return el._ddValue || ''; }", ctx);
     return { ctx, events, node: id => ctx.document.getElementById(id) };
@@ -53,16 +63,16 @@ function setup({ agent, fetchImpl }) {
 const agent = (extra = {}) => ({ id: 'proc', name: '采购专员', description: '', position: '', category: '', tags: [], greeting: '', persona_summary: '', scene_id: '', ...extra });
 
 test('saveAgentProfile sends the digital-employee fields', async () => {
-    const a = agent();
+    // category / scene_id are no longer editable from 概况, so they can only
+    // keep the values the Agent already carries.
+    const a = agent({ category: 'procurement', scene_id: 'procurement' });
     const { ctx, events } = setup({ agent: a, fetchImpl: async () => ({ json: async () => ({}) }) });
     ctx.document.getElementById('agent-edit-name').value = '采购专员';
     ctx.document.getElementById('agent-edit-description').value = '负责采购';
     ctx.document.getElementById('agent-edit-position').value = '采购专员';
-    ctx.document.getElementById('agent-edit-category')._ddValue = 'procurement';
     ctx.document.getElementById('agent-edit-tags').value = '供应商, 招标';
     ctx.document.getElementById('agent-edit-greeting').value = '你好，我是采购专员。';
     ctx.document.getElementById('agent-edit-persona').value = '语气专业';
-    ctx.document.getElementById('agent-edit-scene')._ddValue = 'procurement';
     ctx.document.getElementById('agent-edit-model')._ddValue = '|gpt-5';
 
     await ctx.saveAgentProfile();
@@ -71,11 +81,11 @@ test('saveAgentProfile sends the digital-employee fields', async () => {
     assert.ok(write, 'a write must be issued');
     assert.equal(write[1], 'proc');
     assert.equal(write[2].position, '采购专员');
-    assert.equal(write[2].category, 'procurement');
+    assert.equal(write[2].category, 'procurement', 'the withdrawn 分类 keeps its stored value');
     assert.deepEqual([...write[2].tags], ['供应商', '招标']);
     assert.equal(write[2].greeting, '你好，我是采购专员。');
     assert.equal(write[2].persona_summary, '语气专业');
-    assert.equal(write[2].scene_id, 'procurement');
+    assert.equal(write[2].scene_id, 'procurement', 'the withdrawn 关联场景 keeps its stored value');
     // Model follows the dropdown value (empty provider -> '|gpt-5' split).
     assert.equal(write[2].model, 'gpt-5');
     assert.equal(write[2].bot_type, '');
@@ -141,7 +151,7 @@ test('agentModelDropdownOptions keeps a pinned model missing from the catalog', 
         _sessCfg: { model: { providers: [{ id: 'deepseek', label: 'DeepSeek', models: ['deepseek-v4-flash'] }] } },
     };
     vm.createContext(ctx);
-    vm.runInContext(section('function agentModelDropdownOptions(', '// Scene catalog options'), ctx);
+    vm.runInContext(section('function agentModelDropdownOptions(', 'function saveAgentSkills('), ctx);
     // Catalog hit: one row for the pinned model, no synthetic duplicate.
     const hit = ctx.agentModelDropdownOptions({ model: 'deepseek-v4-flash', bot_type: 'deepseek' });
     assert.equal(hit.filter(o => o.value === 'deepseek|deepseek-v4-flash').length, 1);

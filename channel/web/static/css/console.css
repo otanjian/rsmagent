@@ -4767,6 +4767,54 @@ textarea.doc-editor {
 .agent-card-badge.agent-chip-on { background: #EDFDF3; color: #17803d; }
 .dark .agent-card-badge { background: rgba(255,255,255,.06); color: #94a3b8; }
 .dark .agent-card-badge.agent-chip-on { background: rgba(74, 190, 110, .15); color: #86efac; }
+/* 可见性徽标（私有 / 租户共享）与「默认 / 已归档」并列，而不是二选一：一个对象可以
+   同时是「私有」且「我的默认」。角标位因此从单个 chip 变成能放两行的容器，列表里
+   两枚徽标上下叠放，详情头则用同一枚药丸的 inline 变体。 */
+.agent-card-badges {
+    position: absolute;
+    top: 9px; right: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+}
+.agent-card-badges .agent-card-badge { position: static; }
+/* 名字要避开两行角标，而不是原来的单行。 */
+.agent-card.has-visibility .agent-card-top { padding-right: 60px; }
+.agent-card-badge.agent-visibility-tenant,
+.agent-card-badge.agent-visibility-private,
+.agent-visibility-chip {
+    font-size: 9.5px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.agent-visibility-chip { display: inline-block; font-size: 10px; padding: 2px 8px; }
+/* 私有是更窄的可读范围：描边而非填充，避免和绿色「默认」抢同一处视觉重心。 */
+.agent-card-badge.agent-visibility-private,
+.agent-visibility-chip.agent-visibility-private {
+    background: transparent;
+    border: 1px solid #e2e8f0;
+    color: #94a3b8;
+}
+.dark .agent-card-badge.agent-visibility-private,
+.dark .agent-visibility-chip.agent-visibility-private {
+    background: transparent;
+    border-color: rgba(255,255,255,.14);
+    color: #94a3b8;
+}
+.agent-card-badge.agent-visibility-tenant,
+.agent-visibility-chip.agent-visibility-tenant {
+    background: #EFF6FF;
+    color: #1d4ed8;
+}
+.dark .agent-card-badge.agent-visibility-tenant,
+.dark .agent-visibility-chip.agent-visibility-tenant {
+    background: rgba(59, 130, 246, .16);
+    color: #93c5fd;
+}
+.agent-visibility-owner { margin-top: 12px; }
 .agent-card:hover { background: #f8fafc; }
 .dark .agent-card:hover { background: rgba(255,255,255,.04); }
 .agent-card.selected { background: #EDFDF3; border-color: transparent; }
@@ -4931,6 +4979,14 @@ textarea.doc-editor {
     left: 5px; top: 2px; width: 4px; height: 8px;
     border: solid #fff; border-width: 0 2px 2px 0;
     transform: rotate(45deg);
+}
+#agent-detail-skills input[type="checkbox"]:indeterminate {
+    background: #4ABE6E; border-color: #4ABE6E;
+}
+#agent-detail-skills input[type="checkbox"]:indeterminate::after {
+    content: ""; position: absolute;
+    left: 3px; top: 6px; width: 8px; height: 2px;
+    background: #fff; border: 0; transform: none;
 }
 #agent-detail-skills input[type="checkbox"]:disabled {
     opacity: .5; cursor: not-allowed;
@@ -5473,6 +5529,34 @@ textarea.doc-editor {
 .agent-cap-section:last-child { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
 .agent-cap-title { font-weight: 600; font-size: 13px; color: #334155; margin-bottom: 10px; }
 .dark .agent-cap-title { color: #e2e8f0; }
+
+/* Keyword box shared by the 能力 tab's two catalogues: one full-catalog fuzzy
+   filter over skills and tools that repaints only the rows below it, so typing
+   never rebuilds the box (and so never loses focus or an IME composition). */
+.agent-cap-search { position: relative; display: flex; align-items: center; margin-bottom: 16px; }
+.agent-cap-search-icon {
+    position: absolute; left: 10px; font-size: 12px; color: #94a3b8; pointer-events: none;
+}
+.agent-cap-search-input {
+    width: 100%; box-sizing: border-box; min-width: 0;
+    padding: 7px 30px 7px 28px; font-size: 13px; line-height: 18px;
+    border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: #334155;
+}
+.agent-cap-search-input::placeholder { color: #94a3b8; }
+.agent-cap-search-input:focus { outline: none; border-color: #4ABE6E; }
+.dark .agent-cap-search-input {
+    background: #1f1f1f; border-color: rgba(255,255,255,.12); color: #e2e8f0;
+}
+.agent-cap-search-clear {
+    position: absolute; right: 6px; width: 20px; height: 20px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    border: 0; border-radius: 999px; background: transparent;
+    color: #94a3b8; font-size: 11px; cursor: pointer;
+}
+.agent-cap-search-clear:hover { background: #f1f5f9; color: #475569; }
+.dark .agent-cap-search-clear:hover { background: rgba(255,255,255,.08); color: #cbd5e1; }
+.agent-cap-search-clear[hidden] { display: none; }
+.agent-skill-no-match { font-size: 12px; color: #94a3b8; padding: 12px 0; }
 .agent-tag {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 3px 9px; border-radius: 999px;
@@ -5485,17 +5569,7 @@ textarea.doc-editor {
 }
 .dark .agent-tag-x { color: #9ca3af; }
 .agent-tag-x:hover { color: #dc2626; }
-.agent-tool-row {
-    display: flex; align-items: center; gap: 12px;
-    padding: 8px 0; border-bottom: 1px solid #f1f5f9;
-}
-.dark .agent-tool-row { border-color: rgba(255,255,255,.05); }
-.agent-tool-row .agent-tool-chip {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-size: 11px; color: #64748b; white-space: nowrap; flex-shrink: 0;
-}
-.dark .agent-tool-row .agent-tool-chip { color: #94a3b8; }
-.agent-tool-row input[type="checkbox"] { margin-right: 2px; }
+.agent-tool-row { cursor: pointer; }
 .agent-btn {
     height: 34px; padding: 0 14px; border-radius: 9px;
     font-size: 13px; font-weight: 500; cursor: pointer;
