@@ -2352,7 +2352,45 @@ class IdentityService:
             return set()
         grants = self._role_grants_for_membership(membership["id"])
         allowed = resource_ids_for(grants, kind, action)
+        if kind == "model":
+            allowed = self._within_tenant_model_limit(tenant_id, action, allowed)
         return allowed | owned
+
+    def _within_tenant_model_limit(self, tenant_id: str, action: str, allowed: set) -> set:
+        """Narrow a member's ``model`` grants to the tenant's allocatable limit.
+
+        ``tenant_resource_grants`` is the platform's ceiling for a tenant: the
+        models the tenant may allocate at all. Narrowing it does not rewrite the
+        roles that already held a wider set — a role is only rewritten when
+        someone edits it — so without this step a stale ``role_resource_grants``
+        row would keep a model the platform removed from the tenant usable, and
+        the chat picker would go on offering it. A grant may not confer access to
+        a resource that was taken out of the tenant's allocation (design §5:
+        不能因 grant 存在就访问被移出的资源).
+
+        Applied to ``model`` alone: model is the one kind whose ``_project_owned_ids``
+        is ``None`` ("global, controlled by tenant grants"). Tenant-owned MCP
+        tools are deliberately absent from ``tenant_resource_grants``, and a
+        tenant admin's tool exemption is decided elsewhere, so a ceiling here
+        would be wrong for ``tool``.
+
+        Both tables are written from the same catalog ``resource_id``
+        (``provider:{pid}:{code}``), so the ids compare as-is.
+        """
+        limit = resource_ids_for(self._tenant_grants(tenant_id), "model", action)
+        return {rid for rid in allowed if rid in limit}
+
+    def _tenant_model_ids(self, tenant_id: str) -> set:
+        """The model ids the platform allocated to a tenant, across every action.
+
+        The *union* form of :meth:`_within_tenant_model_limit`'s limit, for
+        read-only projections that answer "does this tenant have any model at
+        all" rather than one action's question.
+        """
+        limit: set = set()
+        for action in RESOURCE_ACTIONS["model"]:
+            limit |= resource_ids_for(self._tenant_grants(tenant_id), "model", action)
+        return limit
 
     def grantable_resource_ids(self, tenant_id: str, kind: str, action: str,
                                owned_ids) -> set:
@@ -3304,7 +3342,8 @@ class IdentityService:
             "status": "success",
             "effective_permissions": sorted(permissions),
             "authorization_mode": mode,
-            "resource_actions": self._effective_resource_actions(permissions, grants, mode),
+            "resource_actions": self._effective_resource_actions(permissions, grants, mode,
+                                                                 tenant_id=tenant_id),
             "is_tenant_admin": is_admin,
             "consumers": self._consumer_availability(),
             # Per-action service availability (design D2). Additive: an old
@@ -3326,7 +3365,8 @@ class IdentityService:
         from auth.capability_matrix import feature_action_availability
         return feature_action_availability()
 
-    def _effective_resource_actions(self, permissions, grants, mode) -> Dict[str, List[str]]:
+    def _effective_resource_actions(self, permissions, grants, mode,
+                                    tenant_id=None) -> Dict[str, List[str]]:
         """Report which resource actions are available per kind.
 
         For a platform admin this reports the enabled actions for each known
@@ -3334,7 +3374,13 @@ class IdentityService:
         AND a grant must exist — the report is an intersection, not a grant.
         Known kinds/actions only: unknown names never appear, so ``all`` cannot
         be used to call arbitrary names.
+
+        ``model`` is additionally capped by the tenant's allocatable limit: a
+        role grant outside it is not exercisable (see
+        :meth:`_within_tenant_model_limit`), so reporting the action would
+        advertise something the request would refuse.
         """
+        model_limit = self._tenant_model_ids(tenant_id) if tenant_id else None
         out: Dict[str, List[str]] = {}
         for kind, actions in RESOURCE_ACTIONS.items():
             allowed = []
@@ -3342,11 +3388,21 @@ class IdentityService:
                 perm = _resource_permission(kind, action)
                 if mode == "all":
                     allowed.append(action)
-                elif perm and perm in permissions and resource_ids_for(grants, kind, action):
+                elif perm and perm in permissions and self._granted_for_action(
+                        grants, kind, action, model_limit):
                     allowed.append(action)
             if allowed:
                 out[kind] = allowed
         return out
+
+    @staticmethod
+    def _granted_for_action(grants, kind: str, action: str,
+                            model_limit: Optional[set]) -> bool:
+        """Whether any grant exists for kind+action, tenant limit respected."""
+        ids = resource_ids_for(grants, kind, action)
+        if kind == "model" and model_limit is not None:
+            ids = {rid for rid in ids if rid in model_limit}
+        return bool(ids)
 
     def _console_pages_projection(self, user, tenant, permissions, role_codes, is_admin,
                                   grants=None, mode="role") -> Dict[str, Any]:
@@ -3405,6 +3461,12 @@ class IdentityService:
                 return True
             return f"nav:{pid}" in menu_grants
 
+        # The tenant's allocatable model limit is a ceiling on model grants (see
+        # ``_within_tenant_model_limit``). The console projection has to ask the
+        # same intersected question the endpoint and the runtime gate ask, or the
+        # page would open onto rows that are no longer there.
+        model_limit = self._tenant_model_ids(tenant["id"]) if mode != "all" else None
+
         def resource_state(kind: str, action: str, perm: str) -> bool:
             """True when the identity may read this resource kind (catalog open)."""
             if mode == "all":
@@ -3412,7 +3474,7 @@ class IdentityService:
             if perm and perm not in permissions:
                 return False
             # A catalog read requires an explicit read grant (or kind grant).
-            return resource_ids_for(grants, kind, action) != set()
+            return self._granted_for_action(grants, kind, action, model_limit)
 
         def model_catalog_open() -> bool:
             """Whether the caller has any model they may read *or* use.
@@ -3423,7 +3485,8 @@ class IdentityService:
             ``read`` alone would hide it from a member whose only model grant is
             ``use`` while the endpoint behind the page returns rows — the
             "page closed, data open" disagreement this projection exists to
-            prevent.
+            prevent. Both sides apply the tenant's model limit, so a grant the
+            tenant may no longer allocate opens neither.
             """
             if mode == "all":
                 return True
@@ -3431,7 +3494,7 @@ class IdentityService:
                 perm = _resource_permission("model", action)
                 if perm and perm not in permissions:
                     continue
-                if resource_ids_for(grants, "model", action) != set():
+                if self._granted_for_action(grants, "model", action, model_limit):
                     return True
             return False
 
@@ -3454,7 +3517,9 @@ class IdentityService:
                 # the page is open while this report says the directory is shut.
                 "catalog": model_catalog_open(),
                 "config": (mode == "all") or is_platform_admin,
-                "execution": (mode == "all") or ("model.use" in permissions and resource_ids_for(grants, "model", "use") != set()),
+                "execution": (mode == "all") or ("model.use" in permissions
+                                                 and self._granted_for_action(
+                                                     grants, "model", "use", model_limit)),
             },
             "agents": {
                 "catalog": (mode == "all") or ("agent.read" in permissions and resource_ids_for(grants, "agent", "read") != set()),

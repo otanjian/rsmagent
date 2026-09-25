@@ -297,6 +297,40 @@ test('resource tab preselects existing grants and shows a searchable list', asyn
     assert.ok(checked.includes('custom:knowledge-wiki'), 'existing grant is preselected');
 });
 
+test('a save drops the model grants the tenant can no longer allocate', async () => {
+    // The platform can narrow a tenant's model limit after a role was saved. The
+    // dropped model then vanishes from the assignable catalog, so the picker can
+    // neither render nor uncheck it — but it kept inflating the model tab badge
+    // ("明明只有一个模型，为什么数量是3") and was written straight back on save.
+    const stale = 'provider:deepseek:deepseek-v4-pro';
+    const drain = async (n) => { for (let i = 0; i < n; i++) await settle(); };
+    const h = setup(undefined, { roles: [{
+        ...role,
+        resource_grants: [
+            ...role.resource_grants,
+            { resource_kind: 'model', resource_id: stale, action: 'read' },
+            { resource_kind: 'model', resource_id: stale, action: 'use' },
+        ],
+    }] });
+    await h.ctx.loadRolesView();
+    h.ctx.adminRowAction('role', 'edit', role.id);
+    await drain(8);
+    assert.equal(h.editorOpen(), true);
+    // The catalog offers only the model the tenant still has, so the stale one is
+    // unrenderable: the list shows one model and the badge has to agree with it.
+    assert.deepEqual(h.resourceList('model').map(b => b.value),
+        ['provider:deepseek:deepseek-v4-flash'], 'only the assignable model is listed');
+    assert.equal(h.node('role-badge-model').textContent, '1',
+        'the badge counts what the picker can show, not the stale grant');
+    h.node('role-editor-submit').dispatch('click');
+    await drain(4);
+    const saved = h.calls.find(c => c.url === '/api/tenant/roles/' + role.id);
+    assert.deepEqual(JSON.parse(saved.options.body).resource_grants.filter(g => g.resource_kind === 'model'), [
+        { resource_kind: 'model', resource_id: 'provider:deepseek:deepseek-v4-flash', action: 'read' },
+        { resource_kind: 'model', resource_id: 'provider:deepseek:deepseek-v4-flash', action: 'use' },
+    ], 'the unallocatable model is not written back');
+});
+
 test('role create posts the whole draft taken from every tab', async () => {
     const drain = async (n) => { for (let i = 0; i < n; i++) await settle(); };
     const h = setup();
