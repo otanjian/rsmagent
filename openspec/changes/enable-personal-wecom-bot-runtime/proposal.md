@@ -18,10 +18,11 @@
 ## Capabilities
 
 ### New Capabilities
-<!-- 无新增 capability：本人渠道的「已验收类型登记」属于既有 channel-runtime 责任域 -->
+<!-- 无新增 capability：本人渠道的「已验收类型登记」属于既有 personal-channel-configuration 责任域 -->
 
 ### Modified Capabilities
-- 本人渠道执行面（`channel/channel_instances.py` 的 `PERSONAL_RUNTIME_ACCEPTED_TYPES`）：`wecom_bot` 由「未验收、不连接」变为「已登记、可按部署开关连接」；`feishu`/`dingtalk`/`weixin` 等仍为未验收，`weixin` 另因 `inbound_identity_admissible('weixin')=False` 连配置面都未开放。
+- `personal-channel-configuration`：新增 requirement「本人运行验收按类型登记且以真实入站证据为前置」，把运行面登记集（`PERSONAL_RUNTIME_ACCEPTED_TYPES`）的登记条件、与配置面就绪集合的相互独立、以及「登记≠打开部署总开关、≠开放共享实例本人路由、部署级收窄只减不增」写成规范；本次据此把 `wecom_bot` 登记为已验收类型。
+- 代码面：本人渠道执行面（`channel/channel_instances.py` 的 `PERSONAL_RUNTIME_ACCEPTED_TYPES`）：`wecom_bot` 由「未验收、不连接」变为「已登记、可按部署开关连接」；`feishu`/`dingtalk`/`weixin` 等仍为未验收，`weixin` 另因 `inbound_identity_admissible('weixin')=False` 连配置面都未开放。
 
 ## Impact
 

@@ -15,6 +15,7 @@
 - [x] 2.2 `config.json` 打开部署总开关 `"personal_channel_runtime": true`
 - [x] 2.3 不改出箱默认值：`config.py` 与 `auth/policy.py` 仍为 `False`；`PUBLIC_PERSONAL_INGRESS_TYPES` 仍为空集
 - [x] 2.4 更新 `TestPersonalExecutionSwitch`：断言登记事实，并钉住「撤回总开关即关闭已登记类型」「打开总开关也不放行未登记类型」
+- [x] 2.5 规范增量：`specs/personal-channel-configuration/spec.md` 新增 requirement「本人运行验收按类型登记且以真实入站证据为前置」，写明登记以真实入站证据为前置、与配置面就绪集合相互独立、登记≠打开部署总开关、≠开放共享实例本人路由、部署级收窄只减不增
 
 ## 3. 运行面观测（真实进程）
 

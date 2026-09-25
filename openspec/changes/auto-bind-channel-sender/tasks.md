@@ -44,7 +44,8 @@
 ## 5. 规范与证据
 
 - [x] 5.1 `specs/external-identity-binding/spec.md`、`specs/personal-channel-configuration/spec.md`、`specs/tenant-channel-configuration/spec.md`、`specs/channel-scan-onboarding/spec.md` 四处 MODIFIED delta：未绑定默认处理增加「从未绑定实例的首条私聊认领」例外，以及扫码人身份绑定的承认
-- [x] 5.2 `evidence/1-verification.md`：改前基线、改后回归、未覆盖项与残留
+- [x] 5.2 `external-identity-binding` 的 MODIFIED 块按整块替换规则补回既有场景「已绑定但成员停用或无权」：MODIFIED 会替换整个 requirement，漏抄该场景会在归档时把它丢掉
+- [x] 5.3 `evidence/1-verification.md`：改前基线、改后回归、未覆盖项与残留
 
 ## 6. 未完成（需真实条件）
 
