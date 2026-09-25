@@ -307,10 +307,14 @@ class PrivateAgentFileScopeTests(unittest.TestCase):
         self.assertNotIn("private-agent", names)
 
     def test_search_hides_another_members_private_agent(self):
-        # Non-vacuity: with the ownership filter bypassed the query DOES match
-        # the private file, so the filtered assertion below is meaningful.
+        # Non-vacuity: with the ownership rule bypassed the query DOES match the
+        # private file, so the filtered assertion below is meaningful. The rule
+        # now has two seams (a recursive search prunes the subtree before
+        # descending, then the per-entry filter runs), and both read
+        # ``_db_path_visible``, so bypassing that one predicate opens both.
         with patch.object(web_channel, "_visible_entries",
-                          side_effect=lambda ctx, svc, entries: entries):
+                          side_effect=lambda ctx, svc, entries: entries), \
+             patch.object(web_channel, "_db_path_visible", return_value=True):
             raw = self._workspace_get(
                 "/api/workspace/search", {"q": "carols", "agent": "shared-agent"})
         raw_paths = [r["path"] for r in json.loads(raw.data.decode("utf-8"))["results"]]

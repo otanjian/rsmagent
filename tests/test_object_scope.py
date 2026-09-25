@@ -208,5 +208,57 @@ class PublicConfigurationScopeTests(unittest.TestCase):
         self.assertTrue(_platform_admin().allows_public_configuration())
 
 
+class AgentUserSubtreeScopeTests(unittest.TestCase):
+    """``user/<user_id>`` under an Agent workspace is owner-decided.
+
+    Change ``isolate-shared-agent-user-data`` (task 2.2): the platform file
+    surface reads this predicate *before* any shared-root or administrator
+    pass-through, so sharing the Agent must not hand one member another
+    member's files.
+    """
+
+    def setUp(self):
+        import shutil
+        import tempfile
+
+        self.ws = tempfile.mkdtemp(prefix="cow-scope-user-")
+        self.addCleanup(shutil.rmtree, self.ws, True)
+        self.mine = os.path.join(self.ws, "user", "u1", "uploads", "a.txt")
+        self.theirs = os.path.join(self.ws, "user", "rock", "uploads", "a.txt")
+        os.makedirs(os.path.dirname(self.mine))
+        os.makedirs(os.path.dirname(self.theirs))
+        for path in (self.mine, self.theirs):
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("x")
+
+    def test_a_member_owns_only_their_own_subtree(self):
+        scope = _member(user_id="u1")
+        self.assertTrue(scope.owns_agent_user_subtree(self.mine, self.ws))
+        self.assertFalse(scope.owns_agent_user_subtree(self.theirs, self.ws))
+
+    def test_no_verified_user_owns_nothing(self):
+        self.assertFalse(_member(user_id=None).owns_agent_user_subtree(
+            self.mine, self.ws))
+
+    def test_administrators_get_no_shortcut(self):
+        self.assertFalse(_tenant_admin(user_id="admin").owns_agent_user_subtree(
+            self.mine, self.ws))
+        self.assertFalse(_platform_admin(user_id="root").owns_agent_user_subtree(
+            self.mine, self.ws))
+
+    def test_container_and_unowned_paths_are_not_owned(self):
+        scope = _member(user_id="u1")
+        self.assertFalse(scope.owns_agent_user_subtree(
+            os.path.join(self.ws, "user"), self.ws))
+        stray = os.path.join(self.ws, "user", "not a user", "x")
+        os.makedirs(os.path.dirname(stray))
+        self.assertFalse(scope.owns_agent_user_subtree(stray, self.ws))
+
+    def test_ordinary_workspace_paths_are_not_owned(self):
+        ordinary = os.path.join(self.ws, "reports", "q1.csv")
+        os.makedirs(os.path.dirname(ordinary))
+        self.assertFalse(_member().owns_agent_user_subtree(ordinary, self.ws))
+
+
 if __name__ == "__main__":
     unittest.main()

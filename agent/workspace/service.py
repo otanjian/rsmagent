@@ -116,8 +116,17 @@ class WorkspaceService:
     # ------------------------------------------------------------------
     # Listing
     # ------------------------------------------------------------------
-    def list_dir(self, rel_path: str = "", show_hidden: bool = False) -> Dict:
-        """List one directory level, directories first then files by mtime desc."""
+    def list_dir(self, rel_path: str = "", show_hidden: bool = False,
+                 allow_entry=None) -> Dict:
+        """List one directory level, directories first then files by mtime desc.
+
+        ``allow_entry`` is an optional ``abs_path -> bool`` admission rule. It
+        runs *before* the entry cap is counted, so a caller that must hide some
+        entries (the console file panel filtering another member's
+        ``user/<id>``) neither returns them nor lets them push the visible ones
+        past ``MAX_ENTRIES``. Default ``None`` keeps every existing caller's
+        behaviour.
+        """
         full = self.resolve(rel_path)
         if not os.path.isdir(full):
             raise FileNotFoundError(f"Not a directory: {rel_path}")
@@ -129,6 +138,8 @@ class WorkspaceService:
             with os.scandir(full) as it:
                 for entry in it:
                     if not show_hidden and entry.name.startswith("."):
+                        continue
+                    if allow_entry is not None and not allow_entry(entry.path):
                         continue
                     if len(dirs) + len(files) >= MAX_ENTRIES:
                         truncated = True
@@ -171,7 +182,7 @@ class WorkspaceService:
     # ------------------------------------------------------------------
     # Search
     # ------------------------------------------------------------------
-    def search(self, query: str, limit: int = 30) -> Dict:
+    def search(self, query: str, limit: int = 30, allow_dir=None) -> Dict:
         """
         Subsequence match on the workspace-relative path, scored so that
         prefix matches on the entry name rank highest.
@@ -179,6 +190,12 @@ class WorkspaceService:
         Directories are included so a whole folder can be referenced (e.g. `@`
         a project dir); a matching folder naturally outranks the files inside it
         because those only match on the path, not the name.
+
+        ``allow_dir`` is an optional ``abs_path -> bool`` traversal rule checked
+        *before* a directory is descended into, so a subtree the caller may not
+        read contributes neither results nor walk budget (the console file panel
+        pruning another member's ``user/<id>``). Default ``None`` keeps every
+        existing caller's behaviour.
         """
         query = (query or "").strip().lower()
         results: List[Dict] = []
@@ -188,6 +205,7 @@ class WorkspaceService:
             dirnames[:] = [
                 d for d in dirnames
                 if not d.startswith(".") and d not in SEARCH_SKIP_DIRS
+                and (allow_dir is None or allow_dir(os.path.join(dirpath, d)))
             ]
             for name in dirnames + filenames:
                 is_dir = name in dirnames

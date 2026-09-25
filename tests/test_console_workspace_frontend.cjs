@@ -257,3 +257,85 @@ test('a session switch lands on the new session Agent folder', async () => {
     assert.equal(requests.length, 1, requests.join('\n'));
     assert.match(requests[0], new RegExp(`path=${dirQ(AGENT)}`));
 });
+
+// ---------------------------------------------------------------------------
+// Stale responses: a read that started under the previous scope (Agent,
+// session, account) must not paint into the new one. The list it names belongs
+// to a folder the reader has left, and for an account switch to one they may
+// not read at all.
+// ---------------------------------------------------------------------------
+
+/** Hold matching requests until `release()`, so a test controls arrival order. */
+function gateFetch(ctx, match) {
+    let release;
+    const held = new Promise(resolve => { release = resolve; });
+    const inner = ctx.fetch;
+    ctx.fetch = async (url) => {
+        if (!match || url.includes(match)) await held;
+        return inner(url);
+    };
+    return release;
+}
+
+test('a listing that arrives after an Agent switch is dropped', async () => {
+    const { ctx, nodes } = makeCtx(agentTree('new'), {
+        [dirQ('old')]: agentTree('old'),
+        [dirQ('new')]: agentTree('new'),
+    });
+    nodes.set('ws-file-list', element());
+    // The panel is open, so the switch re-lists against the new Agent. Only the
+    // *old* Agent's listing is held back, so it is guaranteed to arrive last —
+    // exactly the order that would let it overwrite the new Agent's rows.
+    poke(ctx, 'wsPanelOpen = true;');
+    const release = gateFetch(ctx, dirQ('old'));
+
+    const pending = ctx.loadWorkspaceDir('agents/old');
+    withAgent(ctx, 'new');
+    ctx.resetWorkspaceToAgentRoot();
+    await flush();
+    release();
+    await pending;
+    await flush();
+
+    const html = nodes.get('ws-file-list').innerHTML;
+    assert.match(html, /agents\/new\/knowledge/);
+    assert.ok(!html.includes('agents/old/knowledge'),
+        'the previous Agent directory was rendered into the new scope');
+});
+
+test('a search hit list that arrives after a session switch is dropped', async () => {
+    const { ctx, nodes } = makeCtx({
+        status: 'success',
+        results: [{ name: 'stale.txt', path: 'agents/old/stale.txt',
+                    is_dir: false, size: 1, kind: 'text' }],
+    });
+    nodes.set('ws-file-list', element());
+    const release = gateFetch(ctx);
+
+    const pending = ctx.runWorkspaceSearch('stale');
+    ctx.wsOnSessionSwitch();
+    release();
+    await pending;
+    await flush();
+
+    assert.ok(!nodes.get('ws-file-list').innerHTML.includes('stale.txt'),
+        'hits from the previous session were rendered');
+});
+
+test('closing the panel invalidates a listing still in flight', async () => {
+    const { ctx, nodes } = makeCtx({ status: 'success', path: '', root: '/ws/t1',
+        entries: [{ name: 'a.txt', path: 'a.txt', is_dir: false, size: 3,
+                    kind: 'text' }] });
+    nodes.set('ws-file-list', element());
+    nodes.set('workspace-panel', element());
+    const release = gateFetch(ctx);
+
+    const pending = ctx.loadWorkspaceDir('');
+    ctx.closeWorkspacePanel(true);
+    release();
+    await pending;
+    await flush();
+
+    assert.ok(!nodes.get('ws-file-list').innerHTML.includes('a.txt'),
+        'a listing from the closed visit painted the panel');
+});

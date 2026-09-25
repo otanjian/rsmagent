@@ -246,6 +246,21 @@ The chat interface supports multi-session management. All session records are pe
 
 What the Agent may reach into files and commands is governed by the permission mode: read-only, workspace-write, or full-access. On a single-tenant install you pick the global default in **Settings → Security** and new sessions inherit it. On a multi-tenant install the setting is read-only and execution is decided by the caller's **role resource authorization** — which tools and resources a role may use is assigned by an administrator, so the conversation itself cannot widen it. When a tool call is blocked the console still explains why, but there is no in-conversation switch to raise the permission.
 
+#### Files and the Workspace Panel
+
+The console file panel (workspace tree, search, preview, download and upload) and the file interfaces share one ownership rule: *whose* file it is comes from the path itself, not from the Agent or tenant a request names.
+
+- **A shared Agent stores files per account**: when several members share one tenant Agent, files uploaded or generated through the platform land under that Agent's `user/<account-id>/` (`uploads` / `outputs` / `work`). Expanding `user` lists only your own folder, and asking for a colleague's folder is refused rather than answered with an empty list — an empty list would confirm that the path exists.
+- **Shared material is unchanged**: files outside `user/` in an Agent workspace (skills, knowledge, documents) keep their previous sharing semantics for members of the same tenant.
+- **Previews and downloads belong to the owner**: files under `user/<account-id>/` are checked against the *current* identity when they are opened, and their responses are marked `private, no-store`. Forwarding a preview link does not grant access, and an old link stops working when the identity does not qualify.
+- **No implicit publishing**: a private file is not copied to the public web directory just because a tool sends it or the platform returns it.
+- **Administrators are no exception**: neither platform nor tenant administrators obtain the contents or file names of another member's `user/<account-id>/` files; governance pages expose only counts and usage metadata.
+- **Existing boundaries are unchanged**: the rules for private Agents, cross-tenant access and sensitive system paths are not relaxed.
+
+<Note>
+  This is file isolation **between application accounts**, not an execution sandbox. Python / Shell / skills / coding inside a shared Agent still run as the Agent workspace, so a script that reads the disk directly stays outside what this rule guarantees (unchanged from before).
+</Note>
+
 #### Agents
 
 "Agents" has two entry points: **Management → Agent Configuration** (management mode) and **Workbench → Agents** (usage mode).

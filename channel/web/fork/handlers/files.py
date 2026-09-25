@@ -251,38 +251,54 @@ def _static_path_private_owner(real_path: str) -> Optional[str]:
     return (binding or {}).get("private_owner_user_id") or None
 
 
+def _preview_consumer_user_id() -> Optional[str]:
+    """The verified user id of the current request, or ``None`` when unresolved."""
+    from channel.web.auth_handlers import _get_service, _session_token
+
+    token = _session_token()
+    if not token:
+        return None
+    try:
+        from auth.runtime import resolve_context
+        ctx = resolve_context(_get_service(), token, None)
+    except Exception:
+        return None
+    return getattr(ctx, "user_id", None) or None
+
+
 def _preview_consumer_may_read(real_path: str) -> bool:
     """Whether the *current* request may consume a capability preview of ``path``.
 
     Public workspace files need no identity: the HMAC token is the whole
     authorization, which is what lets an anonymous iframe render an Agent's
-    generated page. A **privately owned** file is different — the token only
-    proves the URL was once issued, so it must not survive as a bearer grant to
-    someone else's workspace. For those the current session is resolved and must
-    be the owner; no session, an expired session, or a different user all refuse.
+    generated page. Two things are **not** public even with a valid token:
 
-    Anything that prevents an answer — the store failing, the session lookup
-    failing — refuses too. Only a positive "this file is not private" allows the
-    token through.
+    * a **privately owned** Agent's file — the token only proves the URL was
+      once issued, so it must not survive as a bearer grant to someone else's
+      workspace;
+    * a member's ``user/<user_id>`` file in a **shared** Agent (change
+      ``isolate-shared-agent-user-data``) — sharing the Agent does not share the
+      files, and the ``/preview`` token is not an owner credential. An
+      unparsable owner inside the container is refused for everyone.
+
+    For both, the current session is resolved and must be the owner; no session,
+    an expired session, or a different user all refuse. Anything that prevents an
+    answer — the store failing, the session lookup failing — refuses too.
     """
     try:
+        user_state, user_owner = _static_path_user_state(real_path)
         owner = _static_path_private_owner(real_path)
     except Exception as e:
         logger.warning(f"[WebChannel] preview ownership check failed closed: {e}")
         return False
+
+    if user_state in ("user", "unowned"):
+        if user_state == "unowned":
+            return False
+        return _preview_consumer_user_id() == user_owner
     if owner is None:
         return True
-    from channel.web.auth_handlers import _get_service, _session_token
-
-    token = _session_token()
-    if not token:
-        return False
-    try:
-        from auth.runtime import resolve_context
-        ctx = resolve_context(_get_service(), token, None)
-    except Exception:
-        return False
-    return getattr(ctx, "user_id", None) == owner
+    return _preview_consumer_user_id() == owner
 
 
 class UploadHandler:
@@ -449,6 +465,7 @@ class UploadsHandler:
     def GET(self, file_name):
         # The tenant comes from the addressed Agent, not a header: the console
         # loads this as an <img>/<audio> subresource, which cannot send one.
+        from channel.web.web_channel import _db_path_visible
         from channel.web.web_channel import _get_upload_dir
         from channel.web.web_channel import _require_agent_action
         from channel.web.web_channel import _require_private_owner
@@ -458,15 +475,24 @@ class UploadsHandler:
                 agent_id = _require_tenant_agent_binding(ctx, requested_agent_id)
                 _require_private_owner(ctx, agent_id)
                 _require_agent_action(ctx, agent_id, "read", "agent.read")
+                # The upload directory is the *caller's* own user subtree now,
+                # so this read is already owner-scoped; the explicit check keeps
+                # the two halves (where it is stored, who may read it) in one
+                # place even if the directory resolution ever changes.
                 upload_dir = _get_upload_dir(agent_id)
-                full_path = os.path.normpath(os.path.join(upload_dir, file_name))
-                if not os.path.abspath(full_path).startswith(os.path.abspath(upload_dir)):
+                full_path = os.path.realpath(os.path.join(upload_dir, file_name))
+                if not _is_under(full_path, os.path.realpath(upload_dir)):
                     raise web.notfound()
                 if not os.path.isfile(full_path):
                     raise web.notfound()
+                if not _db_path_visible(ctx, full_path):
+                    raise web.notfound()
                 content_type = mimetypes.guess_type(full_path)[0] or "application/octet-stream"
                 web.header('Content-Type', content_type)
-                web.header('Cache-Control', 'public, max-age=86400')
+                if _path_in_user_subtree(full_path):
+                    web.header('Cache-Control', 'private, no-store')
+                else:
+                    web.header('Cache-Control', 'public, max-age=86400')
                 with open(full_path, 'rb') as f:
                     return f.read()
             except web.HTTPError:
@@ -559,6 +585,89 @@ def _db_path_owner(real_path: str, roots: list) -> tuple:
     return "shared", None
 
 
+def _is_under(child: str, parent: str) -> bool:
+    """True when ``child`` equals or sits inside ``parent`` (already real)."""
+    try:
+        return os.path.commonpath([child, parent]) == parent
+    except ValueError:
+        return False
+
+
+def _static_path_user_state(real_path: str) -> tuple:
+    """``(state, owner)`` against the *static* Agent workspace registration.
+
+    The capability-preview counterpart of the handler rule, resolved without a
+    request identity: a public preview request carries none, yet it must still
+    be told that a path is somebody's private file. The ``user/`` container
+    belongs to an Agent workspace, so a tenant shared root contributes no
+    container; the most specific workspace wins.
+    """
+    from common.state_dir import classify_agent_user_path
+    if not real_path:
+        return "none", None
+    real = os.path.realpath(real_path)
+    best = None
+    for root, agent_id in _tenant_workspace_root_owners():
+        if not agent_id:
+            continue
+        candidate = os.path.realpath(root)
+        if not _is_under(real, candidate):
+            continue
+        if best is None or len(candidate) > len(best):
+            best = candidate
+    if best is None:
+        return "none", None
+    return classify_agent_user_path(real, best)
+
+
+def _user_subtree_roots(ctx, roots=None) -> list:
+    """Roots for the user-container rule: the caller's own plus the static ones.
+
+    The static half keeps the rule sound for a *platform-root* path pointing
+    into another tenant's Agent workspace — a path the caller's own root list
+    would not name — so a platform administrator's platform eligibility cannot
+    carry them into a member's ``user/`` subtree. Both halves are server-derived.
+    """
+    from channel.web.web_channel import _db_file_root_owners
+    from channel.web.web_channel import _tenant_workspace_root_owners
+    merged = list(roots) if roots is not None else (
+        list(_db_file_root_owners(ctx)) if ctx is not None else [])
+    seen = {os.path.realpath(root) for root, _ in merged}
+    for workspace, agent_id in _tenant_workspace_root_owners():
+        if not agent_id:
+            continue
+        real = os.path.realpath(workspace)
+        if real not in seen:
+            seen.add(real)
+            merged.append((workspace, agent_id))
+    return merged
+
+
+def _user_subtree_state(real_path: str, roots: list) -> tuple:
+    """``(state, owner)`` for the Agent workspace most specifically owning the path.
+
+    ``state`` is ``common.state_dir.classify_agent_user_path``'s vocabulary
+    (``none``/``container``/``user``/``unowned``). It is computed from the
+    *real* path, so a symlink alias is judged by where it actually points.
+    """
+    from common.state_dir import classify_agent_user_path
+    if not real_path:
+        return "none", None
+    real = os.path.realpath(real_path)
+    best = None
+    for workspace, agent_id in roots or ():
+        if not agent_id:
+            continue
+        candidate = os.path.realpath(workspace)
+        if not _is_under(real, candidate):
+            continue
+        if best is None or len(candidate) > len(best):
+            best = candidate
+    if best is None:
+        return "none", None
+    return classify_agent_user_path(real, best)
+
+
 def _owner_of_db_path(ctx, real_path: str) -> tuple:
     """Single-resource :func:`_db_path_owner` against the caller's roots."""
     from channel.web.web_channel import _db_file_root_owners
@@ -566,22 +675,48 @@ def _owner_of_db_path(ctx, real_path: str) -> tuple:
 
 
 def _db_path_visible(ctx, real_path: str, roots: list = None) -> bool:
-    """False when ``real_path`` is ambiguous or another member's private Agent.
+    """False when ``real_path`` is ambiguous, another member's private Agent, or
+    somebody else's ``user/<user_id>`` files in a shared Agent.
 
     The single ownership rule for the file surface: apply it to the path that was
     actually addressed, never to the Agent the request merely *declared*.
     ``roots`` lets a caller listing many entries resolve the tenant's roots once.
+    The user-container rule is decided first and by ownership alone, so neither
+    sharing the Agent nor an administrator qualification widens it; the bare
+    container stays visible because its entries are filtered one at a time.
     """
     from channel.web.web_channel import _db_file_root_owners
     from channel.web.web_channel import _db_path_owner_forbidden
+    if not real_path:
+        return False
     if roots is None:
         roots = _db_file_root_owners(ctx)
+    state, owner = _user_subtree_state(real_path, _user_subtree_roots(ctx, roots))
+    if state == "unowned":
+        return False
+    if state == "user":
+        return bool(getattr(ctx, "user_id", None)) and owner == ctx.user_id
+    if state == "container":
+        return True
     kind, agent_id = _db_path_owner(real_path, roots)
     if kind == "ambiguous":
         return False
     if kind == "agent" and _db_path_owner_forbidden(ctx, agent_id):
         return False
     return True
+
+
+def _path_in_user_subtree(real_path: str) -> bool:
+    """True when the path belongs to a user's private ``user/<id>`` subtree.
+
+    Identity-free (static registration), used for response hardening: a private
+    file's response must not be cached by a shared cache.
+    """
+    try:
+        state, _ = _static_path_user_state(real_path)
+    except Exception:
+        return True  # fail closed: an unanswerable lookup is not "public"
+    return state in ("user", "unowned")
 
 
 def _authorize_db_file_path(ctx, real_path: str) -> tuple:
@@ -605,6 +740,17 @@ def _authorize_db_file_path(ctx, real_path: str) -> tuple:
 
     svc = get_identity_service()
     real_path = os.path.realpath(real_path)
+
+    # The user subtree is decided by ownership alone and *before* every
+    # pass-through below, so neither the platform-root eligibility nor an
+    # administrator qualification can open another member's shared-Agent files.
+    user_state, user_owner = _user_subtree_state(
+        real_path, _user_subtree_roots(ctx))
+    if user_state == "unowned":
+        return False, "not_found"
+    if user_state == "user" and user_owner != getattr(ctx, "user_id", None):
+        return False, "forbidden"
+
     platform_root = os.path.realpath(_platform_file_root())
     try:
         under_platform = os.path.commonpath([real_path, platform_root]) == platform_root
@@ -686,7 +832,11 @@ class FileServeHandler:
                 from urllib.parse import quote
                 web.header('Content-Type', content_type)
                 web.header('Content-Disposition', f"inline; filename*=UTF-8''{quote(file_name)}")
-                web.header('Cache-Control', 'public, max-age=3600')
+                if _path_in_user_subtree(file_path):
+                    # A member's private file: never let a shared cache retain it.
+                    web.header('Cache-Control', 'private, no-store')
+                else:
+                    web.header('Cache-Control', 'public, max-age=3600')
                 with open(file_path, 'rb') as f:
                     return f.read()
             except web.HTTPError:
@@ -742,7 +892,13 @@ class PreviewHandler:
 
             content_type = mimetypes.guess_type(full_path)[0] or "application/octet-stream"
             web.header('Content-Type', content_type)
-            web.header('Cache-Control', 'no-cache')
+            # A member's private file (their own ``user/<id>`` subtree, or a
+            # private Agent's) must not be retained by a shared cache; public
+            # workspace previews keep the existing revalidate-every-time policy.
+            if _path_in_user_subtree(full_path):
+                web.header('Cache-Control', 'private, no-store')
+            else:
+                web.header('Cache-Control', 'no-cache')
             web.header('X-Content-Type-Options', 'nosniff')
             is_html = content_type.startswith("text/html")
             if is_html:

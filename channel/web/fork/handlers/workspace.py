@@ -80,31 +80,48 @@ def _workspace_request_scope(ctx, session_id: str, agent_id: Optional[str]) -> s
     return resolved
 
 
+def _workspace_path_allowed(ctx, roots: list):
+    """An ``abs_path -> bool`` admission rule for the caller's file panel.
+
+    One seam for the whole file surface's ownership rule
+    (:func:`channel.web.web_channel._db_path_visible`): a private Agent, an
+    ambiguous root, and another member's ``user/<user_id>`` in a shared Agent
+    are all invisible. Used both to prune a recursive search before it walks
+    into a directory and to filter one listing level.
+    """
+    from channel.web.web_channel import _db_path_visible
+    ctx_roots = roots
+
+    def allowed(abs_path: str) -> bool:
+        try:
+            return _db_path_visible(ctx, os.path.realpath(abs_path), ctx_roots)
+        except (TypeError, ValueError):
+            return False
+
+    return allowed
+
+
 def _visible_entries(ctx, svc, entries: list) -> list:
-    """Drop entries the caller may not read (private-Agent ownership).
+    """Drop entries the caller may not read (private-Agent / user-subtree).
 
     Applied before decorating so a hidden entry never gets `raw_url` /
     `preview_url` minted for it, and directory names do not leak either.
     """
     from channel.web.web_channel import _db_file_root_owners
-    from channel.web.web_channel import _db_path_visible
     if ctx is None or not getattr(ctx, "tenant_id", None):
         return entries
-    roots = _db_file_root_owners(ctx)
+    allowed = _workspace_path_allowed(ctx, _db_file_root_owners(ctx))
     visible = []
     for entry in entries:
         abs_path = entry.get("abs_path") or os.path.join(svc.root, entry.get("path") or "")
-        try:
-            real = os.path.realpath(abs_path)
-        except (TypeError, ValueError):
-            continue
-        if _db_path_visible(ctx, real, roots):
+        if allowed(abs_path):
             visible.append(entry)
     return visible
 
 
 class WorkspaceTreeHandler:
     def GET(self):
+        from channel.web.web_channel import _db_file_root_owners
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _decorate_entry
         from channel.web.web_channel import _visible_entries
@@ -116,7 +133,21 @@ class WorkspaceTreeHandler:
                 agent_id = _workspace_request_scope(
                     ctx, params.session or None, params.agent or None)
                 svc = _workspace_service(params.session or None, agent_id)
-                result = svc.list_dir(params.path, show_hidden=params.show_hidden == '1')
+                # Filter inside the listing (before the entry cap) so another
+                # member's user/<id> neither appears nor crowds out the
+                # caller's own entries; the post-filter below is the same rule
+                # applied once more to the decorated rows.
+                allowed = _workspace_path_allowed(
+                    ctx, _db_file_root_owners(ctx))
+                # The addressed directory is subject to the same rule as its
+                # entries. Filtering alone answers "exists but empty" for
+                # another member's user/<id>, which is the path-existence leak
+                # the rule forbids; refuse it like any other invisible path.
+                if not allowed(os.path.realpath(svc.resolve(params.path))):
+                    raise web.HTTPError('403 Forbidden')
+                result = svc.list_dir(params.path,
+                                      show_hidden=params.show_hidden == '1',
+                                      allow_entry=allowed)
                 result["entries"] = [
                     _decorate_entry(svc, e)
                     for e in _visible_entries(ctx, svc, result["entries"])
@@ -133,6 +164,7 @@ class WorkspaceTreeHandler:
 
 class WorkspaceSearchHandler:
     def GET(self):
+        from channel.web.web_channel import _db_file_root_owners
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _decorate_entry
         from channel.web.web_channel import _visible_entries
@@ -148,7 +180,12 @@ class WorkspaceSearchHandler:
                 agent_id = _workspace_request_scope(
                     ctx, params.session or None, params.agent or None)
                 svc = _workspace_service(params.session or None, agent_id)
-                result = svc.search(params.q, limit=limit)
+                # Prune before descending: another member's user/<id> must not
+                # contribute results or consume the search budget.
+                result = svc.search(
+                    params.q, limit=limit,
+                    allow_dir=_workspace_path_allowed(
+                        ctx, _db_file_root_owners(ctx)))
                 result["results"] = [
                     _decorate_entry(svc, e)
                     for e in _visible_entries(ctx, svc, result["results"])

@@ -171,10 +171,18 @@ class ConsoleUploadTransportTests(unittest.TestCase):
         self.assertEqual(body["file_type"], "image")
         self.assertIn("?agent_id=second-agent", body["preview_url"])
 
-    def test_upload_writes_into_the_authorized_agent_workspace(self):
-        """Pinned against the write target, so a mismatch is not just cosmetic."""
+    def test_upload_writes_into_the_authorized_agents_user_subtree(self):
+        """Pinned against the write target, so a mismatch is not just cosmetic.
+
+        Change ``isolate-shared-agent-user-data``: the target is still the
+        *authorized* Agent's workspace, but the file now lands in the caller's
+        own ``user/<user_id>/uploads`` so two members sharing the Agent cannot
+        overwrite or read each other's attachments.
+        """
         body = self._json(self._upload(tenant=self.tenant_id, agent_id="second-agent"))
-        expected = os.path.join(os.path.realpath(self.other_agent_workspace), "tmp") + os.sep
+        expected = os.path.join(
+            os.path.realpath(self.other_agent_workspace),
+            "user", self.admin_id, "uploads") + os.sep
         self.assertTrue(
             os.path.realpath(body["file_path"]).startswith(expected),
             body["file_path"])
@@ -182,7 +190,9 @@ class ConsoleUploadTransportTests(unittest.TestCase):
     # -- GET /uploads/(.*) ----------------------------------------------
 
     def _seed_upload(self, workspace, name, content=b"image-bytes"):
-        path = os.path.join(workspace, "tmp", name)
+        """Put a file where ``/uploads`` now reads from: the caller's own subtree."""
+        path = os.path.join(workspace, "user", self.admin_id, "uploads", name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "wb") as handle:
             handle.write(content)
         return path

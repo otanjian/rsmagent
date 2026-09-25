@@ -39,6 +39,28 @@ let wsAgentOverride = '';
 // "not asked yet" so an empty answer is retried rather than cached.
 let wsOwnAgentId;
 
+/**
+ * Which "scope" the panel is currently showing, bumped whenever that scope
+ * changes: opening the panel, switching Agent, switching session. A listing or
+ * preview that started under the previous scope carries files from a folder the
+ * reader has already left, so its late arrival must be dropped rather than
+ * rendered — for an account switch it would otherwise paint another identity's
+ * entries into this one's panel. Every async read captures the epoch it started
+ * under (``wsScopeEpoch``) and compares before rendering.
+ */
+let wsScopeEpoch = 0;
+
+/** Enter a new scope, invalidating everything already in flight. */
+function wsNewScopeEpoch() {
+    wsScopeEpoch += 1;
+    return wsScopeEpoch;
+}
+
+/** Whether a read started under ``epoch`` has been overtaken by a scope change. */
+function wsScopeStale(epoch) {
+    return epoch !== wsScopeEpoch;
+}
+
 // Where the folders of each Agent live, relative to the workspace root the file
 // API reports. That root is the shared root of the caller's tenant (or a
 // project the session opened), and every Agent — shared or private — keeps its
@@ -204,6 +226,9 @@ function closeWorkspacePanel(byUser) {
     if (!panel) return;
     panel.classList.add('hidden');
     wsPanelOpen = false;
+    // Anything still in flight belongs to the visit that just ended; reopening
+    // the panel starts a fresh scope and must not be painted by that answer.
+    wsNewScopeEpoch();
     if (byUser) wsAutoOpenSuppressed = true;
 }
 
@@ -228,6 +253,9 @@ function toggleWorkspacePanel() {
  * instead of showing stale entries as if they were this Agent's own.
  */
 function showActiveAgentWorkspace() {
+    // A read in flight for the previous visit's Agent (or the previous session)
+    // must not land in this one.
+    wsNewScopeEpoch();
     // The fallback Agent of a previous visit is dropped *before* the landing
     // path is derived, so the folder shown is the active Agent's own.
     wsAgentOverride = '';
@@ -325,13 +353,18 @@ async function openInPreview(target) {
 
     let meta = target;
     if (typeof target === 'string') {
+        const epoch = wsScopeEpoch;
         try {
             meta = (await wsApi(`/api/workspace/resolve?path=${encodeURIComponent(target)}`)).file;
         } catch (e) {
+            if (wsScopeStale(epoch)) return;
             openWorkspacePanel('preview');
             wsSetPreviewEmpty(wsErrorMessage(e), 'fa-triangle-exclamation');
             return;
         }
+        // The reader moved on (another Agent/session/account) while the path was
+        // being resolved: opening it now would preview a file of the old scope.
+        if (wsScopeStale(epoch)) return;
     }
     if (!meta) return;
     // Directories have nothing to render; browse into them instead.
@@ -408,10 +441,14 @@ async function wsRenderPreview(meta) {
 
     if (kind === 'markdown' || kind === 'code' || kind === 'text' || kind === 'csv') {
         body.innerHTML = `<div class="workspace-empty"><i class="fas fa-spinner fa-spin"></i></div>`;
+        const epoch = wsScopeEpoch;
         try {
             const res = await fetch(previewUrl);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const text = await res.text();
+            // The scope changed while the body was loading: this text belongs to
+            // the file the reader has already navigated away from.
+            if (wsScopeStale(epoch)) return;
             if (kind === 'markdown') {
                 body.innerHTML = `<div class="ws-pad msg-content">${renderMarkdown(text)}</div>`;
             } else if (kind === 'csv') {
@@ -958,6 +995,8 @@ function refreshWorkspaceTree() {
  *  Land there again, but only if the panel is already open — never pop it open
  *  on a switch. */
 function resetWorkspaceToAgentRoot() {
+    // A listing in flight for the old Agent belongs to the old scope.
+    wsNewScopeEpoch();
     // The new Agent may well be one the caller can browse, so the previous
     // Agent's fallback must not outlive the switch — and the landing path is the
     // new Agent's folder, never the old fallback's.
@@ -1056,6 +1095,7 @@ async function loadWorkspaceDir(relPath) {
     const list = document.getElementById('ws-file-list');
     if (!list) return;
     list.innerHTML = `<div class="workspace-empty"><i class="fas fa-spinner fa-spin"></i></div>`;
+    const epoch = wsScopeEpoch;
     const landing = !!relPath && relPath === wsAgentLandingPath();
     const candidates = landing ? [relPath, ''] : [relPath || ''];
     let data = null;
@@ -1081,6 +1121,9 @@ async function loadWorkspaceDir(relPath) {
             }
         }
     }
+    // The Agent, session or account changed while this was in flight: the answer
+    // describes a folder the reader has left, so it is dropped, not rendered.
+    if (wsScopeStale(epoch)) return;
     if (!data) {
         // A landing on the Agent's own folder that stays refused is a permission
         // problem, and says so in the reader's language: the raw 404 behind it
@@ -1179,11 +1222,16 @@ async function runWorkspaceSearch(query) {
         loadWorkspaceDir(wsCurrentDir);
         return;
     }
+    const epoch = wsScopeEpoch;
     try {
         const data = await wsApi(`/api/workspace/search?q=${encodeURIComponent(query)}&limit=60`);
+        // A hit list from the previous Agent/session/account must not appear in
+        // this one (it would name files of a folder the reader has left).
+        if (wsScopeStale(epoch)) return;
         wsSearchMode = true;
         renderWorkspaceSearchResults(data.results || []);
     } catch (e) {
+        if (wsScopeStale(epoch)) return;
         const list = document.getElementById('ws-file-list');
         if (list) {
             list.innerHTML = `<div class="workspace-empty">
@@ -1448,6 +1496,9 @@ function relocalizeWorkspacePanel() {
 // a session's Agent, so stale state from the previous session must be dropped
 // and, if open, reloaded against the new session's Agent.
 function wsOnSessionSwitch() {
+    // Nothing in flight for the previous session may render here (see
+    // wsScopeEpoch): the panel is scoped to a session's Agent.
+    wsNewScopeEpoch();
     // The next session may address an Agent the caller *can* browse, so the
     // previous one's fallback must not carry over — and the landing path below
     // is the new session's Agent's own folder, not the old fallback's.

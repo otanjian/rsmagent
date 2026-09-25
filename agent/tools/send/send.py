@@ -10,6 +10,30 @@ from agent.tools.base_tool import BaseTool, ToolResult
 from common.utils import expand_path
 
 
+def user_file_state(path: str):
+    """Classify ``path`` against the caller's own Agent user subtree.
+
+    Returns ``(state, owner)`` where ``state`` is one of:
+
+    * ``"user"`` — inside ``<agent workspace>/user/<owner>/…`` for some owner.
+    * ``"unowned"`` — inside the ``user/`` container but not attributable to a
+      parsed owner (malformed or foreign layout).
+    * ``"none"`` — an ordinary shared Agent file.
+
+    Any failure to resolve the ambient identity degrades to ``"none"`` so the
+    tool keeps working outside an Agent runtime (CLI/tests).
+    """
+    from common import state_dir
+    from common.runtime_identity import current_identity
+
+    try:
+        workspace = state_dir.state_root(current_identity())
+        state, owner = state_dir.classify_agent_user_path(path, workspace)
+    except Exception:
+        return "none", None
+    return state, owner
+
+
 class Send(BaseTool):
     """Tool for sending files to the user"""
     
@@ -104,6 +128,11 @@ class Send(BaseTool):
             "message": message or f"正在发送 {file_name}"
         }
 
+        user_state, user_owner = user_file_state(absolute_path)
+        if user_state != "none":
+            return self._private_file_result(
+                result, absolute_path, user_state, user_owner, message)
+
         try:
             from common.cloud_client import get_website_base_url, copy_send_file
 
@@ -115,6 +144,35 @@ class Send(BaseTool):
         except Exception:
             pass
 
+        return ToolResult.success(result)
+
+    def _private_file_result(self, result: dict, absolute_path: str,
+                             user_state: str, user_owner: str,
+                             message: str) -> ToolResult:
+        """Handle sending a file that lives in a member's private subtree.
+
+        A file under ``<agent workspace>/user/<uid>/`` belongs to one member of
+        a shared Agent. It MUST NOT be copied to the public website directory,
+        which would hand the exact URL to anyone who can guess it. The owner can
+        still send it (the Web console renders local files through the
+        authenticated ``/api/file`` endpoint, never through ``url``), while
+        anyone else — including an administrator driving the Agent on someone
+        else's behalf — is refused.
+        """
+        from common.runtime_identity import current_identity
+
+        try:
+            caller = current_identity().user_id
+        except Exception:
+            caller = None
+
+        if user_state == "unowned" or not user_owner or user_owner != caller:
+            return ToolResult.fail(
+                "Error: File is not shareable: it belongs to another user's "
+                "private workspace directory.")
+
+        # Owner: return the file without minting a public website copy.
+        result["message"] = message or result.get("message") or ""
         return ToolResult.success(result)
     
     def _build_url_result(self, url: str, message: str) -> ToolResult:

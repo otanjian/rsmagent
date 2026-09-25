@@ -154,6 +154,37 @@ class ObjectScope:
         """
         return self.allows_agent(binding, action=MANAGE)
 
+    # -- Agent platform files ----------------------------------------------
+
+    def owns_agent_user_subtree(self, real_path: str, workspace: str) -> bool:
+        """Whether ``real_path`` lies in the caller's own ``user/<user_id>``.
+
+        Change ``isolate-shared-agent-user-data``: the platform file surface
+        keeps the per-user uploads/outputs of a shared Agent separate, so
+        holding ``agent.read`` on a shared Agent must not reach a colleague's
+        files. This is the owner half of that rule, and it is deliberately
+        narrow:
+
+        * the *bare* ``user`` container and any malformed owner inside it are
+          **not** owned (listing the container is a caller-side decision made
+          from :func:`common.state_dir.classify_agent_user_path`, because the
+          container may be shown while its other entries are filtered);
+        * another member's subtree is never owned, and neither ``tenant_admin``
+          nor ``platform_admin`` gets a shortcut — there is no ``is_admin``
+          branch here, by the same invariant as every other private branch;
+        * an unverified caller (no ``user_id``) owns nothing.
+
+        The caller applies this *in addition to* the existing tenant/Agent
+        rules and **before** any shared-root or administrator pass-through; it
+        never widens a range, only narrows one.
+        """
+        if not real_path or not workspace:
+            return False
+        from common.state_dir import classify_agent_user_path
+
+        state, owner = classify_agent_user_path(real_path, workspace)
+        return state == "user" and bool(self.user_id) and owner == self.user_id
+
     # -- Channel instances -------------------------------------------------
 
     def allows_channel_instance(self, row: Any) -> bool:

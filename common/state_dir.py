@@ -31,14 +31,46 @@ change needs no migration.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 from common.runtime_identity import RuntimeIdentity, current_identity
 
 
 class StateDirError(RuntimeError):
     """Raised when an identity names an Agent that does not exist."""
+
+
+#: The one directory, directly under an Agent's workspace, that holds the
+#: per-user platform files (uploads, generated outputs, scratch work). The
+#: file surface treats it as protected: every entry admission rule resolves a
+#: path through :func:`classify_agent_user_path` before the ordinary
+#: Agent/tenant/shared rules may open it (change
+#: ``isolate-shared-agent-user-data``). Distinct from ``users/`` under the
+#: shared root, which is the per-end-user *memory* store, not platform files.
+USER_FILES_CONTAINER = "user"
+
+#: A user id becomes a single path segment, so it must not be able to address a
+#: parent, a separator, or anything the filesystem would reinterpret. Real ids
+#: are ``usr_<opaque>``; the pattern is the safe superset the store issues.
+_USER_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,128}")
+
+
+def _validated_user_id(user_id: Optional[str]) -> Optional[str]:
+    """The user id as a safe path segment, or ``None`` when there is none.
+
+    A present-but-unsafe id raises rather than silently resolving to no user:
+    falling through to the shared upload directory would turn a malformed
+    identity into a cross-user write, which is the exact failure this layout
+    exists to prevent.
+    """
+    if not user_id:
+        return None
+    candidate = str(user_id)
+    if not _USER_ID_RE.fullmatch(candidate):
+        raise StateDirError(f"invalid user id for user file directory: {user_id!r}")
+    return candidate
 
 
 def _resolve(identity: Optional[RuntimeIdentity]) -> RuntimeIdentity:
@@ -328,6 +360,126 @@ def user_root(identity: Optional[RuntimeIdentity] = None) -> Path:
 def state_path(*parts: str, identity: Optional[RuntimeIdentity] = None) -> Path:
     """Escape hatch for paths with no named helper. Prefer adding a helper."""
     return state_root(identity).joinpath(*parts)
+
+
+# --- Per end user, inside the Agent: platform files ---------------------------
+#
+# Layered *under* one Agent's workspace rather than beside the Agents, because
+# these files belong to the work the Agent did for one user and must travel
+# with it: ``<agent workspace>/user/<user_id>/``. The shape mirrors the Agent
+# root (one container per Agent) and the personal memory store is a different
+# domain entirely (``<shared root>/users/<user_id>``) -- do not confuse them.
+
+
+def agent_user_container(identity: Optional[RuntimeIdentity] = None, *,
+                         base=None) -> Path:
+    """``<agent workspace>/user`` -- the protected per-user container."""
+    return _agent_base(identity, base) / USER_FILES_CONTAINER
+
+
+def _assert_user_container_safe(container: Path) -> None:
+    """Refuse a container that a path could be redirected through.
+
+    A symlinked or non-directory ``user`` entry cannot be trusted to bound the
+    subtree: the classifier compares *real* paths, so a link would make files
+    outside the Agent's workspace look as if they lived under a user they do
+    not belong to. The product never creates either shape, so this refuses
+    rather than trying to interpret it.
+    """
+    if container.is_symlink():
+        raise StateDirError(f"user file container is a symlink: {container}")
+    if container.exists() and not container.is_dir():
+        raise StateDirError(f"user file container is not a directory: {container}")
+
+
+def agent_user_root(identity: Optional[RuntimeIdentity] = None, *,
+                    ensure: bool = False, base=None) -> Optional[Path]:
+    """``<agent workspace>/user/<user_id>``, or ``None`` without a user.
+
+    The single place the per-user file layout is spelled out. ``base`` names
+    the Agent workspace explicitly, so value objects that already resolved one
+    do not re-resolve an identity they do not hold; without it the Agent's
+    ``state_root`` is used.
+    """
+    ident = _resolve(identity)
+    user_id = _validated_user_id(ident.user_id)
+    if user_id is None:
+        return None
+    container = _agent_base(ident, base) / USER_FILES_CONTAINER
+    _assert_user_container_safe(container)
+    root = container / user_id
+    if root.is_symlink():
+        raise StateDirError(f"user file directory is a symlink: {root}")
+    return _ensure(root, ensure)
+
+
+def agent_user_uploads_dir(identity: Optional[RuntimeIdentity] = None, *,
+                           ensure: bool = False, base=None) -> Optional[Path]:
+    """This user's uploads for the addressed Agent (``user/<id>/uploads``)."""
+    root = agent_user_root(identity, ensure=ensure, base=base)
+    return None if root is None else _ensure(root / "uploads", ensure)
+
+
+def agent_user_outputs_dir(identity: Optional[RuntimeIdentity] = None, *,
+                           ensure: bool = False, base=None) -> Optional[Path]:
+    """This user's delivered results (``user/<id>/outputs``).
+
+    Where the platform archives a generated file it is *returning to* one user,
+    so the link it mints resolves inside an owner-checked subtree instead of the
+    shared workspace root.
+    """
+    root = agent_user_root(identity, ensure=ensure, base=base)
+    return None if root is None else _ensure(root / "outputs", ensure)
+
+
+def agent_user_work_dir(identity: Optional[RuntimeIdentity] = None, *,
+                        ensure: bool = False, base=None) -> Optional[Path]:
+    """This user's scratch space for one Agent (``user/<id>/work``)."""
+    root = agent_user_root(identity, ensure=ensure, base=base)
+    return None if root is None else _ensure(root / "work", ensure)
+
+
+def classify_agent_user_path(real_path, workspace) -> Tuple[str, Optional[str]]:
+    """Locate ``real_path`` relative to one Agent's ``user/`` container.
+
+    Returns ``(state, owner_user_id)``:
+
+    * ``("none", None)`` -- not inside this Agent's user container at all, so
+      the ordinary Agent/tenant/shared rules apply unchanged;
+    * ``("container", None)`` -- exactly ``<workspace>/user``, which may be
+      listed (its entries are filtered one by one);
+    * ``("user", uid)`` -- inside ``<workspace>/user/<uid>/...``;
+    * ``("unowned", None)`` -- inside ``user/`` but not under a well-formed user
+      directory, which callers fail closed on rather than expose.
+
+    Both sides are ``os.path.realpath``-resolved first, so a symlink alias
+    (``<workspace>/alias -> <workspace>/user/<uid>``) is classified by where it
+    really points. Resolution of a *linked* ``user`` container moves the target
+    outside the workspace prefix, so such a path is ``none`` and falls back to
+    the ordinary rule for wherever it actually lives -- never a witness that it
+    belonged to some user.
+    """
+    if not real_path or not workspace:
+        return "none", None
+    real = _real(real_path)
+    ws = _real(workspace)
+    if not _contains(ws, real):
+        return "none", None
+    try:
+        rel = os.path.relpath(real, ws)
+    except ValueError:
+        return "none", None
+    if rel == os.curdir:
+        return "none", None
+    parts = rel.split(os.sep)
+    if parts[0] != USER_FILES_CONTAINER:
+        return "none", None
+    if len(parts) == 1:
+        return "container", None
+    owner = parts[1]
+    if not _USER_ID_RE.fullmatch(owner):
+        return "unowned", None
+    return "user", owner
 
 
 def _ensure(path: Path, ensure: bool) -> Path:

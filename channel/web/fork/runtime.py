@@ -212,9 +212,36 @@ def _steer_reply_text(status, lang: str) -> str:
 
 
 def _get_upload_dir(agent_id: str = None) -> str:
+    """Where this request's platform uploads are stored.
+
+    Change ``isolate-shared-agent-user-data``: a verified caller's uploads go to
+    ``<agent workspace>/user/<user_id>/uploads`` so that several members sharing
+    an Agent cannot overwrite — or read — each other's attachments. The Agent's
+    historic ``tmp`` directory is kept only when the caller carries no verified
+    user (legacy/embedders), which also keeps single-Agent installs unchanged.
+
+    A malformed user id, or a ``user`` container that is a symlink or a file, is
+    refused rather than silently downgraded to the shared directory: falling
+    back would turn a bad identity into a cross-user write.
+    """
     from agent.registry import get_agent_registry
+    from common.runtime_identity import current_identity
+    from common.state_dir import StateDirError, agent_user_uploads_dir
 
     workspace = get_agent_registry().get(agent_id).workspace
+    ident = current_identity()
+    if agent_id and ident.agent_id != agent_id:
+        ident = ident.derive(agent_id=agent_id)
+    try:
+        user_dir = agent_user_uploads_dir(ident, ensure=True)
+    except StateDirError as e:
+        logger.warning(f"[WebChannel] user upload directory refused: {e}")
+        raise web.HTTPError(
+            "403 Forbidden", {"Content-Type": "application/json"},
+            json.dumps({"status": "error", "message": "upload refused",
+                        "code": "unsafe_user_directory"}))
+    if user_dir is not None:
+        return str(user_dir)
     upload_dir = os.path.join(workspace, "tmp")
     os.makedirs(upload_dir, exist_ok=True)
     return upload_dir
