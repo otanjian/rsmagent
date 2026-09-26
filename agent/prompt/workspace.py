@@ -614,7 +614,7 @@ _LAYOUT_AGENT_ZH = """## 工作空间目录结构
 归属分三档，写入前先想清楚是哪一档：
 
 - **本智能体私有**：工作区 `agents/{agent_id}/` 下的 `AGENT.md`、`USER.md`、`RULE.md`、`MEMORY.md`、`memory/`、`scheduler/`、`tmp/`——只有你能读写。
-- **共享层**：共享根下的 `skills/`、`websites/` 与知识库 `knowledge/`——同一共享根下的每个智能体都看得到。知识库模式决定 `knowledge/` 是哪一份：「共享」模式读写共享根的 `knowledge/`；「独立」模式只读写自己工作区内的 `knowledge/`。
+- **共享层**：共享根下的 `skills/`、`websites/` 与知识库 `knowledge/`——同一共享根下的每个智能体都看得到。知识库模式决定 `knowledge/` 是哪一份：「共享」模式读取共享根的 `knowledge/`（写入共享层需要维护资格，以每轮系统提示的「共享内容维护范围」为准）；「独立」模式读写自己工作区内的 `knowledge/`。
 - **每位用户私有**：`users/<user_id>/`——当前用户的个人长期记忆与产出，其他用户看不到。
 """
 
@@ -630,7 +630,7 @@ _LAYOUT_ROOT_ZH = """## 工作空间目录结构
 归属分三档，写入前先想清楚是哪一档：
 
 - **本智能体私有**：本目录下的 `AGENT.md`、`USER.md`、`RULE.md`、`MEMORY.md`、`memory/`、`scheduler/`、`tmp/`——只有你能读写。
-- **共享层**：同一目录下的 `knowledge/`、`skills/`、`websites/`——`agents/<id>/` 下的其它智能体也读它；单智能体部署下这两档是同一处。知识库模式决定 `knowledge/` 是哪一份：「共享」模式读写共享根的 `knowledge/`；「独立」模式读写该智能体工作区内的 `knowledge/`。
+- **共享层**：同一目录下的 `knowledge/`、`skills/`、`websites/`——`agents/<id>/` 下的其它智能体也读它；单智能体部署下这两档是同一处。知识库模式决定 `knowledge/` 是哪一份：「共享」模式读取共享根的 `knowledge/`（写入共享层需要维护资格，以每轮系统提示的「共享内容维护范围」为准）；「独立」模式读写该智能体工作区内的 `knowledge/`。
 - **每位用户私有**：`users/<user_id>/`——当前用户的个人长期记忆与产出，其他用户看不到。
 """
 
@@ -647,7 +647,7 @@ resolves**. Your workspace sits under the shared root, not at the instance root.
 Ownership has three tiers; decide which one you are writing into:
 
 - **Private to this Agent**: `AGENT.md`, `USER.md`, `RULE.md`, `MEMORY.md`, `memory/`, `scheduler/` and `tmp/` under the workspace `agents/{agent_id}/` -- only you read and write them.
-- **Shared layer**: `skills/`, `websites/` and the knowledge base `knowledge/` under the shared root -- every Agent under the same shared root sees them. The knowledge-base mode decides which `knowledge/` applies: in **shared** mode you read and write the shared root's `knowledge/`; in **own** mode only the `knowledge/` inside your workspace.
+- **Shared layer**: `skills/`, `websites/` and the knowledge base `knowledge/` under the shared root -- every Agent under the same shared root sees them. The knowledge-base mode decides which `knowledge/` applies: in **shared** mode you read the shared root's `knowledge/` (writing to the shared layer requires maintenance qualification, per this turn's "Shared content maintenance scope"); in **own** mode you read and write only the `knowledge/` inside your workspace.
 - **Private to each user**: `users/<user_id>/` -- the current user's personal long-term memory and artifacts, invisible to other users.
 """
 
@@ -664,7 +664,7 @@ resolves**. Your workspace *is* the shared root.
 Ownership has three tiers; decide which one you are writing into:
 
 - **Private to this Agent**: `AGENT.md`, `USER.md`, `RULE.md`, `MEMORY.md`, `memory/`, `scheduler/` and `tmp/` in this directory -- only you read and write them.
-- **Shared layer**: `knowledge/`, `skills/` and `websites/` in the same directory -- the other Agents under `agents/<id>/` read them too; on a single-Agent install the two tiers are the same place. The knowledge-base mode decides which `knowledge/` applies: in **shared** mode you read and write the shared root's `knowledge/`; in **own** mode the one inside that Agent's workspace.
+- **Shared layer**: `knowledge/`, `skills/` and `websites/` in the same directory -- the other Agents under `agents/<id>/` read them too; on a single-Agent install the two tiers are the same place. The knowledge-base mode decides which `knowledge/` applies: in **shared** mode you read the shared root's `knowledge/` (writing to the shared layer requires maintenance qualification, per this turn's "Shared content maintenance scope"); in **own** mode you read and write the one inside that Agent's workspace.
 - **Private to each user**: `users/<user_id>/` -- the current user's personal long-term memory and artifacts, invisible to other users.
 """
 
@@ -710,11 +710,11 @@ _RULE_TEMPLATE_ZH = """# RULE.md - 工作空间规则
 
 知识库 `knowledge/` 是你持续积累的结构化知识。与记忆不同，知识是经过整理和编译的，有明确的主题和交叉引用。
 
-### 自动写入（不要询问，直接写入）
+### 写入规则（受维护资格约束）
 
-当对话中产生了有沉淀价值的知识——无论是用户分享的资料、讨论的结论、学到的概念、还是重要的决策——你**必须**在回复的同时主动写入知识库，**无需问用户"要不要存到知识库"**。
+知识库的写入只在你有维护资格时适用，以每轮系统提示中的「共享内容维护范围」为准。没有维护资格时，不要新增、修改、删除或重命名其中的文件；需要沉淀内容时，写入本轮提供的个人输出目录，不要写入共享目录。
 
-**关键原则**：学完就记是你的本能，不要征求确认。回复中可以顺带告知"已存入知识库"。
+**有维护资格时**：当对话中产生了有沉淀价值的知识——用户分享的资料、讨论的结论、学到的概念或重要决策——你**应该**在回复的同时主动写入知识库，**无需问用户"要不要存到知识库"**。学完就记是你的本能，回复中可以顺带告知"已存入知识库"。
 
 ### 目录组织
 
@@ -789,11 +789,11 @@ When the user shares info, choose where to store it by type:
 
 The knowledge base `knowledge/` is structured knowledge you accumulate over time. Unlike memory, knowledge is organized and compiled, with clear topics and cross-references.
 
-### Auto-write (don't ask, just write)
+### Write rules (bounded by your maintenance qualification)
 
-When a conversation produces knowledge worth keeping — material the user shared, a conclusion reached, a concept learned, or an important decision — you **must** proactively write it to the knowledge base alongside your reply, **without asking "should I save this to the knowledge base?"**.
+Writing to the knowledge base applies only when you hold the maintenance qualification, as stated in this turn's "Shared content maintenance scope". Without it, do not create, modify, delete or rename its files; save what you need to keep in this turn's personal output directory, never in a shared directory.
 
-**Key principle**: learning-then-recording is your instinct, no confirmation needed. You may mention "saved to the knowledge base" in passing.
+**When you do hold it**: a conversation that produces knowledge worth keeping — material the user shared, a conclusion reached, a concept learned, or an important decision — **should** be written to the knowledge base alongside your reply, **without asking "should I save this to the knowledge base?"**. Learning-then-recording is your instinct; you may mention "saved to the knowledge base" in passing.
 
 ### Directory organization
 

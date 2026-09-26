@@ -2876,6 +2876,16 @@ class IdentityService:
     def is_platform_admin(self, user_id: str) -> bool:
         return self._has_platform_admin_binding(user_id)
 
+    def is_tenant_admin(self, user_id: str, tenant_id: str) -> bool:
+        """Public form of :meth:`_is_tenant_admin` for non-HTTP callers.
+
+        The prompt layer reads the same tenant-administration fact the request
+        layer does (change ``guard-shared-knowledge-skill-writes``), so the
+        maintenance guidance cannot drift from the gate that enforces a write.
+        No new authorization is defined here.
+        """
+        return self._is_tenant_admin(user_id, tenant_id)
+
     def _is_tenant_admin(self, user_id: str, tenant_id: str) -> bool:
         membership = self._membership(user_id, tenant_id)
         if not membership or not membership["active"] or not membership["user_active"]:

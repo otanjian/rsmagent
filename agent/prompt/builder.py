@@ -9,6 +9,11 @@ import os
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 
+from agent.prompt.shared_assets import (
+    SharedAssetScope,
+    build_shared_asset_guidance,
+    resolve_shared_asset_scope,
+)
 from common.log import logger
 from config import conf
 
@@ -124,6 +129,13 @@ def build_agent_system_prompt(
     """
     sections = []
 
+    # Resolve the shared-asset maintenance scope once for this turn: the
+    # knowledge section's auto-write wording and the final constraint block
+    # must agree, and both read the same per-turn facts (change
+    # ``guard-shared-knowledge-skill-writes``). A resolution failure already
+    # yields the conservative scope inside the resolver.
+    asset_scope = resolve_shared_asset_scope(workspace_dir)
+
     # 1. Tooling (most important, goes first)
     if tools:
         sections.extend(_build_tooling_section(tools, language))
@@ -140,7 +152,9 @@ def build_agent_system_prompt(
 
     # 3.5 Knowledge (structured knowledge base)
     if conf().get("knowledge", True):
-        sections.extend(_build_knowledge_section(workspace_dir, language, project_dir))
+        sections.extend(
+            _build_knowledge_section(workspace_dir, language, project_dir, asset_scope)
+        )
 
     # 4. Workspace (working environment description). Two of its blocks only
     # hold when the context files were actually loaded, which sub agents skip.
@@ -182,6 +196,14 @@ def build_agent_system_prompt(
 
     # 8. Response language (always appended, independent of the skeleton language)
     sections.extend(_build_response_language_section(language))
+
+    # 9. Shared-content maintenance scope. Last on purpose: it constrains the
+    # auto-write instructions that appear earlier (knowledge section, RULE.md
+    # template, skill bodies), so it must be the final word the model reads. It
+    # is emitted regardless of the knowledge switch or an empty index.
+    sections.extend(
+        build_shared_asset_guidance(workspace_dir, language, scope=asset_scope)
+    )
 
     return "\n".join(sections)
 
@@ -534,13 +556,23 @@ def _build_memory_section(
 
 
 def _build_knowledge_section(
-    workspace_dir: str, language: str, project_dir: Optional[str] = None
+    workspace_dir: str,
+    language: str,
+    project_dir: Optional[str] = None,
+    scope: Optional[SharedAssetScope] = None,
 ) -> List[str]:
     """Build knowledge wiki section. Injects knowledge/index.md when present.
 
     In project mode ``project_dir`` anchors knowledge paths to ``workspace_dir``
     (absolute) so writes don't leak into the project cwd.
+
+    ``scope`` is this turn's shared-asset maintenance scope. When the knowledge
+    base is not maintainable, the unconditional "must auto-write" rules are
+    replaced by a conditional form, so a read-only base never simultaneously
+    receives a mandatory write instruction (change
+    ``guard-shared-knowledge-skill-writes``).
     """
+    maintainable = bool(scope and scope.resolved and scope.knowledge_maintainable)
     # Resolve through state_dir so an Agent on the shared base (no knowledge/ of
     # its own) still gets the shared index injected, not an empty local one.
     from common import state_dir
@@ -559,45 +591,65 @@ def _build_knowledge_section(
     kb = f"{_state_path_prefix(workspace_dir, project_dir)}knowledge"
 
     if language == "en":
+        if maintainable:
+            heading = "### Auto-write rules (mandatory)"
+            intro = "In the following cases you **must** write to the knowledge base alongside your reply, **directly, without asking the user**:"
+            outro = "⚠️ Don't ask \"should I save this to the knowledge base?\" — if a case above matches, just write it. This is instinctive."
+            index_rule = f"After writing any knowledge page, you **must update** `{kb}/index.md` with a new index line in sync."
+        else:
+            heading = "### Write rules (bounded by your maintenance scope)"
+            intro = "This knowledge base is not inside your maintenance scope this turn, so it is read-only: do not create, modify, delete or rename its files (see \"Shared content maintenance scope\"). When you need to keep something, save it to this turn's personal output directory instead. Only if your maintenance scope does allow writing do the following apply:"
+            outro = "⚠️ Never write to a read-only knowledge base; the maintenance scope stated in this prompt decides."
+            index_rule = f"When writing is allowed, after writing any knowledge page you **must update** `{kb}/index.md` with a new index line in sync."
         lines = [
             "## 📚 Knowledge",
             "",
             f"You have a continuously growing personal knowledge base `{kb}/` — your long-term structured knowledge store.",
             "",
-            "### Auto-write rules (mandatory)",
+            heading,
             "",
-            "In the following cases you **must** write to the knowledge base alongside your reply, **directly, without asking the user**:",
+            intro,
             "",
             f"1. **User shares an article / link / document** → after reading and understanding, write the key points to `{kb}/sources/<slug>.md` in the same turn",
             f"2. **An in-depth discussion produces a conclusion / plan** → organize it into `{kb}/analysis/<slug>.md`",
             f"3. **The conversation involves an important entity** (person / company / project) → create or update `{kb}/entities/<name>.md`",
             f"4. **A technical concept / methodology is discussed** → organize it into `{kb}/concepts/<topic>.md`",
             "",
-            f"After writing any knowledge page, you **must update** `{kb}/index.md` with a new index line in sync.",
+            index_rule,
             "For detailed page format and conventions, read the SKILL.md of the `knowledge-wiki` skill.",
             "",
-            "⚠️ Don't ask \"should I save this to the knowledge base?\" — if a case above matches, just write it. This is instinctive.",
+            outro,
             "",
         ]
     else:
+        if maintainable:
+            heading = "### 自动写入规则（mandatory）"
+            intro = "以下场景**必须**在回复的同时写入知识库，**直接写入，不要询问用户是否需要**："
+            outro = "⚠️ 不要问「要不要存到知识库」——符合上述场景就直接写入，这是你的本能行为。"
+            index_rule = f"每次写入知识页面后，**必须同步更新** `{kb}/index.md` 添加一行索引。"
+        else:
+            heading = "### 写入规则（受维护范围约束）"
+            intro = "本轮该知识库不在你的维护范围内，因此为只读：不要新增、修改、删除或重命名其中的文件（见「共享内容维护范围」）。需要沉淀内容时，写入本轮的个人输出目录。只有在你的维护范围允许写入时，才适用下列规则："
+            outro = "⚠️ 不要写入只读知识库；以本提示中的维护范围为准。"
+            index_rule = f"允许写入时，每次写入知识页面后**必须同步更新** `{kb}/index.md` 添加一行索引。"
         lines = [
             "## 📚 知识系统",
             "",
             f"你拥有一个持续积累的个人知识库 `{kb}/`，这是你的长期结构化知识存储。",
             "",
-            "### 自动写入规则（mandatory）",
+            heading,
             "",
-            "以下场景**必须**在回复的同时写入知识库，**直接写入，不要询问用户是否需要**：",
+            intro,
             "",
             f"1. **用户分享了文章/链接/文档** → 阅读理解后，在同一轮回复中将要点写入 `{kb}/sources/<slug>.md`",
             f"2. **深度讨论产生了结论/方案** → 整理为 `{kb}/analysis/<slug>.md`",
             f"3. **对话涉及重要实体**（人物/公司/项目）→ 创建或更新 `{kb}/entities/<name>.md`",
             f"4. **讨论了技术概念/方法论** → 整理为 `{kb}/concepts/<topic>.md`",
             "",
-            f"每次写入知识页面后，**必须同步更新** `{kb}/index.md` 添加一行索引。",
+            index_rule,
             "详细的页面格式和操作规范，请读取技能 `knowledge-wiki` 的 SKILL.md。",
             "",
-            "⚠️ 不要问「要不要存到知识库」——符合上述场景就直接写入，这是你的本能行为。",
+            outro,
             "",
         ]
 

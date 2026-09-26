@@ -330,9 +330,35 @@ class Agent:
             return full
         except Exception as e:
             logger.warning(f"Failed to rebuild system prompt, using cached version: {e}")
+            # The cached prompt may predate this change or carry an "OK to
+            # write" scope from an earlier turn, so the conservative shared
+            # content instruction is re-appended here rather than trusted from
+            # the cache (change ``guard-shared-knowledge-skill-writes``).
+            base = self._cached_prompt_with_conservative_scope()
             if self.extra_system_suffix:
-                return f"{self.system_prompt}\n\n{self.extra_system_suffix}"
-            return self.system_prompt
+                return f"{base}\n\n{self.extra_system_suffix}"
+            return base
+
+    def _cached_prompt_with_conservative_scope(self) -> str:
+        """``self.system_prompt`` plus the conservative maintenance note.
+
+        Kept separate so a failure to assemble the note can never turn into a
+        second failure: any error degrades to the bare cached prompt.
+        """
+        try:
+            from agent.prompt.shared_assets import conservative_maintenance_note
+
+            try:
+                from common import i18n
+                lang = i18n.get_language()
+            except Exception:
+                lang = "zh"
+            note = conservative_maintenance_note(lang)
+            if note and note not in (self.system_prompt or ""):
+                return f"{self.system_prompt}\n\n{note}"
+        except Exception as note_error:
+            logger.debug(f"Conservative maintenance note skipped: {note_error}")
+        return self.system_prompt
 
     def refresh_skills(self):
         """Refresh the loaded skills."""
