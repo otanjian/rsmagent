@@ -331,9 +331,19 @@ class WebAppHarness:
         self.root = str(root)
         os.makedirs(self.root, exist_ok=True)
         self.db_path = os.path.join(self.root, "identity.db")
-        # The deployment layout the console expects: tenants are siblings under
-        # ``<instance root>/tenants/<code>``, so a second tenant can be created
-        # without its root overlapping the first one's.
+        # The deployment layout the console expects: the instance root and the
+        # tenant base are *siblings*, and each tenant is a sibling under the
+        # base, so a second tenant can be created without its root overlapping
+        # the first one's.
+        #
+        # They must not be nested. The default Agent owns the whole instance
+        # root, and a tenant Agent is created under its tenant root, so a tenant
+        # root inside the instance root makes the ordinary "create an Agent"
+        # flow refuse the Agent as nested inside the default one. The same
+        # arrangement keeps tenant data out of the data root, which
+        # ``common/state_dir`` rejects outright.
+        self.instance_root = os.path.join(self.root, "instance")
+        os.makedirs(self.instance_root, exist_ok=True)
         self.shared_root = os.path.join(self.root, "tenants", tenant_code)
         self.service = IdentityService(self.db_path)
         self.stack = (stack_factory or _bootstrap_tenant)(
@@ -358,11 +368,47 @@ class WebAppHarness:
         base.update({
             "identity_mode": "database",
             "identity_db_path": self.db_path,
-            "agent_workspace": self.root,
+            "agent_workspace": self.instance_root,
             "tenant_shared_base": os.path.join(self.root, "tenants"),
         })
         base.update(settings or {})
         self._settings = base
+
+        # Pin the *data root* to this harness as well as ``conf``.
+        #
+        # ``_agent_admin_service()`` in the web layer takes no settings: it
+        # builds ``AgentAdminService(os.path.join(get_data_root(),
+        # "config.json"))``, and that service resolves the roster from whatever
+        # the file at that path says. ``get_data_root()`` and the service's own
+        # ``config_path`` therefore escape every patch below, so an Agent
+        # created, updated or deleted over the wire was written to the
+        # developer's real ``<instance root>/agents/team.json`` -- which is how
+        # that roster accumulated hundreds of ``boundary-*`` / ``*-alice-NNN``
+        # test entries.
+        #
+        # The missing-``config.json`` case is worse than pollution. A checkout
+        # without one (a git worktree, where the file is gitignored) made the
+        # service return ``{}``, so it knew only the built-in ``default`` Agent
+        # while still resolving ``team_file`` to the real ``~/cow`` roster, and
+        # the write then replaced that roster with ``default`` plus the harness's
+        # own Agents. Recorded in ``team.json.bak-clobbered-20260913`` and
+        # ``team.json.bak-clobbered-20260926-173946``.
+        #
+        # The data root is a directory of its own, disjoint from both the
+        # instance root and the tenant base: ``common/state_dir`` rejects a
+        # tenant shared root that sits inside ``get_data_root()`` (tenant data
+        # must not live in the config tree), and this harness derives
+        # ``tenants/<code>`` under ``self.root``.
+        self.data_root = os.path.join(self.root, "data")
+        os.makedirs(self.data_root, exist_ok=True)
+        self.config_path = os.path.join(self.data_root, "config.json")
+        with open(self.config_path, "w", encoding="utf-8") as handle:
+            json.dump({
+                "identity_mode": base.get("identity_mode"),
+                "identity_db_path": base.get("identity_db_path"),
+                "agent_workspace": base.get("agent_workspace"),
+                "tenant_shared_base": base.get("tenant_shared_base"),
+            }, handle)
 
         # The scheduler caches one global task store (and service) resolved from
         # whatever root was current when it was first touched. Drop them before
@@ -370,6 +416,13 @@ class WebAppHarness:
         # temp root answers every task query here -- an empty list that looks
         # like a policy failure rather than a stale cache.
         self._reset_scheduler_globals()
+        # ``COW_DATA_DIR`` is read at call time by ``get_data_root()``, so this is
+        # what makes the unpatched helpers above land in this harness's own tree
+        # rather than in the checkout. Restored with the other patchers in
+        # ``close()``.
+        env_patcher = patch.dict(os.environ, {"COW_DATA_DIR": self.data_root})
+        env_patcher.start()
+        self._patchers.append(env_patcher)
         for target in (config_module, __import__("channel.web.web_channel",
                                                  fromlist=["conf"])):
             patcher = patch.object(target, "conf", self._conf)
