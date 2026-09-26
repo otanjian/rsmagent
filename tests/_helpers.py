@@ -399,7 +399,15 @@ class WebAppHarness:
         # tenant shared root that sits inside ``get_data_root()`` (tenant data
         # must not live in the config tree), and this harness derives
         # ``tenants/<code>`` under ``self.root``.
-        self.data_root = os.path.join(self.root, "data")
+        #
+        # A caller that pinned ``COW_DATA_DIR`` before constructing the harness
+        # keeps the root it asked for. Six suites do exactly that -- set the data
+        # root, then build the harness -- and they assert against the config file
+        # at *that* path. Overriding it unconditionally moved the file one level
+        # deeper (``<root>/data`` instead of the pinned root) and failed them on
+        # a missing config file rather than on anything they meant to test.
+        inherited_root = os.environ.get("COW_DATA_DIR")
+        self.data_root = inherited_root or os.path.join(self.root, "data")
         os.makedirs(self.data_root, exist_ok=True)
         self.config_path = os.path.join(self.data_root, "config.json")
         with open(self.config_path, "w", encoding="utf-8") as handle:
