@@ -423,6 +423,19 @@ available_setting = {
     "reasoning_effort": "high",  # Provider-native reasoning depth; allowed values depend on the active provider/model
     "reasoning_effort_by_model": {},  # Per-model effort intent: {"<provider>:<model>": "<value>"}; overrides the global key per model
     "knowledge": True,  # whether to enable the knowledge base feature
+    # Traceable source ingestion (change add-traceable-knowledge-ingestion).
+    # Both default off: upload/convert stay unavailable until their real
+    # dependency slices are accepted, while scanning filters and managed-path
+    # protection remain in force regardless. Agent search is independent.
+    "knowledge_source_upload_enabled": False,  # allow original-source upload
+    "knowledge_conversion_enabled": False,     # allow document conversion
+    # Per-file / per-batch limits and the root storage allowance, enforced by the
+    # server and projected to the upload panel. 0 means "use the built-in
+    # default"; `knowledge_source_storage_quota` of 0 means unlimited.
+    "knowledge_source_max_files": 100,             # files per upload request
+    "knowledge_source_max_file_size": 10 * 1024 * 1024,   # 10 MiB
+    "knowledge_source_max_batch_size": 200 * 1024 * 1024,  # 200 MiB
+    "knowledge_source_storage_quota": 0,           # bytes; 0 = unlimited
     # Self-evolution: review idle conversations to learn memory/skills. Flat keys.
     "self_evolution_enabled": True,         # switch to enable/disable self-evolution
     "self_evolution_idle_minutes": 10,      # idle time before a session is reviewed

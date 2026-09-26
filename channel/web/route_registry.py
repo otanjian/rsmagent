@@ -267,6 +267,12 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/api/knowledge/graph", "KnowledgeGraphHandler", "upstream", {"GET": P("tenant", comment="knowledge graph (knowledge.read; tenant-bound Agent + owner scoped)")}),
     RouteEntry("/api/knowledge/action", "KnowledgeActionHandler", "upstream", {"POST": P("tenant", comment="knowledge write (data root + agent ownership)")}),
     RouteEntry("/api/knowledge/import", "KnowledgeImportHandler", "upstream", {"POST": P("tenant", comment="knowledge import (data root + agent ownership)")}),
+    RouteEntry("/api/knowledge/sources", "KnowledgeSourcesHandler", "fork:knowledge-sources", {"GET": P("tenant", comment="original sources list + capability projection (knowledge.read; tenant-bound Agent + owner scoped)")}),
+    RouteEntry("/api/knowledge/sources/detail", "KnowledgeSourceDetailHandler", "fork:knowledge-sources", {"GET": P("tenant", comment="one source with versions and task records (knowledge.read; tenant-bound Agent + owner scoped)")}),
+    RouteEntry("/api/knowledge/sources/download", "KnowledgeSourceDownloadHandler", "fork:knowledge-sources", {"GET": P("tenant", comment="stream one original version (the console reads this as an <a download> navigation, which cannot send X-Tenant-ID; tenant derived from the addressed Agent)", tenant_from_resource=True)}),
+    RouteEntry("/api/knowledge/sources/upload", "KnowledgeSourceUploadHandler", "fork:knowledge-sources", {"POST": P("tenant", comment="save original sources (data root + agent ownership; server-enforced limits, dedup and idempotent request keys)")}),
+    RouteEntry("/api/knowledge/sources/lifecycle", "KnowledgeSourceLifecycleHandler", "fork:knowledge-sources", {"POST": P("tenant", comment="disable / enable / delete a source (data root + agent ownership; delete enqueues and runs cleanup)")}),
+    RouteEntry("/api/knowledge/sources/task", "KnowledgeSourceTaskHandler", "fork:knowledge-sources", {"POST": P("tenant", comment="retry or cancel a source task (data root + agent ownership)")}),
     # Functional integration (change integrate-upstream-core-capabilities).
     # Registered while still closed: ``S(...)`` on an unopened action emits
     # ``{"policy": "closed"}``, so the route exists, the gate answers 503 before

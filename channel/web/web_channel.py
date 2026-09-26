@@ -205,6 +205,14 @@ from channel.web.fork.handlers.knowledge import (
     KnowledgeListHandler,
     KnowledgeReadHandler,
 )
+from channel.web.fork.handlers.knowledge_sources import (
+    KnowledgeSourceDetailHandler,
+    KnowledgeSourceDownloadHandler,
+    KnowledgeSourceLifecycleHandler,
+    KnowledgeSourcesHandler,
+    KnowledgeSourceTaskHandler,
+    KnowledgeSourceUploadHandler,
+)
 from channel.web.fork.handlers.logs import (
     LogsDownloadHandler,
     LogsHandler,
@@ -444,6 +452,14 @@ from channel.web.fork.handlers.knowledge import (
     _knowledge_data_root_is_own,
     _knowledge_workspace_root,
     _knowledge_write_authorized,
+)
+from channel.web.fork.handlers.knowledge_sources import (
+    KnowledgeSourceDetailHandler,
+    KnowledgeSourceDownloadHandler,
+    KnowledgeSourceLifecycleHandler,
+    KnowledgeSourcesHandler,
+    KnowledgeSourceTaskHandler,
+    KnowledgeSourceUploadHandler,
 )
 from channel.web.fork.handlers.logs import (
     LogsDownloadHandler,

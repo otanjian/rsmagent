@@ -12532,6 +12532,98 @@ let capabilityCustomModelMemory = {};
 // Keyed by capabilityId -> provider id active before the current switch.
 let capabilityLastProviderId = {};
 
+// --- Opt-in dropdown filter ---
+// A filter box above the rows, for menus whose options are a long list of names
+// or IDs (the knowledge page's Agent picker). Three rules keep it honest:
+//   * opt-in -- `initDropdown` is shared by twenty other controls, and a call
+//     site that does not ask for the box must render exactly what it always did;
+//   * it narrows the options the caller already handed over and never fetches
+//     more, so a query cannot surface an Agent the roster did not authorise;
+//   * it never changes the selection. Typing is how you find an Agent; picking
+//     the row is what switches to it.
+// Matching is a case-folded substring over the full label and the id, which is
+// what someone types for a name they can already see. (The capability page's
+// subsequence matcher is a different rule for a different job, and deliberately
+// not shared: this one must not turn "rd" into a hit on every third row.)
+function _mountDropdownSearch(menuEl) {
+    const wrap = document.createElement('div');
+    wrap.className = 'cfg-dropdown-search';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'cfg-dropdown-search-input';
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('data-i18n-placeholder', 'knowledge_agent_search_placeholder');
+    input.setAttribute('aria-label', 'knowledge_agent_search_placeholder');
+    input.placeholder = t('knowledge_agent_search_placeholder');
+    wrap.appendChild(input);
+
+    // Rendered only while a query is active and matched nothing: an unfiltered
+    // menu with no options is the caller's empty state to explain, not ours.
+    const emptyEl = document.createElement('div');
+    emptyEl.className = 'cfg-dropdown-empty hidden';
+    emptyEl.textContent = t('knowledge_agent_search_empty');
+
+    const listEl = document.createElement('div');
+    listEl.className = 'cfg-dropdown-list';
+
+    menuEl.innerHTML = '';
+    menuEl.classList.add('cfg-dropdown-searchable');
+    menuEl.appendChild(wrap);
+    menuEl.appendChild(emptyEl);
+    menuEl.appendChild(listEl);
+
+    return {
+        input,
+        listEl,
+        showEmpty(visible) { emptyEl.classList.toggle('hidden', !visible); },
+    };
+}
+
+function _dropdownOptionMatches(opt, needle) {
+    const label = String(opt && opt.label != null ? opt.label : '').toLowerCase();
+    const value = String(opt && opt.value != null ? opt.value : '').toLowerCase();
+    return label.includes(needle) || value.includes(needle);
+}
+
+function _moveDropdownHighlight(listEl, step) {
+    const rows = listEl.querySelectorAll('.cfg-dropdown-item');
+    if (!rows.length) return;
+    const current = rows.findIndex(row => row.classList.contains('cfg-dropdown-item-hl'));
+    const next = current < 0
+        ? (step > 0 ? 0 : rows.length - 1)
+        : (current + step + rows.length) % rows.length;
+    rows.forEach((row, index) => row.classList.toggle('cfg-dropdown-item-hl', index === next));
+}
+
+function _dropdownSearchKeydown(event, el, search, rerender) {
+    const key = event.key;
+    if (key === 'Escape') {
+        // Clearing is the first intent: someone who typed a filter usually
+        // wants their list back, not the menu dismissed.
+        event.preventDefault();
+        if (search.input.value) {
+            search.input.value = '';
+            el._ddQuery = '';
+            rerender();
+        } else {
+            el.classList.remove('open');
+        }
+        return;
+    }
+    if (key === 'ArrowDown' || key === 'ArrowUp') {
+        event.preventDefault();
+        _moveDropdownHighlight(search.listEl, key === 'ArrowDown' ? 1 : -1);
+        return;
+    }
+    if (key === 'Enter') {
+        const row = search.listEl.querySelector('.cfg-dropdown-item-hl');
+        if (row && typeof row.click === 'function') {
+            event.preventDefault();
+            row.click();
+        }
+    }
+}
+
 // --- Custom dropdown helper ---
 function initDropdown(el, options, selectedValue, onChange, opts) {
     // opts.placeholder: when set AND selectedValue is empty, render that text
@@ -12553,68 +12645,93 @@ function initDropdown(el, options, selectedValue, onChange, opts) {
     el._ddValue = selectedValue || '';
     el._ddOnChange = onChange;
 
+    // The filter box is opt-in (opts.searchable). Without it `listEl` is the
+    // menu itself, so an opting-out call site keeps byte-identical markup and
+    // the rows are still direct children of `.cfg-dropdown-menu`.
+    const search = opts.searchable ? _mountDropdownSearch(menuEl) : null;
+    const listEl = search ? search.listEl : menuEl;
+    el._ddQuery = '';
+    if (search) {
+        const applyQuery = () => {
+            el._ddQuery = String(search.input.value || '').trim().toLowerCase();
+            render();
+        };
+        search.input.addEventListener('input', (event) => {
+            // A composition update is a syllable in progress, not the query yet;
+            // filtering on it would rebuild the row list mid-character.
+            if (event && event.isComposing) return;
+            applyQuery();
+        });
+        search.input.addEventListener('compositionend', applyQuery);
+        search.input.addEventListener('keydown',
+            (event) => _dropdownSearchKeydown(event, el, search, render));
+    }
+
     function paintFace(opt) {
         if (!faceEl) return;
         faceEl.innerHTML = (opt && opt.agent) ? agentAvatarHTML(opt.agent, 20) : '';
     }
 
-    function render() {
-        menuEl.innerHTML = '';
-        options.forEach(opt => {
-            const item = document.createElement('div');
-            item.className = 'cfg-dropdown-item' + (opt.value === el._ddValue ? ' active' : '');
-            item.dataset.value = opt.value;
-            // Hint is an optional dim secondary label rendered on the right
-            // side of the row (e.g. friendly brand name next to a technical
-            // model id). When absent the row degrades to the original
-            // single-string layout.
-            if (opt.agent) {
-                const face = document.createElement('span');
-                face.className = 'cfg-dropdown-item-face';
-                face.innerHTML = agentAvatarHTML(opt.agent, 20);
-                const labelEl = document.createElement('span');
-                labelEl.className = 'cfg-dropdown-label';
-                labelEl.textContent = opt.label;
-                item.appendChild(face);
-                item.appendChild(labelEl);
-                // Optional trailing pill (e.g. a "default" marker) rendered
-                // dim after the name.
-                if (opt.badge) {
-                    const badgeEl = document.createElement('span');
-                    badgeEl.className = 'cfg-dropdown-badge';
-                    badgeEl.textContent = opt.badge;
-                    item.appendChild(badgeEl);
-                }
-            } else if (opt.hint) {
-                const labelEl = document.createElement('span');
-                labelEl.className = 'cfg-dropdown-label';
-                labelEl.textContent = opt.label;
-                const hintEl = document.createElement('span');
-                hintEl.className = 'cfg-dropdown-hint';
-                hintEl.textContent = opt.hint;
-                item.appendChild(labelEl);
-                item.appendChild(hintEl);
-            } else {
-                item.textContent = opt.label;
+    function buildItem(opt) {
+        const item = document.createElement('div');
+        item.className = 'cfg-dropdown-item' + (opt.value === el._ddValue ? ' active' : '');
+        item.dataset.value = opt.value;
+        // Hint is an optional dim secondary label rendered on the right
+        // side of the row (e.g. friendly brand name next to a technical
+        // model id). When absent the row degrades to the original
+        // single-string layout.
+        if (opt.agent) {
+            const face = document.createElement('span');
+            face.className = 'cfg-dropdown-item-face';
+            face.innerHTML = agentAvatarHTML(opt.agent, 20);
+            const labelEl = document.createElement('span');
+            labelEl.className = 'cfg-dropdown-label';
+            labelEl.textContent = opt.label;
+            item.appendChild(face);
+            item.appendChild(labelEl);
+            // Optional trailing pill (e.g. a "default" marker) rendered
+            // dim after the name.
+            if (opt.badge) {
+                const badgeEl = document.createElement('span');
+                badgeEl.className = 'cfg-dropdown-badge';
+                badgeEl.textContent = opt.badge;
+                item.appendChild(badgeEl);
             }
-            item.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (el._ddReadOnly) return;
-                el._ddValue = opt.value;
-                textEl.textContent = opt.label;
-                // Now that a real option is picked, drop the muted placeholder
-                // style — otherwise the chosen label stays grey (visible on
-                // dropdowns that start in a placeholder state, e.g. the chat
-                // fallback pickers).
-                textEl.classList.remove('text-slate-400', 'dark:text-slate-500');
-                paintFace(opt);
-                menuEl.querySelectorAll('.cfg-dropdown-item').forEach(i => i.classList.remove('active'));
-                item.classList.add('active');
-                el.classList.remove('open');
-                if (el._ddOnChange) el._ddOnChange(opt.value);
-            });
-            menuEl.appendChild(item);
+        } else if (opt.hint) {
+            const labelEl = document.createElement('span');
+            labelEl.className = 'cfg-dropdown-label';
+            labelEl.textContent = opt.label;
+            const hintEl = document.createElement('span');
+            hintEl.className = 'cfg-dropdown-hint';
+            hintEl.textContent = opt.hint;
+            item.appendChild(labelEl);
+            item.appendChild(hintEl);
+        } else {
+            item.textContent = opt.label;
+        }
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (el._ddReadOnly) return;
+            el._ddValue = opt.value;
+            textEl.textContent = opt.label;
+            // Now that a real option is picked, drop the muted placeholder
+            // style — otherwise the chosen label stays grey (visible on
+            // dropdowns that start in a placeholder state, e.g. the chat
+            // fallback pickers).
+            textEl.classList.remove('text-slate-400', 'dark:text-slate-500');
+            paintFace(opt);
+            listEl.querySelectorAll('.cfg-dropdown-item').forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
+            el.classList.remove('open');
+            if (el._ddOnChange) el._ddOnChange(opt.value);
         });
+        return item;
+    }
+
+    // Paint the closed control (the trigger) from the full option list, so a
+    // filtered-out but still-selected Agent keeps showing in the trigger: the
+    // filter narrows the menu, never the current choice.
+    function paintTrigger() {
         const sel = options.find(o => o.value === el._ddValue);
         if (sel) {
             textEl.textContent = sel.label;
@@ -12633,6 +12750,19 @@ function initDropdown(el, options, selectedValue, onChange, opts) {
             textEl.classList.remove('text-slate-400', 'dark:text-slate-500');
             if (options[0]) el._ddValue = options[0].value;
         }
+    }
+
+    function render() {
+        const needle = el._ddQuery;
+        const shown = needle
+            ? options.filter(opt => _dropdownOptionMatches(opt, needle))
+            : options;
+        listEl.innerHTML = '';
+        shown.forEach(opt => listEl.appendChild(buildItem(opt)));
+        // The keyboard highlight is positional, so it cannot outlive the rows it
+        // pointed at; a re-filter starts from "nothing highlighted".
+        if (search) search.showEmpty(shown.length === 0 && !!needle);
+        paintTrigger();
     }
 
     render();
@@ -19291,12 +19421,15 @@ function renderKnowledgeAgentSelect() {
     const current = viewingKnowledgeAgentId();
     const list = agentCatalog.length ? agentCatalog : enabledAgents();
     const options = list.map(a => ({ value: a.id, label: a.name || a.id, agent: a }));
-    initDropdown(el, options, current, (value) => selectKnowledgeAgent(value), { withAvatar: true });
+    initDropdown(el, options, current, (value) => selectKnowledgeAgent(value),
+        { withAvatar: true, searchable: true });
 }
 
 function selectKnowledgeAgent(agentId) {
     knowledgeAgentId = agentId;
     writeScopedPreference('cow_knowledge_agent', agentId);
+    // Another library: nothing the sources tab holds is about it any more.
+    knowledgeSourcesOnLibraryChange();
     loadKnowledgeView();
 }
 
@@ -20026,28 +20159,962 @@ function openKnowledgeFile(path, title) {
     }).catch(() => {});
 }
 
-function knowledgeMobileBack() {
-    document.getElementById('knowledge-sidebar').classList.remove('hidden');
-    document.getElementById('knowledge-content-viewer').classList.add('hidden');
+// --- Knowledge sources -------------------------------------------------
+// Original assets ("原始资料"): the bytes a user uploaded, kept for download and
+// audit. A saved original is NOT searchable -- only a published conversion body
+// joins the document set -- so every row carries ``converted`` and
+// ``searchable`` as two separate facts instead of collapsing them into one
+// badge, and the detail says which one applies.
+//
+// Two failure modes shape everything below:
+//   * a late answer belongs to the library the user has already left, so every
+//     read captures the epoch it started in and drops itself when that moved.
+//     Request order is never trusted;
+//   * polling must never tick into a tab that is off screen, so each tick
+//     re-checks the active tab and stops itself instead of refreshing a panel
+//     nobody is looking at.
+const KNOWLEDGE_SOURCE_POLL_MS = 4000;
+
+// The selected row is `var`, not `let`: the frontend suite reads it back as a
+// global, and a top-level `let` is a lexical binding that never lands on the
+// page's global object. Nothing else here needs that visibility.
+var _knowledgeSourceSelectedId = '';
+let _knowledgeSourceEpoch = 0;
+let _knowledgeSourcePollTimer = null;
+let _knowledgeSourceLimits = null;
+let _knowledgeSourceCapabilities = null;
+let _knowledgeSourceItems = [];
+let _knowledgeSourceDetailData = null;
+let _knowledgeTab = 'docs';
+let _knowledgeUploadAttempt = null;
+let _knowledgeUploadTarget = null;
+const _knowledgeUploadQueue = [];
+
+/** Same size shape the knowledge stats already render. */
+function _knowledgeSourceSize(bytes) {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Drop everything held for a library the page has just left. */
+function knowledgeSourcesOnLibraryChange() {
+    _knowledgeSourceSelectedId = '';
+    _knowledgeSourceDetailData = null;
+    _knowledgeSourceItems = [];
+    _knowledgeSourceCapabilities = null;
+    _knowledgeSourceUploadReset();
+    _knowledgeSourceEpoch += 1;
+    stopKnowledgeSourcePolling();
+    // The rows of the library just left must not stay on screen: paint the
+    // loading state until the new library answers, so the panel never reads as
+    // "this Agent has these sources".
+    const list = document.getElementById('knowledge-sources-list');
+    const empty = document.getElementById('knowledge-sources-empty');
+    const errorEl = document.getElementById('knowledge-sources-error');
+    const loading = document.getElementById('knowledge-sources-loading');
+    const noMatch = document.getElementById('knowledge-sources-no-match');
+    const filtersBar = document.getElementById('knowledge-sources-filters');
+    const usage = document.getElementById('knowledge-sources-usage');
+    if (list) { list.innerHTML = ''; list.classList.add('hidden'); }
+    if (empty) empty.classList.add('hidden');
+    if (noMatch) noMatch.classList.add('hidden');
+    if (filtersBar) filtersBar.classList.add('hidden');
+    if (errorEl) { errorEl.classList.add('hidden'); errorEl.textContent = ''; }
+    if (loading) loading.classList.remove('hidden');
+    if (usage) usage.textContent = '';
+    const detail = document.getElementById('knowledge-source-detail');
+    const placeholder = document.getElementById('knowledge-source-detail-placeholder');
+    if (detail) detail.classList.add('hidden');
+    if (placeholder) placeholder.classList.remove('hidden');
+}
+
+function stopKnowledgeSourcePolling() {
+    if (_knowledgeSourcePollTimer === null) return;
+    clearInterval(_knowledgeSourcePollTimer);
+    _knowledgeSourcePollTimer = null;
+}
+
+/** Whether any row still has a task the server is working on. */
+function _knowledgeSourcesBusy(items) {
+    return (items || []).some(item => {
+        const task = item.latest_task;
+        return !!task && (task.status === 'queued' || task.status === 'running');
+    });
+}
+
+function _maybeStartKnowledgeSourcePolling() {
+    if (!_knowledgeSourcesBusy(_knowledgeSourceItems)) {
+        stopKnowledgeSourcePolling();
+        return;
+    }
+    if (_knowledgeSourcePollTimer !== null) return;
+    _knowledgeSourcePollTimer = setInterval(() => {
+        if (currentView !== 'knowledge' || _knowledgeTab !== 'sources') {
+            stopKnowledgeSourcePolling();
+            return;
+        }
+        loadKnowledgeSources({ quiet: true });
+    }, KNOWLEDGE_SOURCE_POLL_MS);
+}
+
+function _knowledgeSourceStateOf(item) {
+    const task = item.latest_task;
+    if (task && task.status === 'failed') {
+        return { key: 'knowledge_sources_state_failed', cls: 'text-rose-500 dark:text-rose-400' };
+    }
+    if (task && (task.status === 'queued' || task.status === 'running')) {
+        return { key: 'knowledge_sources_state_converting', cls: 'text-amber-500 dark:text-amber-400' };
+    }
+    if (item.lifecycle === 'disabled') {
+        return { key: 'knowledge_sources_state_disabled', cls: 'text-slate-400 dark:text-slate-500' };
+    }
+    if (item.searchable) {
+        return { key: 'knowledge_sources_state_searchable', cls: 'text-emerald-600 dark:text-emerald-400' };
+    }
+    return { key: 'knowledge_sources_state_saved', cls: 'text-slate-400 dark:text-slate-500' };
+}
+
+function _knowledgeSourceById(sourceId) {
+    return _knowledgeSourceItems.find(item => item.source_id === sourceId) || null;
+}
+
+/** `2026-09-26T01:00:00Z` → local "2026/9/26 09:00"; unparsable stays raw. */
+function _knowledgeSourceTime(value) {
+    if (!value) return '';
+    const at = new Date(value);
+    if (Number.isNaN(at.getTime())) return String(value);
+    return at.toLocaleString();
+}
+
+/** The list's own filters: name search plus category / type / status. */
+function _knowledgeSourceFilters() {
+    const read = (id, fallback) => {
+        const el = document.getElementById(id);
+        return el && typeof el.value === 'string' ? el.value : fallback;
+    };
+    return {
+        query: read('knowledge-sources-filter', '').trim().toLowerCase(),
+        category: read('knowledge-sources-category', ''),
+        ext: read('knowledge-sources-ext', ''),
+        status: read('knowledge-sources-status', ''),
+    };
+}
+
+function _knowledgeSourceExt(item) {
+    const name = String(item.name || '');
+    const at = name.lastIndexOf('.');
+    return at > 0 ? name.slice(at).toLowerCase() : '';
+}
+
+/** One predicate, so the three status buckets cannot drift from the badges. */
+function _knowledgeSourceStatusOf(item) {
+    if (item.lifecycle === 'disabled') return 'disabled';
+    const task = item.latest_task;
+    if (task && task.status === 'failed') return 'failed';
+    if (task && (task.status === 'queued' || task.status === 'running')) return 'converting';
+    return item.searchable ? 'searchable' : 'saved';
+}
+
+function _knowledgeSourceMatches(item, filters) {
+    if (filters.query && !String(item.name || '').toLowerCase().includes(filters.query)) return false;
+    if (filters.category && (item.category || '') !== filters.category) return false;
+    if (filters.ext && _knowledgeSourceExt(item) !== filters.ext) return false;
+    if (filters.status && _knowledgeSourceStatusOf(item) !== filters.status) return false;
+    return true;
+}
+
+function _knowledgeSourceOption(value, label, selected) {
+    return `<option value="${escapeHtml(value)}"${value === selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+}
+
+/** Rebuild a filter's options without losing the user's current choice. */
+function _knowledgeSourceFillSelect(id, options) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const current = typeof el.value === 'string' ? el.value : '';
+    el.innerHTML = options.join('');
+    if (current && options.some(option => option.startsWith(`<option value="${escapeHtml(current)}"`))) {
+        el.value = current;
+    } else {
+        el.value = '';
+    }
+}
+
+function _knowledgeSourceRenderFilters(items) {
+    const bar = document.getElementById('knowledge-sources-filters');
+    if (bar) bar.classList.remove('hidden');
+    const categories = [...new Set(items.map(item => item.category || ''))].sort();
+    const exts = [...new Set(items.map(_knowledgeSourceExt).filter(Boolean))].sort();
+    _knowledgeSourceFillSelect('knowledge-sources-category',
+        [_knowledgeSourceOption('', t('knowledge_sources_filter_all_categories'), '')]
+            .concat(categories.map(value => _knowledgeSourceOption(
+                value, value || t('knowledge_sources_uncategorized'), ''))));
+    _knowledgeSourceFillSelect('knowledge-sources-ext',
+        [_knowledgeSourceOption('', t('knowledge_sources_filter_all_exts'), '')]
+            .concat(exts.map(value => _knowledgeSourceOption(value, value, ''))));
+    _knowledgeSourceFillSelect('knowledge-sources-status',
+        [_knowledgeSourceOption('', t('knowledge_sources_filter_all_status'), '')]
+                .concat(['searchable', 'saved', 'converting', 'failed', 'disabled']
+                .map(value => _knowledgeSourceOption(
+                    value, t(`knowledge_sources_state_${value}`), ''))));
+}
+
+function _knowledgeSourceRowHtml(item) {
+    const state = _knowledgeSourceStateOf(item);
+    const task = item.latest_task;
+    const taskError = (task && task.status === 'failed' && task.error)
+        ? `<p class="mt-1 text-[11px] text-rose-500 dark:text-rose-400 truncate">${escapeHtml(task.error)}</p>`
+        : '';
+    const selected = item.source_id === _knowledgeSourceSelectedId
+        ? ' bg-slate-50 dark:bg-white/5' : '';
+    // The version whose body is in effect is a different fact from the newest
+    // original: v2 can be stored while v1 is still the searchable one.
+    const versions = t('knowledge_sources_latest_version').replace('{version}', item.latest_version)
+        + (item.active_version
+            ? ` · ${t('knowledge_sources_active_version').replace('{version}', item.active_version)}`
+            : '');
+    return `
+        <button type="button" data-source-id="${escapeHtml(item.source_id)}"
+                data-status="${_knowledgeSourceStatusOf(item)}"
+                data-latest-version="${item.latest_version}"
+                data-active-version="${item.active_version || 0}"
+                onclick="openKnowledgeSourceDetail('${item.source_id}')"
+                class="knowledge-source-row w-full text-left px-4 py-2.5 border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer transition-colors${selected}">
+            <div class="flex items-center gap-2">
+                <i class="fas ${item.searchable ? 'fa-circle-check text-emerald-500' : 'fa-file-shield text-slate-400'} text-xs"></i>
+                <span class="flex-1 truncate text-xs font-medium text-slate-700 dark:text-slate-200">${escapeHtml(item.name)}</span>
+                <span class="text-[10px] flex-shrink-0 ${state.cls}">${t(state.key)}</span>
+            </div>
+            <div class="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-slate-400 dark:text-slate-500">
+                ${item.category ? `<span class="truncate">${escapeHtml(item.category)}</span>` : `<span>${t('knowledge_sources_uncategorized')}</span>`}
+                <span>${escapeHtml(_knowledgeSourceExt(item) || '—')}</span>
+                <span>${_knowledgeSourceSize(item.size)}</span>
+                <span>${versions}</span>
+                <span>${escapeHtml(_knowledgeSourceTime(item.updated_at))}</span>
+            </div>${taskError}
+        </button>`;
+}
+
+/** The header button: offered only when the deployment can really store bytes. */
+function renderKnowledgeSourceCapabilities() {
+    const caps = _knowledgeSourceCapabilities || {};
+    const upload = caps.source_upload || { available: false, reason: '' };
+    const button = document.getElementById('knowledge-upload-btn');
+    if (!button) return;
+    button.classList.toggle('hidden', !upload.available);
+    // The reason lives on the control even while it is hidden: revealing it is
+    // how the page explains "why is there no upload button here".
+    button.setAttribute('title', upload.reason || '');
+}
+
+function renderKnowledgeSources() {
+    const list = document.getElementById('knowledge-sources-list');
+    const empty = document.getElementById('knowledge-sources-empty');
+    const noMatch = document.getElementById('knowledge-sources-no-match');
+    const filtersBar = document.getElementById('knowledge-sources-filters');
+    const loading = document.getElementById('knowledge-sources-loading');
+    const errorEl = document.getElementById('knowledge-sources-error');
+    const usage = document.getElementById('knowledge-sources-usage');
+    const note = document.getElementById('knowledge-sources-note');
+    const items = _knowledgeSourceItems;
+
+    if (loading) loading.classList.add('hidden');
+    if (errorEl) { errorEl.classList.add('hidden'); errorEl.textContent = ''; }
+    if (note) note.textContent = t('knowledge_sources_note');
+
+    const total = items.reduce((sum, item) => sum + (Number(item.size) || 0), 0);
+    if (usage) {
+        usage.textContent = t('knowledge_sources_usage')
+            .replace('{count}', String(items.length))
+            .replace('{size}', _knowledgeSourceSize(total));
+    }
+
+    // Nothing stored at all: the filters have nothing to filter and the empty
+    // state is the honest answer, not "no match".
+    if (!items.length) {
+        if (filtersBar) filtersBar.classList.add('hidden');
+        if (list) { list.innerHTML = ''; list.classList.add('hidden'); }
+        if (noMatch) noMatch.classList.add('hidden');
+        if (empty) empty.classList.remove('hidden');
+        renderKnowledgeSourceCapabilities();
+        return;
+    }
+    if (empty) empty.classList.add('hidden');
+    _knowledgeSourceRenderFilters(items);
+
+    const filters = _knowledgeSourceFilters();
+    const shown = items.filter(item => _knowledgeSourceMatches(item, filters));
+    if (list) {
+        list.classList.toggle('hidden', !shown.length);
+        list.innerHTML = shown.map(_knowledgeSourceRowHtml).join('');
+    }
+    // "Stored, but filtered out" is not "nothing stored": say which one it is.
+    if (noMatch) noMatch.classList.toggle('hidden', !!shown.length);
+    renderKnowledgeSourceCapabilities();
+}
+
+function renderKnowledgeSourcesError(message) {
+    const loading = document.getElementById('knowledge-sources-loading');
+    const errorEl = document.getElementById('knowledge-sources-error');
+    const list = document.getElementById('knowledge-sources-list');
+    const empty = document.getElementById('knowledge-sources-empty');
+    const noMatch = document.getElementById('knowledge-sources-no-match');
+    const filtersBar = document.getElementById('knowledge-sources-filters');
+    if (loading) loading.classList.add('hidden');
+    if (empty) empty.classList.add('hidden');
+    if (noMatch) noMatch.classList.add('hidden');
+    if (filtersBar) filtersBar.classList.add('hidden');
+    if (list) { list.innerHTML = ''; list.classList.add('hidden'); }
+    if (errorEl) {
+        errorEl.classList.remove('hidden');
+        errorEl.textContent = String(message == null ? '' : message);
+    }
+}
+
+async function loadKnowledgeSources(opts) {
+    const quiet = !!(opts && opts.quiet);
+    const epoch = ++_knowledgeSourceEpoch;
+    const loading = document.getElementById('knowledge-sources-loading');
+    const errorEl = document.getElementById('knowledge-sources-error');
+    if (loading && !quiet) loading.classList.remove('hidden');
+    if (errorEl && !quiet) { errorEl.classList.add('hidden'); errorEl.textContent = ''; }
+
+    let data;
+    try {
+        const response = await fetch(_kbUrl('/api/knowledge/sources'));
+        data = await response.json();
+    } catch (exc) {
+        if (epoch !== _knowledgeSourceEpoch) return null;
+        renderKnowledgeSourcesError((exc && exc.message) || exc);
+        return null;
+    }
+    // A newer read (or a library switch) owns the panel now; this answer is
+    // about a page state the user has already left.
+    if (epoch !== _knowledgeSourceEpoch) return null;
+
+    if (!data || data.status !== 'success') {
+        renderKnowledgeSourcesError((data && data.message) || t('knowledge_unavailable'));
+        return null;
+    }
+    _knowledgeSourceItems = data.sources || [];
+    _knowledgeSourceLimits = data.limits || _knowledgeSourceLimits;
+    _knowledgeSourceCapabilities = data.capabilities || _knowledgeSourceCapabilities;
+    renderKnowledgeSources();
+    _maybeStartKnowledgeSourcePolling();
+    // A reload must not keep a row that the server no longer lists.
+    if (_knowledgeSourceSelectedId && !_knowledgeSourceById(_knowledgeSourceSelectedId)) {
+        _knowledgeSourceSelectedId = '';
+        _knowledgeSourceDetailData = null;
+        const detail = document.getElementById('knowledge-source-detail');
+        const placeholder = document.getElementById('knowledge-source-detail-placeholder');
+        if (detail) detail.classList.add('hidden');
+        if (placeholder) placeholder.classList.remove('hidden');
+    }
+    return data;
+}
+
+function _knowledgeSourceAction(key, handler, extra) {
+    return `<button type="button" onclick="${handler}"
+                    class="px-2.5 py-1 rounded-md border border-slate-200 dark:border-white/10
+                           text-[11px] text-slate-600 dark:text-slate-300 hover:bg-slate-50
+                           dark:hover:bg-white/5 cursor-pointer transition-colors${extra || ''}">${t(key)}</button>`;
+}
+
+function _knowledgeSourceDetailHtml(data) {
+    const item = data.source || {};
+    const versions = data.versions || [];
+    const tasks = data.tasks || [];
+    const caps = _knowledgeSourceCapabilities || {};
+    const conversion = caps.conversion || { available: false, reason: '' };
+
+    const versionRows = versions.map(v => `
+        <li class="flex items-center gap-2 py-1.5">
+            <span class="text-[11px] text-slate-400 dark:text-slate-500 flex-shrink-0">v${v.version}</span>
+            <span class="flex-1 truncate text-xs text-slate-700 dark:text-slate-200">${escapeHtml(v.original_name)}</span>
+            <span class="text-[11px] text-slate-400 dark:text-slate-500 flex-shrink-0">${_knowledgeSourceSize(v.size)}</span>
+            <span class="text-[10px] flex-shrink-0 ${v.commit_state === 'committed' ? 'text-slate-400' : 'text-amber-500'}">${escapeHtml(v.commit_state)}</span>
+            <button type="button" onclick="downloadKnowledgeSource('${item.source_id}', ${v.version})"
+                    class="flex-shrink-0 text-[11px] text-primary-500 hover:underline cursor-pointer">${t('knowledge_sources_download')}</button>
+        </li>`).join('');
+
+    const taskRows = tasks.map(task => {
+        const pending = task.status === 'queued' || task.status === 'running';
+        const cancel = pending && task.task_type === 'convert'
+            ? _knowledgeSourceAction('knowledge_sources_cancel',
+                `cancelKnowledgeSourceTask('${task.task_id}')`) : '';
+        const retry = task.status === 'failed'
+            ? _knowledgeSourceAction('knowledge_sources_retry',
+                `retryKnowledgeSourceTask('${task.task_id}')`) : '';
+        return `
+        <li class="flex items-center gap-2 py-1.5">
+            <span class="text-[11px] text-slate-500 dark:text-slate-400 flex-shrink-0">${escapeHtml(task.task_type)}</span>
+            <span class="text-[11px] flex-shrink-0 ${task.status === 'failed' ? 'text-rose-500' : 'text-slate-400'}">${escapeHtml(task.status)}</span>
+            <span class="flex-1 truncate text-[11px] text-slate-400 dark:text-slate-500">${escapeHtml(task.error || task.stage || '')}</span>
+            ${retry}${cancel}
+        </li>`;
+    }).join('');
+
+    const conversionAction = conversion.available
+        ? _knowledgeSourceAction('knowledge_sources_convert',
+            `requestKnowledgeSourceConversion('${item.source_id}')`)
+        // No button at all while the deployment cannot convert: a control that
+        // always refuses looks like a bug, the reason looks like an answer.
+        : `<p class="text-[11px] text-slate-400 dark:text-slate-500">${escapeHtml(conversion.reason || '')}</p>`;
+
+    // The body in effect is a separate fact from the newest original, and when
+    // there is none the reason has to be stated: "saved" must never read as
+    // "searchable".
+    const bodyTone = item.searchable ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500';
+    const bodyText = item.searchable
+        ? t('knowledge_sources_body_published').replace('{version}', item.active_version)
+        : t('knowledge_sources_body_missing');
+
+    const lifecycle = item.lifecycle === 'active'
+        ? _knowledgeSourceAction('knowledge_sources_disable',
+            `setKnowledgeSourceLifecycle('${item.source_id}', 'disable')`)
+        : _knowledgeSourceAction('knowledge_sources_enable',
+            `setKnowledgeSourceLifecycle('${item.source_id}', 'enable')`);
+
+    const infoRow = (key, value) => `<div class="flex items-baseline gap-2 py-0.5">
+            <span class="text-[11px] text-slate-400 dark:text-slate-500 w-20 flex-shrink-0">${t(key)}</span>
+            <span class="text-[11px] text-slate-600 dark:text-slate-300 break-all">${escapeHtml(value)}</span>
+        </div>`;
+
+    return `
+        <p class="text-[11px] text-slate-500 dark:text-slate-400">
+            ${t(item.searchable ? 'knowledge_sources_searchable_hint' : 'knowledge_sources_saved_hint')}
+        </p>
+        <div class="mt-4">
+            <span class="text-xs font-medium text-slate-600 dark:text-slate-300">${t('knowledge_sources_info')}</span>
+            <div class="mt-1">
+                ${infoRow('knowledge_sources_field_category', item.category || t('knowledge_sources_uncategorized'))}
+                ${infoRow('knowledge_sources_field_type', _knowledgeSourceExt(item) || '—')}
+                ${infoRow('knowledge_sources_field_size', _knowledgeSourceSize(item.size))}
+                ${infoRow('knowledge_sources_field_latest_version', `v${item.latest_version}`)}
+                ${infoRow('knowledge_sources_field_active_version',
+                    item.active_version ? `v${item.active_version}` : t('knowledge_sources_active_version_none'))}
+                ${infoRow('knowledge_sources_field_created', _knowledgeSourceTime(item.created_at))}
+                ${infoRow('knowledge_sources_field_updated', _knowledgeSourceTime(item.updated_at))}
+            </div>
+        </div>
+        <div class="mt-4">
+            <span class="text-xs font-medium text-slate-600 dark:text-slate-300">${t('knowledge_sources_versions')}</span>
+            <ul class="mt-1 divide-y divide-slate-100 dark:divide-white/5">${versionRows || ''}</ul>
+            <div class="mt-2">
+                ${_knowledgeSourceAction('knowledge_sources_add_version',
+                    `openKnowledgeUploadPanel('${item.source_id}')`)}
+            </div>
+        </div>
+        <div class="mt-4">
+            <span class="text-xs font-medium text-slate-600 dark:text-slate-300">${t('knowledge_sources_body')}</span>
+            <p class="mt-1 text-[11px] ${bodyTone}">${bodyText}</p>
+        </div>
+        <div class="mt-4">
+            <span class="text-xs font-medium text-slate-600 dark:text-slate-300">${t('knowledge_sources_tasks')}</span>
+            <ul class="mt-1 divide-y divide-slate-100 dark:divide-white/5">${taskRows || `<li class="py-1.5 text-[11px] text-slate-400 dark:text-slate-500">${t('knowledge_sources_no_tasks')}</li>`}</ul>
+        </div>
+        <div class="mt-4 flex flex-wrap items-center gap-2">
+            <span class="text-xs font-medium text-slate-600 dark:text-slate-300">${t('knowledge_sources_convert')}</span>
+            ${conversionAction}
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+            <span class="text-xs font-medium text-slate-600 dark:text-slate-300">${t('knowledge_sources_lifecycle')}</span>
+            ${lifecycle}
+            ${_knowledgeSourceAction('knowledge_sources_delete',
+                `setKnowledgeSourceLifecycle('${item.source_id}', 'delete')`)}
+        </div>`;
+}
+
+function renderKnowledgeSourceDetail() {
+    const data = _knowledgeSourceDetailData;
+    const panel = document.getElementById('knowledge-source-detail');
+    const placeholder = document.getElementById('knowledge-source-detail-placeholder');
+    const title = document.getElementById('knowledge-source-detail-title');
+    const stateEl = document.getElementById('knowledge-source-detail-state');
+    const body = document.getElementById('knowledge-source-detail-body');
+    if (!data || !data.source) return;
+    if (title) title.textContent = data.source.name || '';
+    if (stateEl) {
+        const state = _knowledgeSourceStateOf(data.source);
+        stateEl.className = `text-[11px] ml-auto flex-shrink-0 ${state.cls}`;
+        stateEl.textContent = t(state.key);
+    }
+    if (body) body.innerHTML = _knowledgeSourceDetailHtml(data);
+    if (placeholder) placeholder.classList.add('hidden');
+    if (panel) panel.classList.remove('hidden');
+}
+
+async function openKnowledgeSourceDetail(sourceId) {
+    _knowledgeSourceSelectedId = sourceId;
+    _knowledgeSourceDetailData = null;
+    renderKnowledgeSources();
+    const epoch = _knowledgeSourceEpoch;
+    let data;
+    try {
+        const response = await fetch(_kbUrl(
+            `/api/knowledge/sources/detail?source_id=${encodeURIComponent(sourceId)}`));
+        data = await response.json();
+    } catch (exc) {
+        if (epoch !== _knowledgeSourceEpoch || _knowledgeSourceSelectedId !== sourceId) return null;
+        _setKnowledgeStatus((exc && exc.message) || exc, true, true);
+        return null;
+    }
+    // Another row (or another library) was opened while this was in flight.
+    if (epoch !== _knowledgeSourceEpoch || _knowledgeSourceSelectedId !== sourceId) return null;
+    if (!data || data.status !== 'success') {
+        _setKnowledgeStatus((data && data.message) || t('knowledge_unavailable'), true, true);
+        return null;
+    }
+    _knowledgeSourceDetailData = data;
+    renderKnowledgeSourceDetail();
+    return data;
+}
+
+function knowledgeSourceDetailBack() {
+    _knowledgeSourceSelectedId = '';
+    _knowledgeSourceDetailData = null;
+    const panel = document.getElementById('knowledge-source-detail');
+    const placeholder = document.getElementById('knowledge-source-detail-placeholder');
+    if (panel) panel.classList.add('hidden');
+    if (placeholder) placeholder.classList.remove('hidden');
+    renderKnowledgeSources();
+}
+
+/** A browser navigation: the route answers an attachment, not JSON. */
+function downloadKnowledgeSource(sourceId, version) {
+    let url = `/api/knowledge/sources/download?source_id=${encodeURIComponent(sourceId)}`;
+    if (version) url += `&version=${encodeURIComponent(version)}`;
+    window.location.href = _kbUrl(url);
+}
+
+/** POST JSON without awaiting the answer: the caller refreshes on the handler. */
+function _knowledgeSourcePostJson(path, payload, onDone) {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', path);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onload = () => {
+        let data = {};
+        try { data = JSON.parse(xhr.responseText || '{}'); } catch (exc) { data = {}; }
+        if (onDone) onDone(data, xhr.status);
+    };
+    xhr.onerror = () => {
+        if (onDone) onDone({ status: 'error', message: t('knowledge_sources_request_failed') }, 0);
+    };
+    xhr.send(JSON.stringify(payload));
+    return xhr;
+}
+
+async function setKnowledgeSourceLifecycle(sourceId, action) {
+    const known = _knowledgeSourceById(sourceId) || {};
+    if (action === 'delete') {
+        // Deleting is not one row: it removes every original version and any
+        // published body that consumers are searching right now. State what it
+        // takes away before asking, instead of a generic "are you sure".
+        const body = known.searchable
+            ? t('knowledge_sources_delete_body_published').replace('{version}', known.active_version)
+            : t('knowledge_sources_delete_body_none');
+        const message = t('knowledge_sources_delete_confirm')
+            .replace('{versions}', String(known.latest_version || 0))
+            .replace('{body}', body);
+        if (!window.confirm(message)) return null;
+    }
+    _knowledgeSourcePostJson('/api/knowledge/sources/lifecycle',
+        { source_id: sourceId, action: action, agent_id: viewingKnowledgeAgentId() },
+        (data) => {
+            if (!data || data.status !== 'success') {
+                _setKnowledgeStatus((data && data.message) || t('knowledge_sources_request_failed'), true, true);
+                return;
+            }
+            // A delete takes the row with it; keeping a selection would leave the
+            // detail pointing at something the list no longer has.
+            if (action === 'delete' && _knowledgeSourceSelectedId === sourceId) {
+                knowledgeSourceDetailBack();
+            }
+            _setKnowledgeStatus(t(`knowledge_sources_lifecycle_done_${action}`), false, true);
+            loadKnowledgeSources({ quiet: true });
+        });
+    return known ? known.source_id : sourceId;
+}
+
+async function retryKnowledgeSourceTask(taskId) {
+    _knowledgeSourcePostJson('/api/knowledge/sources/task',
+        { task_id: taskId, action: 'retry', agent_id: viewingKnowledgeAgentId() },
+        (data) => {
+            if (!data || data.status !== 'success') {
+                _setKnowledgeStatus((data && data.message) || t('knowledge_sources_request_failed'), true, true);
+                return;
+            }
+            _setKnowledgeStatus(t('knowledge_sources_retry_started'), false, true);
+            loadKnowledgeSources({ quiet: true });
+            if (_knowledgeSourceSelectedId) openKnowledgeSourceDetail(_knowledgeSourceSelectedId);
+        });
+    return taskId;
+}
+
+async function cancelKnowledgeSourceTask(taskId) {
+    _knowledgeSourcePostJson('/api/knowledge/sources/task',
+        { task_id: taskId, action: 'cancel', agent_id: viewingKnowledgeAgentId() },
+        (data) => {
+            if (!data || data.status !== 'success') {
+                _setKnowledgeStatus((data && data.message) || t('knowledge_sources_request_failed'), true, true);
+                return;
+            }
+            _setKnowledgeStatus(t('knowledge_sources_cancel_done'), false, true);
+            loadKnowledgeSources({ quiet: true });
+            if (_knowledgeSourceSelectedId) openKnowledgeSourceDetail(_knowledgeSourceSelectedId);
+        });
+    return taskId;
+}
+
+async function requestKnowledgeSourceConversion(sourceId) {
+    _knowledgeSourcePostJson('/api/knowledge/sources/task',
+        { source_id: sourceId, action: 'convert', agent_id: viewingKnowledgeAgentId() },
+        (data) => {
+            // Phase C owns the executor; until it lands the server refuses with
+            // the projected reason, and the reason is the useful answer.
+            if (!data || data.status !== 'success') {
+                _setKnowledgeStatus((data && data.message) || t('knowledge_sources_request_failed'), true, true);
+                return;
+            }
+            _setKnowledgeStatus(t('knowledge_sources_convert_started'), false, true);
+            loadKnowledgeSources({ quiet: true });
+            if (_knowledgeSourceSelectedId) openKnowledgeSourceDetail(_knowledgeSourceSelectedId);
+        });
+    return sourceId;
+}
+
+// --- Upload ------------------------------------------------------------
+
+function _knowledgeUploadRequestId() {
+    return `src-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function _knowledgeUploadLimits() {
+    return _knowledgeSourceLimits || {};
+}
+
+function _knowledgeSourceUploadReset() {
+    _knowledgeUploadQueue.length = 0;
+    _knowledgeUploadAttempt = null;
+    _knowledgeUploadTarget = null;
+    _renderKnowledgeUploadQueue();
+}
+
+/**
+ * Open the panel. With a `sourceId`, the panel uploads a new version of that
+ * source instead of creating a fresh one — the same bytes path, a different
+ * target, which is why it is one panel and not two.
+ */
+function openKnowledgeUploadPanel(sourceId) {
+    const panel = document.getElementById('knowledge-upload-panel');
+    if (!panel) return;
+    _knowledgeUploadTarget = sourceId || null;
+    const limits = _knowledgeUploadLimits();
+    const target = document.getElementById('knowledge-upload-target');
+    const known = sourceId ? _knowledgeSourceById(sourceId) : null;
+    if (target) {
+        target.textContent = known
+            ? t('knowledge_upload_target_version').replace('{name}', known.name)
+            : `${t('knowledge_upload_target')}${viewingKnowledgeAgentId()}`;
+    }
+    const limitsEl = document.getElementById('knowledge-upload-limits');
+    if (limitsEl) {
+        limitsEl.textContent = [
+            t('knowledge_upload_limits'),
+            `${limits.max_files || 0}`,
+            _knowledgeSourceSize(limits.max_file_size),
+            _knowledgeSourceSize(limits.max_batch_size),
+        ].join(' · ');
+    }
+    const conversion = (_knowledgeSourceCapabilities || {}).conversion || { available: false, reason: '' };
+    const convert = document.getElementById('knowledge-upload-convert');
+    const hint = document.getElementById('knowledge-upload-convert-hint');
+    if (convert) {
+        convert.disabled = !conversion.available;
+        if (!conversion.available) convert.checked = false;
+    }
+    if (hint) hint.textContent = conversion.available ? '' : (conversion.reason || '');
+    // A new version extends one named source: the same-name question does not
+    // apply, and answering it here would only confuse the choice.
+    const conflict = document.getElementById('knowledge-upload-conflict');
+    if (conflict) conflict.disabled = !!sourceId;
+    panel.classList.remove('hidden');
+    _renderKnowledgeUploadQueue();
+}
+
+function closeKnowledgeUploadPanel() {
+    const panel = document.getElementById('knowledge-upload-panel');
+    if (panel) panel.classList.add('hidden');
+    // Files do not survive the panel: a stale queue would let the next open
+    // submit bytes the user picked for a different attempt.
+    _knowledgeSourceUploadReset();
+}
+
+function pickKnowledgeUploadFiles() {
+    const input = document.getElementById('knowledge-upload-input');
+    if (input) input.click();
+}
+
+function addKnowledgeUploadFiles(files) {
+    const limits = _knowledgeUploadLimits();
+    const max = Number(limits.max_file_size) || 0;
+    for (const file of Array.from(files || [])) {
+        const name = String((file && file.name) || '');
+        const size = Number((file && file.size) || 0);
+        if (!name) continue;
+        // Refused here rather than after a round trip: the server's limit is the
+        // same number, and a local failure keeps the batch from aborting.
+        if (max && size > max) {
+            _knowledgeUploadQueue.push({
+                file, name, size, status: 'failed', reason: 'knowledge_upload_item_too_large',
+            });
+            continue;
+        }
+        _knowledgeUploadQueue.push({ file, name, size, status: 'queued', reason: '' });
+    }
+    _renderKnowledgeUploadQueue();
+}
+
+function removeKnowledgeUploadFile(index) {
+    const entry = _knowledgeUploadQueue[index];
+    if (!entry) return;
+    if (entry.status === 'uploading') return;
+    _knowledgeUploadQueue.splice(index, 1);
+    _renderKnowledgeUploadQueue();
+}
+
+function _knowledgeUploadConflictChoice(index, strategy, key) {
+    return `<button type="button" onclick="resolveKnowledgeUploadConflict(${index}, '${strategy}')"
+                    class="px-2 py-1 rounded-md border border-slate-200 dark:border-white/10
+                           text-[11px] text-slate-600 dark:text-slate-300 hover:bg-slate-50
+                           dark:hover:bg-white/5 cursor-pointer transition-colors">${t(key)}</button>`;
+}
+
+function _knowledgeUploadItemHtml(entry, index) {
+    const icon = {
+        queued: 'fa-clock text-slate-400',
+        uploading: 'fa-spinner fa-spin text-primary-500',
+        saved: 'fa-circle-check text-emerald-500',
+        reused: 'fa-recycle text-sky-500',
+        conflict: 'fa-triangle-exclamation text-amber-500',
+        failed: 'fa-circle-xmark text-rose-500',
+    }[entry.status] || 'fa-clock text-slate-400';
+    // A conflict is never resolved by overwriting: the two outcomes are named
+    // and picked, and the choice travels as its own request.
+    const choice = entry.status === 'conflict'
+        ? `<span class="flex items-center gap-1.5">
+                ${_knowledgeUploadConflictChoice(index, 'new', 'knowledge_upload_conflict_new')}
+                ${_knowledgeUploadConflictChoice(index, 'update', 'knowledge_upload_conflict_update')}
+           </span>`
+        : `<span class="text-[11px] text-slate-500 dark:text-slate-400">${t('knowledge_upload_item_' + entry.status)}</span>`;
+    const reason = entry.reason && entry.status !== 'conflict'
+        ? `<span class="text-[11px] text-slate-400 dark:text-slate-500 truncate">${escapeHtml(t(entry.reason))}</span>`
+        : '';
+    return `
+        <div class="knowledge-upload-item flex items-center gap-2 rounded-lg px-2.5 py-2 bg-slate-50 dark:bg-white/5" data-status="${entry.status}">
+            <i class="fas ${icon} text-xs"></i>
+            <span class="flex-1 truncate text-xs text-slate-700 dark:text-slate-200">${escapeHtml(entry.name)}</span>
+            <span class="text-[11px] text-slate-400 dark:text-slate-500 flex-shrink-0">${_knowledgeSourceSize(entry.size)}</span>
+            ${reason}${choice}
+            <button type="button" onclick="removeKnowledgeUploadFile(${index})"
+                    class="p-0.5 text-slate-300 hover:text-slate-500 dark:hover:text-slate-300 cursor-pointer">
+                <i class="fas fa-xmark text-[11px]"></i>
+            </button>
+        </div>`;
+}
+
+function _renderKnowledgeUploadQueue() {
+    const queue = document.getElementById('knowledge-upload-queue');
+    const summary = document.getElementById('knowledge-upload-summary');
+    const submit = document.getElementById('knowledge-upload-submit');
+    if (queue) {
+        const progress = _knowledgeUploadAttempt && _knowledgeUploadAttempt.progress !== undefined
+            ? `<div class="text-[11px] text-slate-400 dark:text-slate-500">${t('knowledge_upload_progress')} ${_knowledgeUploadAttempt.progress}%</div>`
+            : '';
+        queue.innerHTML = progress + _knowledgeUploadQueue.map(_knowledgeUploadItemHtml).join('');
+    }
+    if (summary) {
+        const counts = {};
+        _knowledgeUploadQueue.forEach(entry => { counts[entry.status] = (counts[entry.status] || 0) + 1; });
+        summary.textContent = Object.keys(counts)
+            .map(status => `${t('knowledge_upload_item_' + status)} ${counts[status]}`).join(' · ');
+    }
+    if (submit) {
+        submit.disabled = !_knowledgeUploadQueue.some(entry => entry.status === 'queued');
+    }
+}
+
+function _knowledgeUploadSetProgress(percent) {
+    if (!_knowledgeUploadAttempt) return;
+    _knowledgeUploadAttempt.progress = percent;
+    _renderKnowledgeUploadQueue();
+}
+
+function _knowledgeUploadApply(results) {
+    const list = results || [];
+    const attempt = _knowledgeUploadAttempt;
+    const entries = (attempt && attempt.entries) || [];
+    entries.forEach((entry, index) => {
+        // Results arrive in request order, with server-side per-file failures
+        // appended; a filename lookup covers the appended tail.
+        let result = list[index];
+        if (!result || result.filename !== entry.name) {
+            result = list.find(item => item.filename === entry.name) || result;
+        }
+        if (result) {
+            entry.status = result.status || 'failed';
+            entry.reason = result.status === 'conflict' ? '' : (result.reason || result.code || '');
+            entry.existing = result.existing || null;
+            entry.sourceId = result.source_id || null;
+            return;
+        }
+        if (entry.status === 'uploading') { entry.status = 'failed'; entry.reason = ''; }
+    });
+    if (attempt) attempt.progress = undefined;
+    _renderKnowledgeUploadQueue();
+}
+
+function _knowledgeUploadSend(entries, conflict, target) {
+    const form = new FormData();
+    form.append('agent_id', viewingKnowledgeAgentId());
+    form.append('conflict', conflict);
+    form.append('request_id', _knowledgeUploadAttempt.requestId);
+    const category = document.getElementById('knowledge-upload-category');
+    if (category && category.value.trim()) form.append('category', category.value.trim());
+    if (target && target.sourceId) {
+        // Only an explicit "add a version" names the source it extends, and it
+        // pins the version the choice was made against so a concurrent upload
+        // is reported instead of silently overwritten.
+        form.append('target_source_id', target.sourceId);
+        if (target.version !== undefined && target.version !== null) {
+            form.append('expected_version', String(target.version));
+        }
+    }
+    entries.forEach(entry => form.append('files', entry.file));
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/knowledge/sources/upload');
+    xhr.upload.onprogress = (event) => {
+        if (!event || !event.lengthComputable || !event.total) return;
+        _knowledgeUploadSetProgress(Math.round((event.loaded / event.total) * 100));
+    };
+    xhr.onload = () => {
+        let data = {};
+        try { data = JSON.parse(xhr.responseText || '{}'); } catch (exc) { data = {}; }
+        if (!data || data.status !== 'success') {
+            entries.forEach(entry => {
+                if (entry.status === 'uploading') {
+                    entry.status = 'failed';
+                    entry.reason = (data && data.message) || '';
+                }
+            });
+            if (_knowledgeUploadAttempt) _knowledgeUploadAttempt.progress = undefined;
+            _renderKnowledgeUploadQueue();
+            _setKnowledgeStatus((data && data.message) || t('knowledge_sources_request_failed'), true, true);
+            return;
+        }
+        _knowledgeUploadApply(data.results || []);
+        const counts = { saved: data.saved || 0, reused: data.reused || 0, conflict: data.conflict || 0, failed: data.failed || 0 };
+        _setKnowledgeStatus(
+            Object.keys(counts).map(key => `${t('knowledge_upload_item_' + key)} ${counts[key]}`).join(' · '),
+            counts.failed > 0, true);
+        // "Save then convert" is a second, explicit request per source: the
+        // upload route stores bytes only (the server has no convert flag), and
+        // the conversion route is where a refusal carries its reason.
+        const convert = document.getElementById('knowledge-upload-convert');
+        const conversion = (_knowledgeSourceCapabilities || {}).conversion || {};
+        if (convert && convert.checked && conversion.available) {
+            (data.results || [])
+                .filter(result => result.status === 'saved' && result.source_id)
+                .forEach(result => requestKnowledgeSourceConversion(result.source_id));
+        }
+        // A finished batch can change the list (new rows, new tasks to watch),
+        // and it can change the versions of the source the detail is showing.
+        loadKnowledgeSources({ quiet: true });
+        if (_knowledgeSourceSelectedId) openKnowledgeSourceDetail(_knowledgeSourceSelectedId);
+    };
+    xhr.onerror = () => {
+        entries.forEach(entry => {
+            if (entry.status === 'uploading') {
+                entry.status = 'failed';
+                entry.reason = 'knowledge_sources_request_failed';
+            }
+        });
+        _renderKnowledgeUploadQueue();
+    };
+    entries.forEach(entry => { entry.status = 'uploading'; });
+    _renderKnowledgeUploadQueue();
+    xhr.send(form);
+}
+
+function submitKnowledgeUpload() {
+    const entries = _knowledgeUploadQueue.filter(entry => entry.status === 'queued');
+    if (!entries.length) {
+        _setKnowledgeStatus(t('knowledge_upload_nothing'), true, true);
+        return;
+    }
+    const select = document.getElementById('knowledge-upload-conflict');
+    const strategy = (select && select.value) || 'ask';
+    // "Upload a new version" pins the version the user is looking at, so a
+    // concurrent upload is reported as stale instead of silently replaced.
+    const known = _knowledgeUploadTarget ? _knowledgeSourceById(_knowledgeUploadTarget) : null;
+    const target = known
+        ? { sourceId: known.source_id, version: known.latest_version }
+        : null;
+    _knowledgeUploadAttempt = { requestId: _knowledgeUploadRequestId(), entries };
+    _knowledgeUploadSend(entries, target ? 'update' : strategy, target);
+}
+
+/** A per-item answer to "同名不同内容": new source, or a new version. */
+function resolveKnowledgeUploadConflict(index, strategy) {
+    const entry = _knowledgeUploadQueue[index];
+    if (!entry || entry.status !== 'conflict') return;
+    const attempt = _knowledgeUploadAttempt
+        || (_knowledgeUploadAttempt = { requestId: _knowledgeUploadRequestId(), entries: [entry] });
+    if (!attempt.entries.includes(entry)) attempt.entries = attempt.entries.concat([entry]);
+    const existing = entry.existing || {};
+    entry.status = 'queued';
+    entry.reason = '';
+    _renderKnowledgeUploadQueue();
+    // 'new' creates a distinct source; only 'update' extends the existing one.
+    _knowledgeUploadSend([entry], strategy,
+        strategy === 'update' ? { sourceId: existing.source_id, version: existing.latest_version } : null);
+}
+
+// --- Tab / panel visibility --------------------------------------------
+
+function _setKnowledgePanelHidden(el, hidden) {
+    // `hidden` may be absent in a partially assembled page (and in the DOM
+    // harness); the panel is optional, the switch is not.
+    if (el) el.classList.toggle('hidden', hidden);
 }
 
 function switchKnowledgeTab(tab) {
+    _knowledgeTab = tab;
     document.querySelectorAll('.knowledge-tab').forEach(el => el.classList.remove('active'));
-    document.getElementById('knowledge-tab-' + tab).classList.add('active');
+    const active = document.getElementById('knowledge-tab-' + tab);
+    if (active) active.classList.add('active');
 
-    const docsPanel = document.getElementById('knowledge-panel-docs');
-    const graphPanel = document.getElementById('knowledge-panel-graph');
+    _setKnowledgePanelHidden(document.getElementById('knowledge-panel-docs'), tab !== 'docs');
+    _setKnowledgePanelHidden(document.getElementById('knowledge-panel-graph'), tab !== 'graph');
+    _setKnowledgePanelHidden(document.getElementById('knowledge-panel-sources'), tab !== 'sources');
 
-    if (tab === 'docs') {
-        docsPanel.classList.remove('hidden');
-        graphPanel.classList.add('hidden');
-    } else {
-        docsPanel.classList.add('hidden');
-        graphPanel.classList.remove('hidden');
-        if (!_knowledgeGraphLoaded) {
-            loadKnowledgeGraph();
-        }
+    if (tab === 'graph' && !_knowledgeGraphLoaded) {
+        loadKnowledgeGraph();
     }
+    if (tab === 'sources') {
+        loadKnowledgeSources({ quiet: _knowledgeSourceItems.length > 0 });
+    } else {
+        // Off screen: no timer may keep asking for a panel nobody is looking at.
+        stopKnowledgeSourcePolling();
+    }
+}
+
+function knowledgeMobileBack() {
+    document.getElementById('knowledge-sidebar').classList.remove('hidden');
+    document.getElementById('knowledge-content-viewer').classList.add('hidden');
 }
 
 let _d3LoadPromise = null;

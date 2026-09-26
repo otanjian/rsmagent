@@ -46,12 +46,32 @@ class KnowledgeRoutePolicyTests(unittest.TestCase):
             ("/api/knowledge/graph", "GET"),
             ("/api/knowledge/action", "POST"),
             ("/api/knowledge/import", "POST"),
+            ("/api/knowledge/sources", "GET"),
+            ("/api/knowledge/sources/detail", "GET"),
+            ("/api/knowledge/sources/download", "GET"),
+            ("/api/knowledge/sources/upload", "POST"),
+            ("/api/knowledge/sources/lifecycle", "POST"),
+            ("/api/knowledge/sources/task", "POST"),
         ]:
             entry, matched = _match_policy(path, method)
             self.assertTrue(matched, f"{path} {method} does not match any route")
             self.assertEqual(
                 entry.get("policy"), "tenant",
                 f"{path} {method} must be a tenant consumer, got {entry!r}")
+
+    def test_only_the_download_route_derives_its_tenant_from_the_resource(self):
+        from auth.http_policy import _match_policy
+
+        # A browser download cannot send X-Tenant-ID, so that one route must be
+        # exempt from the explicit selection; the JSON routes still require it.
+        for path, method, from_resource in [
+            ("/api/knowledge/sources/download", "GET", True),
+            ("/api/knowledge/sources", "GET", False),
+            ("/api/knowledge/sources/lifecycle", "POST", False),
+        ]:
+            entry, _ = _match_policy(path, method)
+            self.assertEqual(bool(entry.get("tenant_from_resource")), from_resource,
+                             f"{path} {method}")
 
     def test_route_registry_coverage_still_balanced(self):
         from channel.web.route_registry import check_route_coverage
@@ -102,6 +122,12 @@ class _DbFixture(unittest.TestCase):
                 "/api/knowledge/graph", "KnowledgeGraphHandler",
                 "/api/knowledge/action", "KnowledgeActionHandler",
                 "/api/knowledge/import", "KnowledgeImportHandler",
+                "/api/knowledge/sources", "KnowledgeSourcesHandler",
+                "/api/knowledge/sources/detail", "KnowledgeSourceDetailHandler",
+                "/api/knowledge/sources/download", "KnowledgeSourceDownloadHandler",
+                "/api/knowledge/sources/upload", "KnowledgeSourceUploadHandler",
+                "/api/knowledge/sources/lifecycle", "KnowledgeSourceLifecycleHandler",
+                "/api/knowledge/sources/task", "KnowledgeSourceTaskHandler",
             ),
             vars(web_channel),
             autoreload=False,
@@ -535,6 +561,132 @@ class KnowledgeAgentScopeTests(_DbFixture):
         resp = self._request("/api/knowledge/list", query="agent_id=agent-a",
                              tenant=self.tid)
         self.assertEqual(resp.status, "200 OK")
+
+
+class KnowledgeSourceScopeTests(_DbFixture):
+    """Sources reuse the current ownership rules, including headerless download.
+
+    Task 2.3: cross-tenant, private-owner, shared-write and the browser download
+    that cannot carry ``X-Tenant-ID`` are all decided by the addressed resource.
+    """
+
+    def _seed(self, name="a.txt", content=b"one", request_id="seed-1"):
+        from agent.knowledge.sources import SourceAssetService
+
+        settings = {"knowledge": True, "knowledge_source_upload_enabled": True}
+        with patch.object(config, "conf", return_value=settings), \
+                patch.object(web_channel, "conf", return_value=settings):
+            service = SourceAssetService(self.ws)
+            return service.save_files(
+                [{"filename": name, "content": content}],
+                request_id=request_id)["results"][0]
+
+    def test_list_shows_sources_of_the_bound_agent(self):
+        self._bind("agent-a")
+        self._seed()
+        resp = self._request("/api/knowledge/sources", query="agent_id=agent-a",
+                             tenant=self.tid)
+        self.assertEqual(resp.status, "200 OK", resp.data)
+        data = self._json(resp)
+        self.assertEqual(data["status"], "success")
+        self.assertTrue(data["registered"])
+        self.assertEqual([s["name"] for s in data["sources"]], ["a.txt"])
+        self.assertFalse(data["sources"][0]["searchable"])
+
+    def test_list_rejects_a_cross_tenant_agent(self):
+        other = self.svc.create_tenant(
+            actor_user_id=self.root["id"], code="beta", name="Beta",
+            shared_root=tempfile.mkdtemp(), admin_username="betaadmin",
+            admin_display="Beta", admin_password="Str0ngPass2",
+            recent_password="Str0ngAdminPass")
+        self.svc.bind_agent(tenant_id=other["id"], agent_id="agent-x")
+        resp = self._request("/api/knowledge/sources", query="agent_id=agent-x",
+                             tenant=self.tid)
+        self.assertEqual(resp.status, "404 Not Found")
+
+    def test_download_without_a_tenant_header_uses_the_resource(self):
+        self._bind("agent-a")
+        receipt = self._seed(content=b"raw bytes")
+        resp = self._request(
+            "/api/knowledge/sources/download",
+            query=f"agent_id=agent-a&source_id={receipt['source_id']}",
+            tenant=None)
+        self.assertEqual(resp.status, "200 OK", resp.data)
+        self.assertEqual(resp.data, b"raw bytes")
+
+    def test_download_of_a_deleted_source_is_not_found(self):
+        self._bind("agent-a")
+        receipt = self._seed(content=b"raw bytes")
+        source_id = receipt["source_id"]
+        deleted = self._request(
+            "/api/knowledge/sources/lifecycle", method="POST",
+            data=json.dumps({"source_id": source_id, "action": "delete",
+                             "agent_id": "agent-a"}),
+            tenant=self.tid)
+        self.assertEqual(deleted.status, "200 OK", deleted.data)
+
+        resp = self._request(
+            "/api/knowledge/sources/download",
+            query=f"agent_id=agent-a&source_id={source_id}",
+            tenant=None)
+        self.assertEqual(resp.status, "404 Not Found")
+
+    def test_another_member_cannot_download_a_private_agents_source(self):
+        owner_id, _ = self._member_with_token("erin")
+        self._bind("agent-a", owner=owner_id)
+        receipt = self._seed(content=b"private")
+        # A different member of the same tenant, holding knowledge.read.
+        _, other_token = self._member_with_token("gina")
+        resp = self._request(
+            "/api/knowledge/sources/download",
+            query=f"agent_id=agent-a&source_id={receipt['source_id']}",
+            token=other_token, tenant=None)
+        self.assertIn(resp.status, ("403 Forbidden", "404 Not Found"))
+
+    def test_the_private_owner_can_download_their_own_source(self):
+        owner_id, owner_token = self._member_with_token("erin")
+        self._bind("agent-a", owner=owner_id)
+        receipt = self._seed(content=b"mine")
+        resp = self._request(
+            "/api/knowledge/sources/download",
+            query=f"agent_id=agent-a&source_id={receipt['source_id']}",
+            token=owner_token, tenant=None)
+        self.assertEqual(resp.status, "200 OK", resp.data)
+        self.assertEqual(resp.data, b"mine")
+
+    def test_lifecycle_write_requires_write_authority(self):
+        user_id, token = self._member_with_token("frank")
+        self._bind("agent-a", owner=user_id)
+        receipt = self._seed()
+        resp = self._request(
+            "/api/knowledge/sources/lifecycle", method="POST",
+            data=json.dumps({"source_id": receipt["source_id"],
+                             "action": "disable", "agent_id": "agent-a"}),
+            token=token, tenant=self.tid)
+        self.assertEqual(resp.status, "403 Forbidden")
+
+    def test_a_revoked_read_permission_stops_the_download(self):
+        self._bind("agent-a")
+        receipt = self._seed(content=b"shared bytes")
+        self.svc.create_role(
+            self.root["id"], self.tid, "filesonly", "仅文件读取", ["history.read"])
+        _, token = self._member_with_token("bob", roles=["filesonly"])
+        resp = self._request(
+            "/api/knowledge/sources/download",
+            query=f"agent_id=agent-a&source_id={receipt['source_id']}",
+            token=token, tenant=None)
+        self.assertEqual(resp.status, "403 Forbidden")
+
+    def test_tenant_admin_may_write_a_shared_base_source(self):
+        self._bind("agent-a")
+        receipt = self._seed()
+        resp = self._request(
+            "/api/knowledge/sources/lifecycle", method="POST",
+            data=json.dumps({"source_id": receipt["source_id"],
+                             "action": "disable", "agent_id": "agent-a"}),
+            tenant=self.tid)
+        self.assertEqual(resp.status, "200 OK", resp.data)
+        self.assertEqual(self._json(resp)["source"]["lifecycle"], "disabled")
 
 
 if __name__ == "__main__":

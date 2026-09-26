@@ -115,6 +115,28 @@ def _knowledge_workspace_root(agent_id: Optional[str]) -> str:
     return _get_workspace_root(agent_id=agent_id)
 
 
+def _knowledge_error_response(exc):
+    """Translate a knowledge refusal into its HTTP shape, or ``None``.
+
+    ``managed_knowledge_path`` (409) and a pending mode-switch recovery (503)
+    must not degrade into an opaque 200-with-status:error, because the console
+    renders them differently ("use the source action" vs "temporarily
+    unavailable, retry").
+    """
+    from agent.knowledge.locks import KnowledgeUnavailableError
+    from agent.knowledge.scope import ManagedPathError
+
+    if isinstance(exc, ManagedPathError):
+        web.ctx.status = "409 Conflict"
+        return json.dumps({"status": "error", "code": "managed_knowledge_path",
+                           "message": str(exc)}, ensure_ascii=False)
+    if isinstance(exc, KnowledgeUnavailableError):
+        web.ctx.status = "503 Service Unavailable"
+        return json.dumps({"status": "error", "code": "knowledge_unavailable",
+                           "message": str(exc)}, ensure_ascii=False)
+    return None
+
+
 class KnowledgeListHandler:
     def GET(self):
         from channel.web.web_channel import _db_scope
@@ -135,8 +157,18 @@ class KnowledgeListHandler:
                     _knowledge_workspace_root(agent_id)
                 )
                 result = svc.list_tree()
+                # Configuration / permission / real-dependency are projected
+                # separately so the page can say why an action is unavailable
+                # instead of implying a capability the deployment lacks.
+                from agent.knowledge.capabilities import knowledge_capabilities
+                result["capabilities"] = knowledge_capabilities(
+                    can_write=_knowledge_write_authorized(ctx, agent_id)
+                )
                 return json.dumps({"status": "success", **result}, ensure_ascii=False)
         except Exception as e:
+            rendered = _knowledge_error_response(e)
+            if rendered is not None:
+                return rendered
             logger.error(f"[WebChannel] Knowledge list error: {e}")
             return json.dumps({"status": "error", "message": str(e)})
 
@@ -169,8 +201,14 @@ class KnowledgeReadHandler:
             result["dir"] = Path(svc.knowledge_dir, *rel.split("/")).parent.as_posix()
             return json.dumps({"status": "success", **result}, ensure_ascii=False)
         except (ValueError, FileNotFoundError) as e:
+            rendered = _knowledge_error_response(e)
+            if rendered is not None:
+                return rendered
             return json.dumps({"status": "error", "message": str(e)})
         except Exception as e:
+            rendered = _knowledge_error_response(e)
+            if rendered is not None:
+                return rendered
             logger.error(f"[WebChannel] Knowledge read error: {e}")
             return json.dumps({"status": "error", "message": str(e)})
 
@@ -196,6 +234,9 @@ class KnowledgeGraphHandler:
                 )
             return json.dumps(svc.build_graph(), ensure_ascii=False)
         except Exception as e:
+            rendered = _knowledge_error_response(e)
+            if rendered is not None:
+                return rendered
             logger.error(f"[WebChannel] Knowledge graph error: {e}")
             return json.dumps({"nodes": [], "links": []})
 
@@ -227,6 +268,9 @@ class KnowledgeActionHandler:
                 **result,
             }, ensure_ascii=False)
         except Exception as e:
+            rendered = _knowledge_error_response(e)
+            if rendered is not None:
+                return rendered
             logger.error(f"[WebChannel] Knowledge action error: {e}")
             return json.dumps({"status": "error", "code": 500, "message": str(e), "payload": None})
 
@@ -313,6 +357,9 @@ class KnowledgeImportHandler:
                 **result,
             }, ensure_ascii=False)
         except Exception as e:
+            rendered = _knowledge_error_response(e)
+            if rendered is not None:
+                return rendered
             logger.error(f"[WebChannel] Knowledge import error: {e}", exc_info=True)
             return json.dumps({"status": "error", "code": 500, "message": str(e), "payload": None})
 

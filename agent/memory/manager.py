@@ -380,11 +380,17 @@ class MemoryManager:
             # Resolve through state_dir so an Agent without its own knowledge/
             # scans the shared base rather than an empty (or missing) local one.
             from common import state_dir
+            from agent.knowledge.scope import KnowledgeScope
             knowledge_dir = Path(state_dir.knowledge_dir(base=workspace_dir))
             if knowledge_dir.exists():
-                for file_path in knowledge_dir.rglob("*.md"):
-                    rel = file_path.relative_to(knowledge_dir)
-                    if any(part.startswith('.') for part in rel.parts):
+                # One eligible set everywhere: ordinary MD plus the current
+                # active conversion body. Originals, staging, control records
+                # and historical batches are excluded here, so a stale index
+                # cannot be refreshed with expired content.
+                scope = KnowledgeScope(str(knowledge_dir))
+                for rel_posix in scope.iter_effective_rel_paths():
+                    file_path = knowledge_dir.joinpath(*rel_posix.split("/"))
+                    if not file_path.is_file():
                         continue
                     # The shared base lives outside every Agent workspace, so
                     # the label must be derived from the knowledge root. Deriving
@@ -394,7 +400,7 @@ class MemoryManager:
                     # already indexed has to be re-labelled.
                     files_to_scan.append(
                         (file_path, "knowledge", "shared", None,
-                         (Path("knowledge") / rel).as_posix()))
+                         (Path("knowledge") / rel_posix).as_posix()))
 
         # Pass 1: inline chunking + change detection. Inlined (instead of
         # calling self._prepare_file_for_sync) so this method does not depend

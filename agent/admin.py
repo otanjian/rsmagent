@@ -1237,6 +1237,12 @@ class AgentAdminService:
                     rather than deleted, and comes back on the next switch to
                     ``own``. We never delete a knowledge base implicitly.
 
+        A switch is a directory move, so it takes the cross-process exclusive
+        lock on the affected knowledge root and re-checks persisted task state
+        inside it: queued/running jobs or uncommitted version records answer
+        ``409 knowledge_busy`` and change nothing. A minimal marker records the
+        move so an interruption is recovered before knowledge is served again.
+
         Returns ``{"id", "mode", "changed"}``.
         """
         if mode not in ("shared", "own"):
@@ -1268,45 +1274,141 @@ class AgentAdminService:
                     "this Agent's knowledge/ is the shared knowledge base"
                 )
 
-            if mode == "own":
-                if kdir.is_dir() and not kdir.is_symlink():
-                    return {"id": agent_id, "mode": "own", "changed": False}
-                if kdir.is_symlink():
-                    kdir.unlink()
-                if stash.is_dir():
-                    # The base this Agent set aside when it went shared: bring it
-                    # back exactly as it was instead of starting empty.
-                    stash.rename(kdir)
-                    return {"id": agent_id, "mode": "own", "changed": True}
-                kdir.mkdir(parents=True, exist_ok=True)
-                index = kdir / "index.md"
-                if not index.exists():
-                    index.write_text("# Knowledge Index\n", encoding="utf-8")
-                return {"id": agent_id, "mode": "own", "changed": True}
+            from agent.knowledge.locks import (
+                KnowledgeBusyError,
+                KnowledgeRootLock,
+                clear_marker,
+                knowledge_root_is_busy,
+                read_marker,
+                write_marker,
+            )
 
-            # mode == "shared"
-            if kdir.is_symlink() or not kdir.exists():
-                # Already shared (or nothing yet): (re)point the symlink to be safe.
-                if kdir.is_symlink():
-                    kdir.unlink()
-                self._link_shared_knowledge(kdir, shared)
-                return {"id": agent_id, "mode": "shared", "changed": bool(kdir.exists())}
-            # A real directory holds the Agent's own base. Shared is just a
-            # reference, so the flip is always allowed — but we never delete a
-            # base implicitly. Drop it only when it holds nothing the user put
-            # there (empty, or just the index we seeded on the way in);
-            # otherwise set it aside so switching back to "own" restores it.
-            if self._own_knowledge_is_discardable(kdir):
-                shutil.rmtree(kdir)
-            else:
-                if stash.exists():
-                    # A stash that was never restored (someone recreated
-                    # knowledge/ by hand). Keep both: the older one moves to a
-                    # timestamped name rather than being thrown away.
-                    stash.rename(workspace / f"knowledge.own.{int(time.time())}")
-                kdir.rename(stash)
-            self._link_shared_knowledge(kdir, shared)
-            return {"id": agent_id, "mode": "shared", "changed": True}
+            # The lock file lives outside the root precisely because the move
+            # renames the root; a lock inside it would move with it.
+            with KnowledgeRootLock(workspace).exclusive() as own_lock:
+                if not own_lock:
+                    raise KnowledgeBusyError(
+                        "knowledge is busy with another operation; retry"
+                    )
+                root = self._agent_knowledge_root(kdir, shared)
+                with KnowledgeRootLock(root).exclusive() as root_lock:
+                    if not root_lock:
+                        raise KnowledgeBusyError(
+                            "knowledge is busy with another operation; retry"
+                        )
+                    # Finish or re-attempt an interrupted switch before anything
+                    # new: the transition itself is idempotent, so replaying the
+                    # recorded target restores one consistent state.
+                    bookmark = read_marker(workspace)
+                    if bookmark is not None:
+                        target = (bookmark or {}).get("to_mode")
+                        if target not in ("shared", "own"):
+                            raise KnowledgeBusyError(
+                                "knowledge switch needs manual recovery"
+                            )
+                        self._apply_knowledge_mode(workspace, target, shared)
+                        clear_marker(workspace)
+
+                    busy_roots = {os.path.realpath(str(root)),
+                                  os.path.realpath(str(shared))}
+                    if mode == "own" and stash.is_dir():
+                        busy_roots.add(os.path.realpath(str(stash)))
+                    for candidate in sorted(busy_roots):
+                        if knowledge_root_is_busy(candidate):
+                            raise KnowledgeBusyError(
+                                "knowledge has queued or unfinished work; "
+                                "retry after it finishes"
+                            )
+
+                    from_mode = "own" if (kdir.is_dir() and not kdir.is_symlink()) else "shared"
+                    write_marker(workspace, {
+                        "from_mode": from_mode,
+                        "to_mode": mode,
+                        "stash": stash.name,
+                    })
+                    try:
+                        result = self._apply_knowledge_mode(workspace, mode, shared)
+                    except Exception:
+                        # Leave the marker in place: the next attempt replays it.
+                        raise
+                    clear_marker(workspace)
+                    self._invalidate_knowledge_root(workspace)
+                    return {"id": agent_id, "mode": mode,
+                            "changed": result["changed"]}
+
+    @staticmethod
+    def _agent_knowledge_root(kdir: Path, shared: Path) -> Path:
+        """The root that currently holds this Agent's tasks/catalog.
+
+        The Agent's own real directory when it has one, otherwise the shared
+        base it falls back to.
+        """
+        if kdir.is_dir() and not kdir.is_symlink():
+            return kdir
+        return shared
+
+    @staticmethod
+    def _apply_knowledge_mode(workspace: Path, mode: str, shared: Path) -> Dict:
+        """Perform (or replay) the filesystem move for ``mode``.
+
+        Extracted so the recovery path and the normal path cannot diverge; it is
+        idempotent, which is what makes replaying an interrupted switch safe.
+        """
+        kdir = workspace / "knowledge"
+        stash = workspace / "knowledge.own"
+        if mode == "own":
+            if kdir.is_dir() and not kdir.is_symlink():
+                return {"changed": False}
+            if kdir.is_symlink():
+                kdir.unlink()
+            if stash.is_dir():
+                # The base this Agent set aside when it went shared: bring it
+                # back exactly as it was instead of starting empty.
+                stash.rename(kdir)
+                return {"changed": True}
+            kdir.mkdir(parents=True, exist_ok=True)
+            index = kdir / "index.md"
+            if not index.exists():
+                index.write_text("# Knowledge Index\n", encoding="utf-8")
+            return {"changed": True}
+
+        # mode == "shared"
+        if kdir.is_symlink() or not kdir.exists():
+            # Already shared (or nothing yet): (re)point the symlink to be safe.
+            if kdir.is_symlink():
+                kdir.unlink()
+            AgentAdminService._link_shared_knowledge(kdir, shared)
+            return {"changed": bool(kdir.exists())}
+        # A real directory holds the Agent's own base. Shared is just a
+        # reference, so the flip is always allowed — but we never delete a
+        # base implicitly. Drop it only when it holds nothing the user put
+        # there (empty, or just the index we seeded on the way in);
+        # otherwise set it aside so switching back to "own" restores it.
+        if AgentAdminService._own_knowledge_is_discardable(kdir):
+            shutil.rmtree(kdir)
+        else:
+            if stash.exists():
+                # A stash that was never restored (someone recreated
+                # knowledge/ by hand). Keep both: the older one moves to a
+                # timestamped name rather than being thrown away.
+                stash.rename(workspace / f"knowledge.own.{int(time.time())}")
+            kdir.rename(stash)
+        AgentAdminService._link_shared_knowledge(kdir, shared)
+        return {"changed": True}
+
+    @staticmethod
+    def _invalidate_knowledge_root(workspace: Path) -> None:
+        """Drop caches that keyed on the old root so the next turn re-resolves.
+
+        The web layer separately evicts the Agent's cached runtime; here we
+        forget the registered memory config, which carries the index path and
+        embedding settings for the previous root.
+        """
+        try:
+            from agent.memory.config import forget_memory_config
+            forget_memory_config(str(workspace))
+        except Exception as e:
+            logger.debug("[AgentAdmin] memory config invalidation failed: %s", e)
 
     @staticmethod
     def _own_knowledge_is_discardable(kdir: Path) -> bool:

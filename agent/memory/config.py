@@ -136,6 +136,18 @@ def reset_memory_configs() -> None:
         _pinned_memory_config = None
 
 
+def forget_memory_config(workspace_root: str) -> None:
+    """Drop one workspace's registered config after its knowledge root moved.
+
+    Called by a knowledge mode switch: the config carries the resolved index
+    path and embedding settings, so a cached entry would keep resolving the
+    previous root until the next initializer overwrote it.
+    """
+    key = _key(workspace_root)
+    with _memory_config_lock:
+        _memory_configs.pop(key, None)
+
+
 def set_global_memory_config(config: Optional[MemoryConfig]) -> None:
     """Force every workspace to one config; pass None to follow routing again.
 

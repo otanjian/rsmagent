@@ -13,6 +13,7 @@ Knowledge file layout (under workspace_root):
 import os
 import re
 import asyncio
+import functools
 import shutil
 import threading
 from pathlib import Path
@@ -23,6 +24,34 @@ from common.log import logger
 from config import conf
 from agent.memory.config import MemoryConfig
 from agent.memory.manager import MemoryManager
+from agent.knowledge.scope import KnowledgeScope, ManagedPathError
+from agent.knowledge.locks import (
+    KnowledgeRootLock,
+    KnowledgeUnavailableError,
+    read_marker,
+)
+
+
+def _guarded(fn):
+    """Serialize one public operation on the root's cross-process usage lock.
+
+    The lock is held for the whole call, including any index sync, so a mode
+    switch cannot replace the directory mid-write. The marker check runs first:
+    while a switch awaits recovery, the root must answer "unavailable" rather
+    than fall back to a guessed library.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        if read_marker(self.workspace_root) is not None:
+            raise KnowledgeUnavailableError(
+                "knowledge is temporarily unavailable: a mode switch is pending recovery"
+            )
+        with KnowledgeRootLock(self.knowledge_dir).usage():
+            return fn(self, *args, **kwargs)
+
+    return wrapper
+
 
 
 class KnowledgeService:
@@ -46,6 +75,12 @@ class KnowledgeService:
         # own reads the shared one instead of an empty tree.
         self.knowledge_dir = str(state_dir.knowledge_dir(base=self.workspace_root))
         self._memory_manager = memory_manager
+        self._scope: Optional[KnowledgeScope] = None
+
+    def _scope_instance(self) -> KnowledgeScope:
+        if self._scope is None:
+            self._scope = KnowledgeScope(self.knowledge_dir)
+        return self._scope
 
     def _resolve_path(self, rel_path: str, *, kind: Optional[str] = None,
                       allow_missing: bool = True) -> tuple:
@@ -76,6 +111,11 @@ class KnowledgeService:
                 raise ValueError("path outside knowledge dir")
         elif not allow_missing:
             raise FileNotFoundError(f"path not found: {rel_path}")
+        # Registered managed subtrees (originals, converted, control) are not
+        # addressable through the ordinary document/category surface: a write
+        # must not overwrite an immutable original, and a read must not serve
+        # an inactive batch. Only the controlled source service may touch them.
+        self._scope_instance().guard(candidate)
         return rel_path, candidate
 
     def _ensure_not_protected(self, rel_path: str):
@@ -162,9 +202,14 @@ class KnowledgeService:
                     continue
                 if rel in self.PROTECTED_FILES:
                     continue
+                # Originals / converted batches / control data are not ordinary
+                # knowledge pages and must never enter the generated index.
+                if scope.is_managed(md):
+                    continue
                 entries.append((rel, self._extract_title(md, md.stem)))
             return entries
 
+        scope = self._scope_instance()
         all_entries = collect(root)
 
         def link(rel: str) -> str:
@@ -251,6 +296,7 @@ class KnowledgeService:
                 raise ValueError("invalid conflict strategy")
         return rel_path, destination, "write"
 
+    @_guarded
     def create_document(self, path: str, content: str = "", overwrite: bool = False) -> dict:
         rel_path, full_path = self._resolve_path(path, kind="document")
         self._ensure_not_protected(rel_path)
@@ -266,6 +312,7 @@ class KnowledgeService:
         self._sync_index(old_paths, force=True)
         return {"path": rel_path, "created": True, "overwritten": bool(old_paths)}
 
+    @_guarded
     def import_documents(self, target_category: str, files: Iterable[dict],
                          conflict_strategy: str = "skip") -> dict:
         if not isinstance(files, list):
@@ -315,6 +362,7 @@ class KnowledgeService:
             self._sync_index(old_paths, force=True)
         return {"results": results, "imported": imported, "skipped": skipped, "failed": failed}
 
+    @_guarded
     def create_category(self, path: str) -> dict:
         rel_path, full_path = self._resolve_path(path, kind="category")
         if full_path.exists():
@@ -322,6 +370,7 @@ class KnowledgeService:
         full_path.mkdir(parents=True)
         return {"path": rel_path, "created": True}
 
+    @_guarded
     def rename_category(self, path: str, new_path: str) -> dict:
         old_rel, old_full = self._resolve_path(path, kind="category", allow_missing=False)
         new_rel, new_full = self._resolve_path(new_path, kind="category")
@@ -342,6 +391,7 @@ class KnowledgeService:
         self._sync_index(old_paths)
         return {"old_path": old_rel, "path": new_rel, "moved_documents": len(old_documents)}
 
+    @_guarded
     def delete_category(self, path: str, confirm: bool = False) -> dict:
         rel_path, full_path = self._resolve_path(path, kind="category")
         if not full_path.exists():
@@ -362,6 +412,7 @@ class KnowledgeService:
         self._sync_index(documents)
         return {"path": rel_path, "deleted": True, "deleted_documents": len(documents)}
 
+    @_guarded
     def delete_documents(self, paths: Iterable[str]) -> dict:
         if not isinstance(paths, list):
             raise ValueError("paths must be a list")
@@ -386,6 +437,7 @@ class KnowledgeService:
         self._sync_index(deleted)
         return {"results": results, "deleted": sum(1 for item in results if item["deleted"])}
 
+    @_guarded
     def move_documents(self, paths: Iterable[str], target_category: str) -> dict:
         if not isinstance(paths, list):
             raise ValueError("paths must be a list")
@@ -422,6 +474,7 @@ class KnowledgeService:
     # ------------------------------------------------------------------
     # list — directory tree with stats
     # ------------------------------------------------------------------
+    @_guarded
     def list_tree(self) -> dict:
         """
         Return the knowledge directory tree grouped by category,
@@ -476,11 +529,14 @@ class KnowledgeService:
         """
         files = []
         children = []
+        scope = self._scope_instance()
         for name in sorted(os.listdir(dir_path)):
             if name.startswith("."):
                 continue
             full = os.path.join(dir_path, name)
             if os.path.isdir(full):
+                if scope.is_managed(full):
+                    continue
                 sub_files, sub_children = self._scan_dir(full, stats)
                 children.append({"dir": name, "files": sub_files, "children": sub_children})
             elif name.endswith(".md"):
@@ -506,6 +562,7 @@ class KnowledgeService:
     # ------------------------------------------------------------------
     # read — single file content
     # ------------------------------------------------------------------
+    @_guarded
     def read_file(self, rel_path: str) -> dict:
         """
         Read a single knowledge markdown file.
@@ -526,6 +583,7 @@ class KnowledgeService:
     # ------------------------------------------------------------------
     # graph — nodes and links for visualization
     # ------------------------------------------------------------------
+    @_guarded
     def build_graph(self) -> dict:
         """
         Parse all knowledge pages and extract cross-reference links.
@@ -555,6 +613,8 @@ class KnowledgeService:
         for md_file in knowledge_path.rglob("*.md"):
             rel = str(md_file.relative_to(knowledge_path))
             if rel in ("index.md", "log.md"):
+                continue
+            if self._scope_instance().is_managed(md_file):
                 continue
             parts = rel.split("/")
             category = parts[0] if len(parts) > 1 else "root"
@@ -643,6 +703,13 @@ class KnowledgeService:
                 return {"action": action, "code": 400, "message": f"unknown action: {action}", "payload": None}
             return {"action": action, "code": 200, "message": "success", "payload": result}
 
+        except ManagedPathError as e:
+            return {"action": action, "code": 409, "message": "managed_knowledge_path",
+                    "payload": {"reason": str(e)}}
+        except KnowledgeUnavailableError:
+            # A pending mode-switch recovery is not a per-action failure: let the
+            # web layer answer 503 knowledge_unavailable for the whole console.
+            raise
         except ValueError as e:
             return {"action": action, "code": 403, "message": str(e), "payload": None}
         except FileNotFoundError as e:

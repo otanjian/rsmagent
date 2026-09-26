@@ -2676,6 +2676,58 @@ body.account-menu-sheet-open { overflow: hidden; }
     background: rgba(74, 190, 110, 0.15);
     color: #74E9A4;
 }
+/* Opt-in filter box at the top of a menu (knowledge Agent picker). The menu
+   becomes a column so the box stays put while the rows scroll under it, which
+   the plain `overflow-y: auto` menu could not do; nothing here applies unless
+   a call site passed `searchable: true`. */
+.cfg-dropdown.open .cfg-dropdown-menu.cfg-dropdown-searchable {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+}
+.cfg-dropdown-search {
+    flex: 0 0 auto;
+    padding: 6px;
+    border-bottom: 1px solid #e2e8f0;
+}
+.dark .cfg-dropdown-search { border-color: #334155; }
+.cfg-dropdown-search-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    font-size: 0.8125rem;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #334155;
+    outline: none;
+}
+.cfg-dropdown-search-input:focus {
+    border-color: #4abe6e;
+    box-shadow: 0 0 0 1px rgba(74, 190, 110, 0.35);
+}
+.dark .cfg-dropdown-search-input {
+    border-color: #334155;
+    background: #262626;
+    color: #cbd5e1;
+}
+.cfg-dropdown-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    max-height: 190px;
+    padding: 4px;
+}
+.cfg-dropdown-empty {
+    padding: 8px 10px;
+    font-size: 0.8125rem;
+    color: #94a3b8;
+}
+.dark .cfg-dropdown-empty { color: #64748b; }
+/* Keyboard highlight, kept separate from `.active` so the current selection
+   and the row the arrow keys are on never paint as the same thing. */
+.cfg-dropdown-item-hl { background: #f1f5f9; }
+.dark .cfg-dropdown-item-hl { background: rgba(255, 255, 255, 0.08); }
 /* When an item carries a hint (e.g. brand alias next to a technical model
    id), label/hint are split into two spans so the hint sits on the right in
    a dim, smaller weight. Without a hint the row stays a plain text node and

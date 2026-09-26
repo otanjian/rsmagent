@@ -57,6 +57,10 @@ function setup(payload, authCtx) {
         removeScopedPreference: () => {},
         switchKnowledgeTab: () => {},
         initKnowledgeImportDropZone: () => {},
+        // The sources tab's state reset lives past this slice's end; selecting an
+        // Agent calls it before the view reload, and the write-gate behaviour
+        // under test here does not depend on it.
+        knowledgeSourcesOnLibraryChange: () => {},
         _baseAuthContext: () => authCtx || null,
         document: {
             getElementById(id) {
