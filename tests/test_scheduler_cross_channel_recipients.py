@@ -217,13 +217,15 @@ def test_cross_channel_target_must_be_trusted_and_selected_from_web(tmp_path):
     tool.access_service = _RecordingAccess(tasks)
 
     tool.current_context = _context("web", "web-session")
-    assert "not in the trusted recipient directory" in _create(
-        tool, channel_type="wecom_bot", receiver="unknown"
-    )
+    unknown = _create(tool, channel_type="wecom_bot", receiver="unknown")
+    # The refusal names the only way forward -- the trusted directory -- and the
+    # default that needs no lookup at all.
+    assert "不在可信目录" in unknown and "list_recipients" in unknown
+    assert "current_session" in unknown
 
     recipients.remember("wecom_bot", "user-42")
     tool.current_context = _context("feishu", "feishu-user")
-    assert "only be selected from the Web console" in _create(
+    assert "只能在 Web 会话" in _create(
         tool, channel_type="wecom_bot", receiver="user-42"
     )
     assert tasks.tasks == []

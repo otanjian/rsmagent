@@ -155,8 +155,17 @@ class TaskStore:
         self._ensure_store_dir()
     
     def _ensure_store_dir(self):
-        """Ensure the storage directory exists"""
+        """Ensure the storage directory exists.
+
+        An empty ``dirname`` is not a failure: it is a bare filename (or a device
+        path -- Windows resolves ``os.devnull`` to ``nul``), which the dry-run
+        stores the console builds for schedule arithmetic pass in on purpose.
+        ``os.makedirs('')`` used to raise there, which turned every console
+        create/update on Windows into a 500 before anything was written.
+        """
         store_dir = os.path.dirname(self.store_path)
+        if not store_dir:
+            return
         os.makedirs(store_dir, exist_ok=True)
     
     def load_tasks(self) -> Dict[str, dict]:

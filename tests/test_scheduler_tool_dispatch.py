@@ -355,3 +355,163 @@ def test_a_task_created_in_the_console_is_governed_by_the_tool(dispatched):
 
     assert fetched.status == "success"
     assert "web-made" in fetched.result
+
+
+# ---------------------------------------------------------------------------
+# Self delivery: "remind me" needs no channel and no recipient lookup
+# ---------------------------------------------------------------------------
+
+def _recipients(store_path):
+    """A real recipient directory the tool can resolve a trusted target from."""
+    from agent.tools.scheduler.recipient_store import RecipientStore
+
+    return RecipientStore(store_path)
+
+
+def _create_delivering(tool, *, name="delivering", deliver_to=None, **extra):
+    """Create through the tool with an explicit delivery intent."""
+    params = {
+        "action": "create", "name": name, "message": "hello",
+        "schedule_type": "interval", "schedule_value": "3600",
+    }
+    if deliver_to is not None:
+        params["deliver_to"] = deliver_to
+    params.update(extra)
+    return tool.execute(params)
+
+
+def test_the_tool_defaults_to_delivering_into_this_conversation(dispatched):
+    """The exact shape the model should produce for "每天提醒我".
+
+    No ``channel_type``, no ``receiver``, no ``list_recipients`` call: the reply
+    must be a created task whose destination is this conversation, named the way
+    the Web user sees it.
+    """
+    app, alice, _role = dispatched
+    tool = _tool(app)
+
+    with _as(app, AGENT, alice):
+        created = _created_id(_create_delivering(tool))
+        listing = tool.execute({"action": "list"})
+
+    task = app.scheduler_store(AGENT).get_task(created)
+    action = task["action"]
+    assert action["channel_type"] == "web"
+    assert action["instance_id"] == "web"
+    # The receiver is the conversation's own id, and the delivery rides back
+    # through that same session rather than through any directory entry.
+    assert action["receiver"] == "user-1"
+    assert action["notify_session_id"] == SESSION
+    assert action["is_group"] is False
+    assert task["owner"]["user_id"] == alice
+    # The receipt names the destination in user-facing terms, so the model has
+    # nothing to ask the user for afterwards.
+    assert "本站（当前会话）" in listing.result or created in listing.result
+
+
+def test_the_default_receipt_hands_the_model_the_target_it_used(dispatched):
+    """The reply is what the user reads: it must not look like a missing input."""
+    app, alice, _role = dispatched
+    tool = _tool(app)
+
+    with _as(app, AGENT, alice):
+        result = _create_delivering(tool, name="remind-me")
+
+    assert result.status == "success", result.result
+    assert "投递目标: 本站（当前会话）" in result.result
+    # Nothing in the reply asks the user to go and find a channel or a contact.
+    for leaked in ("请先", "list_recipients", "接收者 ID", "渠道类型"):
+        assert leaked not in result.result
+
+
+def test_deliver_to_current_session_refuses_a_target_instead_of_ignoring_it(dispatched):
+    """A supplied receiver means the model meant "someone else" - say so."""
+    app, alice, _role = dispatched
+    tool = _tool(app)
+
+    with _as(app, AGENT, alice):
+        result = _create_delivering(tool, deliver_to="current_session",
+                                    channel_type="feishu", receiver="user-1")
+
+    assert result.status == "success"          # a message, not a crash
+    assert "deliver_to='recipient'" in result.result
+    assert app.scheduler_store(AGENT).list_tasks() == []
+
+
+def test_an_unknown_deliver_to_value_is_refused(dispatched):
+    app, alice, _role = dispatched
+    tool = _tool(app)
+
+    with _as(app, AGENT, alice):
+        result = _create_delivering(tool, deliver_to="email")
+
+    assert result.status == "success"
+    assert "deliver_to" in result.result
+    assert app.scheduler_store(AGENT).list_tasks() == []
+
+
+def test_deliver_to_recipient_uses_the_trusted_directory_entry(dispatched, tmp_path):
+    """The "send it to someone else" path keeps working, target and all."""
+    app, alice, _role = dispatched
+    tool = _tool(app)
+    directory = _recipients(str(tmp_path / "recipients.json"))
+    directory.remember("feishu", "ou_bob", name="Bob", instance_id="feishu-main")
+    tool.recipient_store = directory
+
+    with _as(app, AGENT, alice):
+        created = _created_id(_create_delivering(
+            tool, deliver_to="recipient", channel_type="feishu",
+            instance_id="feishu-main", receiver="ou_bob"))
+
+    action = app.scheduler_store(AGENT).get_task(created)["action"]
+    assert action["channel_type"] == "feishu"
+    assert action["instance_id"] == "feishu-main"
+    assert action["receiver"] == "ou_bob"
+    assert action["receiver_name"] == "Bob"
+    assert action["notify_session_id"] == "ou_bob"
+
+
+def test_a_recipient_outside_the_directory_is_refused(dispatched, tmp_path):
+    app, alice, _role = dispatched
+    tool = _tool(app)
+    tool.recipient_store = _recipients(str(tmp_path / "recipients.json"))
+
+    with _as(app, AGENT, alice):
+        result = _create_delivering(tool, deliver_to="recipient",
+                                    channel_type="feishu", receiver="ou_mallory")
+        fallback = tool.execute({"action": "list_recipients"})
+
+    assert result.status == "success"
+    assert "可信目录" in result.result
+    # An empty directory is not the same as a missing self target, and the
+    # message says how to still get a reminder for yourself.
+    assert "current_session" in fallback.result
+    assert app.scheduler_store(AGENT).list_tasks() == []
+
+
+def test_recipient_delivery_without_a_named_target_is_refused(dispatched):
+    app, alice, _role = dispatched
+    tool = _tool(app)
+
+    with _as(app, AGENT, alice):
+        result = _create_delivering(tool, deliver_to="recipient")
+
+    assert result.status == "success"
+    assert "list_recipients" in result.result
+    assert app.scheduler_store(AGENT).list_tasks() == []
+
+
+def test_self_delivery_is_metered_by_the_same_quota(dispatched):
+    """A self target is a real task, so the member's limit applies to it."""
+    app, alice, _role = dispatched
+    app.service.set_quota(actor_user_id=app.admin_id, tenant_id=app.tenant_id,
+                          metric="scheduled_tasks", hard_limit=1, user_id=alice)
+    tool = _tool(app)
+
+    with _as(app, AGENT, alice):
+        first = _create_delivering(tool, name="self-one")
+        second = _create_delivering(tool, name="self-two")
+
+    assert first.status == "success"
+    assert second.status == "error" and "quota_exceeded" in second.result
+    assert len(app.scheduler_store(AGENT).list_tasks()) == 1

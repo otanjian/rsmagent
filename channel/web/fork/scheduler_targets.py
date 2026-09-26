@@ -59,6 +59,21 @@ RECIPIENT_FIELDS: Tuple[str, ...] = (
 #: own session is ephemeral, and ``unknown`` names no adapter at all.
 _NON_DELIVERY_TYPES = frozenset({"", "web", "unknown"})
 
+#: The synthetic target meaning "deliver into this very Web session". It is *not*
+#: a channel instance and never enters the recipient directory: a Web session is
+#: private to one member and its receiver is the session id itself, so the caller
+#: may only name *which conversation*, while the server resolves *who receives*
+#: from the authenticated session (see :meth:`SchedulerTargetService.resolve_self_target`).
+#: The value matches ``channel_type='web'`` on purpose -- the delivery layer
+#: already routes ``channel_type='web'`` back through the running Web channel, so
+#: a self target needs no new delivery branch.
+SELF_INSTANCE_ID = "web"
+
+#: How the synthetic target is named in the console and stored on the task as
+#: ``receiver_name``. It has to stand on its own: receipts and task lists rarely
+#: render the instance label next to it.
+SELF_TARGET_NAME = "本站（当前会话）"
+
 
 def _refuse(code: str, status: int) -> None:
     """Raise the scheduler's stable refusal (lazy import avoids an import cycle)."""
@@ -94,10 +109,15 @@ class SchedulerTargetService:
         (``list_tenant_channel_instances``): a member sees only their own
         ``user`` rows, a controller also sees the tenant's. Nothing here widens
         that range -- this only removes rows that cannot deliver.
+
+        The synthetic "this session" target is always first and is offered even
+        when the caller has no usable IM instance at all -- a member who has
+        never connected a channel is exactly who needs it most.
         """
         granted = self._granted_instances(ctx)
         counts = self._recipient_counts({item["id"] for item in granted})
-        return [self._project_instance(item, counts) for item in granted]
+        return [self._self_instance()] + [
+            self._project_instance(item, counts) for item in granted]
 
     def list_recipients(self, ctx: Any,
                         instance_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -123,7 +143,9 @@ class SchedulerTargetService:
         return [self._project_recipient(entry, by_id) for entry in entries]
 
     def resolve_target(self, ctx: Any, instance_id: str,
-                       receiver: str) -> Tuple[str, Dict[str, Any]]:
+                       receiver: str,
+                       agent_id: Optional[str] = None
+                       ) -> Tuple[str, Dict[str, Any]]:
         """Re-verify one target and return ``(agent_id, recipient_metadata)``.
 
         This is the create path's whole trust boundary, so it re-derives every
@@ -132,8 +154,19 @@ class SchedulerTargetService:
         Agent binding must still resolve, and the receiver must still be in the
         directory *for that instance*. Any failure refuses -- a target that was
         valid when the picker rendered is not valid now.
+
+        ``instance_id == SELF_INSTANCE_ID`` is the one non-directory target: it
+        is a session fact, resolved from the authenticated session (see
+        :meth:`resolve_self_target`), never from the recipient directory. The
+        ``agent_id`` argument is an address hint used only there; for a channel
+        target the Agent comes from the instance's own binding.
         """
         explicit = str(instance_id or "").strip()
+        if explicit == SELF_INSTANCE_ID:
+            # ``receiver`` carries the *session id* here, and is only evidence of
+            # which conversation the caller means; ``resolve_self_target``
+            # re-derives both the owner and the receiver.
+            return self.resolve_self_target(ctx, receiver, agent_id)
         wanted_receiver = str(receiver or "").strip()
         if not explicit or not wanted_receiver:
             _refuse("invalid_target", 400)
@@ -160,6 +193,127 @@ class SchedulerTargetService:
         if _normalized_channel_type(entry.get("channel_type")) in _NON_DELIVERY_TYPES:
             _refuse("target_not_found", 404)
         return agent_id, self._recipient_metadata(entry)
+
+    def resolve_self_target(self, ctx: Any, session_id: str,
+                            agent_id: Optional[str] = None
+                            ) -> Tuple[str, Dict[str, Any]]:
+        """Resolve the caller's own Web session as a delivery target.
+
+        The trust boundary is the one the rest of the fork already uses --
+        :func:`channel.web.fork.authorization._owned_context_target`, which
+        applies ``_require_session_scope`` (tenant binding, Agent visibility and
+        the owner probe) **and** requires the durable ``sessions`` row to match
+        this caller with ``channel_type='web'``. Reusing it is deliberate: this
+        adds a legal *target source*, not a second authorization model, and a
+        session that does not exist can never become a target.
+
+        The receiver is the session id by definition (a Web conversation's
+        receiver *is* its session id), so it is derived here and never read from
+        the request.
+
+        Which Agent the session runs under is a session fact too. A hint is
+        honored when the caller gives one (it is validated by the same helper as
+        any other Agent address, and the create handler refuses a hint that
+        disagrees with the resolution); with no hint -- the console's create
+        payload names only the session -- the caller's own Agent range is tried
+        in a deterministic order and the row itself decides. Only Agents the
+        caller's tenant is bound to, and which the registry has enabled, are
+        ever tried, so the loop cannot reach another tenant's conversation.
+        """
+        wanted = str(session_id or "").strip()
+        if not wanted:
+            _refuse("invalid_target", 400)
+        from channel.web.fork.authorization import _owned_context_target
+
+        enabled = self._enabled_agent_ids()
+        if enabled is None:
+            # No roster means no Agent can be proven able to run the task; the
+            # same fail-closed rule ``_bound_agent`` applies to channel targets.
+            _refuse("invalid_target", 400)
+        for candidate in self._self_candidates(ctx, agent_id, enabled):
+            try:
+                resolved, _store = _owned_context_target(ctx, wanted, candidate)
+            except Exception:
+                # ``_owned_context_target`` refuses by raising the fork's own
+                # HTTP error: 404 for a session that is absent, another member's
+                # or not a web session, 403 when the Agent is not tenant-visible.
+                # Keep looking at the other candidates -- but never report which
+                # check failed, so "not yours" and "never existed" stay
+                # indistinguishable to the caller.
+                continue
+            if resolved not in enabled:
+                _refuse("invalid_target", 400)
+            return resolved, {
+                "channel_type": SELF_INSTANCE_ID,
+                "instance_id": SELF_INSTANCE_ID,
+                "receiver": wanted,
+                "name": SELF_TARGET_NAME,
+                "is_group": False,
+                "session_id": wanted,
+                "last_seen_at": "",
+            }
+        # No Agent the caller may address owns this session. The message is
+        # actionable on purpose: a brand-new conversation has no ``sessions`` row
+        # until its first message, which is the one common way to reach here.
+        from agent.tools.scheduler.authorization import TaskAuthorizationError
+        raise TaskAuthorizationError(
+            "target_not_found", status=404,
+            message="当前会话尚不可作为投递目标，请先在此对话中发送一条消息后再创建")
+
+    def _self_candidates(self, ctx: Any, agent_id: Optional[str],
+                         enabled: set) -> List[str]:
+        """The Agents a session may be looked up under, in a stable order.
+
+        Derived only from the caller's own tenant binding plus the enabled
+        roster: a caller-supplied hint first (validated later by
+        ``_owned_context_target`` like any other Agent address), then the
+        tenant's bound default Agent, then the remaining bound Agents. The loop
+        that consumes this does not *decide* anything -- the ``sessions`` row is
+        still the only proof, and an Agent outside this list is never read.
+        """
+        hint = str(agent_id or "").strip()
+        if hint:
+            return [hint]
+        bound = [item for item in self._tenant_agent_ids(ctx) if item in enabled]
+        if not bound:
+            return []
+        default_id = ""
+        try:
+            from agent.registry import get_agent_registry
+            default_id = get_agent_registry().default_agent_id or ""
+        except Exception:  # noqa: BLE001 - no roster means no default to prefer
+            default_id = ""
+        ordered = ([default_id] if default_id in bound else []) + \
+            [item for item in bound if item != default_id]
+        return ordered
+
+    def _tenant_agent_ids(self, ctx: Any) -> List[str]:
+        """The Agents the caller's tenant is bound to (fail closed to none)."""
+        tenant_id = str(getattr(ctx, "tenant_id", "") or "")
+        if not tenant_id:
+            return []
+        try:
+            return [str(item) for item in
+                    (self._identity.tenant_agent_ids(tenant_id) or [])]
+        except Exception:  # noqa: BLE001 - an unreadable binding is no candidate
+            return []
+
+    @staticmethod
+    def _self_instance() -> Dict[str, Any]:
+        """The synthetic "deliver to this session" instance (always first).
+
+        It carries no ``recipient_count``: the recipient step is fixed to "me",
+        so counting the directory would misreport the target.
+        """
+        return {
+            "instance_id": SELF_INSTANCE_ID,
+            "channel_type": SELF_INSTANCE_ID,
+            "name": SELF_TARGET_NAME,
+            "channel_label": SELF_TARGET_NAME,
+            "agent_id": "",
+            "recipient_count": 0,
+            "is_self": True,
+        }
 
     # -- range + deliverability -------------------------------------------
 

@@ -652,9 +652,11 @@ def _create_whitelisted_action(action_in: dict, recipient: dict) -> dict:
     """The stored action, assembled only from trusted values.
 
     The receiver identity (channel type, instance, receiver, group flag,
-    notify session) is taken from the directory, never from the request; the
-    client may only contribute the text that belongs to the chosen type, and the
-    other type's field is dropped so a task cannot carry both.
+    notify session) is taken from the resolved target, never from the request;
+    the client may only contribute the text that belongs to the chosen type, and
+    the other type's field is dropped so a task cannot carry both. A self target
+    arrives here with ``channel_type='web'`` and ``receiver``/``session_id``
+    equal to the *verified* session id, so the same assembly serves both paths.
     """
     action_type = action_in["type"]
     action = {
@@ -738,16 +740,23 @@ def _create_task_for(ctx, body: dict) -> dict:
     if not instance_id or not receiver:
         # ``instance_id`` is mandatory and never falls back to a channel type or
         # the default Agent: a missing one is a malformed request, not a target.
+        # ``receiver`` is the directory key for a channel target and the *session
+        # id* for the self target, so both are required either way.
         _create_refuse("invalid_request", 400)
 
-    agent_id, recipient = _scheduler_target_service().resolve_target(
-        ctx, instance_id, receiver)
-
+    # ``agent_id`` is only an address hint: it says which Agent's store the
+    # session should be found in, and it is validated by the same resolver that
+    # derives the real (tenant-bound, enabled) Agent. For a channel target it
+    # must agree with the instance's binding, exactly as before.
     supplied_agent = body.get("agent_id")
     if supplied_agent is not None and not isinstance(supplied_agent, str):
         _create_refuse("invalid_request", 400)
-    if isinstance(supplied_agent, str) and supplied_agent.strip() \
-            and supplied_agent.strip() != agent_id:
+    agent_hint = supplied_agent.strip() if isinstance(supplied_agent, str) else ""
+
+    agent_id, recipient = _scheduler_target_service().resolve_target(
+        ctx, instance_id, receiver, agent_id=agent_hint or None)
+
+    if agent_hint and agent_hint != agent_id:
         _create_refuse("invalid_request", 400)
     supplied_channel = str(action_in.get("channel_type") or "").strip()
     if supplied_channel and supplied_channel != recipient["channel_type"]:
