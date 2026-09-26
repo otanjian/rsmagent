@@ -130,6 +130,50 @@ def test_web_edit_preserves_hidden_agent_action_fields(web_app):
     assert action["delivery_extension"] == {"trace": True}
 
 
+def test_a_self_targeted_task_keeps_its_conversation_through_an_edit(web_app):
+    """A "push it back here" task delivers into a conversation, not a contact.
+
+    The create dialog sends ``channel_type='web'`` and no instance for this
+    target (the browser names only *which* conversation, see the fork's
+    ``tasks-console.js``). An unrelated edit must therefore leave both the
+    delivery instance and the session metadata exactly as the server resolved
+    them -- neither dropped (which would break delivery) nor re-pointed at a
+    directory contact (which would deliver to the wrong person).
+    """
+    app, token, alice = _console(web_app)
+    store = app.personal_task(AGENT, alice, **_task(name="daily digest", action={
+        "type": "send_message",
+        "content": "unfinished items",
+        "receiver": "sess-alice",
+        "receiver_name": "本站（当前会话）",
+        "is_group": False,
+        "channel_type": "web",
+        "instance_id": "web",
+        "notify_session_id": "sess-alice",
+    }))
+
+    result = _body(_post_update(app, token, {
+        "agent_id": AGENT,
+        "task_id": "task-1",
+        "name": "daily digest (renamed)",
+        "action": {
+            "type": "send_message",
+            "content": "unfinished items",
+            "receiver": "sess-alice",
+            "channel_type": "web",
+        },
+    }))
+
+    assert result["status"] == "success", result
+    task = store.get_task("task-1")
+    assert task["name"] == "daily digest (renamed)"
+    action = task["action"]
+    assert action["channel_type"] == "web"
+    assert action["instance_id"] == "web"
+    assert action["receiver"] == "sess-alice"
+    assert action["notify_session_id"] == "sess-alice"
+
+
 def test_switch_to_message_drops_agent_only_fields(web_app):
     app, token, owner = _console(web_app)
     store = app.personal_task(AGENT, owner, **_task(action={

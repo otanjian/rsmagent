@@ -37,9 +37,15 @@ class SchedulerTool(BaseTool):
         "- once: 一次性任务，支持相对时间(+5s,+10m,+1h,+1d)或ISO时间\n"
         "- interval: 固定间隔(秒)，如3600表示每小时\n"
         "- cron: cron表达式，如'0 8 * * *'表示每天8点\n\n"
-        "注意：'X秒后'用once+相对时间，'每X秒'用interval\n"
-        "For Web cross-channel delivery, call action='list_recipients' first, "
-        "then create a task (fixed message or ai_task) using the returned channel_type and receiver."
+        "注意：'X秒后'用once+相对时间，'每X秒'用interval\n\n"
+        "投递目标（deliver_to）——先判断结果要送到哪里，再创建：\n"
+        "① 'current_session'（默认，最常用）：结果推回当前对话（Web 里就是本站，IM 里就是当前会话）。"
+        "用户说「推给我 / 提醒我 / 发给我 / 汇总给我」时一律用这个：直接创建即可，"
+        "不要索要渠道类型或接收人，也不要先调用 list_recipients。任务创建后结果会出现在当前对话里。\n"
+        "② 'recipient'：把结果推送给**别人**（另一个 IM 联系人/群）。"
+        "只有在这一种情况下，才先调用 action='list_recipients' 拿到可信的 "
+        "channel_type / instance_id / receiver，再用它们创建。\n"
+        "默认目标无需用户提供任何信息；只有用户明确要求发给「其他人/别的群」时才需要 list_recipients。"
     )
     params: dict = {
         "type": "object",
@@ -82,9 +88,21 @@ class SchedulerTool(BaseTool):
                 "default": False,
                 "description": "Silent mode (default false): when true, the task runs normally but its result is not pushed. Set true only when the user explicitly says they don't need the result; reminder, notification and broadcast tasks must keep it false"
             },
+            "deliver_to": {
+                "type": "string",
+                "enum": ["current_session", "recipient"],
+                "default": "current_session",
+                "description": (
+                    "Where the result is delivered. Default 'current_session': push it back to THIS "
+                    "conversation (the Web session / the current IM chat) -- use this for every "
+                    "'remind me / send it to me' request, with no channel_type or receiver needed. "
+                    "'recipient': deliver to someone else, which requires a trusted target from "
+                    "action='list_recipients'."
+                )
+            },
             "channel_type": {
                 "type": "string",
-                "description": "Target channel type for a Web-created cross-channel task. Use list_recipients first."
+                "description": "Target channel type, only with deliver_to='recipient'. Use list_recipients first."
             },
             "instance_id": {
                 "type": "string",
@@ -265,17 +283,38 @@ class SchedulerTool(BaseTool):
         # the exact one that saw the contact. When the caller does not name an
         # instance (legacy single-instance channel), it equals the channel type.
         target_instance = kwargs.get("instance_id") or target_channel
+        has_target = bool(target_channel or target_receiver)
+        deliver_to = str(kwargs.get("deliver_to") or "").strip().lower()
+        if not deliver_to:
+            # A call that never named the intent keeps the historical reading: a
+            # supplied target means "someone else", no target means "this
+            # conversation" (which is what the default branch below builds).
+            deliver_to = "recipient" if has_target else "current_session"
+        if deliver_to not in ("current_session", "recipient"):
+            return ("错误: deliver_to 只能是 'current_session'（结果推回当前对话，默认）"
+                    "或 'recipient'（推送给别人）")
+        if deliver_to == "current_session" and has_target:
+            # Not dropped silently: a receiver means the model believes it is
+            # delivering to someone, and ignoring it would deliver to the wrong
+            # person. Say which of the two intents to keep.
+            return ("错误: deliver_to='current_session' 时不要传 channel_type/instance_id/receiver；"
+                    "若要推送给别人，请改为 deliver_to='recipient' 并先用 action='list_recipients' 取目标。")
         target = None
-        if target_channel or target_receiver:
+        if deliver_to == "recipient":
             if context.get("channel_type") != "web":
-                return "Error: cross-channel recipients can only be selected from the Web console"
+                return ("错误: 推送给别人只能在 Web 会话里选择目标；当前对话请用默认 "
+                        "deliver_to='current_session'（结果推回这里，无需渠道或接收人）。")
             if not target_channel or not target_receiver:
-                return "Error: channel_type and receiver must be provided together"
+                return ("错误: 缺少投递目标。默认 deliver_to='current_session' 会把结果推回当前对话，"
+                        "不需要渠道或接收人；若要推送给别人，请先 action='list_recipients'，"
+                        "再用它返回的 channel_type/instance_id/receiver 创建。")
             if not self.recipient_store:
-                return "Error: trusted recipient directory is unavailable"
+                return "错误: 可信接收人目录暂不可用，请稍后重试"
             target = self.recipient_store.get(target_instance, target_receiver)
             if not target:
-                return "Error: target is not in the trusted recipient directory; use list_recipients"
+                return ("错误: 该接收人不在可信目录中。请先用 action='list_recipients' 查看可选对象"
+                        "（对方需要先给智能体发过消息才会出现）；或改用默认 deliver_to='current_session' "
+                        "把结果推回当前对话。")
         
         # Create task
         task_id = str(uuid.uuid4())[:8]
@@ -363,7 +402,15 @@ class SchedulerTool(BaseTool):
         
         # Format response
         schedule_desc = self._format_schedule_description(schedule)
-        receiver_desc = task_data["action"]["receiver_name"] or task_data["action"]["receiver"]
+        if deliver_to == "current_session":
+            # Spell out where it lands: this receipt is relayed to the user, and
+            # an internal receiver id would invite a question they never needed
+            # to ask ("who is that?").
+            receiver_desc = ("本站（当前会话）" if channel_type == "web"
+                             else f"当前会话（{channel_type}）")
+        else:
+            receiver_desc = (task_data["action"]["receiver_name"]
+                             or task_data["action"]["receiver"])
         
         if message:
             content_desc = f"💬 固定消息: {message}"
@@ -378,7 +425,7 @@ class SchedulerTool(BaseTool):
             f"📋 任务ID: {task_id}\n"
             f"📝 名称: {name}\n"
             f"⏰ 调度: {schedule_desc}\n"
-            f"👤 接收者: {receiver_desc}\n"
+            f"📬 投递目标: {receiver_desc}\n"
             f"{content_desc}{silent_desc}\n"
             f"🕐 下次执行: {next_run.strftime('%Y-%m-%d %H:%M:%S') if next_run else '未知'}"
         )
@@ -415,15 +462,24 @@ class SchedulerTool(BaseTool):
         return "\n".join(lines)
 
     def _list_recipients(self, **kwargs) -> str:
-        """List trusted targets available to the Web scheduler."""
+        """List trusted *external* targets, for delivering to someone else.
+
+        Only needed for ``deliver_to='recipient'``: the default
+        ``current_session`` target is the current conversation and never comes
+        from this directory.
+        """
         if not self.current_context or self.current_context.get("channel_type") != "web":
-            return "Error: trusted recipients can only be listed from the Web console"
+            return ("Error: trusted recipients can only be listed from the Web console. "
+                    "To deliver to this conversation, create with the default "
+                    "deliver_to='current_session' -- no recipient lookup needed.")
         if not self.recipient_store:
             return "Error: trusted recipient directory is unavailable"
         recipients = self.recipient_store.list()
         if not recipients:
-            return "No trusted recipients yet. A recipient must contact CowAgent first."
-        lines = ["Trusted scheduler recipients:"]
+            return ("No external recipients yet: someone must talk to the Agent first. "
+                    "This does not block reminders for yourself -- create with the default "
+                    "deliver_to='current_session' to push the result into this conversation.")
+        lines = ["Trusted recipients for deliver_to='recipient':"]
         for item in recipients:
             kind = "group" if item["is_group"] else "user"
             instance_id = item.get("instance_id") or item["channel_type"]
@@ -445,6 +501,12 @@ class SchedulerTool(BaseTool):
         status = "启用" if task.get("enabled", True) else "禁用"
         schedule_desc = self._format_schedule_description(task.get("schedule", {}))
         action = task.get("action", {})
+        # A Web task delivers into a session, so name the destination by what the
+        # user recognises (本站) rather than by the stored receiver id.
+        if (action.get("channel_type") or "") == "web":
+            receiver_str = action.get("receiver_name") or "本站（当前会话）"
+        else:
+            receiver_str = action.get("receiver_name") or action.get("receiver")
         next_run = task.get("next_run_at")
         next_run_str = datetime.fromisoformat(next_run).strftime('%Y-%m-%d %H:%M:%S') if next_run else "未知"
         last_run = task.get("last_run_at")
@@ -457,7 +519,7 @@ class SchedulerTool(BaseTool):
             f"状态: {status}\n"
             f"归属: {'本人' if (task.get('scope') or 'public') == 'personal' else '公共'}\n"
             f"调度: {schedule_desc}\n"
-            f"接收者: {action.get('receiver_name', action.get('receiver'))}\n"
+            f"接收者: {receiver_str}\n"
             f"消息: {action.get('content')}\n"
             f"下次执行: {next_run_str}\n"
             f"上次执行: {last_run_str}\n"
@@ -617,6 +679,10 @@ class SchedulerTool(BaseTool):
     def _get_receiver_name(self, context: Context) -> str:
         """Get receiver name from context"""
         try:
+            if (context.get("channel_type") or "") == "web":
+                # A Web conversation has no nickname; name the destination the
+                # way the user sees it so a stored task reads sensibly.
+                return "本站（当前会话）"
             msg = context.get("msg")
             if msg:
                 if context.get("isgroup"):

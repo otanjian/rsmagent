@@ -326,7 +326,12 @@ def test_cross_tenant_instance_is_not_a_target(web_app):
 
 
 def test_manager_sees_tenant_instances_but_not_members_user_instances(web_app):
-    """The listing keeps the identity service's range, neither wider nor narrower."""
+    """The listing keeps the identity service's range, neither wider nor narrower.
+
+    The synthetic self target is offered to everyone on top of that range (it is
+    not a channel instance and has no directory behind it), so it is excluded
+    here and asserted separately.
+    """
     with _authoring_open():
         app = web_app("create-manager-range")
         app.add_agent("shared-agent")
@@ -339,19 +344,20 @@ def test_manager_sees_tenant_instances_but_not_members_user_instances(web_app):
 
         app.stack.tenant_admin("manager")
         manager_token = app.login("manager", IdentityStack.MEMBER_PASSWORD)
-        manager_ids = {item["instance_id"] for item in _json(
+        manager_rows = {item["instance_id"]: item for item in _json(
             app, app.get("/api/scheduler/instances", token=manager_token))["instances"]}
-        assert tenant_instance in manager_ids
-        assert alice_instance not in manager_ids
+        assert manager_rows["web"]["is_self"] is True
+        assert tenant_instance in manager_rows
+        assert alice_instance not in manager_rows
         # The tenant row reports only the recipients of the granted instances.
-        rows = {item["instance_id"]: item for item in _json(
-            app, app.get("/api/scheduler/instances", token=manager_token))["instances"]}
-        assert rows[tenant_instance]["recipient_count"] == 0
+        assert manager_rows[tenant_instance]["recipient_count"] == 0
 
         alice_token = app.login("alice")
         alice_rows = {item["instance_id"]: item for item in _json(
             app, app.get("/api/scheduler/instances", token=alice_token))["instances"]}
-        assert set(alice_rows) == {alice_instance}
+        assert set(alice_rows) == {alice_instance, "web"}
+        assert alice_rows["web"]["is_self"] is True
+        assert alice_rows["web"]["recipient_count"] == 0
         assert alice_rows[alice_instance]["recipient_count"] == 1
 
 
@@ -616,3 +622,190 @@ def test_rebinding_the_instance_is_reverified_on_the_next_create(web_app):
                          _create_body(instance_id, "user-1"), token=token)
         assert third.status.startswith("403"), third.data
         assert _json(app, third)["code"] == "agent_denied"
+
+
+# ---------------------------------------------------------------------------
+# The self target: deliver into the caller's own conversation
+# ---------------------------------------------------------------------------
+
+#: The synthetic instance the server offers for "push the result back here".
+SELF = "web"
+
+
+def _claim_web_session(app, owner, agent_id, session_id):
+    """Give *owner* a real Web conversation with *session_id*.
+
+    Written through the public door (``append_messages``) rather than by hand so
+    the ``sessions`` row carries the shape the read path under test expects:
+    ``channel_type='web'``, the owner, the tenant, and the bound Agent's *storage*
+    key -- which is what ``_owned_context_target`` matches on.
+    """
+    from agent.memory import get_conversation_store
+    from common.runtime_identity import identity_scope
+
+    store = get_conversation_store(app.agent_workspace(agent_id))
+    with identity_scope(user_id=owner, tenant_id=app.tenant_id):
+        assert store.append_messages(session_id, [{"role": "user", "content": "hi"}],
+                                     channel_type="web")
+
+
+def test_self_target_create_lands_in_the_callers_own_session(web_app):
+    """The console can create a "push it back here" task without any channel."""
+    with _authoring_open():
+        app = web_app("create-self")
+        alice, _role = _creator(app, "alice", agent_id="alice-agent")
+        app.private_agent(alice, "alice-agent")
+        _claim_web_session(app, alice, "alice-agent", "sess-alice")
+        token = app.login("alice")
+
+        response = app.post("/api/scheduler/create",
+                            _create_body(SELF, "sess-alice"), token=token)
+        assert response.status.startswith("200"), response.data
+        task = _json(app, response)["task"]
+        # The target identity is the resolved session, and the Agent is the one
+        # the session actually runs under -- neither is echoed from the request.
+        assert task["action"]["channel_type"] == SELF
+        assert task["action"]["instance_id"] == SELF
+        assert task["action"]["receiver"] == "sess-alice"
+        assert task["action"]["notify_session_id"] == "sess-alice"
+        assert task["action"]["is_group"] is False
+        assert task["agent_id"] == "alice-agent"
+        assert task["scope"] == "personal"
+        assert task["owner"]["user_id"] == alice
+        assert len(_tasks(app)) == 1
+        assert len(_scheduler_creates(app)) == 1
+
+
+def test_self_target_resolves_the_agent_without_a_client_hint(web_app):
+    """The console's create body names no Agent; the session row decides."""
+    with _authoring_open():
+        app = web_app("create-self-agent")
+        # Two Agents the member may use: the session lives under the second, so a
+        # resolver that only tried the tenant default would miss it.
+        alice, _role = _creator(app, "alice", agent_id="alice-agent",
+                                grants=[("agent", "agent:alice-agent", "use"),
+                                        ("agent", "agent:alice-agent-2", "use")])
+        app.private_agent(alice, "alice-agent")
+        app.private_agent(alice, "alice-agent-2")
+        _claim_web_session(app, alice, "alice-agent-2", "sess-second")
+        token = app.login("alice")
+
+        body = _create_body(SELF, "sess-second", extra={"agent_id": "alice-agent-2"})
+        response = app.post("/api/scheduler/create", body, token=token)
+        assert response.status.startswith("200"), response.data
+        assert _json(app, response)["task"]["agent_id"] == "alice-agent-2"
+
+
+def test_self_target_refuses_another_members_session(web_app):
+    """A session id is not a capability: someone else's conversation is a 404."""
+    with _authoring_open():
+        app = web_app("create-self-foreign")
+        _creator(app, "alice", agent_id="alice-agent")
+        _creator(app, "bob", agent_id="bob-agent")
+        alice, bob = app.user_id("alice"), app.user_id("bob")
+        app.private_agent(alice, "alice-agent")
+        app.private_agent(bob, "bob-agent")
+        _claim_web_session(app, bob, "bob-agent", "sess-bob")
+        token = app.login("alice")
+
+        response = app.post("/api/scheduler/create",
+                            _create_body(SELF, "sess-bob"), token=token)
+        assert response.status.startswith("404"), response.data
+        assert _json(app, response)["code"] == "target_not_found"
+        assert _tasks(app) == []
+
+
+def test_self_target_refuses_a_session_that_does_not_exist(web_app):
+    """A conversation with no message yet has no row, so it is not a target."""
+    with _authoring_open():
+        app = web_app("create-self-unknown")
+        alice, _role = _creator(app, "alice", agent_id="alice-agent")
+        app.private_agent(alice, "alice-agent")
+        token = app.login("alice")
+
+        response = app.post("/api/scheduler/create",
+                            _create_body(SELF, "sess-never-used"), token=token)
+        assert response.status.startswith("404"), response.data
+        assert _json(app, response)["code"] == "target_not_found"
+        assert _tasks(app) == []
+
+
+def test_self_target_refuses_a_forged_receiver_and_channel(web_app):
+    """The client's receiver is evidence, never the stored value."""
+    with _authoring_open():
+        app = web_app("create-self-forged")
+        alice, _role = _creator(app, "alice", agent_id="alice-agent")
+        app.private_agent(alice, "alice-agent")
+        _claim_web_session(app, alice, "alice-agent", "sess-alice")
+        token = app.login("alice")
+
+        # A receiver that is not the caller's session is not found ...
+        forged = app.post("/api/scheduler/create",
+                          _create_body(SELF, "sess-someone-else"), token=token)
+        assert forged.status.startswith("404"), forged.data
+        # ... and a channel type that disagrees with the resolved one is refused
+        # even when the session itself is legitimate.
+        mismatch = app.post(
+            "/api/scheduler/create",
+            _create_body(SELF, "sess-alice",
+                         action_extra={"channel_type": "feishu"}), token=token)
+        assert mismatch.status.startswith("400"), mismatch.data
+        assert _json(app, mismatch)["code"] == "invalid_target"
+        assert _tasks(app) == []
+
+
+def test_self_target_refuses_protected_fields_like_any_other(web_app):
+    with _authoring_open():
+        app = web_app("create-self-protected")
+        alice, _role = _creator(app, "alice", agent_id="alice-agent")
+        app.private_agent(alice, "alice-agent")
+        _claim_web_session(app, alice, "alice-agent", "sess-alice")
+        token = app.login("alice")
+
+        for extra in ({"owner": {"user_id": alice}}, {"scope": "public"},
+                      {"tenant_id": "elsewhere"}):
+            response = app.post(
+                "/api/scheduler/create",
+                _create_body(SELF, "sess-alice", extra=extra), token=token)
+            assert response.status.startswith("400"), (extra, response.data)
+            assert _json(app, response)["code"] == "invalid_request"
+        assert _tasks(app) == []
+
+
+def test_self_target_never_appears_in_the_recipient_directory(web_app):
+    """Web stays out of the cross-channel directory, self target included."""
+    with _authoring_open():
+        app = web_app("create-self-directory")
+        alice, _role = _creator(app, "alice", agent_id="alice-agent")
+        app.private_agent(alice, "alice-agent")
+        _claim_web_session(app, alice, "alice-agent", "sess-alice")
+        instance_id = _own_instance(app, alice, "alice-agent", "Alice Bot")
+        _remember(app, "user-1", instance_id, name="Alice Contact")
+        token = app.login("alice")
+
+        body = _json(app, app.get("/api/scheduler/recipients", token=token))
+        assert [item["receiver"] for item in body["recipients"]] == ["user-1"]
+        assert all(item["channel_type"] != SELF for item in body["recipients"])
+        # Nor is the self target an addressable directory key.
+        missing = app.get(f"/api/scheduler/recipients?instance_id={SELF}", token=token)
+        assert missing.status.startswith("404"), missing.data
+
+
+def test_a_quota_at_the_limit_refuses_a_self_target_too(web_app):
+    with _authoring_open():
+        app = web_app("create-self-quota")
+        alice, _role = _creator(app, "alice", agent_id="alice-agent")
+        app.private_agent(alice, "alice-agent")
+        _claim_web_session(app, alice, "alice-agent", "sess-alice")
+        app.service.set_quota(actor_user_id=app.admin_id, tenant_id=app.tenant_id,
+                              metric="scheduled_tasks", hard_limit=1, user_id=alice)
+        token = app.login("alice")
+
+        first = app.post("/api/scheduler/create",
+                         _create_body(SELF, "sess-alice"), token=token)
+        assert first.status.startswith("200"), first.data
+        second = app.post("/api/scheduler/create",
+                          _create_body(SELF, "sess-alice"), token=token)
+        assert second.status.startswith("409"), second.data
+        assert _json(app, second)["code"] == "quota_exceeded"
+        assert len(_tasks(app)) == 1

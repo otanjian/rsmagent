@@ -43,6 +43,9 @@
         initDropdown: window.initDropdown,
         openTaskEditModal: window.openTaskEditModal,
         openTaskCreateModal: window.openTaskCreateModal,
+        loadTaskChannelOptions: window.loadTaskChannelOptions,
+        filterTaskRecipients: window.filterTaskRecipients,
+        refreshTaskRecipients: window.refreshTaskRecipients,
     };
     if (typeof upstream.loadTasksView !== 'function'
             || typeof upstream.initDropdown !== 'function') {
@@ -572,6 +575,127 @@
         return result;
     }
 
+    // ------------------------------------------------------------------
+    // The self target: "deliver into this very conversation".
+    //
+    // The server offers it as the first row of /api/scheduler/instances
+    // (``is_self``, ``instance_id='web'``), and on create it re-derives the
+    // owner, the Agent and the receiver from the authenticated session: the
+    // browser names only *which* conversation, never who receives. So the page
+    // has three jobs and no more -- name the option in the user's language, fix
+    // the recipient step to "me" instead of the contact directory, and pre-pick
+    // it, because a member with no connected channel has no other target.
+    // ------------------------------------------------------------------
+    const SELF_INSTANCE_ID = 'web';
+
+    function inCreateMode() {
+        return typeof taskModalMode !== 'undefined' && taskModalMode === 'create';
+    }
+
+    function selectedInstanceId() {
+        return typeof selectedTaskInstanceId !== 'undefined' ? selectedTaskInstanceId : '';
+    }
+
+    // The conversation the composer is on. `sessionId` is console.js's own
+    // binding; reading it under `typeof` keeps a page that never evaluated
+    // console.js from turning this click into a crash.
+    function currentSessionId() {
+        try {
+            return typeof sessionId === 'string' ? sessionId : '';
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function isSelfId(value) {
+        return String(value == null ? '' : value) === SELF_INSTANCE_ID;
+    }
+
+    function instanceControl() {
+        return document.getElementById('task-edit-instance');
+    }
+
+    // Upstream names the option from the server payload, which carries a single
+    // language; the page renders in the user's.
+    function withSelfLabels(options) {
+        return (options || []).map(option => (option && isSelfId(option.value))
+            ? Object.assign({}, option, {
+                label: t('task_self_instance'), hint: t('task_self_hint'),
+            })
+            : option);
+    }
+
+    function showRecipientRefresh(shown) {
+        const refresh = document.getElementById('task-recipient-refresh');
+        if (refresh) refresh.style.display = shown ? '' : 'none';
+    }
+
+    // The recipient step for a self target: one fixed entry, no directory. The
+    // hidden `#task-edit-receiver` and the picker's map both feed upstream's
+    // saveTaskEdit, so both carry the live session id -- which the server
+    // re-validates and overwrites on the way in.
+    function renderSelfRecipient() {
+        const wrap = document.getElementById('task-edit-recipient-wrap');
+        const el = document.getElementById('task-edit-recipient');
+        const receiverInput = document.getElementById('task-edit-receiver');
+        const conversation = currentSessionId();
+        if (wrap) wrap.classList.remove('hidden');
+        // The refresh control pulls the contact directory, which has nothing to
+        // add here; hiding it beats offering a no-op.
+        showRecipientRefresh(false);
+        if (receiverInput) receiverInput.value = conversation;
+        if (!el) return;
+        const key = SELF_INSTANCE_ID + ':' + conversation;
+        taskRecipientMap = {};
+        taskRecipientMap[key] = {
+            channel_type: SELF_INSTANCE_ID,
+            instance_id: SELF_INSTANCE_ID,
+            receiver: conversation,
+            name: t('task_self_receiver'),
+            is_group: false,
+            session_id: conversation,
+        };
+        el.classList.add('cfg-dropdown-disabled');
+        upstream.initDropdown(el, [{ value: key, label: t('task_self_receiver') }],
+                              key, () => {}, { readOnly: true });
+    }
+
+    function filterTaskRecipients(instanceId, preReceiver) {
+        // Upstream's instance builder passes its own local (empty) instance when
+        // nothing was pre-picked, so an empty call means "follow the control" --
+        // and right after the create modal pre-picks the self target, the control
+        // is showing it.
+        let wanted = instanceId;
+        if (!wanted && inCreateMode() && isSelfId(getDropdownValue(instanceControl()))) {
+            wanted = SELF_INSTANCE_ID;
+        }
+        if (isSelfId(wanted) && inCreateMode()) {
+            selectedTaskInstanceId = SELF_INSTANCE_ID;
+            renderSelfRecipient();
+            return undefined;
+        }
+        showRecipientRefresh(true);
+        return upstream.filterTaskRecipients(instanceId, preReceiver);
+    }
+
+    function refreshTaskRecipients() {
+        if (isSelfId(selectedInstanceId())) return undefined;
+        return upstream.refreshTaskRecipients();
+    }
+
+    function loadTaskChannelOptions(channelType) {
+        if (!isSelfId(channelType) || typeof upstream.loadTaskChannelOptions !== 'function') {
+            return upstream.loadTaskChannelOptions(channelType);
+        }
+        // An existing task's channel is a field of record; name a Web task by
+        // what it is instead of the raw channel type.
+        const el = document.getElementById('task-edit-channel-type');
+        if (!el) return undefined;
+        upstream.initDropdown(el, [{ value: SELF_INSTANCE_ID, label: t('task_self_instance') }],
+                              SELF_INSTANCE_ID, () => {}, { readOnly: true });
+        return undefined;
+    }
+
     function openTaskCreateModal() {
         const result = upstream.openTaskCreateModal();
         unlockDeliveryTarget();
@@ -586,21 +710,35 @@
     }
 
     window.initDropdown = function (el, options, selectedValue, onChange, opts) {
-        if (!blockingTargetPicker(el)) return upstream.initDropdown(el, options, selectedValue, onChange, opts);
-        // Show the stored target and nothing else. Upstream falls back to
-        // `options[0]` when the passed value is not among them, and on save it
-        // reads the selection back -- so offering the directory instead of the
-        // stored target would rewrite the task's delivery target on the next
-        // save, which is exactly what the edit surface must not allow.
-        const stored = storedTargetOption(el);
-        const shown = stored.length ? stored : (options || []);
-        const value = stored.length ? stored[0].value : selectedValue;
-        if (el.id === 'task-edit-recipient') seedRecipientMap(value);
-        // Upstream's save path validates the instance variable, not the DOM.
-        if (el.id === 'task-edit-instance') selectedTaskInstanceId = value;
-        el.classList.add('cfg-dropdown-disabled');
-        return upstream.initDropdown(el, shown, value, () => {},
-                                     Object.assign({}, opts || {}, { readOnly: true }));
+        if (blockingTargetPicker(el)) {
+            // Show the stored target and nothing else. Upstream falls back to
+            // `options[0]` when the passed value is not among them, and on save it
+            // reads the selection back -- so offering the directory instead of the
+            // stored target would rewrite the task's delivery target on the next
+            // save, which is exactly what the edit surface must not allow.
+            const stored = storedTargetOption(el);
+            const shown = stored.length ? stored : (options || []);
+            const value = stored.length ? stored[0].value : selectedValue;
+            if (el.id === 'task-edit-recipient') seedRecipientMap(value);
+            // Upstream's save path validates the instance variable, not the DOM.
+            if (el.id === 'task-edit-instance') selectedTaskInstanceId = value;
+            el.classList.add('cfg-dropdown-disabled');
+            return upstream.initDropdown(el, shown, value, () => {},
+                                         Object.assign({}, opts || {}, { readOnly: true }));
+        }
+        if (el && el.id === 'task-edit-instance' && inCreateMode()) {
+            options = withSelfLabels(options);
+            const self = (options || []).find(option => option && isSelfId(option.value));
+            if (self && !selectedValue) {
+                // Pre-pick the self target: it is the one target a member with no
+                // connected channel has at all, and it is the same default the
+                // Agent-side tool takes. The recipient step follows the control
+                // (see filterTaskRecipients), so it does not need re-driving here.
+                selectedValue = self.value;
+                selectedTaskInstanceId = self.value;
+            }
+        }
+        return upstream.initDropdown(el, options, selectedValue, onChange, opts);
     };
 
     // ------------------------------------------------------------------
@@ -617,4 +755,7 @@
     window.runTaskNow = runTaskNow;
     window.openTaskEditModal = openTaskEditModal;
     window.openTaskCreateModal = openTaskCreateModal;
+    window.filterTaskRecipients = filterTaskRecipients;
+    window.refreshTaskRecipients = refreshTaskRecipients;
+    window.loadTaskChannelOptions = loadTaskChannelOptions;
 })();

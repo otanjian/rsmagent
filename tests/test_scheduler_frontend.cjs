@@ -295,6 +295,116 @@ test('creating a task can still choose a target', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// 6. The self target: "deliver into this very conversation"
+// ---------------------------------------------------------------------------
+
+// The server's own row for "push it back here" (first in /api/scheduler/instances
+// for every member, with or without a connected channel).
+const SELF_INSTANCE = {
+    instance_id: 'web', name: '本站（当前会话）', channel_label: '本站',
+    channel_type: 'web', is_self: true,
+};
+const SELF_DIRECTORY = {
+    '/api/scheduler/instances': {
+        status: 'success',
+        instances: [SELF_INSTANCE,
+                    { instance_id: 'inst-a', name: 'Support', channel_type: 'wecom' }],
+    },
+    '/api/scheduler/recipients': {
+        status: 'success',
+        recipients: [{ instance_id: 'inst-a', channel_type: 'wecom', receiver: 'zhang', name: 'Zhang' }],
+    },
+};
+
+test('the create dialog pre-picks "this conversation" so a channel-less member can still schedule', async () => {
+    const page = withTasks({ status: 'success', tasks: [] }, { answers: SELF_DIRECTORY });
+    page.sandbox.sessionId = 'sess-1';
+    await page.sandbox.openTaskCreateModal();
+    await flush();
+
+    const instance = page.get('task-edit-instance');
+    assert.equal(instance._ddValue, 'web', 'the self target is the default selection');
+    assert.equal(instance._ddReadOnly, false,
+        'it is pre-picked, not forced: a real channel is still switchable');
+    assert.equal(instance.querySelector('.cfg-dropdown-text').textContent, 'task_self_instance',
+        'the option is labelled in the viewer\'s language, not the server payload\'s');
+    // Both targets remain on the menu, so the member can move off "this conversation".
+    const values = instance.querySelector('.cfg-dropdown-menu').children.map(i => i.dataset.value);
+    assert.deepEqual(values, ['web', 'inst-a']);
+});
+
+test('the self target replaces the contact directory with a single "me" entry', async () => {
+    const page = withTasks({ status: 'success', tasks: [] }, { answers: SELF_DIRECTORY });
+    page.sandbox.sessionId = 'sess-1';
+    await page.sandbox.openTaskCreateModal();
+    await flush();
+
+    const recipient = page.get('task-edit-recipient');
+    assert.equal(recipient._ddReadOnly, true, 'there is nothing to pick');
+    assert.equal(recipient._ddValue, 'web:sess-1',
+        'the entry carries the live conversation the server will re-derive');
+    assert.equal(recipient.querySelector('.cfg-dropdown-text').textContent, 'task_self_receiver');
+    assert.equal(page.get('task-edit-recipient-wrap').classList.contains('hidden'), false,
+        'the step stays visible so the user can see where the result goes');
+    // The hidden field upstream's save path reads carries the session too.
+    assert.equal(page.get('task-edit-receiver').value, 'sess-1');
+    // Pulling the contact directory has nothing to add here.
+    assert.equal(page.get('task-recipient-refresh').style.display, 'none');
+});
+
+test('saving a self target posts the conversation, never a client-chosen receiver', async () => {
+    const page = withTasks({ status: 'success', tasks: [] }, {
+        answers: { ...SELF_DIRECTORY, '/api/scheduler/create': { status: 'success' } },
+    });
+    page.sandbox.sessionId = 'sess-1';
+    await page.sandbox.openTaskCreateModal();
+    await flush();
+    page.get('task-edit-name').value = '每日未完成项';
+    page.get('task-edit-cron-expression').value = '0 9 * * *';
+    page.get('task-edit-content').value = '汇总未完成项';
+    await page.sandbox.saveTaskEdit();
+    await flush();
+
+    const create = page.requests.find(r => r.url === '/api/scheduler/create');
+    assert.ok(create, 'the create is posted');
+    assert.equal(create.body.action.channel_type, 'web');
+    assert.equal(create.body.action.instance_id, 'web');
+    assert.equal(create.body.action.receiver, 'sess-1',
+        'the browser names the conversation, not the person');
+    assert.equal(create.body.action.content, '汇总未完成项');
+    assert.equal(create.body.name, '每日未完成项');
+});
+
+test('a refresh cannot steal the recipient step back from the self target', async () => {
+    const page = withTasks({ status: 'success', tasks: [] }, { answers: SELF_DIRECTORY });
+    page.sandbox.sessionId = 'sess-1';
+    await page.sandbox.openTaskCreateModal();
+    await flush();
+    const before = page.requests.length;
+
+    await page.sandbox.refreshTaskRecipients();
+    await flush();
+
+    assert.equal(page.requests.length, before, 'the directory is not re-fetched for a self target');
+    assert.equal(page.get('task-edit-recipient')._ddValue, 'web:sess-1');
+});
+
+test('a self target is offered but not pre-picked when editing someone else\'s task', async () => {
+    // Editing must not silently retarget an existing task: the stored instance
+    // wins over the self row the server now returns for every member.
+    const page = withTasks({ status: 'success', tasks: [IM_TASK] }, {
+        answers: { ...SELF_DIRECTORY },
+    });
+    page.sandbox.sessionId = 'sess-1';
+    await page.sandbox.openTaskEditModal(IM_TASK);
+    await flush();
+
+    assert.equal(page.get('task-edit-instance')._ddValue, 'inst-a', 'the stored target is shown');
+    assert.equal(page.get('task-edit-recipient')._ddValue, 'inst-a:zhang');
+    assert.equal(page.get('task-edit-instance')._ddReadOnly, true);
+});
+
+// ---------------------------------------------------------------------------
 // 5. An answer that lands after the identity moved is dropped
 // ---------------------------------------------------------------------------
 
