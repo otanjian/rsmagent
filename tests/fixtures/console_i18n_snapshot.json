@@ -1795,7 +1795,19 @@
     "ws_toggle": "工作空间",
     "ws_truncated": "文件过多，仅显示部分",
     "ws_unavailable": "工作区当前不可用",
-    "yesterday": "昨天"
+    "yesterday": "昨天",
+    "home_agent_usage_default": "描述你的目标 → 补充必要信息 → 确认下一步",
+    "home_agent_questions_label": "点击即发送",
+    "home_agent_questions_draft": "输入框已有内容，请先发送或清空后使用建议问题",
+    "home_agent_questions_default_1": "你能帮我做什么？",
+    "home_agent_questions_default_2": "开始之前，我需要准备什么？",
+    "home_agent_questions_default_3": "能说明一下你的工作步骤吗？",
+    "home_agent_questions_default_4": "可以给我一个使用示例吗？",
+    "agents_usage_hint": "使用说明",
+    "agents_usage_hint_hint": "一句话说明如何使用，最多 200 字",
+    "agents_suggested_questions": "建议问题",
+    "agents_suggested_questions_hint": "最多四个，显示在输入框上方，点击即发送",
+    "agents_suggested_question_placeholder": "如：只有一个初步想法，能带我梳理需求吗？"
   },
   "zh-Hant": {
     "account_about_title": "關於",
@@ -3595,7 +3607,19 @@
     "ws_toggle": "工作空間",
     "ws_truncated": "檔案過多，僅顯示部分",
     "ws_unavailable": "工作區目前無法使用",
-    "yesterday": "昨天"
+    "yesterday": "昨天",
+    "home_agent_usage_default": "描述你的目標 → 補充必要資訊 → 確認下一步",
+    "home_agent_questions_label": "點擊即傳送",
+    "home_agent_questions_draft": "輸入框已有內容，請先傳送或清空後使用建議問題",
+    "home_agent_questions_default_1": "你能幫我做什麼？",
+    "home_agent_questions_default_2": "開始之前，我需要準備什麼？",
+    "home_agent_questions_default_3": "能說明一下你的工作步驟嗎？",
+    "home_agent_questions_default_4": "可以給我一個使用範例嗎？",
+    "agents_usage_hint": "使用說明",
+    "agents_usage_hint_hint": "一句話說明如何使用，最多 200 字",
+    "agents_suggested_questions": "建議問題",
+    "agents_suggested_questions_hint": "最多四個，顯示在輸入框上方，點擊即傳送",
+    "agents_suggested_question_placeholder": "如：只有初步想法，能帶我梳理需求嗎？"
   },
   "en": {
     "account_about_title": "About",
@@ -5393,6 +5417,18 @@
     "ws_toggle": "Workspace",
     "ws_truncated": "Too many files, showing a subset",
     "ws_unavailable": "Workspace is currently unavailable",
-    "yesterday": "Yesterday"
+    "yesterday": "Yesterday",
+    "home_agent_usage_default": "Describe your goal → fill in the essentials → confirm the next step",
+    "home_agent_questions_label": "Click to send",
+    "home_agent_questions_draft": "The composer already has content. Send or clear it before using a suggested question.",
+    "home_agent_questions_default_1": "What can you help me with?",
+    "home_agent_questions_default_2": "What should I prepare before we start?",
+    "home_agent_questions_default_3": "Can you walk me through your steps?",
+    "home_agent_questions_default_4": "Could you give me an example?",
+    "agents_usage_hint": "How to use",
+    "agents_usage_hint_hint": "One line on how to work with this agent, up to 200 characters",
+    "agents_suggested_questions": "Suggested questions",
+    "agents_suggested_questions_hint": "Up to four, shown above the composer; clicking one sends it",
+    "agents_suggested_question_placeholder": "e.g. I only have a rough idea — can you help me shape it?"
   }
 }

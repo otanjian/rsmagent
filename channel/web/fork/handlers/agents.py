@@ -323,6 +323,12 @@ def _tenant_agents_projection(ctx: "Optional[RequestContext]") -> Dict:
             "category": profile.category or "",
             "tags": list(profile.tags or []),
             "greeting": getattr(profile, "greeting", None) or "",
+            # Chat-onboarding display copy. The welcome page reads these from
+            # the use-range projection so it never needs a second request.
+            "usage_hint": getattr(profile, "usage_hint", None) or "",
+            "suggested_questions": list(
+                getattr(profile, "suggested_questions", None) or []
+            ),
             "can_chat": can_chat,
             "unavailable_reason": unavailable_reason,
             # Explicit for every row, so the gallery can branch on the type
@@ -704,6 +710,8 @@ class AgentsHandler:
                             category=body.get("category"),
                             tags=body.get("tags"),
                             greeting=body.get("greeting"),
+                            usage_hint=body.get("usage_hint"),
+                            suggested_questions=body.get("suggested_questions"),
                             persona_summary=body.get("persona_summary"),
                             scene_id=body.get("scene_id"),
                             knowledge_ids=body.get("knowledge_ids"),
@@ -765,6 +773,7 @@ class AgentsHandler:
                     if "knowledge" in body:
                         updates["knowledge"] = body.get("knowledge")
                     for _field in ("position", "category", "tags", "greeting",
+                                   "usage_hint", "suggested_questions",
                                    "persona_summary", "scene_id", "knowledge_ids",
                                    "sops", "tools_allowlist", "tools_denylist",
                                    "agent_type", "coding_project_dir"):
@@ -1003,6 +1012,11 @@ class AgentsHandler:
             if isinstance(e, StaleRosterError):
                 web.ctx.status = "409 Conflict"
                 code = "stale_roster"
+            elif getattr(e, "status", None) == 409 and getattr(e, "code", None):
+                # A retryable business refusal with its own semantics (currently
+                # ``knowledge_busy`` from a mode switch with work in flight).
+                web.ctx.status = "409 Conflict"
+                code = e.code
             logger.error(f"[WebChannel] Agents POST error: {e}")
             # An attempted mutation that died is part of the story the trail has
             # to tell: "agent.create, result=error" is why the console shows an

@@ -20,7 +20,9 @@
 | `position` | string | 无 | 注入员工上下文（职位段） |
 | `category` | string | 无 | 管理分类（可复用场景 categories，允许空） |
 | `tags` | string[] | `[]` | 管理标签 |
-| `greeting` | string | 无 | 注入问候语段 |
+| `greeting` | string | 无 | 注入问候语段；同时作为 Web 空会话的简短自我介绍 |
+| `usage_hint` | string | 无 | 仅 Web 空会话展示「使用说明」，最多 200 字；不注入系统提示 |
+| `suggested_questions` | string[] | `[]` | 仅 Web 空会话展示 1–4 条建议问题（每条最多 200 字）；不注入系统提示 |
 | `persona_summary` | string | 无 | 注入人设摘要段 |
 | `scene_id` | string | 无 | 解析场景做继承；无效拒绝 |
 | `knowledge_ids` | string[] | `None` | （延后）知识条目限定，Phase 1 仅持久化 |
@@ -87,3 +89,14 @@
 - **岗位种子智能体（6.2）**：依赖场景目录（`/api/scenes`）与场景工作台；本期未内置种子，避免在无凭据约束下引入不可运行实例。
 - **能力页选择器打磨（6.3）**：属体验优化，不与功能正确性耦合，留待后续。
 - **Phase 3（7.x）**：`visibility`/角色资源授权与 per-agent 覆盖全局参数，依赖 `role-resource-authorization`（或等价）智能体资源授权与执行隔离门槛；在外部变更落地前不宣称可用。
+
+## 7. 对话引导字段（`usage_hint` / `suggested_questions`）
+
+承接 openspec change `improve-agent-chat-onboarding`（capability：`agent-chat-onboarding`）。
+
+- **归属**：仅 Web 普通单智能体（`agent_type=normal`）。Desktop 客户端、OpenCode 类智能体、场景应用与多智能体入口不适用。
+- **编辑位置**：Web「智能体管理 → 概况」表单，与 `greeting` 同页保存；沿用原保存、取消、revision 冲突与权限校验，未新增预览或独立配置页。
+- **展示位置**：空会话欢迎页依次为「头像与名称 → 自我介绍（`greeting`）→ 使用说明（`usage_hint`）→ 建议问题（最多 4 条，宽屏双列、窄屏单列）→ 原输入框」；首问后进入原消息页，历史会话不重复展示。
+- **点击语义**：输入框为空、无附件、当前会话空闲时，点击问题即填入原输入框并调用既有 `sendMessage()`；有草稿或附件时入口禁用并提示先发送或清空，不覆盖草稿、不夹带附件。问题只接受普通文本，不解析 `/` 命令或 `@` 路由。
+- **缺省与回退**：两字段均可选，未配置时使用中性默认文案；省略字段保留当前值，显式空串/空列表显式清空。无数据库迁移、无新增 feature flag。
+- **校验**：`usage_hint` 最多 200 字；`suggested_questions` 最多 4 条、每条最多 200 字、纯文本。`agent/registry.py` 负责清洗与序列化，`agent/admin.py` 负责创建/更新/复制，`channel/web/fork/handlers/agents.py` 负责 API 与使用投影。

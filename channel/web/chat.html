@@ -721,10 +721,25 @@
                         <!-- Welcome Screen -->
                         <div id="welcome-screen" class="workbench-welcome">
                             <div class="home-intro">
+                                <!-- Ordinary single-Agent onboarding (change
+                                     improve-agent-chat-onboarding). Filled by
+                                     paintWelcomeAgentIntro(); hidden for every
+                                     other empty-chat mode, which keeps the
+                                     generic entry cards below. -->
+                                <div id="home-agent-avatar" class="home-agent-avatar hidden" aria-hidden="true"></div>
                                 <div class="home-eyebrow"><i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i><span id="welcome-title" class="brand-wordmark">容大<span class="brand-ai">AI</span></span><span aria-hidden="true">·</span><span data-i18n="home_assistant">你的工作助手</span></div>
                                 <h1 class="home-greeting" data-i18n="home_greeting">你好，今天想完成什么？</h1>
                                 <p id="welcome-subtitle" class="home-description" data-i18n="home_description">从一个问题开始，让 AI 帮你查资料、处理文件、安排任务。</p>
                                 <p data-brand-desc class="home-brand-description hidden"></p>
+                                <p id="home-agent-usage" class="home-agent-usage hidden"></p>
+                                <section id="home-agent-onboarding" class="home-agent-onboarding hidden"
+                                         aria-labelledby="home-agent-questions-label">
+                                    <div class="home-agent-questions-head">
+                                        <h2 id="home-agent-questions-label" class="home-agent-questions-label"></h2>
+                                        <span id="home-agent-questions-state" class="home-agent-questions-state hidden" role="status"></span>
+                                    </div>
+                                    <div id="home-agent-questions" class="home-agent-questions"></div>
+                                </section>
                             </div>
                             <section class="home-suggestions" aria-labelledby="home-suggestions-title">
                                 <h2 id="home-suggestions-title" data-i18n="home_suggestions">也可以从这里开始</h2>

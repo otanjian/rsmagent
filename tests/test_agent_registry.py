@@ -374,3 +374,73 @@ def test_normal_profiles_are_the_only_ordinary_runtime_candidates(tmp_path):
     # ``include_disabled`` still means what it says, minus the coding Agent.
     assert [p.id for p in registry.normal(include_disabled=True)] == ["main", "stopped"]
     assert "erp-coder" in [p.id for p in registry.list(include_disabled=True)]
+
+
+# --- Chat-onboarding display fields --------------------------------------
+#
+# ``usage_hint`` and ``suggested_questions`` are optional copy for the empty
+# welcome page. They ride on the profile like the other digital-employee fields
+# and must not change the meaning of a roster written before they existed.
+
+
+def test_onboarding_fields_round_trip_and_are_optional(tmp_path):
+    registry = AgentRegistry.from_config(
+        {
+            "agent_workspace": str(tmp_path / "cow"),
+            "agents": [
+                {
+                    "id": "main",
+                    "name": "Main",
+                    "usage_hint": "  描述你的需求 → 补齐信息 → 确认方案  ",
+                    "suggested_questions": ["能带我梳理需求吗？", "  ", "需要准备哪些资料？"],
+                }
+            ],
+        }
+    )
+
+    profile = registry.get("main")
+    assert profile.usage_hint == "描述你的需求 → 补齐信息 → 确认方案"
+    assert profile.suggested_questions == ("能带我梳理需求吗？", "需要准备哪些资料？")
+    data = profile.to_dict()
+    assert data["usage_hint"] == "描述你的需求 → 补齐信息 → 确认方案"
+    assert data["suggested_questions"] == ["能带我梳理需求吗？", "需要准备哪些资料？"]
+
+
+def test_onboarding_fields_are_omitted_when_unconfigured(tmp_path):
+    registry = AgentRegistry.from_config(
+        {
+            "agent_workspace": str(tmp_path / "cow"),
+            "agents": [
+                {"id": "main", "name": "Main", "usage_hint": "   ", "suggested_questions": []}
+            ],
+        }
+    )
+
+    profile = registry.get("main")
+    assert profile.usage_hint is None
+    assert profile.suggested_questions == ()
+    data = profile.to_dict()
+    assert "usage_hint" not in data
+    assert "suggested_questions" not in data
+
+
+@pytest.mark.parametrize(
+    "field, value, match",
+    [
+        ("usage_hint", 5, "usage_hint must be a string"),
+        ("usage_hint", "x" * 201, "usage_hint must be at most 200 characters"),
+        ("suggested_questions", "one", "suggested_questions must be a list of strings"),
+        ("suggested_questions", ["a", "b", "c", "d", "e"], "at most 4 questions"),
+        ("suggested_questions", ["x" * 201], "each question must be at most 200 characters"),
+        ("suggested_questions", ["/help"], "plain text without command or @ routing marks"),
+        ("suggested_questions", ["ask @alice"], "plain text without command or @ routing marks"),
+    ],
+)
+def test_invalid_onboarding_fields_are_refused(tmp_path, field, value, match):
+    with pytest.raises(AgentRegistryError, match=match):
+        AgentRegistry.from_config(
+            {
+                "agent_workspace": str(tmp_path / "cow"),
+                "agents": [{"id": "main", "name": "Main", field: value}],
+            }
+        )

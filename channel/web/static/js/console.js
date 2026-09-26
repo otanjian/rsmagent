@@ -2969,6 +2969,10 @@ async function fetchAgentWorkbench() {
         // Digital-employee projection fields (positioned to render on cards).
         position: a.position || '', category: a.category || '', tags: agentWorkbenchTags(a),
         greeting: typeof a.greeting === 'string' ? a.greeting : '',
+        usage_hint: typeof a.usage_hint === 'string' ? a.usage_hint : '',
+        suggested_questions: Array.isArray(a.suggested_questions)
+            ? a.suggested_questions.filter(q => typeof q === 'string' && q.trim()).slice(0, 4)
+            : [],
     })).sort((a, b) => Number(b.is_default) - Number(a.is_default));
     // The server's diagnosis of an empty roster rides along on the array so the
     // load/apply contract stays a plain list. ``no_agents`` and ``null`` (an
@@ -3420,6 +3424,17 @@ function renderAgentDetail() {
         <div class="agent-field">
             <label class="agent-field-label">${escapeHtml(t('agents_greeting'))}</label>
             <input id="agent-edit-greeting" value="${escapeHtml(agent.greeting || '')}" class="agent-input">
+        </div>
+        <div class="agent-field">
+            ${fieldLabelWithTip(t('agents_usage_hint'), t('agents_usage_hint_hint'))}
+            <input id="agent-edit-usage-hint" maxlength="200" class="agent-input"
+                   value="${escapeHtml(agent.usage_hint || '')}">
+        </div>
+        <div class="agent-field">
+            ${fieldLabelWithTip(t('agents_suggested_questions'), t('agents_suggested_questions_hint'))}
+            ${[0, 1, 2, 3].map(i => `<input id="agent-edit-question-${i + 1}" maxlength="200"
+                   class="agent-input" value="${escapeHtml((agent.suggested_questions || [])[i] || '')}"
+                   placeholder="${escapeHtml(i === 0 ? t('agents_suggested_question_placeholder') : '')}">`).join('')}
         </div>
         <div class="agent-field">
             ${fieldLabelWithTip(t('agents_persona'), t('agents_persona_hint'))}
@@ -4426,6 +4441,10 @@ function saveAgentProfile() {
         category: catEl ? (getDropdownValue(catEl) || '') : agent.category || '',
         tags: [...new Set((document.getElementById('agent-edit-tags')?.value || '').split(/[,，]/).map(s => s.trim()).filter(Boolean))],
         greeting: document.getElementById('agent-edit-greeting')?.value.trim() || '',
+        usage_hint: document.getElementById('agent-edit-usage-hint')?.value.trim() || '',
+        suggested_questions: [1, 2, 3, 4]
+            .map(i => document.getElementById(`agent-edit-question-${i}`)?.value.trim() || '')
+            .filter(Boolean),
         persona_summary: document.getElementById('agent-edit-persona')?.value.trim() || '',
         scene_id: sceneEl ? (getDropdownValue(sceneEl) || '') : agent.scene_id || '',
     };
@@ -6001,16 +6020,158 @@ function bindWelcomeSuggestions(root) {
         });
     });
 }
-// Introductory copy belongs to the empty welcome screen, not the transcript.
-// Painting it never sends a message or starts an Agent run.
+// The empty welcome screen offers, for one ordinary Agent, its avatar, name,
+// self-introduction, usage line and up-to-four questions that send on click.
+// Every other empty-chat mode keeps the six generic entry cards. Painting never
+// calls a model or starts a run by itself.
+const AGENT_QUESTION_COUNT = 4;
+
+/** The record the empty chat belongs to, preferring the use-range catalog. */
+function agentOnboardingAgent() {
+    return (chatAgentCatalog || []).find(a => a.id === activeAgentId) || findAgent(activeAgentId);
+}
+
+/** True when this empty chat is one normal Agent talking alone. */
+function agentOnboardingActive(agent) {
+    if (!agent || agent.agent_type === 'coding') return false;
+    // A conversation that has invited others is a group chat, not the ordinary
+    // single-Agent home the onboarding copy belongs to.
+    if (typeof sharedConversation === 'function' && sharedConversation()) return false;
+    return true;
+}
+
+/** The configured questions, or the neutral defaults when none are set. */
+function agentQuestionTexts(agent) {
+    const configured = (Array.isArray(agent.suggested_questions) ? agent.suggested_questions : [])
+        .map(q => (typeof q === 'string' ? q.trim() : ''))
+        .filter(Boolean)
+        .slice(0, AGENT_QUESTION_COUNT);
+    if (configured.length) return configured;
+    const defaults = [];
+    for (let i = 1; i <= AGENT_QUESTION_COUNT; i += 1) {
+        const key = `home_agent_questions_default_${i}`;
+        const copy = t(key);
+        // An unresolved key comes back as itself; never render it on the page.
+        if (copy && copy !== key) defaults.push(copy);
+    }
+    return defaults;
+}
+
+// Locked only while a click is being turned into a send, so two taps in the same
+// tick cannot start two requests.
+let _agentQuestionBusy = false;
+
+function homeAgentQuestionBlocks() {
+    return [...document.querySelectorAll('#home-agent-questions .home-agent-question')];
+}
+
+/** Whether the suggestion entries may send right now, and why not. */
+function homeAgentQuestionAvailability() {
+    if (!document.getElementById('welcome-screen')) return { available: false, reason: '' };
+    if (_agentQuestionBusy) return { available: false, reason: '' };
+    if (chatInput.value.trim()) return { available: false, reason: t('home_agent_questions_draft') };
+    if (pendingAttachments.length > 0 || uploadingCount > 0) {
+        return { available: false, reason: t('home_agent_questions_draft') };
+    }
+    // A live turn in this conversation (Cancel showing) must finish first.
+    if (sendBtnMode === 'cancel') return { available: false, reason: '' };
+    return { available: true, reason: '' };
+}
+
+function syncAgentQuestionState() {
+    const host = document.getElementById('home-agent-questions');
+    if (!host) return;
+    const { available, reason } = homeAgentQuestionAvailability();
+    host.classList.toggle('is-disabled', !available);
+    homeAgentQuestionBlocks().forEach(btn => { btn.disabled = !available; });
+    const state = document.getElementById('home-agent-questions-state');
+    if (state) {
+        const show = !available && !!reason;
+        state.textContent = show ? reason : '';
+        state.classList.toggle('hidden', !show);
+    }
+}
+
+/** Fill the original composer with the visible question and send it once. */
+function homeAgentQuestionClick(button) {
+    if (!button || button.disabled || _agentQuestionBusy) return;
+    const text = (button.dataset.question || '').trim();
+    if (!text) return;
+    if (!agentOnboardingActive(agentOnboardingAgent())) return;
+    if (!homeAgentQuestionAvailability().available) { syncAgentQuestionState(); return; }
+    _agentQuestionBusy = true;
+    syncAgentQuestionState();
+    try {
+        chatInput.value = text;
+        chatInput.dispatchEvent(new Event('input'));
+        sendMessage();
+    } finally {
+        _agentQuestionBusy = false;
+    }
+    // sendMessage() removes the welcome synchronously when it accepts the turn.
+    // If it refused, restore the entry and leave the question in the composer.
+    if (document.getElementById('welcome-screen')) syncAgentQuestionState();
+}
+
+function renderAgentQuestions(agent) {
+    const host = document.getElementById('home-agent-questions');
+    if (!host) return;
+    host.textContent = '';
+    agentQuestionTexts(agent).forEach(question => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'home-agent-question';
+        btn.dataset.question = question;
+        btn.textContent = question;
+        btn.addEventListener('click', () => homeAgentQuestionClick(btn));
+        host.appendChild(btn);
+    });
+}
+
+function paintAgentOnboarding(welcome, agent) {
+    const avatar = welcome.querySelector('#home-agent-avatar');
+    const usage = welcome.querySelector('#home-agent-usage');
+    const onboarding = welcome.querySelector('#home-agent-onboarding');
+    const label = welcome.querySelector('#home-agent-questions-label');
+    const suggestions = welcome.querySelector('.home-suggestions');
+    const active = agentOnboardingActive(agent);
+    const main = document.getElementById('chat-main');
+    if (main && main.classList) main.classList.toggle('agent-onboarding', active);
+    if (suggestions) suggestions.classList.toggle('hidden', active);
+    if (onboarding) onboarding.classList.toggle('hidden', !active);
+    if (avatar) {
+        avatar.classList.toggle('hidden', !active);
+        avatar.textContent = '';
+        if (active && typeof agentAvatarHTML === 'function') {
+            avatar.innerHTML = agentAvatarHTML(agent, 56);
+        }
+    }
+    if (usage) {
+        usage.classList.toggle('hidden', !active);
+        usage.textContent = active
+            ? ((typeof agent.usage_hint === 'string' && agent.usage_hint.trim())
+                || t('home_agent_usage_default'))
+            : '';
+    }
+    if (label) label.textContent = active ? t('home_agent_questions_label') : '';
+    const host = welcome.querySelector('#home-agent-questions');
+    if (active) {
+        renderAgentQuestions(agent);
+        syncAgentQuestionState();
+    } else {
+        if (host) host.textContent = '';
+        const state = welcome.querySelector('#home-agent-questions-state');
+        if (state) { state.textContent = ''; state.classList.add('hidden'); }
+    }
+}
+
 function paintWelcomeAgentIntro() {
     const welcome = document.getElementById('welcome-screen');
     if (!welcome || codingPaneMounted()) return;
     const heading = welcome.querySelector('.home-greeting');
     const description = welcome.querySelector('#welcome-subtitle');
     if (!heading || !description) return;
-    // Prefer the use-range record refreshed by Start Chat over management data.
-    const agent = (chatAgentCatalog || []).find(a => a.id === activeAgentId) || findAgent(activeAgentId);
+    const agent = agentOnboardingAgent();
     const ordinary = agent && agent.agent_type !== 'coding';
     const text = value => typeof value === 'string' ? value.trim() : '';
     heading.textContent = ordinary
@@ -6019,6 +6180,7 @@ function paintWelcomeAgentIntro() {
     description.textContent = ordinary
         ? text(agent.greeting) || text(agent.description) || t('home_agent_description')
         : t('home_description');
+    paintAgentOnboarding(welcome, ordinary ? agent : null);
 }
 
 function renderWelcomeScreen() {
@@ -6617,6 +6779,9 @@ function updateSendBtnState() {
     }
     sendBtn.disabled = uploadingCount > 0 || (!chatInput.value.trim() && pendingAttachments.length === 0);
     updateSteerBtnState();
+    // The suggested-question entry follows the composer: a draft, an attachment
+    // or an upload in progress disables it with a reason.
+    if (typeof syncAgentQuestionState === 'function') syncAgentQuestionState();
 }
 
 function renderAttachmentPreview() {

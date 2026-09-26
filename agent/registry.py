@@ -30,9 +30,71 @@ AGENT_TYPE_NORMAL = "normal"
 AGENT_TYPE_CODING = "coding"
 AGENT_TYPES = (AGENT_TYPE_NORMAL, AGENT_TYPE_CODING)
 
+# Bounds for the two optional chat-onboarding display fields. They are enforced
+# on both the load path and the write path so a hand-edited roster fails loudly
+# instead of rendering an unusable welcome page.
+USAGE_HINT_MAX_LENGTH = 200
+SUGGESTED_QUESTION_MAX_LENGTH = 200
+SUGGESTED_QUESTIONS_MAX = 4
+
 
 class AgentRegistryError(ValueError):
     """Raised when agent configuration is invalid."""
+
+
+def clean_usage_hint(value: Any) -> Optional[str]:
+    """Normalise an optional ``usage_hint`` value.
+
+    ``None``/blank means "not configured". Raises ``ValueError`` (without a
+    field name — callers add it) for a non-string or an over-long value.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("must be a string when set")
+    value = value.strip()
+    if not value:
+        return None
+    if len(value) > USAGE_HINT_MAX_LENGTH:
+        raise ValueError(
+            f"must be at most {USAGE_HINT_MAX_LENGTH} characters"
+        )
+    return value
+
+
+def clean_suggested_questions(value: Any) -> Tuple[str, ...]:
+    """Normalise an optional ``suggested_questions`` value.
+
+    Blank entries are dropped; ordering is preserved. Raises ``ValueError``
+    (without a field name — callers add it) for a non-list, an over-long
+    question, more than :data:`SUGGESTED_QUESTIONS_MAX` entries, or a question
+    that looks like a slash command or an ``@`` routing mark.
+    """
+    if value is None:
+        return ()
+    if not isinstance(value, (list, tuple)) or not all(
+        isinstance(item, str) for item in value
+    ):
+        raise ValueError("must be a list of strings when set")
+    cleaned: List[str] = []
+    for item in value:
+        item = item.strip()
+        if not item:
+            continue
+        if len(item) > SUGGESTED_QUESTION_MAX_LENGTH:
+            raise ValueError(
+                f"each question must be at most {SUGGESTED_QUESTION_MAX_LENGTH} characters"
+            )
+        if item.startswith("/") or "@" in item:
+            raise ValueError(
+                "questions must be plain text without command or @ routing marks"
+            )
+        cleaned.append(item)
+    if len(cleaned) > SUGGESTED_QUESTIONS_MAX:
+        raise ValueError(
+            f"at most {SUGGESTED_QUESTIONS_MAX} questions are allowed"
+        )
+    return tuple(cleaned)
 
 
 @dataclass(frozen=True)
@@ -62,6 +124,12 @@ class AgentProfile:
     category: Optional[str] = None
     tags: Tuple[str, ...] = ()
     greeting: Optional[str] = None
+    #: Optional chat-onboarding display copy: a short "how to use me" line and
+    #: the up-to-four questions the empty welcome page offers. Stored with the
+    #: profile like the other digital-employee fields; ``None``/empty means
+    #: "use the neutral default".
+    usage_hint: Optional[str] = None
+    suggested_questions: Tuple[str, ...] = ()
     persona_summary: Optional[str] = None
     scene_id: Optional[str] = None
     knowledge_ids: Optional[Tuple[str, ...]] = None
@@ -113,6 +181,10 @@ class AgentProfile:
             data["tags"] = list(self.tags)
         if self.greeting:
             data["greeting"] = self.greeting
+        if self.usage_hint:
+            data["usage_hint"] = self.usage_hint
+        if self.suggested_questions:
+            data["suggested_questions"] = list(self.suggested_questions)
         if self.persona_summary:
             data["persona_summary"] = self.persona_summary
         if self.scene_id:
@@ -233,6 +305,14 @@ def _string_list(raw: Mapping[str, Any], agent_id: str, key: str) -> Tuple[str, 
     return tuple(seen)
 
 
+def _validated_field(raw: Mapping[str, Any], agent_id: str, key: str, cleaner):
+    """Run ``cleaner`` over ``raw[key]``, naming the offending field on error."""
+    try:
+        return cleaner(raw.get(key))
+    except ValueError as exc:
+        raise AgentRegistryError(f"agent '{agent_id}' {key} {exc}") from None
+
+
 def _profile_from_mapping(
     raw: Mapping[str, Any], default_workspace: Optional[str] = None
 ) -> AgentProfile:
@@ -299,6 +379,10 @@ def _profile_from_mapping(
         category=_string_field(raw, agent_id, "category"),
         tags=_string_list(raw, agent_id, "tags"),
         greeting=_string_field(raw, agent_id, "greeting"),
+        usage_hint=_validated_field(raw, agent_id, "usage_hint", clean_usage_hint),
+        suggested_questions=_validated_field(
+            raw, agent_id, "suggested_questions", clean_suggested_questions
+        ),
         persona_summary=_string_field(raw, agent_id, "persona_summary"),
         scene_id=_string_field(raw, agent_id, "scene_id"),
         knowledge_ids=_asset_selection(raw, agent_id, "knowledge_ids"),

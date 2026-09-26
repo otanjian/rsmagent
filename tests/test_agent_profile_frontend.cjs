@@ -192,3 +192,30 @@ test('renderAgentTasksPane fetches tasks scoped to the agent and renders a card'
     assert.ok(fetchUrls.some(u => /agent_id=proc/.test(u)), 'tasks fetched scoped to the owning agent');
     assert.ok(pane.innerHTML.includes('agents_tasks_label'), 'a tasks heading is rendered');
 });
+
+test('saveAgentProfile round-trips usage_hint and up to four questions', async () => {
+    const a = agent({ usage_hint: '旧的说明', suggested_questions: ['旧问题'] });
+    const { ctx, events, node } = setup({ agent: a, fetchImpl: async () => ({ json: async () => ({}) }) });
+    node('agent-edit-name').value = '采购专员';
+    node('agent-edit-usage-hint').value = '  描述需求 → 补齐信息 → 确认方案  ';
+    node('agent-edit-question-1').value = ' 第一个问题 ';
+    node('agent-edit-question-2').value = '第二个问题';
+    node('agent-edit-question-3').value = '   ';
+    node('agent-edit-question-4').value = '第四个问题';
+
+    await ctx.saveAgentProfile();
+
+    const write = events.find(e => e[0] === 'write')[2];
+    assert.equal(write.usage_hint, '描述需求 → 补齐信息 → 确认方案');
+    assert.deepEqual([...write.suggested_questions], ['第一个问题', '第二个问题', '第四个问题']);
+});
+
+test('saveAgentProfile clears the onboarding copy when the inputs are emptied', async () => {
+    const a = agent({ usage_hint: '旧的说明', suggested_questions: ['旧问题'] });
+    const { ctx, events, node } = setup({ agent: a, fetchImpl: async () => ({ json: async () => ({}) }) });
+    node('agent-edit-name').value = '采购专员';
+    await ctx.saveAgentProfile();
+    const write = events.find(e => e[0] === 'write')[2];
+    assert.equal(write.usage_hint, '');
+    assert.deepEqual([...write.suggested_questions], []);
+});

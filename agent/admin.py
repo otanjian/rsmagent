@@ -21,6 +21,8 @@ from agent.registry import (
     AGENT_TYPES,
     AgentProfile,
     AgentRegistry,
+    clean_suggested_questions,
+    clean_usage_hint,
 )
 from common.log import logger
 from common.utils import expand_path
@@ -503,6 +505,20 @@ class AgentAdminService:
         return [x.strip() for x in value if x.strip()]
 
     @staticmethod
+    def _clean_usage_hint(value) -> Optional[str]:
+        try:
+            return clean_usage_hint(value)
+        except ValueError as exc:
+            raise AgentAdminError(f"usage_hint {exc}") from None
+
+    @staticmethod
+    def _clean_questions(value) -> tuple:
+        try:
+            return clean_suggested_questions(value)
+        except ValueError as exc:
+            raise AgentAdminError(f"suggested_questions {exc}") from None
+
+    @staticmethod
     def _api_projection(profile: AgentProfile) -> Dict:
         """The shape an admin call returns, as opposed to the shape it stores.
 
@@ -534,6 +550,8 @@ class AgentAdminService:
         category: str = None,
         tags: Optional[Iterable[str]] = None,
         greeting: str = None,
+        usage_hint: str = None,
+        suggested_questions: Optional[Iterable[str]] = None,
         persona_summary: str = None,
         scene_id: str = None,
         knowledge_ids: Optional[Iterable[str]] = None,
@@ -586,6 +604,8 @@ class AgentAdminService:
             category=(category or "").strip() or None,
             tags=tuple(self._asset_list(list(tags), "tags")) if tags is not None else (),
             greeting=(greeting or "").strip() or None,
+            usage_hint=self._clean_usage_hint(usage_hint),
+            suggested_questions=self._clean_questions(suggested_questions),
             persona_summary=(persona_summary or "").strip() or None,
             scene_id=(scene_id or "").strip() or None,
             knowledge_ids=(
@@ -660,6 +680,8 @@ class AgentAdminService:
         category: str = None,
         tags: Optional[Iterable[str]] = None,
         greeting: str = None,
+        usage_hint: str = None,
+        suggested_questions: Optional[Iterable[str]] = None,
         persona_summary: str = None,
         scene_id: str = None,
         knowledge_ids: Optional[Iterable[str]] = None,
@@ -727,6 +749,8 @@ class AgentAdminService:
                     category=category,
                     tags=tags,
                     greeting=greeting,
+                    usage_hint=usage_hint,
+                    suggested_questions=suggested_questions,
                     persona_summary=persona_summary,
                     scene_id=scene_id,
                     knowledge_ids=knowledge_ids,
@@ -848,6 +872,8 @@ class AgentAdminService:
                     category=source_profile.category,
                     tags=source_profile.tags,
                     greeting=source_profile.greeting,
+                    usage_hint=source_profile.usage_hint,
+                    suggested_questions=source_profile.suggested_questions,
                     persona_summary=source_profile.persona_summary,
                     scene_id=source_profile.scene_id,
                     knowledge_ids=source_profile.knowledge_ids,
@@ -898,6 +924,8 @@ class AgentAdminService:
         category: str = None,
         tags=_UNSET,
         greeting: str = None,
+        usage_hint: str = None,
+        suggested_questions=_UNSET,
         persona_summary: str = None,
         scene_id: str = None,
         knowledge_ids=_UNSET,
@@ -992,6 +1020,16 @@ class AgentAdminService:
             new_position = current.position if position is None else (position.strip() or None)
             new_category = current.category if category is None else (category.strip() or None)
             new_greeting = current.greeting if greeting is None else (greeting.strip() or None)
+            new_usage_hint = (
+                current.usage_hint
+                if usage_hint is None
+                else self._clean_usage_hint(usage_hint)
+            )
+            new_questions = (
+                current.suggested_questions
+                if suggested_questions is _UNSET
+                else self._clean_questions(suggested_questions)
+            )
             new_persona = (
                 current.persona_summary
                 if persona_summary is None
@@ -1054,6 +1092,8 @@ class AgentAdminService:
                 category=new_category,
                 tags=new_tags,
                 greeting=new_greeting,
+                usage_hint=new_usage_hint,
+                suggested_questions=new_questions,
                 persona_summary=new_persona,
                 scene_id=new_scene_id,
                 knowledge_ids=new_knowledge_ids,

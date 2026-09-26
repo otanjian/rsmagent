@@ -775,3 +775,67 @@ def test_cloning_a_normal_agent_stays_normal(admin):
 
     assert clone["agent_type"] == "normal"
     assert clone["coding_project_dir"] is None
+
+
+# --- Chat-onboarding display fields --------------------------------------
+#
+# The two optional copy fields follow the digital-employee update contract:
+# ``None`` leaves a string field alone, an empty string clears it, ``_UNSET``
+# leaves a list field alone, and an empty list clears it. Clone carries them.
+
+
+def _stored_agent(root, agent_id):
+    return next(item for item in _saved(root)["agents"] if item["id"] == agent_id)
+
+
+def test_onboarding_fields_round_trip_on_create_and_update(admin):
+    service, root, _ = admin
+    service.create_agent(
+        "research", "Research", str(root / "research"),
+        usage_hint="描述问题 → 补充资料 → 查看结论",
+        suggested_questions=["分析经营数据", "准备哪些资料？"],
+    )
+    stored = _stored_agent(root, "research")
+    assert stored["usage_hint"] == "描述问题 → 补充资料 → 查看结论"
+    assert stored["suggested_questions"] == ["分析经营数据", "准备哪些资料？"]
+
+    # An update that omits the fields leaves them untouched.
+    service.update_agent("research", description="new")
+    stored = _stored_agent(root, "research")
+    assert stored["usage_hint"] == "描述问题 → 补充资料 → 查看结论"
+    assert stored["suggested_questions"] == ["分析经营数据", "准备哪些资料？"]
+
+    # An explicit empty value clears the copy.
+    service.update_agent("research", usage_hint="", suggested_questions=[])
+    stored = _stored_agent(root, "research")
+    assert "usage_hint" not in stored
+    assert "suggested_questions" not in stored
+
+
+def test_onboarding_questions_are_normalised_and_validated(admin):
+    service, root, _ = admin
+    service.create_agent(
+        "research", "Research", str(root / "research"),
+        suggested_questions=["  第一个  ", "", " 第二个 "],
+    )
+    assert _stored_agent(root, "research")["suggested_questions"] == ["第一个", "第二个"]
+
+    with pytest.raises(AgentAdminError, match="suggested_questions"):
+        service.update_agent("research", suggested_questions=["a", "b", "c", "d", "e"])
+    with pytest.raises(AgentAdminError, match="usage_hint"):
+        service.update_agent("research", usage_hint="x" * 201)
+    # A refused write leaves the stored copy untouched.
+    assert _stored_agent(root, "research")["suggested_questions"] == ["第一个", "第二个"]
+
+
+def test_clone_carries_the_onboarding_copy(admin):
+    service, root, _ = admin
+    service.create_agent(
+        "source", "Source", str(root / "source"),
+        usage_hint="按步骤来",
+        suggested_questions=["问题一", "问题二"],
+    )
+    service.clone_agent("source", "copy")
+    stored = _stored_agent(root, "copy")
+    assert stored["usage_hint"] == "按步骤来"
+    assert stored["suggested_questions"] == ["问题一", "问题二"]

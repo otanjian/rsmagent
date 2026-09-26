@@ -149,6 +149,8 @@ class TestWorkbenchProjection(unittest.TestCase):
             _Profile("archived", "Archived", enabled=False),
         ]
         profiles[1].greeting = "你好，我是研究员。请告诉我你的研究目标。"
+        profiles[1].usage_hint = "描述问题 → 补充资料 → 查看结论"
+        profiles[1].suggested_questions = ("帮我分析经营数据",)
         with patch("agent.registry.get_agent_registry",
                    return_value=_Registry(profiles)):
             data = _call_get(AgentsHandler, view="workbench")
@@ -157,7 +159,7 @@ class TestWorkbenchProjection(unittest.TestCase):
         self.assertEqual(len(data["agents"]), 2)  # archived excluded
         fields = {"id", "name", "description", "avatar", "agent_type", "is_default",
                   "can_chat", "unavailable_reason", "position", "category", "tags",
-                  "greeting", "visibility"}
+                  "greeting", "usage_hint", "suggested_questions", "visibility"}
         for agent in data["agents"]:
             self.assertEqual(set(agent.keys()), fields,
                              "workbench projection must be a strict whitelist")
@@ -177,6 +179,10 @@ class TestWorkbenchProjection(unittest.TestCase):
         self.assertEqual(by_id["research"]["category"], "分析")
         self.assertEqual(by_id["research"]["greeting"], profiles[1].greeting)
         self.assertEqual(by_id["primary"]["greeting"], "")
+        self.assertEqual(by_id["research"]["usage_hint"], profiles[1].usage_hint)
+        self.assertEqual(by_id["research"]["suggested_questions"], ["帮我分析经营数据"])
+        self.assertEqual(by_id["primary"]["usage_hint"], "")
+        self.assertEqual(by_id["primary"]["suggested_questions"], [])
         self.assertFalse(by_id["research"]["is_default"])
         # Platform admin is execution-authorized for enabled Agents.
         self.assertTrue(all(a["can_chat"] for a in data["agents"]))

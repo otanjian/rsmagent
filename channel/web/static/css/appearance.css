@@ -820,6 +820,64 @@ html[data-web-palette] .home-intro .home-description {
     overflow-wrap: anywhere;
 }
 html[data-web-palette] .home-intro .home-brand-description { max-width: 660px; margin: 10px auto 0; color: var(--web-text-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+/* Ordinary single-Agent onboarding (change improve-agent-chat-onboarding):
+   avatar, name, self-introduction, usage line and up to four questions that
+   send on click. Only this mode hides the six generic entry cards below. */
+html[data-web-palette] .home-intro .home-agent-avatar {
+    display: flex;
+    justify-content: center;
+    margin: 0 auto 14px;
+}
+html[data-web-palette] .home-intro .home-agent-avatar .agent-avatar-56 { width: 56px; height: 56px; font-size: 22px; }
+html[data-web-palette] .home-intro .home-agent-usage {
+    max-width: 660px;
+    margin: 12px auto 0;
+    color: var(--web-text-muted);
+    font-size: 14px;
+    line-height: 1.8;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+html[data-web-palette] .home-agent-onboarding { max-width: 760px; margin: 26px auto 0; text-align: left; }
+.home-agent-questions-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+html[data-web-palette] .home-agent-questions-label { margin: 0; color: var(--web-text-muted); font-size: 13px; font-weight: 400; line-height: 1.5; }
+html[data-web-palette] .home-agent-questions-state { color: var(--web-text-muted); font-size: 12px; line-height: 1.5; }
+.home-agent-questions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+html[data-web-palette] .home-agent-question {
+    display: block;
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid var(--web-border);
+    border-radius: 12px;
+    background: var(--web-surface-bg);
+    color: var(--web-text-main);
+    font-size: 14px;
+    line-height: 1.6;
+    text-align: left;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+html[data-web-palette] .home-agent-question:hover:not(:disabled) {
+    border-color: var(--web-accent);
+    box-shadow: 0 2px 10px rgba(15, 23, 42, .06);
+}
+html[data-web-palette] .home-agent-question:focus-visible {
+    outline: none;
+    border-color: var(--web-accent);
+    box-shadow: 0 0 0 3px var(--web-focus-ring);
+}
+html[data-web-palette] .home-agent-question:disabled { cursor: not-allowed; opacity: .55; }
+/* The ordinary-mode home is a natural content flow, not the centred generic
+   hero: keep the composer close and drop the precise vertical centring. */
+html[data-web-palette] #chat-main.chat-home.agent-onboarding { padding-top: clamp(24px, 6vh, 56px); }
+html[data-web-palette] #chat-main.chat-home.agent-onboarding .home-intro { margin-bottom: clamp(20px, 3vh, 32px); }
+#chat-main.chat-home.agent-onboarding .home-suggestions { display: none; }
+/* The hero already reads "你好，我是<智能体>", so the brand eyebrow above it and
+   the brand tagline sitting between the introduction and the usage line are
+   duplicated chrome. Both keep their place in every other empty-chat mode. */
+#chat-main.chat-home.agent-onboarding .home-intro .home-eyebrow { display: none; }
+#chat-main.chat-home.agent-onboarding #welcome-screen [data-brand-desc] { display: none; }
 html[data-web-palette] #chat-main.chat-home #chat-input-area {
     order: 2;
     padding: 0;
@@ -1065,6 +1123,8 @@ html[data-web-palette] #composer-card #optimize-btn.text-primary-500 { color: va
 @media (max-width: 560px) {
     /* Two 40px-tile cards stop being readable below roughly this width. */
     .home-suggestions :is(.home-suggestion-list, .home-suggestions-list) { grid-template-columns: minmax(0, 1fr); }
+    /* Suggested questions fall back to a single readable column. */
+    .home-agent-questions { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) {
     html[data-web-palette] #sidebar,
