@@ -76,4 +76,12 @@ def create_voice(voice_type):
         from voice.custom.custom_voice import CustomVoice
 
         return CustomVoice(voice_type)
+    elif voice_type in ("qianwen_plan", "qianwen-plan", "token_plan", "token-plan"):
+        # Qianwen Token Plan subscription: sk-sp- key against the plan host,
+        # ASR via DashScope's multimodal-generation endpoint. Not reachable
+        # through "custom" — that engine posts to /audio/transcriptions,
+        # which does not exist on either host.
+        from voice.qianwen_plan.qianwen_plan_voice import QianwenPlanVoice
+
+        return QianwenPlanVoice()
     raise RuntimeError

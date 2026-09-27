@@ -129,6 +129,13 @@ available_setting = {
     "qwen_node_id": "",  # id used by workflow-orchestration models; keep it an empty string if qwen_node_id is unused
     # Alibaba Lingji (Tongyi new sdk) model api key
     "dashscope_api_key": "",
+    # Qianwen Token Plan (千问AI平台 订阅套餐). The plan's credentials are a
+    # separate pair from the pay-as-you-go keys above: the sk-sp- plan key is
+    # only accepted by the plan host and vice versa, so these stay independent
+    # of dashscope_api_key / dashscope_api_base instead of sharing them.
+    # api_base is a bare host — the ASR engine appends the multimodal path.
+    "qianwen_plan_api_key": "",
+    "qianwen_plan_api_base": "",
     # Google Gemini Api Key
     "gemini_api_key": "",
     # Embedding model config
@@ -761,6 +768,8 @@ def load_config():
         "ark_api_base": "ARK_API_BASE",
         "dashscope_api_key": "DASHSCOPE_API_KEY",
         "dashscope_api_base": "DASHSCOPE_API_BASE",
+        "qianwen_plan_api_key": "QIANWEN_PLAN_API_KEY",
+        "qianwen_plan_api_base": "QIANWEN_PLAN_API_BASE",
         # Channel credentials (used by skills that check env vars)
         "feishu_app_id": "FEISHU_APP_ID",
         "feishu_app_secret": "FEISHU_APP_SECRET",
