@@ -448,6 +448,11 @@ function _invalidateAccountIdentity(phase) {
     _accountCheckRequest = null;
     _accountIdentityKey = null;
     _accountEntryRequest = null;
+    ++_accountSelfSeq;
+    _accountSelf = null;
+    _accountSelfRequest = null;
+    agentCatalog = [];
+    chatAgentCatalog = null;
     // Drop the cached capability summary and invalidate any in-flight reply from
     // the previous context (bumping the sequence is what discards the late one).
     ++_authContextSeq;
@@ -522,11 +527,16 @@ function _enterAccountApp() {
     const epoch = _authEpoch;
     const current = () => epoch === _authEpoch && !_forcedPassword;
     _showAccountCheckGate();
+    let entrySelf = null;
     const request = Promise.resolve()
         // Authentication has established the mode before a tenant switch is
         // resolved. No business request may run until membership is confirmed.
-        .then(() => current() ? _resolveOneShotTenantSwitch() : false)
-        .then(() => current() ? _ensureTenantSelected() : false)
+        .then(() => current() ? fetchAccountSelf() : null)
+        .then(self => {
+            entrySelf = self;
+            return current() ? _resolveOneShotTenantSwitch(self) : false;
+        })
+        .then(() => current() ? _ensureTenantSelected(entrySelf) : false)
         .then(ready => {
             if (!current() || ready === false) return;
             // A platform administrator with no active tenant membership is a
@@ -564,7 +574,7 @@ function _enterAccountApp() {
                 // capability projection are known. The tenant admin qualification
                 // and per-page availability now come from /auth/context, not from
                 // a client-side role array.
-                fetchAccountSelf().then(function (self) {
+                Promise.resolve(entrySelf).then(function (self) {
                     if (!current()) return;
                     _applySidebarPermissions(self);
                     // The member-level display name arrives with /auth/me. Refresh
@@ -589,8 +599,11 @@ function _enterAccountApp() {
                     // the authoritative per-action availability (a no-op without
                     // the module, and hidden when both actions are closed).
                     if (typeof mountContextModule === 'function') mountContextModule();
+                    if (typeof Event === 'function' && typeof window.dispatchEvent === 'function') {
+                        window.dispatchEvent(new Event('account-ready'));
+                    }
                 });
-                if (_identityMode() === 'database') _setupHeaderTenantSelector();
+                if (_identityMode() === 'database') _setupHeaderTenantSelector(entrySelf);
                 chatInput.focus();
             });
         })
@@ -1497,7 +1510,7 @@ const VIEW_META = {
     memory:   { group: 'nav_group_agent_dev', page: 'menu_memory', console: 'admin.memory' },
     config:   { group: 'nav_group_model_access', page: 'menu_config', console: 'admin.models' },
     channels: { group: 'nav_group_model_access', page: 'menu_channels', console: 'admin.channels' },
-    // 外部系统接入（change add-external-system-access, 任务 10.1）：与「消息渠道」同组并紧随
+    // 系统接入（change add-external-system-access, 任务 10.1）：与「消息渠道」同组并紧随
     // 其后，classic/split 共用同一地址与页面。module 由 `LAZY_VIEW_MODULES` 在首次进入时才
     // 注入，`chat.html` 不引用它，所以未进入本页不会加载连接管理代码。
     'external_connections': { group: 'nav_group_model_access', page: 'menu_external_connections', console: 'admin.external_connections' },
@@ -1907,7 +1920,7 @@ function legacyPersonalForward(viewId) {
 }
 
 // View-id aliases kept as addresses, like the retired personal pages above: the
-// design route writes 外部系统接入 as `external-connections` while the view id
+// design route writes 系统接入 as `external-connections` while the view id
 // (and `data-view`) uses an underscore like `system_user`. Normalising here, the
 // single dispatch and the hash bootstrap agree, so a pasted deep link
 // (`/chat#view-external-connections`) or an in-page click both reach the page.
@@ -1981,7 +1994,7 @@ function navigateTo(viewId) {
     // Entering any functional view re-validates the public brand snapshot so
     // another tab's published change is picked up (unless the branding page
     // itself has a live draft, which is protected separately).
-    if (viewId !== 'branding') fetchPublicBrand();
+    if (viewId !== 'branding' && viewId !== currentView) fetchPublicBrand();
 
     // Leaving the history page: mark it dirty so a later re-entry re-reads the
     // newest list (titles/activity may have changed while we were elsewhere).
@@ -2503,16 +2516,15 @@ function randomAgentId() {
     return 'agent-' + Math.random().toString(36).slice(2, 8);
 }
 
-// Read the use-range roster the chat pickers work from, alongside (not instead
-// of) the management catalogue. The workbench read is exactly that projection —
-// the same call the 智能体 workbench cards are drawn from — so it is reused here
-// rather than duplicated: its shape validation and its refusal to accept a
-// management snapshot both apply to the pickers' roster too.
-// A failure is not surfaced: the pickers keep the management catalogue they
-// used before, which is the correct answer whenever the two lists agree (every
-// admin) and only narrower for a member on a backend that cannot serve it.
+// Chat startup needs only the use-range projection. Keep a concurrent refresh
+// in one request, and never let an old account/tenant's reply repaint this one.
+let _chatCatalogRequest = null;
 function loadChatAgentCatalog() {
-    return fetchAgentWorkbench().then(agents => {
+    const epoch = _authEpoch, tenant = sessionStorage.getItem('cow_tenant_id');
+    const key = epoch + ':' + tenant;
+    if (_chatCatalogRequest?.key === key) return _chatCatalogRequest.promise;
+    const request = fetchAgentWorkbench().then(agents => {
+        if (epoch !== _authEpoch || tenant !== sessionStorage.getItem('cow_tenant_id')) return;
         chatAgentCatalog = agents;
         // The composer face, both launch controls and any open picker are drawn
         // from this roster, so a list that arrives after the first paint repaints
@@ -2520,7 +2532,12 @@ function loadChatAgentCatalog() {
         renderComposerIdentity();
         syncNewChatControls();
         if (typeof consumeScenarioOpenLink === 'function') consumeScenarioOpenLink();
-    }).catch(() => {});
+        return agents;
+    }).finally(() => {
+        if (_chatCatalogRequest?.promise === request) _chatCatalogRequest = null;
+    });
+    _chatCatalogRequest = { key, promise: request };
+    return request;
 }
 
 function loadAgentCatalog() {
@@ -2529,7 +2546,7 @@ function loadAgentCatalog() {
     // The pickers' own roster, read in parallel: it is a separate projection
     // (the use range) from the management catalogue this function returns, and
     // a failure of it must not fail the catalogue read.
-    loadChatAgentCatalog();
+    loadChatAgentCatalog().catch(() => {});
     return fetch('/api/agents')
         .then(r => r.json())
         .then(data => {
@@ -2573,7 +2590,7 @@ function loadAgentCatalog() {
             // or a literal written by an older build — must stop riding the requests.
             // Reading configuration must not replace a bound session's owner, so an
             // id the catalogue still offers always survives as the explicit choice.
-            if (activeAgentId && !agentCatalog.some(agent => agent.id === activeAgentId)) {
+            if (activeAgentId && !(chatAgentCatalog || agentCatalog).some(agent => agent.id === activeAgentId)) {
                 activeAgentId = '';
             }
             if (!activeAgentId) {
@@ -2610,6 +2627,15 @@ function loadAgentCatalog() {
             const status = document.getElementById('agent-editor-status');
             if (status) status.textContent = err.message;
         });
+}
+
+function withManagementCatalog(viewId, render) {
+    if (agentCatalog.length) return render();
+    const epoch = _authEpoch, tenant = sessionStorage.getItem('cow_tenant_id');
+    return loadAgentCatalog().then(() => {
+        if (currentView === viewId && epoch === _authEpoch
+                && tenant === sessionStorage.getItem('cow_tenant_id')) return render();
+    });
 }
 
 function renderAgentsGrid() {
@@ -5815,6 +5841,28 @@ const _TENANT_TRANSPORT_PATHS = ['/message', '/stream', '/poll', '/cancel', '/up
 const _TENANT_TRANSPORT_RE = new RegExp(
     `^/(?:${_TENANT_TRANSPORT_PATHS.map(p => p.slice(1)).join('|')})\\b`);
 
+/**
+ * The `X-Tenant-ID` a same-origin request must carry, or '' when it needs none
+ * (legacy mode, a foreign URL, or `/api/auth/*` which selects its own tenant).
+ *
+ * The `fetch` wrapper below applies it; an XHR caller (upload progress) cannot
+ * be wrapped and must ask for it explicitly, or its request reaches the gate
+ * indistinguishable from an anonymous one and is refused with 400
+ * `missing_tenant` before the handler ever runs.
+ */
+function tenantSelectionHeader(url) {
+    let tenantId = '';
+    try {
+        tenantId = sessionStorage.getItem('cow_tenant_id') || '';
+    } catch (exc) {
+        // A page without sessionStorage (sandboxed frame) has no selection.
+        return '';
+    }
+    if (!tenantId || typeof url !== 'string' || !url.startsWith('/')) return '';
+    if (/^\/api\/auth\//.test(url)) return '';
+    return (/^\/api\//.test(url) || _TENANT_TRANSPORT_RE.test(url)) ? tenantId : '';
+}
+
 window.fetch = function(input, init) {
     init = init ? { ...init } : {};
     let url = typeof input === 'string' ? input : input.url;
@@ -5825,10 +5873,8 @@ window.fetch = function(input, init) {
     // "tenant selection required". Inject the header for same-origin requests
     // here, mirroring identity-admin.js / todos.js apiFetch. This is
     // a no-op in legacy mode (no tenant is ever stored).
-    const tenantId = sessionStorage.getItem('cow_tenant_id');
-    if (tenantId && typeof url === 'string' && url.startsWith('/')
-            && (/^\/api\//.test(url) || _TENANT_TRANSPORT_RE.test(url))
-            && !/^\/api\/auth\//.test(url)) {
+    const tenantId = tenantSelectionHeader(url);
+    if (tenantId) {
         const headers = init.headers instanceof Headers
             ? new Headers(init.headers)
             : new Headers(init.headers || {});
@@ -5891,19 +5937,9 @@ let _historyLoadSeq = 0;
 let _historyLoadContext = '';
 
 function restoreChatState() {
-    const epoch = _authEpoch, owner = activeAgentId, sid = sessionId;
-    const current = () => epoch === _authEpoch && owner === activeAgentId && sid === sessionId;
-    return fetch('/config').then(r => r.json()).then(data => {
-        if (!current()) return;
-        if (data.status === 'success') {
-            appConfig = data;
-            appConfig.title = productTitle(data.title);
-            const welcomeTitle = document.getElementById('welcome-title');
-            if (welcomeTitle) welcomeTitle.innerHTML = productTitleHTML(appConfig.title);
-            initConfigView(data);
-        }
-        loadHistory(1);
-    }).catch(() => { if (current()) loadHistory(1); });
+    // Branding is public and session settings have their own scoped endpoint.
+    // Platform configuration belongs to enterConfigView(), not chat startup.
+    return loadHistory(1);
 }
 
 // Load the public brand snapshot and apply it once the DOM is ready. This
@@ -9824,14 +9860,19 @@ function paintNewChatMenu(menu) {
     // and the existing coding session survives until the user confirms (task
     // 3.2). The modal itself keeps coding Agents out of its candidates.
     const teamRow = `
-        <div class="new-chat-sep"></div>
         <button type="button" class="new-chat-item new-chat-team"
                 onclick="openTeamChatModal()">
             <span class="new-chat-team-ico"><i class="fas fa-user-group"></i></span>
             <span>${escapeHtml(t('new_team_chat'))}</span>
-        </button>`;
+        </button>
+        <div class="new-chat-sep"></div>`;
+    // The team entry is the menu's first item (change
+    // promote-team-chat-launch-option): it is the one cross-Agent action here,
+    // and burying it under the roster made it look absent. The separator now
+    // sits *below* it, still dividing it from the solo list. Both entry points
+    // read this one painter, so the order cannot drift between them.
     menu.innerHTML = `
-        <div class="new-chat-section">${rows}</div>${teamRow}`;
+        ${teamRow}<div class="new-chat-section">${rows}</div>`;
 }
 
 function startSoloChat(agentId) {
@@ -10869,6 +10910,7 @@ function _sidebarRecentViewAllAlways() {
 function loadSidebarRecentSessions() {
     const wrap = document.getElementById('sidebar-recent');
     if (!wrap) return;
+    if (!_accountAppVisible) return;
     if (typeof _navAreaFromPath === 'function' && _navAreaFromPath(location.pathname) !== 'workbench') return;
     // A withheld menu grant hides the block and skips the request entirely: never
     // fetch history the identity is not allowed to see in the navigation.
@@ -12768,6 +12810,12 @@ function initDropdown(el, options, selectedValue, onChange, opts) {
     render();
 
     if (!el._ddBound) {
+        // A click inside the menu belongs to the menu. The document-level
+        // handler below closes every open dropdown whose click it hears, and
+        // the trigger and the rows already stop their clicks from reaching it;
+        // the opt-in filter box did not, so the click that put the caret in it
+        // closed the menu (and took the box) before a character could be typed.
+        menuEl.addEventListener('click', (e) => e.stopPropagation());
         selEl.addEventListener('click', (e) => {
             e.stopPropagation();
             if (el._ddReadOnly) return;
@@ -19366,21 +19414,23 @@ navigateTo = function(viewId) {
     if (viewId === 'config') { enterConfigView(); }
     else if (viewId === 'skills') { resetSkillViewer(); loadSkillsView(); }
     else if (viewId === 'memory') {
-        memoryEditor.forget();
-        document.getElementById('memory-panel-viewer').classList.add('hidden');
-        document.getElementById('memory-panel-list').classList.remove('hidden');
-        // Keep the last viewed Agent across refreshes, but drop it if that
-        // Agent has since been deleted so we don't point at a ghost.
-        if (memoryAgentId && memoryAgentId !== MEMORY_PERSONAL
-                && agentCatalog.length && !agentCatalog.some(a => a.id === memoryAgentId)) {
-            memoryAgentId = '';
-            removeScopedPreference('cow_memory_agent');
-        }
-        if (!memoryAgentId) memoryAgentId = activeAgentId || defaultAgentId;
-        renderMemoryAgentSelect();
-        switchMemoryTab('files');
+        withManagementCatalog('memory', () => {
+            memoryEditor.forget();
+            document.getElementById('memory-panel-viewer').classList.add('hidden');
+            document.getElementById('memory-panel-list').classList.remove('hidden');
+            // Keep the last viewed Agent across refreshes, but drop it if that
+            // Agent has since been deleted so we don't point at a ghost.
+            if (memoryAgentId && memoryAgentId !== MEMORY_PERSONAL
+                    && agentCatalog.length && !agentCatalog.some(a => a.id === memoryAgentId)) {
+                memoryAgentId = '';
+                removeScopedPreference('cow_memory_agent');
+            }
+            if (!memoryAgentId) memoryAgentId = activeAgentId || defaultAgentId;
+            renderMemoryAgentSelect();
+            switchMemoryTab('files');
+        });
     }
-    else if (viewId === 'knowledge') loadKnowledgeView();
+    else if (viewId === 'knowledge') withManagementCatalog('knowledge', loadKnowledgeView);
     else if (viewId === 'channels') loadChannelsView();
     else if (viewId === 'tasks') loadTasksView();
     // `todo` is a fork view and loads through the registry in the base
@@ -20399,8 +20449,7 @@ function _knowledgeSourceRowHtml(item) {
 
 /** The header button: offered only when the deployment can really store bytes. */
 function renderKnowledgeSourceCapabilities() {
-    const caps = _knowledgeSourceCapabilities || {};
-    const upload = caps.source_upload || { available: false, reason: '' };
+    const upload = _knowledgeUploadCapability();
     const button = document.getElementById('knowledge-upload-btn');
     if (!button) return;
     button.classList.toggle('hidden', !upload.available);
@@ -20802,14 +20851,34 @@ function _knowledgeSourceUploadReset() {
     _renderKnowledgeUploadQueue();
 }
 
+/** The upload capability as the server projects it. Before the list loads
+ *  there is no projection, and no projection means no upload. */
+function _knowledgeUploadCapability() {
+    return (_knowledgeSourceCapabilities || {}).source_upload
+        || { available: false, reason: '' };
+}
+
+/** Refuse an upload action the deployment cannot back, saying why. */
+function _knowledgeUploadRefused() {
+    const upload = _knowledgeUploadCapability();
+    if (upload.available) return false;
+    _setKnowledgeStatus(upload.reason || t('knowledge_sources_request_failed'), true, true);
+    return true;
+}
+
 /**
  * Open the panel. With a `sourceId`, the panel uploads a new version of that
  * source instead of creating a fresh one — the same bytes path, a different
  * target, which is why it is one panel and not two.
+ *
+ * The header button is hidden when upload is off, but the empty state and the
+ * queue are drop targets in markup, and markup cannot check a capability: the
+ * check lives here so every entry point shares it.
  */
 function openKnowledgeUploadPanel(sourceId) {
     const panel = document.getElementById('knowledge-upload-panel');
     if (!panel) return;
+    if (_knowledgeUploadRefused()) return;
     _knowledgeUploadTarget = sourceId || null;
     const limits = _knowledgeUploadLimits();
     const target = document.getElementById('knowledge-upload-target');
@@ -20858,6 +20927,10 @@ function pickKnowledgeUploadFiles() {
 }
 
 function addKnowledgeUploadFiles(files) {
+    // A drop reaches this function directly from markup, without going through
+    // the panel first: the refusal has to be repeated here or a drop on a
+    // disabled library would queue bytes that the next save is refused for.
+    if (_knowledgeUploadRefused()) return;
     const limits = _knowledgeUploadLimits();
     const max = Number(limits.max_file_size) || 0;
     for (const file of Array.from(files || [])) {
@@ -20996,6 +21069,13 @@ function _knowledgeUploadSend(entries, conflict, target) {
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/knowledge/sources/upload');
+    // This request is an XHR rather than a `fetch` (progress reporting needs
+    // one), so the console's wrapper never sees it: the tenant selection has to
+    // be attached here. Without it the identity gate answers 400
+    // missing_tenant before the handler reads the body, and the batch dies as
+    // "保存失败" with the progress bar stuck mid-way.
+    const tenantId = tenantSelectionHeader('/api/knowledge/sources/upload');
+    if (tenantId) xhr.setRequestHeader('X-Tenant-ID', tenantId);
     xhr.upload.onprogress = (event) => {
         if (!event || !event.lengthComputable || !event.total) return;
         _knowledgeUploadSetProgress(Math.round((event.loaded / event.total) * 100));
@@ -21451,7 +21531,7 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
     });
 }
 
-function _setupHeaderTenantSelector() {
+function _setupHeaderTenantSelector(self) {
     const sel = document.getElementById('tenant-selector');
     if (!sel) return;
     const label = document.getElementById('tenant-selector-label');
@@ -21465,7 +21545,9 @@ function _setupHeaderTenantSelector() {
     // The picker lists the SELF's effective tenants (via /auth/me), not the
     // platform-admin tenant list — a platform admin is not given tenant members
     // for tenants they are not on. The list is not an authorization grant.
-    fetch('/auth/me').then(r => r.json()).then(data => {
+    const epoch = _authEpoch;
+    (self === undefined ? fetchAccountSelf() : Promise.resolve(self)).then(data => {
+        if (epoch !== _authEpoch || tid !== sessionStorage.getItem('cow_tenant_id')) return;
         const tenants = (data && data.status === 'success' && Array.isArray(data.tenants))
             ? data.tenants.map(tn => ({ id: tn.id, code: tn.code, name: tn.name })) : [];
         if (!tenants.length) return;
@@ -21495,13 +21577,10 @@ function _setupHeaderTenantSelector() {
 // A platform administrator may see tenants they do not belong to. Resolve
 // business context only from the authenticated account's effective memberships,
 // including on reload when sessionStorage is empty or contains a stale tenant.
-async function _ensureTenantSelected() {
+async function _ensureTenantSelected(self) {
     if (_identityMode() !== 'database') return true;
     const epoch = _authEpoch;
-    const response = await fetch('/auth/me', { credentials: 'same-origin', cache: 'no-store' });
-    if (epoch !== _authEpoch) return false;
-    if (!response.ok) throw new Error('Tenant membership unavailable');
-    const data = await response.json();
+    const data = self === undefined ? await fetchAccountSelf() : self;
     if (epoch !== _authEpoch) return false;
     if (!data || data.status !== 'success' || !Array.isArray(data.tenants)) {
         throw new Error('Invalid tenant membership response');
@@ -21746,19 +21825,22 @@ function initApp() {
         memoryAgentId = readScopedPreference('cow_memory_agent') || '';
         knowledgeAgentId = readScopedPreference('cow_knowledge_agent') || '';
     }
-    const chatReady = Promise.resolve(loadAgentCatalog()).then(() => {
+    const chatReady = loadChatAgentCatalog().then(agents => {
         if (epoch !== _authEpoch) return;
+        // The chat owner is selected from the use range, not the narrower
+        // management range. An empty roster must never invent an Agent id.
+        defaultAgentId = agents.find(agent => agent.is_default)?.id || '';
+        writeScopedPreference('cow_default_agent', defaultAgentId);
+        if (!agents.some(agent => agent.id === activeAgentId)) activeAgentId = defaultAgentId;
+        writeScopedPreference('cow_active_agent', activeAgentId);
+        renderComposerIdentity();
         sessionId = loadOrCreateSessionId();
         refreshWorkspaceSelector();
-        refreshSessionSettings();
+        // History waits for these settings before rendering team authors.
+        // Let that path issue the single initial read.
+        _sessCfg = null;
         restoreChatState();
         startPolling();
-        fetch('/api/knowledge/list').then(r => r.json()).then(data => {
-            if (epoch === _authEpoch && data.status === 'success') {
-                _knowledgeTreeData = data.tree || [];
-                _knowledgeRootFiles = data.root_files || [];
-            }
-        }).catch(() => {});
     });
 
     fetch('/api/version').then(async response => {
@@ -21827,7 +21909,10 @@ async function fetchAccountSelf() {
             const resp = await fetch('/auth/me', { credentials: 'same-origin', cache: 'no-store' });
             const data = await resp.json();
             if (seq !== _accountSelfSeq) return null;
-            if (resp.status === 401 || data.status !== 'success') return null;
+            if (!resp.ok || !data || data.status !== 'success') {
+                _accountSelf = null;
+                return null;
+            }
             if (epoch !== _authEpoch) return null;
             _accountSelf = data;
             return data;
@@ -22701,14 +22786,13 @@ window.addEventListener('beforeunload', accountBeforeUnload);
 
 // One-shot tenant switch validation on load: read the switch_tenant query
 // param, validate it against /auth/me, then commit and strip the param.
-function _resolveOneShotTenantSwitch() {
+function _resolveOneShotTenantSwitch(self) {
     try {
         const url = new URL(window.location.href);
         const target = url.searchParams.get('switch_tenant');
         const epoch = _authEpoch;
         if (!target || _identityMode() !== 'database') return Promise.resolve(false);
-        return fetch('/auth/me', { credentials: 'same-origin', cache: 'no-store' })
-            .then(r => r.json())
+        return (self === undefined ? fetchAccountSelf() : Promise.resolve(self))
             .then(data => {
                 if (epoch !== _authEpoch) return false;
                 const valid = data && data.status === 'success'

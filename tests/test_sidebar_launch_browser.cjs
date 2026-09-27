@@ -267,6 +267,27 @@ const sidebarGeometry = () => {
             ok: drawn.sidebar === drawn.panel && drawn.hidden,
             sidebar: drawn.sidebar.slice(0, 120),
         });
+        // The picker's first row is its one cross-Agent action, with the divider
+        // following it (change promote-team-chat-launch-option). Burying the team
+        // entry under the roster made it read as absent.
+        const rowOrder = await page.evaluate(() => {
+            const menu = document.getElementById('sidebar-new-chat-menu');
+            const rows = [...menu.querySelectorAll('.new-chat-item')];
+            const sep = menu.querySelector('.new-chat-sep');
+            const firstSolo = menu.querySelector('button[onclick^="startSoloChat"]');
+            return {
+                first: rows.length ? rows[0].className : '',
+                firstText: rows.length ? rows[0].textContent.trim() : '',
+                trailingTeamRows: rows.slice(1).filter(r => r.classList.contains('new-chat-team')).length,
+                sepBeforeFirstSolo: !!(sep && firstSolo
+                    && (sep.compareDocumentPosition(firstSolo) & Node.DOCUMENT_POSITION_FOLLOWING)),
+            };
+        });
+        write('the team entry leads the picker, above the solo roster', {
+            ok: rowOrder.first.includes('new-chat-team') && rowOrder.firstText.length > 0
+                && rowOrder.trailingTeamRows === 0 && rowOrder.sepBeforeFirstSolo,
+            rowOrder,
+        });
         // A single coding conversation is still one row away: the boundary is on
         // team membership, not on reaching the Agent at all (task 2.2).
         const soloRows = await page.$$eval('#sidebar-new-chat-menu button[onclick^="startSoloChat"]',

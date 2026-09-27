@@ -172,7 +172,8 @@ function setup(transport = async () => response(database()), { agentWrapper = fa
         effectiveFaviconUrl: () => '/favicon.ico', brandWordmarkHTML: value => value,
         _brandArmFallback() {}, applyTheme() {}, applyI18n() {}, _applyInputTooltips() {},
         _resetHistorySearch() {}, bumpTenantGeneration() {},
-        loadAgentCatalog() {}, readScopedPreference: () => null,
+        loadAgentCatalog() {}, loadChatAgentCatalog: async () => [],
+        readScopedPreference: () => null, writeScopedPreference() {}, renderComposerIdentity() {},
         loadOrCreateSessionId: () => ctx.sessionId, restoreChatState() {}, startPolling() {},
         navigateTo(view) { ctx.currentView = view; },
         refreshWorkspaceSelector() { counter.workspace++; },
@@ -525,6 +526,7 @@ for (const outcome of ['success', 'failure', '401']) {
         const h = setup(async (url, options) => {
             if (url === '/auth/login') return response({ ...database(JSON.parse(options.body).username), tenants: [] });
             if (url === '/api/expire') return response({}, 401);
+            if (url === '/auth/me') return response({ status: 'success', tenants: [] });
             return ++checks === 1 ? response(database('alice')) : stale.promise;
         });
         await settle();
@@ -1150,7 +1152,8 @@ test('chat initialization restores scoped selections and waits for the Agent cat
     h.ctx.activeAgentId = 'old-agent';
     h.ctx.sessionId = 'old-session';
     h.ctx.readScopedPreference = key => key === 'cow_active_agent' ? 'new-agent' : null;
-    h.ctx.loadAgentCatalog = () => {
+    h.ctx.loadAgentCatalog = () => { throw Error('Chat must not load management data'); };
+    h.ctx.loadChatAgentCatalog = () => {
         steps.push(['catalog', h.ctx.activeAgentId]);
         return catalog.promise;
     };
@@ -1163,10 +1166,43 @@ test('chat initialization restores scoped selections and waits for the Agent cat
     h.ctx.restoreChatState = () => steps.push(['history', h.ctx.sessionId]);
     const ready = h.realInitApp();
     assert.deepEqual(steps, [['catalog', 'new-agent']]);
-    catalog.resolve();
+    catalog.resolve([{ id: 'new-agent', is_default: true }]);
     await ready;
     assert.deepEqual(steps, [['catalog', 'new-agent'], ['session', 'new-agent'],
-        ['workspace', 'new-session'], ['settings', 'new-session'], ['history', 'new-session']]);
+        ['workspace', 'new-session'], ['history', 'new-session']]);
+});
+
+test('startup shares one self-profile between tenant validation, permissions and tenant selector', async () => {
+    const h = setup(async url => {
+        if (url === '/auth/check') return response(database());
+        if (url === '/auth/me') return response({ status: 'success', user: { username: 'alice' },
+            tenants: [{ id: 'only-tenant', name: 'Only tenant', code: 'only' }] });
+        return response({ status: 'success' });
+    }, { tenantResolution: true });
+    h.run(section('function _setupHeaderTenantSelector(', '// A platform administrator may see tenants'));
+    await settle();
+    assert.equal(h.counter.init, 1);
+    assert.equal(h.fetches('/auth/me').length, 1);
+    assert.equal(h.storage.get('cow_tenant_id'), 'only-tenant');
+    assert.equal(h.node('tenant-selector-label').textContent, 'Only tenant');
+});
+
+test('retry after missing membership reads a fresh self-profile instead of reusing the denied attempt', async () => {
+    let assigned = false;
+    const h = setup(async url => {
+        if (url === '/auth/check') return response(database());
+        if (url === '/auth/me') return response({ status: 'success', user: { username: 'alice' },
+            tenants: assigned ? [{ id: 'assigned' }] : [] });
+        return response({ status: 'success' });
+    }, { tenantResolution: true });
+    await settle();
+    assert.equal(h.counter.init, 0);
+    assigned = true;
+    await h.ctx.refreshAccountIdentity();
+    await settle();
+    assert.equal(h.fetches('/auth/me').length, 2);
+    assert.equal(h.counter.init, 1);
+    assert.equal(h.storage.get('cow_tenant_id'), 'assigned');
 });
 
 test('navigation availability gate reads the authoritative /auth/context projection, not a client role array', () => {

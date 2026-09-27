@@ -591,6 +591,7 @@ def _audit_agent_denied(ctx, action: str, agent_id: str, body: Dict) -> None:
 
 class AgentsHandler:
     def GET(self):
+        from auth.service import agent_catalog_read_scope
         from channel.web.web_channel import _agent_admin_service
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _personal_agents_projection
@@ -603,7 +604,7 @@ class AgentsHandler:
             # snapshot is returned intact so Desktop and existing pickers keep
             # their contract.
             params = web.input(view='')
-            with _db_scope() as ctx:
+            with _db_scope() as ctx, agent_catalog_read_scope(getattr(ctx, "tenant_id", None)):
                 _require_read_permission(ctx, "agent.read")
                 if params.view == 'workbench':
                     return json.dumps(

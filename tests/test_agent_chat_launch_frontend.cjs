@@ -291,6 +291,27 @@ test('the sidebar launch control is the panel control in another place', () => {
     assert.match(sidebarMenu.innerHTML, /openTeamChatModal/);
 });
 
+test('the team entry leads the picker, ahead of the solo roster', () => {
+    // The picker's one cross-Agent action is its first item (change
+    // promote-team-chat-launch-option): under the roster it read as absent.
+    // Order in the shipped markup is DOM order, and both launch controls run
+    // this one painter, so neither can reorder its own copy.
+    const { ctx, get } = launchHarness([
+        agent('research'), agent('owner', { is_default: true }), agent('coder'),
+    ]);
+    ctx.paintNewChatMenu(get('new-chat-menu'));
+    const html = get('new-chat-menu').innerHTML;
+    const team = html.indexOf('new-chat-team');
+    const firstSolo = html.indexOf('startSoloChat(');
+    assert.ok(team >= 0 && firstSolo >= 0, 'the picker lost a row');
+    assert.ok(team < firstSolo, 'the team entry is not the picker first item');
+    // The divider follows the team row and still parts it from the roster.
+    const sep = html.indexOf('new-chat-sep');
+    const roster = html.indexOf('new-chat-section');
+    assert.ok(sep > team && roster > sep,
+        'the divider no longer separates the team row from the roster');
+});
+
 test('the sidebar caret rides the presentation switch, the panel caret does not', async () => {
     const { ctx, get } = launchHarness([agent('owner', { is_default: true }), agent('research')]);
     ctx.sidebarLaunchV2 = () => false;

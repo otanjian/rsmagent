@@ -99,6 +99,7 @@ function setup(fetchImpl) {
             getElementById: node, createElement: element, body,
             querySelector: () => null, querySelectorAll: () => [],
         },
+        _accountAppVisible: true,
         localStorage: { getItem: () => null, setItem() {} },
         t: key => key, escapeHtml: value => String(value),
         switchSession: (sid, aid) => switched.push([sid, aid]),
@@ -118,6 +119,13 @@ function setup(fetchImpl) {
     const setItems = items => run(`_sidebarRecentItems = ${JSON.stringify(items)};`);
     return { ctx, run, node, calls, toasts, switched, state, setItems };
 }
+
+test('sidebar history waits until the account and tenant are ready', () => {
+    const h = setup();
+    h.ctx._accountAppVisible = false;
+    h.ctx.loadSidebarRecentSessions();
+    assert.equal(h.calls.length, 0);
+});
 
 test('each sidebar row exposes an archive control that hides the session without opening it', async () => {
     const h = setup((url, options) => options && options.method === 'PUT'

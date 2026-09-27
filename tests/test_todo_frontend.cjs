@@ -275,6 +275,7 @@ function setup(responses, options = {}) {
         },
     };
     ctx.window = ctx;
+    if (options.appVisible !== undefined) ctx._accountAppVisible = options.appVisible;
     // The absent-gate host must not even see the helper.
     if (options.authGate === 'absent') delete ctx.requestAuthGatedStart;
     if (options.navigateTo) ctx.navigateTo = (...args) => navigations.push(args);
@@ -301,9 +302,22 @@ function setup(responses, options = {}) {
         // Activity on the shell (a click or a keystroke) is the module's cheap
         // signal that a parked cadence may be worth reviving.
         fireDocument: type => fire(documentListeners, type),
+        fireWindow: type => fire(windowListeners, type),
         releaseAuthGate: () => gatedStarts.splice(0).forEach(fn => fn()),
     };
 }
+
+test('the database login gate defers the first summary until account and tenant are ready', async () => {
+    const h = setup([], { appVisible: false });
+    await flush();
+    h.fireFocus();
+    await h.advance(POLL_MS);
+    assert.equal(h.summaryRequests().length, 0);
+    h.ctx._accountAppVisible = true;
+    h.fireWindow('account-ready');
+    await flush();
+    assert.equal(h.summaryRequests().length, 1);
+});
 
 function assertFailedView(h, message = messages.todo_load_failed) {
     assert.equal(h.hidden('todo-banner'), false);

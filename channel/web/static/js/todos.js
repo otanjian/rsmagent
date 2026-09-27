@@ -272,6 +272,9 @@
     }
 
     async function refreshSummary() {
+        // The database console announces readiness after selecting a tenant.
+        // Loading/focusing the login page must not issue a missing-tenant read.
+        if (typeof _accountAppVisible !== 'undefined' && !_accountAppVisible) return null;
         // Newest read wins: a response landing after a later one was issued
         // (focus, write, poll) must not repaint the count with an older value.
         const gen = ++_summaryGen;
@@ -1223,6 +1226,7 @@
         refreshSummary();
         if (typeof window.addEventListener === 'function') {
             window.addEventListener('focus', function () { refreshSummary(); });
+            window.addEventListener('account-ready', function () { refreshSummary(); });
         }
         if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
             document.addEventListener('visibilitychange', onSummaryVisibility);
