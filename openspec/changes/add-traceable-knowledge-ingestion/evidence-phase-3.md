@@ -10,6 +10,7 @@
 - **匹配范围**：只按已可见选项的完整名称／ID 做大小写无关的子串匹配（含 CJK 子串），不新增服务器候选，不隐藏任何未被过滤的行给服务端。
 - **清空／无结果**：清空恢复全部行并隐藏无结果提示；被过滤掉的已选行仍显示在触发器上（过滤只收窄菜单，不改变当前选择）。
 - **键盘与输入法**：`ArrowUp/ArrowDown` 移动高亮、`Enter` 选中、`Escape` 先清空查询再关闭；输入框节点在过滤时不重建，焦点与光标不丢；`isComposing` 组合期间不触发过滤。
+- **鼠标点击不误关菜单**：菜单内部的 click 不再冒泡到 document 级的「关闭所有下拉」处理（触发器与选项行原本已阻断，本搜索框曾漏掉）。否则用户点进输入框定位光标的第一个动作就会关掉菜单连同输入框，搜索框只剩键盘可用。
 - **筛选不换库**：`selectKnowledgeAgent` 是唯一换库入口；过滤本身不改 `knowledgeAgentId`、不重发知识读请求。
 
 ## 3.2 上传按钮、原始资料页签、上传面板、逐项进度与冲突选择
@@ -38,9 +39,10 @@
 
 命令：`node --test tests/test_knowledge_sources_frontend.cjs tests/test_knowledge_console_frontend.cjs tests/test_knowledge_agent_search_frontend.cjs tests/test_console_i18n_coverage.cjs tests/test_console_i18n_parity.cjs`
 
-结果：`58 passed / 0 failed`（25 + 10 + 13 + i18n 10）。关键覆盖：
+结果：`59 passed / 0 failed`（25 + 10 + 14 + i18n 10）。关键覆盖：
 
 - 搜索与文档搜索互不干扰、无隐藏候选泄漏（服务器候选不被改写）、其他下拉保持原样、清空／无结果／键盘／IME。
+- 菜单内部点击（含点进搜索框定位光标）按真实冒泡路径不触达 document 级关闭处理，菜单与输入框都还在。
 - 上传能力门控、权限投影（无写权不出现入口、`knowledge.write` 授权不强制放行、租户管理员不越权写）。
 - 列表／详情／下载／生命周期／重试／取消、逐项进度、同名冲突按项选择、本地过滤、轮询范围与迟到响应丢弃。
 
@@ -50,12 +52,12 @@
 
 结果：`4 scenarios, 0 failed`；产物 `evidence-3-ui/results.json` 与两张截图 `sources-upload-panel.png`、`sources-narrow.png`。四个场景：
 
-1. 桌面（浅色）：Agent 菜单搜索只收窄自身行、清空复原，且文档搜索框不受影响、不触发知识读请求；
+1. 桌面（浅色）：先用鼠标点进 Agent 菜单搜索框（断言菜单与输入框仍在），再输入只收窄自身行、清空复原，且文档搜索框不受影响、不触发知识读请求；
 2. 桌面（深色）：CJK 无匹配时给出空状态提示而不是空菜单；
 3. 桌面：原始资料页签为完整闭环——列表 → 详情 → 上传面板，saved 与 searchable 不互相借用状态；
 4. 窄屏（390×844）：资料闭环仍可用。
 
-该脚本按生产方式装配 `chat.html`（展开 `<!--#include-->`、注入 `{{COW_*}}`），运行真实 `console.js`／CSS／i18n；运行期 `pageErrors=0`、`unexpectedRoutes=0`。脚本有 pytest 包装 `tests/test_knowledge_console_browser.py`：`NODE_PATH=$(npm root -g) .venv/bin/python -m pytest tests/test_knowledge_console_browser.py -q` → `1 passed`（无 Playwright 时按既有约定跳过）。
+该场景的搜索框现在走真实鼠标点击，而不是只靠 `fill`：`fill` 只聚焦、不产生 click，因此「点进输入框把菜单连同输入框一起关掉」这一缺陷在上一版证据里未被触发（本版补上点击断言后先在未修复代码上复现 `0 !== 1`，再验证修复）。该脚本按生产方式装配 `chat.html`（展开 `<!--#include-->`、注入 `{{COW_*}}`），运行真实 `console.js`／CSS／i18n；运行期 `pageErrors=0`、`unexpectedRoutes=0`。脚本有 pytest 包装 `tests/test_knowledge_console_browser.py`：`NODE_PATH=$(npm root -g) .venv/bin/python -m pytest tests/test_knowledge_console_browser.py -q` → `1 passed`（无 Playwright 时按既有约定跳过）。
 
 ### 服务端与回归
 

@@ -55,6 +55,19 @@ function sliceSources() {
     return source.slice(start, end);
 }
 
+/**
+ * The shell's tenant-selection rule and the transport list it consults. They
+ * live next to the `fetch` wrapper, outside the knowledge slice, but the upload
+ * is an XHR that must apply the same rule — stubbing it here would let the
+ * upload's own copy of the decision (or its absence) pass unnoticed.
+ */
+function shellTenantHeaderSource() {
+    const start = source.indexOf('const _TENANT_TRANSPORT_PATHS');
+    const end = source.indexOf('window.fetch = function', start);
+    assert.ok(start >= 0 && end > start, 'the shell declares the tenant-selection rule');
+    return source.slice(start, end);
+}
+
 /** Every `knowledge-*` element id the sources code reaches for by name. */
 function addressedIds(code) {
     return [...new Set([...code.matchAll(/getElementById\(\s*'([^']+)'/g)].map(m => m[1]))]
@@ -112,8 +125,23 @@ function setup(payloads = {}, authCtx = { status: 'success', effective_permissio
     document.getElementById('knowledge-sources-list').classList.add('hidden');
     document.getElementById('knowledge-sources-empty').classList.add('hidden');
     document.getElementById('knowledge-sources-error').classList.add('hidden');
+    // The markup ships the upload panel closed; the harness mirrors that, or
+    // "the panel did not open" would be true of a panel that never closes.
+    document.getElementById('knowledge-upload-panel').classList.add('hidden');
 
     const location = { href: '', hash: '' };
+    // The page shell's tenant selection. The upload is the one transport the
+    // console's `fetch` wrapper cannot reach (it needs XHR for progress), so a
+    // test has to be able to set the selection and see what the request did
+    // with it. Nothing is stored until a test sets one, like legacy mode.
+    const sessionStorage = {
+        store: {},
+        getItem(key) {
+            return Object.prototype.hasOwnProperty.call(this.store, key) ? this.store[key] : null;
+        },
+        setItem(key, value) { this.store[key] = String(value); },
+        removeItem(key) { delete this.store[key]; },
+    };
     // The delete confirmation's own text is part of what the user agrees to, so
     // the harness records it instead of only answering yes/no.
     const confirmMessages = [];
@@ -141,6 +169,7 @@ function setup(payloads = {}, authCtx = { status: 'success', effective_permissio
         FormData: class { constructor() { this.entries = []; } append(k, v) { this.entries.push([k, v]); } },
         XMLHttpRequest: function () { return new FakeXHR(requests); },
         location,
+        sessionStorage,
         confirm: confirmFn,
         window: { confirm: confirmFn, innerWidth: 1280 },
         document,
@@ -148,11 +177,14 @@ function setup(payloads = {}, authCtx = { status: 'success', effective_permissio
     };
     ctx.window.location = location;
     vm.createContext(ctx);
+    // The shell rule first: the knowledge slice calls it, and the page has it
+    // in scope for the same reason.
+    vm.runInContext(shellTenantHeaderSource(), ctx);
     const code = sliceSources();
     vm.runInContext(code, ctx);
     return {
         ctx, document, requests, location,
-        hash, confirmMessages,
+        hash, confirmMessages, sessionStorage,
         get: id => ctx.document.getElementById(id),
         code,
         setConfirm: answer => { confirmState.value = answer; },
@@ -426,6 +458,66 @@ test('an oversized file fails locally and never reaches the server', async () =>
     assert.match(queue, /knowledge_upload_item_failed/);
     await s.ctx.submitKnowledgeUpload();
     assert.equal(s.requests.length, 0, 'nothing is submitted for a file the server would refuse');
+});
+
+test('the upload request carries the tenant selection, like every other console call', async () => {
+    // The upload is an XMLHttpRequest (progress reporting needs one), so the
+    // console's `fetch` wrapper never sees it. Without the header the identity
+    // gate answers 400 missing_tenant before the handler reads a single byte —
+    // mid-stream, which the page can only report as a bare "request failed".
+    const s = jsonResponse(() => LIST);
+    s.sessionStorage.setItem('cow_tenant_id', 'tnt-1');
+    await s.ctx.loadKnowledgeSources();
+    await flush();
+    s.ctx.openKnowledgeUploadPanel();
+    s.ctx.addKnowledgeUploadFiles([{ name: 'a.pdf', size: 10 }]);
+    s.ctx.submitKnowledgeUpload();
+    assert.equal(s.requests[0].headers['X-Tenant-ID'], 'tnt-1',
+        'the upload names the same tenant every other call does');
+});
+
+test('with no tenant selected the upload sends no tenant header at all', async () => {
+    // Legacy mode stores no selection. Sending a literal "" (or "null") would
+    // be worse than sending nothing: the gate would read it as a tenant name.
+    const s = jsonResponse(() => LIST);
+    await s.ctx.loadKnowledgeSources();
+    await flush();
+    s.ctx.openKnowledgeUploadPanel();
+    s.ctx.addKnowledgeUploadFiles([{ name: 'a.pdf', size: 10 }]);
+    s.ctx.submitKnowledgeUpload();
+    assert.equal('X-Tenant-ID' in s.requests[0].headers, false);
+});
+
+test('a drop cannot open an upload panel the deployment cannot back', async () => {
+    // The header button is hidden when uploads are off, but the empty state and
+    // the queue are `ondrop` targets written in markup, and markup cannot check
+    // a capability. The check has to live in the functions a drop reaches, or
+    // dragging a file opens a panel whose every save the server refuses.
+    const s = jsonResponse(() => ({
+        ...LIST,
+        capabilities: {
+            ...LIST.capabilities,
+            source_upload: {
+                configured: false, dependency_ready: true, available: false,
+                reason: 'source upload is not enabled on this deployment',
+            },
+        },
+    }));
+    await s.ctx.loadKnowledgeSources();
+    await flush();
+
+    s.ctx.openKnowledgeUploadPanel();
+    assert.equal(s.get('knowledge-upload-panel').classList.contains('hidden'), true,
+        'no panel is opened without the capability');
+    assert.equal(s.hash.status.message, 'source upload is not enabled on this deployment',
+        'and the refusal states the server reason instead of failing silently');
+
+    s.ctx.addKnowledgeUploadFiles([{ name: 'a.pdf', size: 10 }]);
+    assert.equal(s.get('knowledge-upload-queue').innerHTML, '', 'nothing is queued either');
+    assert.equal(s.hash.status.message, 'source upload is not enabled on this deployment',
+        'the drop is answered with the same reason');
+    await s.ctx.submitKnowledgeUpload();
+    assert.equal(s.requests.length, 0, 'and a stalled queue has nothing to send');
 });
 
 test('polling runs only while the sources tab is on screen', async () => {

@@ -242,12 +242,19 @@ function requestsTo(pathname) {
         .filter(entry => entry.pathname === pathname);
 }
 
-/** The knowledge Agent menu, opened, with its search box focused. */
+/** The knowledge Agent menu, opened, with its search box clicked like a user. */
 async function openAgentMenu(page) {
     await page.locator('#knowledge-agent-select .cfg-dropdown-selected').click();
     await page.locator('#knowledge-agent-select.open').waitFor({ state: 'visible' });
     const input = page.locator('#knowledge-agent-select .cfg-dropdown-search-input');
     await input.waitFor({ state: 'visible' });
+    // Clicking to place the caret is the first thing anyone does with a search
+    // box, and it is the one interaction Playwright's `fill` skips: fill focuses
+    // the field without a click, so the bubbled click that used to close the
+    // menu was never exercised and the box could vanish for real users only.
+    await input.click();
+    assert.equal(await page.locator('#knowledge-agent-select.open').count(), 1,
+        'clicking into the box leaves the menu -- and the box -- open');
     return input;
 }
 

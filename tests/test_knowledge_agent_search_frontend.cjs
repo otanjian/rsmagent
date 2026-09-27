@@ -83,6 +83,21 @@ function open(opts = {}) {
 const rowsOf = menu => menu.querySelectorAll('.cfg-dropdown-item');
 const labelsOf = menu => rowsOf(menu).map(row => row.querySelector('.cfg-dropdown-label').textContent);
 
+// `fire` only runs the listeners on one node; the browser keeps going up the
+// tree and then runs the document-level handlers. Model that here, because the
+// bug this guards is about propagation: a click inside an open dropdown must
+// not reach the document handler that dismisses every open dropdown.
+function clickAndBubble(harness, node) {
+    let current = node;
+    while (current) {
+        const event = current.fire('click');
+        if (event.propagated === false) return event;
+        current = current.parentNode;
+    }
+    (harness.document.listeners.click || []).forEach(handler => handler({ target: node }));
+    return null;
+}
+
 test('a searchable dropdown shows a filter box above the rows', () => {
     const { menu, el } = open({ searchable: true });
     const box = el.querySelector('.cfg-dropdown-search-input');
@@ -178,6 +193,24 @@ test('the input node survives filtering, so the caret and query are not destroye
         'the same node is reused rather than rebuilt');
     assert.equal(box.value, 'sales');
     assert.deepEqual(labelsOf(menu), ['Sales Copilot'], 'and the query still applies');
+});
+
+test('clicking into the filter box does not dismiss the menu it lives in', () => {
+    const harness = open({ searchable: true });
+    const { el } = harness;
+    el.classList.add('open');
+    const box = el.querySelector('.cfg-dropdown-search-input');
+
+    // Clicking the box is how typing starts. The click bubbles to a
+    // document-level handler that closes every open dropdown, and unlike the
+    // rows and the trigger, the box did not stop it -- so the menu (and the
+    // caret) vanished before the user could type a single character.
+    clickAndBubble(harness, box);
+
+    assert.equal(el.classList.contains('open'), true,
+        'the click that places the caret leaves the menu open');
+    assert.equal(el.querySelector('.cfg-dropdown-search-input'), box,
+        'the box is still there to type into');
 });
 
 test('an in-progress IME composition is not treated as a query', () => {
