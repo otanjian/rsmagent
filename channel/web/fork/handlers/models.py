@@ -46,7 +46,12 @@ class ModelsHandler:
     """
 
     # Capability -> provider ids drawn from ConfigHandler.PROVIDER_MODELS.
-    _ASR_PROVIDERS = ["openai", "dashscope", "zhipu", "linkai"]
+    # `qianwen_plan` is the exception: it is voice-only (Token Plan has no
+    # chat models for this app to call), so it deliberately has no
+    # PROVIDER_MODELS entry — adding one would also list it in the Config
+    # page's chat-provider picker with an audio-only model. Its credentials
+    # live in config.json (`qianwen_plan_api_key` / `_api_base`).
+    _ASR_PROVIDERS = ["openai", "dashscope", "zhipu", "linkai", "qianwen_plan"]
     # Web-console white-list. Other vendors stay usable via direct config.
     _TTS_PROVIDERS = ["openai", "minimax", "dashscope", "mimo", "linkai"]
 
@@ -88,6 +93,12 @@ class ModelsHandler:
         ],
         "dashscope": [
             {"value": "qwen3-asr-flash", "hint": "覆盖普通话、方言与主流外语"},
+        ],
+        # Qianwen Token Plan. Note the model id differs from the pay-as-you-go
+        # "dashscope" entry above on purpose: the plan only carries
+        # qwen-audio-3.0-*, and qwen3-asr-flash is not in its model list.
+        "qianwen_plan": [
+            {"value": "qwen-audio-3.0-asr-flash", "hint": "Plan 订阅 · 30 语种 / 方言"},
         ],
         "zhipu": [
             {"value": "glm-asr-2512", "hint": "智谱语音识别"},
