@@ -108,10 +108,11 @@ def agent_in_scope(identity: Any, *, tenant_id: Optional[str],
 
 def may_execute(identity: Any, *, actor_user_id: str,
                 tenant_id: Optional[str], kind: str, action: str,
-                scope: str = "", agent_id: str = "") -> bool:
+                scope: str = "", agent_id: str = "",
+                connection_id: str = "") -> bool:
     """Whether this actor may run this capability right now.
 
-    Three ways in, and only three:
+    Four ways in, and only four:
 
     0. **A personal connection needs no grant.** It is its owner's own
        resource; ownership is the authorization, and the caller checks it
@@ -136,11 +137,23 @@ def may_execute(identity: Any, *, actor_user_id: str,
        (:func:`agent_in_scope`). The second half is what stops the exemption
        from being a way to reach another tenant's connection by naming its id.
 
+    3. **An assigned connection is its own authorization**, for the tenant that
+       consumes it (:func:`_assignment_authorizes`). The relation per-connection
+       assignment writes says "this Agent may use this connection", and the
+       connection is the tenant's own resource — the same reasoning as way 0 for
+       a member's own mailbox. So the assignment replaces the *per-resource
+       grant*, and nothing else: the functional permission is still required
+       here, and the connection's enabled state, the deployment's execution
+       class, the risk catalogue, the approval binding and the quota all answer
+       as they did. Only a connection whose relation explicitly names this Agent
+       qualifies — the pre-assignment 沿用原权限 state keeps the grant gate, so
+       an upgrade does not silently widen a legacy connection.
+
     Everything is read per call and nothing is cached, so a revoked role, a
-    tightened tenant limit or a re-bound Agent denies the very next invocation.
-    Failures are refusals rather than exceptions: a store that cannot answer has
-    not said "allowed", and this is the function that decides whether to skip a
-    grant.
+    tightened tenant limit, a re-bound Agent or a removed assignment denies the
+    very next invocation. Failures are refusals rather than exceptions: a store
+    that cannot answer has not said "allowed", and this is the function that
+    decides whether to skip a grant.
     """
     from integrations.external import registry
 
@@ -159,6 +172,12 @@ def may_execute(identity: Any, *, actor_user_id: str,
     except Exception:  # noqa: BLE001 - unreadable => not granted
         return False
 
+    if _assignment_authorizes(
+            identity, actor_user_id=actor_user_id, tenant_id=tenant_id,
+            kind=kind, scope=scope, agent_id=agent_id,
+            connection_id=connection_id):
+        return True
+
     try:
         if not agent_in_scope(identity, tenant_id=tenant_id, agent_id=agent_id):
             return False
@@ -166,6 +185,63 @@ def may_execute(identity: Any, *, actor_user_id: str,
             actor_user_id, tenant_id, rid, agent_id))
     except Exception:  # noqa: BLE001
         return False
+
+
+def _assignment_authorizes(identity: Any, *, actor_user_id: str,
+                           tenant_id: str, kind: str, scope: str,
+                           agent_id: str, connection_id: str) -> bool:
+    """Whether the per-connection Agent assignment is this call's authorization.
+
+    Asked only after the resource grant has already refused, and answered only
+    for a connection the relation **explicitly names this Agent in**
+    (``REASON_ASSIGNED``). That is narrower than
+    :func:`~integrations.external.assignment.assignment_allows` on purpose:
+
+    * ``configured=0`` (沿用原权限, what every connection a deployment has not
+      touched looks like) returns ``ALLOWED`` there, because the *assignment*
+      gate is not supposed to narrow a legacy connection. Reading that as "the
+      assignment authorizes it" here would instead drop the grant requirement
+      for every pre-existing connection in the tenant — the opposite of what
+      the compatibility rule exists for.
+    * a missing state row and an unreadable store both answer "no". An empty
+      configured relation is a real "nobody" (清空分配表示禁止所有智能体), and a
+      lookup that failed has not said "assigned".
+
+    The functional permission is required here as well: the assignment says
+    which Agent may use the connection, not that this caller may execute tools
+    at all. Skipping it would make an external capability the one kind a role
+    can hold without the functional permission that gates every other tool.
+    """
+    from integrations.external import assignment, registry
+
+    tenant = str(tenant_id or "").strip()
+    agent = str(agent_id or "").strip()
+    connection = str(connection_id or "").strip()
+    if not tenant or not agent or not connection:
+        return False
+    if str(scope or "") == registry.SCOPE_PERSONAL:
+        return False
+    if not assignment.call_regime_applies(kind, scope, tenant):
+        return False
+    try:
+        if EXECUTE_PERMISSION not in set(
+                identity.permissions_for(actor_user_id, tenant) or ()):
+            return False
+    except Exception:  # noqa: BLE001 - an unreadable role is not a permission
+        return False
+    store = getattr(identity, "_store", None)
+    if store is None:
+        return False
+    try:
+        logical = assignment.logical_ids_for(store, [connection]).get(connection)
+        if not logical:
+            # The row could not be read, so nothing here proves tenancy for it.
+            return False
+        allowed, reason = assignment.assignment_allows(
+            store, tenant_id=tenant, logical_id=logical, agent_id=agent)
+    except Exception:  # noqa: BLE001 - a failed lookup proves nothing
+        return False
+    return bool(allowed) and reason == assignment.REASON_ASSIGNED
 
 
 def describe_refusal(kind: str, action: str) -> str:

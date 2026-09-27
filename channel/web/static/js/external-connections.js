@@ -1,5 +1,5 @@
 /* =====================================================================
- * Console page 「外部系统接入」 (External System Access)
+ * Console page 「系统接入」 (System Access)
  *
  * Change add-external-system-access, task group 10. Loaded lazily by
  * console.js (`LAZY_VIEW_MODULES.external_connections`) the first time the
@@ -248,6 +248,7 @@
 
     var ecDrawer = null;         // open form: {mode,kind,scope,id,version,draft,original,...}
     var ecModal = null;          // open modal: {node,dirty,onClose}
+    var ecAssign = null;         // open Agent-assignment modal: its own sheets of drafts
     var ecFocusReturn = null;    // element focus returns to when the drawer closes
     var ecRouteTarget = null;    // navigation target a discard confirmation will re-run
     var ecPeriodic = null;
@@ -463,9 +464,52 @@
         return document.getElementById('ec-root');
     }
 
+    // =================================================================
+    // 中文输入法（输入法组合）
+    //
+    // An input method writes 预编辑文本 — the pinyin — into the box first and
+    // commits the characters later. While that composition is open two things
+    // have to hold, or the box simply cannot be used to type Chinese:
+    //   * pre-edit text is not a query. Searching or filtering on 拼音 asks the
+    //     server for gibberish and repaints the results on every syllable;
+    //   * neither search box may be repainted. Replacing the node the input
+    //     method is writing into discards the characters typed so far, so the
+    //     user sees the syllables vanish instead of committing — 「打不出中文」.
+    // Repaints asked for meanwhile are deferred to the commit, which every
+    // browser reports as `compositionend` followed by a final ordinary `input`.
+    // =================================================================
+    var ecComposing = false;   // 组合进行中：不查询、不重绘
+    var ecRepaint = false;     // 组合期间被推迟的目录重绘
+
+    // Whether this event belongs to an uncommitted composition. A committed
+    // input event is proof the composition is over even when `compositionend`
+    // never reached us, so a dropped event cannot leave the boxes frozen.
+    function ecComposingInput(event) {
+        if (event && event.isComposing === false) ecComposing = false;
+        if (ecComposing) return true;
+        return !!(event && event.isComposing);
+    }
+
+    function ecCompositionStart() {
+        ecComposing = true;
+    }
+
+    // 提交：先采用提交后的文本（`apply`），再补做被推迟的重绘。
+    function ecCompositionCommit(apply) {
+        ecComposing = false;
+        if (typeof apply === 'function') apply();
+        var modal = !!(ecAssign && ecAssign.repaint);
+        if (ecAssign) ecAssign.repaint = false;
+        if (ecRepaint) { ecRepaint = false; ecRender(); }
+        if (modal) ecAssignRender();
+    }
+
     function ecRender() {
         var root = ecRoot();
         if (!root) return;
+        // 组合未完时不得重建：输入法正在这个输入框里写字（见上面的说明）。
+        if (ecComposing) { ecRepaint = true; return; }
+        ecRepaint = false;
         root.innerHTML = ecPageHtml();
         var container = document.getElementById('view-external_connections');
         if (container) {
@@ -681,6 +725,53 @@
         }).join('、');
     }
 
+    // What the deployment actually lets this connection *do*, stated apart from
+    // the assignment and the last test result. The three facts are independent:
+    // a connection can be assigned to agents, pass its connection test, and
+    // still have every tool call refused, because the execution classes are
+    // opt-in per deployment (`registry.OPENABLE_CLASSES` + readiness config).
+    // MCP is exactly that case — `test` is open while `read_execute` is not —
+    // so a card that showed 已配置 and 连接正常 and stopped there invited the
+    // reader to conclude the tools work. The requirement forbids that:
+    // 分配状态与连接测试健康、启停和执行开放状态分别表达, and
+    // 分配成功但业务执行关闭 must present the reason rather than a success.
+    //
+    // The claim is derived from the per-class projection, never from
+    // `unavailable_reason`: that field names the *first* closed class in the
+    // order test → read_execute → write_execute, so on a deployment where
+    // testing is closed but reading is open it describes the test class and
+    // says nothing about execution. A kind with no projection renders nothing —
+    // silence is the honest answer where there is no evidence.
+    function ecExecStateHtml(card) {
+        var cap = ecCapabilityFor(card.kind);
+        var classes = cap && cap.classes;
+        if (!classes) return '';
+        var read = classes.read_execute || null;
+        var write = classes.write_execute || null;
+        if (!read && !write) return '';
+        var readOpen = !!(read && read.available === true);
+        var writeOpen = !!(write && write.available === true);
+        var key;
+        var reason = '';
+        if (readOpen && writeOpen) {
+            key = 'ec_card_exec_read_write';
+        } else if (readOpen) {
+            key = 'ec_card_exec_read_only';
+            reason = (write && write.reason) || '';
+        } else if (writeOpen) {
+            key = 'ec_card_exec_write_only';
+            reason = (read && read.reason) || '';
+        } else {
+            key = 'ec_card_exec_closed';
+            reason = (read && read.reason) || (write && write.reason) || '';
+        }
+        return '<p class="ec-card-exec' + (key === 'ec_card_exec_closed' ? ' ec-card-exec-closed' : '')
+            + '" data-ec-exec-state>' + ecEsc(ecT(key))
+            + (reason ? '<span class="ec-card-exec-reason">'
+                + ecEsc(ecReasonText(reason)) + '</span>' : '')
+            + '</p>';
+    }
+
     function ecCardHtml(card) {
         var flags = ecCardFlags(card);
         var label = ecT(TYPE_LABEL_KEY[card.kind] || card.kind);
@@ -723,6 +814,12 @@
             actions.push('<button type="button" class="ec-btn ec-btn-ghost ec-btn-small"'
                 + ' data-ec-action="tenant-access">' + ecEsc(ecT('ec_action_tenant_access')) + '</button>');
         }
+        if (card.agent_assignment) {
+            // Offered to a reader too: reading the relation needs read access to
+            // the tenant range, while adding/removing is decided row by row.
+            actions.push('<button type="button" class="ec-btn ec-btn-ghost ec-btn-small"'
+                + ' data-ec-action="agents">' + ecEsc(ecT('ec_action_agents')) + '</button>');
+        }
         if (flags.canDelete) {
             actions.push('<button type="button" class="ec-btn ec-btn-danger ec-btn-small"'
                 + ' data-ec-action="delete">' + ecEsc(ecT('ec_action_delete')) + '</button>');
@@ -751,9 +848,23 @@
             + ecEsc(source) + '</dd></div>'
             + effective
             + '  </dl>'
+            + ecAgentSummaryHtml(card)
+            + ecExecStateHtml(card)
             + ecTestStateHtml(card)
             + '  <div class="ec-card-actions">' + actions.join('') + '</div>'
             + '</article>';
+    }
+
+    function ecAgentSummaryHtml(card) {
+        var summary = card.agent_assignment;
+        if (!summary) return '';   // no tenant relation behind this card
+        // 未配置 vs 已配置空 are different promises and the card must not blur
+        // them: 沿用原权限 is not the same statement as 没有智能体可用.
+        var text = summary.configured
+            ? ecT('ec_assign_summary_configured', { n: parseInt(summary.visible_count, 10) || 0 })
+            : ecT('ec_assign_summary_unconfigured');
+        return '<p class="ec-card-assign' + (summary.configured ? '' : ' ec-card-assign-open')
+            + '" data-ec-assign-summary>' + ecEsc(text) + '</p>';
     }
 
     // =================================================================
@@ -1358,6 +1469,9 @@
     function ecCloseModal(force) {
         if (!ecModal) return;
         if (!force && ecModal.dirty && !window.confirm(ecT('ec_unsaved_desc'))) return;
+        // 关掉的是输入法正在书写的那个输入框：组合到此为止，否则页面会一直停在
+        // 「组合中」而不再重绘（移除节点不会再触发 compositionend）。
+        ecComposing = false;
         var node = ecModal.node;
         if (node) {
             node.hidden = true;
@@ -1536,6 +1650,8 @@
                     errors.header_name = ecT('ec_validate_required');
                 }
             }
+            // 这里没有逐工具名单要校验：连接上不存在「哪些远端工具可调用」的
+            // 配置字段，远端发布什么由发现结果回答（见 registry 的 MCP 配置键）。
             var slots = ecRelevantSlots(kind, draft);
             slots.forEach(function (slot) {
                 var value = drawer.secretInputs ? drawer.secretInputs[slot] : '';
@@ -1596,8 +1712,9 @@
     function ecBuildConfig(kind, draft) {
         if (kind === 'mcp') {
             if (draft.transport === 'stdio') {
-                return { transport: 'stdio', command: String(draft.command || '').trim(),
+                var stdioConfig = { transport: 'stdio', command: String(draft.command || '').trim(),
                     args: ecSplitLines(draft.args), env_keys: ecSplitLines(draft.env_keys) };
+                return stdioConfig;
             }
             var config = { transport: draft.transport, url: String(draft.url || '').trim(),
                 auth: draft.auth || 'none' };
@@ -1823,17 +1940,104 @@
     function ecRunTest(card) {
         var cap = ecCapabilityFor(card.kind) || {};
         if (cap.test_available !== true) return;   // the control is disabled; never pretend
+        // The test is aimed at the row the card is addressed by, which is not
+        // always the row the card renders (see `ecCardRendersRow`).
+        var epoch = ecState.epoch;
+        var identity = ecIdentityToken();
+        var before = ecActiveElement();
         ecRequest(ecPathFor(card.scope, card.id) + '/test', { method: 'POST', body: {} })
             .then(function (res) {
+                if (!ecStillCurrent(epoch, identity)) return;   // not this page's answer
+                var error = ecErrorOf(res);
+                if (error.code === 'test_result_stale') {
+                    // The configuration moved while the probe ran, so nothing was
+                    // recorded and the card's reading has been voided.
+                    ecToast(ecT('ec_error_server', { message: error.message }), 'error');
+                    return ecRereadTestState(card, before);
+                }
                 if (!ecOk(res)) {
-                    ecToast(ecT('ec_error_server', { message: ecErrorOf(res).message }), 'error');
+                    ecToast(ecT('ec_error_server', { message: error.message }), 'error');
                     return;
                 }
                 var payload = ecPayloadOf(res);
                 var status = payload.test_status || 'untested';
                 ecToast(ecT(TEST_STATUS_KEY[status] || 'ec_status_untested'));
-                loadExternalConnectionsView();
+                // The response already carries the recorded state, so the card
+                // takes it from there. Re-reading the catalogue to learn the same
+                // thing took the list off the screen and cost two more round
+                // trips; the list a reader is looking at stays where it is.
+                if (!ecApplyTestResult(card, payload.connection_id, status, payload.tested_at)) return;
+                ecRender();
+                ecRestoreTestFocus(card, before);
             });
+    }
+
+    // A card renders the row that is *in force* (`effective_id`), which is not
+    // always the row it is addressed by (`id`): an overridden platform template
+    // is addressed by its own id while the tenant's override is what a scene
+    // would run. A verdict recorded for the addressed row may therefore describe
+    // a configuration that will never run, and must not be shown as this card's.
+    function ecCardRendersRow(card, rowId) {
+        return String(rowId || '') === String((card && card.effective_id) || '');
+    }
+
+    // The one place that writes a recorded test result onto a card. `rowId` is
+    // the row the answer describes: what the server named, or — when it names
+    // none — the row the request was addressed to, since that is the only row it
+    // can have tested. Both routes are safe when the card is addressed by a row
+    // it does not render, because neither can equal `effective_id` then.
+    function ecApplyTestResult(card, rowId, status, testedAt) {
+        var described = (rowId === undefined || rowId === null || rowId === '')
+            ? card.id : rowId;
+        if (!ecCardRendersRow(card, described)) return false;
+        card.test_status = status;
+        card.tested_at = testedAt || null;
+        return true;
+    }
+
+    // A discarded result. The card must not keep showing a verdict the server has
+    // thrown away, and re-reading the whole catalogue to find that out is the
+    // teardown this change exists to remove: one connection changed, so one read
+    // of that connection is enough.
+    function ecRereadTestState(card, before) {
+        if (!ecCardRendersRow(card, card.id)) return;   // this card renders another row
+        var epoch = ecState.epoch;
+        var identity = ecIdentityToken();
+        ecRequest(ecPathFor(card.scope, card.id) + '/test').then(function (res) {
+            if (!ecStillCurrent(epoch, identity)) return;
+            if (!ecOk(res)) return;   // the card keeps the reading it already had
+            var state = ecPayloadOf(res);
+            if (!ecApplyTestResult(card, card.id, state.status, state.ran_at)) return;
+            ecRender();
+            ecRestoreTestFocus(card, before);
+        });
+    }
+
+    function ecActiveElement() {
+        try { return document.activeElement || null; } catch (_) { return null; }
+    }
+
+    // Whether nothing has claimed focus since `before`: either the control the
+    // operation was started from, or the body a repaint dropped it to. Someone
+    // who has moved on while the probe ran keeps the position they chose.
+    function ecFocusIsIdle(before) {
+        var now = ecActiveElement();
+        if (!now) return true;
+        if (now === before) return true;
+        try { return now === document.body; } catch (_) { return false; }
+    }
+
+    // An in-place repaint replaces the control that was pressed, so focus is
+    // reclaimed by name rather than by holding a node that no longer exists.
+    function ecRestoreTestFocus(card, before) {
+        if (!ecFocusIsIdle(before)) return;
+        var root = ecRoot();
+        if (!root || !root.querySelector) return;
+        var control = root.querySelector('[data-ec-action="test"][data-id="'
+            + ecEsc(card.id) + '"]');
+        if (control && typeof control.focus === 'function') {
+            try { control.focus(); } catch (_) { /* focus is a courtesy, not a state */ }
+        }
     }
 
     function ecToggleConnection(card) {
@@ -1914,6 +2118,12 @@
         var html = '<h2 class="ec-modal-title">' + ecEsc(ecT('ec_confirm_delete_title')) + '</h2>'
             + '<p class="ec-modal-text">' + ecEsc(ecT('ec_confirm_delete_desc', { name: card.name })) + '</p>';
         if (flags.isDefault) html += ecDefaultHandlingHtml(card, 'delete');
+        if (card.agent_assignment && card.agent_assignment.configured) {
+            // The assignment rows are purged in the same transaction, so the
+            // confirmation says so instead of leaving the reader to discover it.
+            html += '<p class="ec-modal-text">'
+                + ecEsc(ecT('ec_confirm_delete_assignments')) + '</p>';
+        }
         var chosenHandling = null;
         ecConfirm(html, 'ec_action_delete', function () {
             var body = { expected_version: card.version };
@@ -2036,6 +2246,519 @@
     }
 
     // =================================================================
+    // Per-connection Agent assignment
+    // (change add-external-connection-agent-assignment, task group 4)
+    //
+    // The relation is edited as a *delta over drafts*, never as a replacement
+    // of what happens to be on screen. Four rules shape the code below:
+    //
+    // 1. Two independent pages. `assigned` and `candidates` page separately, so
+    //    searching or paging never loses a pending add/remove.
+    // 2. An empty term loads nothing. Opening the modal reads the assigned page
+    //    only; the tenant's whole Agent roster is never downloaded to filter it
+    //    in the browser.
+    // 3. `assigned` comes from the server's *whole* relation, so an Agent that
+    //    is already assigned on a page the caller has not loaded still reads
+    //    「已添加」 and cannot be added twice.
+    // 4. The save carries the drafts and `expected_revision` only. A 409 keeps
+    //    the drafts and asks for a re-read; a lost response is reported as
+    //    unknown — never re-sent, never shown as success.
+    // =================================================================
+    var AGENT_PAGE_SIZE = 20;
+    var AGENT_SEARCH_DEBOUNCE_MS = 300;
+
+    function ecAgentsUrl(connectionId, suffix, page, query) {
+        var url = '/api/external-connections/tenant/'
+            + encodeURIComponent(connectionId) + '/' + suffix
+            + '?page=' + page + '&page_size=' + AGENT_PAGE_SIZE;
+        if (query) url += '&q=' + encodeURIComponent(query);
+        return url;
+    }
+
+    function ecAgentDraftOf(state, id) {
+        if (state.add.indexOf(id) >= 0) return 'add';
+        if (state.remove.indexOf(id) >= 0) return 'remove';
+        return '';
+    }
+
+    function ecAgentDraftDrop(state, kind, id) {
+        var list = kind === 'add' ? state.add : state.remove;
+        var index = list.indexOf(id);
+        if (index >= 0) list.splice(index, 1);
+    }
+
+    function ecAgentDraftKeep(state, kind, id) {
+        var list = kind === 'add' ? state.add : state.remove;
+        if (list.indexOf(id) < 0) list.push(id);
+    }
+
+    function ecAgentButton(attr, id, labelKey, enabled) {
+        return '<button type="button" class="ec-btn ec-btn-ghost ec-btn-small"'
+            + (enabled ? '' : ' disabled')
+            + ' ' + attr + '="' + ecEsc(id) + '">'
+            + ecEsc(ecT(labelKey)) + '</button>';
+    }
+
+    function ecAgentRowHtml(item, side, state) {
+        var id = String(item.id === undefined || item.id === null ? '' : item.id);
+        var draft = ecAgentDraftOf(state, id);
+        var meta = [id];
+        if (item.visibility === 'private') meta.push(ecT('ec_assign_private'));
+        if (item.enabled === false) meta.push(ecT('ec_disabled'));
+        // 可见但不可管理可以显示，操作不可用 — and the server still refuses the
+        // same change if it is submitted anyway.
+        var writable = state.canAssign && item.manageable !== false;
+        var button;
+        var noteKey = '';
+        if (side === 'assigned') {
+            if (draft === 'remove') {
+                noteKey = 'ec_assign_state_removing';
+                button = ecAgentButton('data-ec-agents-remove', id, 'ec_assign_undo_remove', writable);
+            } else {
+                button = ecAgentButton('data-ec-agents-remove', id, 'ec_assign_remove', writable);
+            }
+        } else if (draft === 'add') {
+            noteKey = 'ec_assign_state_adding';
+            button = ecAgentButton('data-ec-agents-add', id, 'ec_assign_undo_add', writable);
+        } else if (item.assigned || draft === 'remove') {
+            // Already assigned in the server's relation (possibly on a page this
+            // caller never loaded), or being un-assigned by a draft: either way
+            // there is nothing to add.
+            noteKey = 'ec_assign_state_added';
+            button = '<button type="button" class="ec-btn ec-btn-ghost ec-btn-small"'
+                + ' disabled data-ec-agents-added="' + ecEsc(id) + '">'
+                + ecEsc(ecT('ec_assign_added')) + '</button>';
+        } else {
+            button = ecAgentButton('data-ec-agents-add', id, 'ec_assign_add', writable);
+        }
+        if (!writable && !noteKey) noteKey = 'ec_assign_cannot_manage';
+        var note = noteKey
+            ? '<span class="ec-assign-note">' + ecEsc(ecT(noteKey)) + '</span>'
+            : '';
+        return '<li class="ec-assign-row" data-ec-agent="' + ecEsc(id) + '">'
+            + '<span class="ec-assign-text">'
+            + '<span class="ec-assign-name">' + ecEsc(String(item.name || id)) + '</span>'
+            + '<span class="ec-assign-meta">' + ecEsc(meta.join(' · ')) + '</span>'
+            + '</span>' + note + button + '</li>';
+    }
+
+    function ecAgentPagerHtml(side, list) {
+        if (list.page <= 1 && !list.hasMore) return '';
+        return '<div class="ec-assign-pager">'
+            + '<button type="button" class="ec-btn ec-btn-ghost ec-btn-small"'
+            + ' data-ec-agents-prev="' + side + '"' + (list.page <= 1 ? ' disabled' : '') + '>'
+            + ecEsc(ecT('ec_assign_prev')) + '</button>'
+            + '<span class="ec-assign-page">'
+            + ecEsc(ecT('ec_assign_page_of', { page: list.page, total: list.total })) + '</span>'
+            + '<button type="button" class="ec-btn ec-btn-ghost ec-btn-small"'
+            + ' data-ec-agents-next="' + side + '"' + (list.hasMore ? '' : ' disabled') + '>'
+            + ecEsc(ecT('ec_assign_next')) + '</button>'
+            + '</div>';
+    }
+
+    function ecAgentSectionHtml(side, list, state) {
+        var titleKey = side === 'candidates'
+            ? 'ec_assign_candidates_title' : 'ec_assign_assigned_title';
+        var html = '<h3 class="ec-assign-section-title">'
+            + ecEsc(ecT(titleKey, { n: list.total })) + '</h3>';
+        if (list.error) {
+            return html + '<p class="ec-banner ec-banner-error" role="alert">'
+                + ecEsc(ecT('ec_assign_failed', { message: list.error })) + '</p>';
+        }
+        if (list.loading) {
+            return html + '<p class="ec-assign-empty" role="status">'
+                + ecEsc(ecT('ec_loading')) + '</p>';
+        }
+        if (!list.items.length) {
+            var emptyKey = (side === 'assigned' && !state.configured)
+                ? 'ec_assign_unconfigured_note'
+                : (side === 'candidates' ? 'ec_assign_no_candidates' : 'ec_assign_empty');
+            return html + '<p class="ec-assign-empty" role="status">'
+                + ecEsc(ecT(emptyKey)) + '</p>';
+        }
+        return html + '<ul class="ec-assign-list">'
+            + list.items.map(function (item) {
+                return ecAgentRowHtml(item, side, state);
+            }).join('')
+            + '</ul>' + ecAgentPagerHtml(side, list);
+    }
+
+    function ecAgentBannerHtml(kind, key, extraKey) {
+        return '<p class="ec-banner ec-banner-' + kind + '" role="'
+            + (kind === 'info' ? 'status' : 'alert') + '">'
+            + (extraKey ? '<strong>' + ecEsc(ecT(key)) + '</strong> ' : ecEsc(ecT(key)))
+            + (extraKey ? ecEsc(ecT(extraKey)) : '')
+            + '</p>';
+    }
+
+    function ecAgentPendingText(state, pending) {
+        var bits = [];
+        if (state.add.length) bits.push(ecT('ec_assign_pending_add', { n: state.add.length }));
+        if (state.remove.length) bits.push(ecT('ec_assign_pending_remove', { n: state.remove.length }));
+        if (bits.length) return ecT('ec_assign_pending', { changes: bits.join(' · ') });
+        return ecT(state.configured ? 'ec_assign_no_change' : 'ec_assign_pending_empty');
+    }
+
+    function ecAgentModalHtml(state) {
+        var pending = state.add.length + state.remove.length;
+        var html = '<h2 class="ec-modal-title">'
+            + ecEsc(ecT('ec_assign_title', { name: state.card.name })) + '</h2>'
+            + '<p class="ec-modal-text">' + ecEsc(ecT('ec_assign_desc')) + '</p>';
+        if (!state.canAssign) html += ecAgentBannerHtml('info', 'ec_assign_read_only');
+        if (!state.configured) {
+            html += ecAgentBannerHtml('warn', 'ec_assign_first_title', 'ec_assign_first_desc');
+        }
+        if (state.conflict) html += ecAgentBannerHtml('error', 'ec_assign_conflict');
+        if (state.unknown) html += ecAgentBannerHtml('error', 'ec_assign_unknown');
+        if (state.conflict || state.unknown) {
+            html += '<p class="ec-banner-actions">'
+                + '<button type="button" class="ec-btn ec-btn-ghost ec-btn-small" data-ec-agents-reload>'
+                + ecEsc(ecT('ec_assign_reload')) + '</button></p>';
+        }
+        html += '<div class="ec-field ec-field-full">'
+            + '<label class="ec-label" for="ec-agents-search">'
+            + ecEsc(ecT('ec_assign_search_label')) + '</label>'
+            + '<input id="ec-agents-search" class="ec-input ec-search" type="search"'
+            + ' autocomplete="off" data-ec-agents-search'
+            + ' placeholder="' + ecEsc(ecT('ec_assign_search_placeholder')) + '"'
+            + ' value="' + ecEsc(state.query) + '">'
+            + '</div>';
+        if (state.query.trim()) {
+            html += ecAgentSectionHtml('candidates', state.candidates, state);
+        } else {
+            html += '<p class="ec-hint">' + ecEsc(ecT('ec_assign_search_hint')) + '</p>';
+        }
+        html += ecAgentSectionHtml('assigned', state.assigned, state);
+        var locked = state.saving || state.conflict || state.unknown;
+        var canSave = state.canAssign && !locked && (pending > 0 || !state.configured);
+        html += '<div class="ec-modal-actions">'
+            + '<span class="ec-assign-pending'
+            + (pending ? ' ec-assign-pending-active' : '') + '">'
+            + ecEsc(ecAgentPendingText(state, pending)) + '</span>'
+            + '<button type="button" class="ec-btn ec-btn-ghost" data-ec-agents-cancel>'
+            + ecEsc(ecT('ec_cancel')) + '</button>'
+            + '<button type="button" class="ec-btn ec-btn-primary"'
+            + (canSave ? '' : ' disabled') + ' data-ec-agents-save>'
+            + ecEsc(ecT('ec_assign_save')) + '</button>'
+            + '</div>';
+        return html;
+    }
+
+    function ecAssignPanel() {
+        return document.getElementById('ec-modal-panel');
+    }
+
+    function ecAssignRender() {
+        var state = ecAssign;
+        var panel = ecAssignPanel();
+        if (!state || !panel) return;
+        if (ecModal) ecModal.dirty = (state.add.length + state.remove.length) > 0;
+        // 组合未完时不得重建：输入法正在这个输入框里写字（见 ecComposing 的说明）。
+        if (ecComposing) { state.repaint = true; return; }
+        state.repaint = false;
+        var before = ecActiveElement();
+        panel.innerHTML = ecAgentModalHtml(state);
+        ecAssignBind(panel, state);
+        ecAssignRestoreFocus(panel, state, before);
+    }
+
+    // Focus is reclaimed only where it was lost to the repaint itself: a user
+    // who has moved on to a row button keeps the position they chose.
+    function ecAssignRestoreFocus(panel, state, before) {
+        if (!state.query || !panel.querySelector) return;
+        var wasSearch = !before || before === document.body
+            || (before.getAttribute
+                && before.getAttribute('data-ec-agents-search') !== null);
+        if (!wasSearch) return;
+        var input = panel.querySelector('[data-ec-agents-search]');
+        if (!input || typeof input.focus !== 'function') return;
+        try {
+            input.focus();
+            var end = String(input.value || '').length;
+            if (typeof input.setSelectionRange === 'function') input.setSelectionRange(end, end);
+        } catch (_) { /* focus is a courtesy, not a state */ }
+    }
+
+    function ecAssignBind(panel, state) {
+        if (!panel || typeof panel.querySelector !== 'function') return;
+        function on(selector, type, handler) {
+            var node = panel.querySelector(selector);
+            if (node && typeof node.addEventListener === 'function') {
+                node.addEventListener(type, handler);
+            }
+        }
+        on('[data-ec-agents-search]', 'input', function (event) {
+            // 组合中的拼音不是查询：提交时的 compositionend 才是。
+            if (ecComposingInput(event)) return;
+            ecAssignSearch(event && event.target ? event.target.value : '');
+        });
+        // 输入法组合：提交前不搜索、不重绘这个输入框（见 ecComposing 的说明）。
+        on('[data-ec-agents-search]', 'compositionstart', ecCompositionStart);
+        on('[data-ec-agents-search]', 'compositionend', function (event) {
+            ecCompositionCommit(function () {
+                ecAssignSearch(event && event.target ? event.target.value : '');
+            });
+        });
+        on('[data-ec-agents-cancel]', 'click', function () { ecCloseModal(false); });
+        on('[data-ec-agents-save]', 'click', function () { ecAssignSave(); });
+        on('[data-ec-agents-reload]', 'click', function () { ecAssignReload(); });
+        ['assigned', 'candidates'].forEach(function (side) {
+            var list = state[side];
+            on('[data-ec-agents-prev="' + side + '"]', 'click', function () {
+                ecAssignGoto(side, list.page - 1);
+            });
+            on('[data-ec-agents-next="' + side + '"]', 'click', function () {
+                ecAssignGoto(side, list.page + 1);
+            });
+            list.items.forEach(function (item) {
+                var id = String(item.id);
+                on('[data-ec-agents-remove="' + id + '"]', 'click', function () {
+                    ecAssignToggleRemove(side, id);
+                });
+                on('[data-ec-agents-add="' + id + '"]', 'click', function () {
+                    ecAssignToggleAdd(side, id, !!item.assigned);
+                });
+            });
+        });
+    }
+
+    function ecAssignLoad(side, page) {
+        var state = ecAssign;
+        if (!state || page < 1) return;
+        if (side === 'candidates' && !state.query.trim()) return;
+        var list = state[side];
+        list.loading = true;
+        list.error = null;
+        var seq = state.searchSeq;
+        if (side === 'candidates') {
+            seq = (state.searchSeq += 1);
+            list.active = true;
+        }
+        var url = ecAgentsUrl(state.id,
+            side === 'candidates' ? 'agent-candidates' : 'agent-assignments',
+            page, side === 'candidates' ? state.query.trim() : '');
+        ecAssignRender();
+        ecRequest(url).then(function (res) {
+            // A late answer for a superseded search, a changed identity or a
+            // closed modal must not land in the list that is on screen.
+            if (ecAssign !== state || !ecStillCurrent(state.epoch, state.identity)) return;
+            if (side === 'candidates' && seq !== state.searchSeq) return;
+            list.loading = false;
+            if (!ecOk(res)) {
+                var failure = ecErrorOf(res);
+                list.error = failure.message || failure.code || '';
+                ecAssignRender();
+                return;
+            }
+            var data = ecPayloadOf(res);
+            list.items = data.items || [];
+            list.page = parseInt(data.page, 10) || page;
+            list.total = parseInt(data.total, 10) || 0;
+            list.hasMore = !!data.has_more;
+            if (typeof data.revision === 'number') state.revision = data.revision;
+            state.configured = !!data.configured;
+            state.canAssign = !!data.can_assign;
+            if (side === 'assigned' && list.page === 1) {
+                // The first page of the assigned read *is* the visible assigned
+                // count the card summarises: that read carries no search term,
+                // so the card is updated from the server's own number rather
+                // than from a local count of what happened to be shown.
+                ecAssignApplyToCard(state);
+                ecRender();
+            }
+            ecAssignRender();
+        });
+    }
+
+    function ecAssignGoto(side, page) {
+        var state = ecAssign;
+        if (!state || page < 1 || state[side].loading) return;
+        ecAssignLoad(side, page);
+    }
+
+    function ecAssignSearch(term) {
+        var state = ecAssign;
+        if (!state) return;
+        var value = String(term === undefined || term === null ? '' : term);
+        // 同一个词只问一次：提交后浏览器还会补一个普通 input 事件，重发就是对着
+        // 同一个关键词再请求一遍。
+        if (value === state.query) return;
+        state.query = value;
+        if (state.searchTimer) {
+            window.clearTimeout(state.searchTimer);
+            state.searchTimer = null;
+        }
+        if (!state.query.trim()) {
+            // 空关键词不加载候选全集: the previous results go away with the term,
+            // and no request is made to prove what is already known.
+            state.searchSeq += 1;
+            state.candidates = { page: 1, total: 0, hasMore: false, items: [],
+                                 loading: false, error: null, active: false };
+            ecAssignRender();
+            return;
+        }
+        state.searchTimer = window.setTimeout(function () {
+            state.searchTimer = null;
+            if (ecAssign !== state) return;
+            ecAssignLoad('candidates', 1);
+        }, AGENT_SEARCH_DEBOUNCE_MS);
+    }
+
+    function ecAssignRowOf(state, side, id) {
+        var items = (state[side] && state[side].items) || [];
+        for (var i = 0; i < items.length; i += 1) {
+            if (String(items[i].id) === String(id)) return items[i];
+        }
+        return null;
+    }
+
+    // A row the caller may see but not manage offers no draft: the control is
+    // rendered disabled, and a constructed change is refused here rather than
+    // being sent for the server to reject.
+    function ecAssignWritable(state, side, id) {
+        if (!state.canAssign) return false;
+        var item = ecAssignRowOf(state, side, id);
+        return !item || item.manageable !== false;
+    }
+
+    function ecAssignToggleRemove(side, id) {
+        var state = ecAssign;
+        if (!state || !ecAssignWritable(state, side, id)) return;
+        if (ecAgentDraftOf(state, id) === 'remove') ecAgentDraftDrop(state, 'remove', id);
+        else ecAgentDraftKeep(state, 'remove', id);
+        ecAssignRender();
+    }
+
+    function ecAssignToggleAdd(side, id, serverAssigned) {
+        var state = ecAssign;
+        if (!state || !ecAssignWritable(state, side, id)) return;
+        var draft = ecAgentDraftOf(state, id);
+        if (draft === 'add') ecAgentDraftDrop(state, 'add', id);
+        else if (draft === 'remove' || serverAssigned) {
+            // 相反操作抵消: the seat already exists, so undoing the pending
+            // removal leaves nothing to save.
+            ecAgentDraftDrop(state, 'remove', id);
+        } else ecAgentDraftKeep(state, 'add', id);
+        ecAssignRender();
+    }
+
+    function ecAssignApplyToCard(state) {
+        var summary = state.card && state.card.agent_assignment;
+        if (!summary) return;
+        summary.configured = !!state.configured;
+        // The assigned read is never narrowed by the search box (only the
+        // candidates are), so its total is the visible count whatever the term
+        // says — including right after a save.
+        if (state.assigned.total !== undefined) {
+            summary.visible_count = state.assigned.total;
+        }
+        summary.revision = state.revision;
+    }
+
+    function ecAssignReload() {
+        var state = ecAssign;
+        if (!state) return;
+        state.conflict = false;
+        state.unknown = false;
+        ecAssignLoad('assigned', state.assigned.page || 1);
+        if (state.query.trim()) ecAssignLoad('candidates', state.candidates.page || 1);
+    }
+
+    function ecAssignSave() {
+        var state = ecAssign;
+        if (!state || state.saving || !state.canAssign) return;
+        if (state.conflict || state.unknown) return;   // re-read first; never re-send
+        var pending = state.add.length + state.remove.length;
+        if (!pending && state.configured) return;
+        state.saving = true;
+        ecAssignRender();
+        ecRequest(ecAgentsUrl(state.id, 'agent-assignments', 1, ''),
+            {
+                method: 'POST',
+                body: {
+                    expected_revision: state.revision,
+                    add_agent_ids: state.add.slice(),
+                    remove_agent_ids: state.remove.slice(),
+                },
+            }).then(function (res) {
+                if (ecAssign !== state) return;
+                state.saving = false;
+                var failure = ecErrorOf(res);
+                if (res.status === 409
+                        || failure.code === 'assignment_version_conflict') {
+                    // The drafts stay exactly as they were: only the caller can
+                    // decide whether they still describe what they want.
+                    state.conflict = true;
+                    ecToast(ecT('ec_toast_assign_conflict'), 'error');
+                    ecAssignRender();
+                    return;
+                }
+                if (res.transport) {
+                    state.unknown = true;
+                    ecToast(ecT('ec_toast_agents_unknown'), 'error');
+                    ecAssignRender();
+                    return;
+                }
+                if (!ecOk(res)) {
+                    ecToast(ecT('ec_error_server',
+                        { message: failure.message || failure.code }), 'error');
+                    ecAssignRender();
+                    return;
+                }
+                var data = ecPayloadOf(res);
+                state.configured = true;
+                if (typeof data.revision === 'number') state.revision = data.revision;
+                state.add = [];
+                state.remove = [];
+                state.conflict = false;
+                state.unknown = false;
+                ecAssignApplyToCard(state);
+                ecToast(ecT('ec_toast_agents_saved'));
+                ecRender();
+                // Re-read the first page: the card's visible count and the list
+                // both come from the server's own relation, not from a local
+                // count of the rows this caller happened to see.
+                ecAssignLoad('assigned', 1);
+            });
+    }
+
+    function ecOpenAgentAssignments(card) {
+        // 平台目录没有业务租户: a card with no assignment summary has no tenant
+        // relation to manage, and must not be turned into one here.
+        if (!card || !card.agent_assignment) return;
+        var state = {
+            card: card,
+            id: String(card.id),
+            epoch: ecState.epoch,
+            identity: ecIdentityToken(),
+            configured: !!card.agent_assignment.configured,
+            revision: parseInt(card.agent_assignment.revision, 10) || 0,
+            canAssign: !!card.agent_assignment.can_assign,
+            assigned: { page: 1, total: 0, hasMore: false, items: [],
+                        loading: true, error: null, active: true },
+            candidates: { page: 1, total: 0, hasMore: false, items: [],
+                          loading: false, error: null, active: false },
+            query: '',
+            add: [],
+            remove: [],
+            saving: false, conflict: false, unknown: false, repaint: false,
+            searchSeq: 0, searchTimer: null,
+        };
+        ecAssign = state;
+        ecOpenModal('', {
+            focus: card.node,
+            dirty: false,
+            onClose: function () {
+                if (ecAssign !== state) return;
+                if (state.searchTimer) window.clearTimeout(state.searchTimer);
+                ecAssign = null;
+            },
+        });
+        ecAssignRender();
+        ecAssignLoad('assigned', 1);
+    }
+
+    // =================================================================
     // Toast
     // =================================================================
     function ecToast(message, tone) {
@@ -2114,6 +2837,9 @@
             case 'tenant-access':
                 if (card) ecOpenTenantAccess(card);
                 break;
+            case 'agents':
+                if (card) ecOpenAgentAssignments(card);
+                break;
             case 'test':
                 if (card) ecRunTest(card);
                 break;
@@ -2153,20 +2879,28 @@
         }
     }
 
+    // The page's own search box filters the cards already in hand; the term is
+    // adopted only once it is committed text (see 输入法组合 above).
+    function ecApplySearch(value) {
+        var term = String(value === undefined || value === null ? '' : value);
+        if (term === ecState.search) return;   // nothing changed, nothing to repaint
+        ecState.search = term;
+        ecRender();
+        var container = document.getElementById('view-external_connections');
+        var search = container && container.querySelector('[data-ec-action="search"]');
+        if (search) {
+            search.focus();
+            try { search.setSelectionRange(search.value.length, search.value.length); } catch (_) {}
+        }
+    }
+
     function ecHandleInput(event) {
         var el = event.target;
         if (!el || !el.getAttribute) return;
         if (el.getAttribute('data-ec-action') === 'search') {
-            ecState.search = el.value;
-            // Re-rendering rebuilds the search input; focus and caret are
-            // restored right after so typing is not interrupted.
-            ecRender();
-            var container = document.getElementById('view-external_connections');
-            var search = container && container.querySelector('[data-ec-action="search"]');
-            if (search) {
-                search.focus();
-                try { search.setSelectionRange(search.value.length, search.value.length); } catch (_) {}
-            }
+            // 组合中的拼音不是查询：提交时的 compositionend 才是。
+            if (ecComposingInput(event)) return;
+            ecApplySearch(el.value);
             return;
         }
         if (!ecDrawer || !ecDrawer.open) return;
@@ -2238,6 +2972,9 @@
     }
 
     function ecHandleKeydown(event) {
+        // 输入法正在处理这个按键时（组合中的 Escape 是取消候选，Enter 是选词），
+        // 按键属于输入法，不属于页面：KeyCode 229 是浏览器给这类按键的编码。
+        if (event.isComposing || event.keyCode === 229) return;
         if (event.key === 'Escape') {
             if (ecModal) { ecCloseModal(false); return; }
             if (ecDrawer && ecDrawer.open) { ecRequestCloseDrawer(); return; }
@@ -2262,11 +2999,28 @@
             root.addEventListener('click', ecHandleClick);
             root.addEventListener('input', ecHandleInput);
             root.addEventListener('change', ecHandleChange);
+            // 输入法组合：提交前不筛选、不重绘正在书写的搜索框。
+            root.addEventListener('compositionstart', ecCompositionStart);
+            root.addEventListener('compositionend', function (event) {
+                ecCompositionCommit(function () {
+                    ecApplySearch(event && event.target ? event.target.value : '');
+                });
+            });
             document.addEventListener('keydown', ecHandleKeydown);
+            // The drawer and the modal are children of `document.body`, not of
+            // the page root, so their events never bubble through the listeners
+            // above. Every type they carry has to be bound on the node itself:
+            // a drawer select that never reports its `change` leaves the
+            // conditional groups (请求头名称 / 认证请求头值) hidden with no way to
+            // reveal them.
             var drawer = document.getElementById('ec-drawer');
-            if (drawer) drawer.addEventListener('click', ecHandleClick);
             var modal = document.getElementById('ec-modal');
-            if (modal) modal.addEventListener('click', ecHandleClick);
+            [drawer, modal].forEach(function (host) {
+                if (!host) return;
+                host.addEventListener('click', ecHandleClick);
+                host.addEventListener('input', ecHandleInput);
+                host.addEventListener('change', ecHandleChange);
+            });
         }
         if (!ecPeriodic) {
             ecPeriodic = window.setInterval(ecCheckIdentity, 1500);
@@ -2391,6 +3145,16 @@
         openTenantAccess: ecOpenTenantAccess,
         showReferenceRefusal: ecShowReferenceRefusal,
         openExistingFor: ecOpenExistingFor,
+        // The Agent-assignment modal is driven the same way: open it, fire the
+        // rendered controls, and assert on the request bodies it builds.
+        openAgentAssignments: ecOpenAgentAssignments,
+        assignmentState: function () { return ecAssign; },
+        agentModalHtml: ecAgentModalHtml,
+        agentSectionHtml: ecAgentSectionHtml,
+        agentSummaryHtml: ecAgentSummaryHtml,
+        execStateHtml: ecExecStateHtml,
+        agentRowHtml: ecAgentRowHtml,
+        assignmentPendingText: ecAgentPendingText,
         isDirty: ecIsDirty,
         identityToken: ecIdentityToken,
         request: ecRequest,

@@ -1,0 +1,55 @@
+{
+  "change": "apply-test-result-in-place",
+  "run": "2026-09-27 11:42 (UTC+8)",
+  "surface": {
+    "console": "http://localhost:9899/admin#view-external-connections",
+    "process": "/Users/jiantan/ai_assistant/rsmagent/.venv/bin/python app.py (cwd = repo)",
+    "account": "test15 (tenant admin)",
+    "module_served": "/assets/js/external-connections.js (Cache-Control: no-cache, ETag revalidated)"
+  },
+  "subject": {
+    "kind": "mcp",
+    "scope": "tenant",
+    "card_id": "conn_cN-lhbMpQlwpiL7k",
+    "name": "weknora-rsmagent",
+    "endpoint": "http://localhost:8080/mcp/1b6c976f-654c-49a2-a49d-2c19ca2d06a5"
+  },
+  "method": {
+    "instrumentation": "MutationObserver on #ec-root (childList/subtree/characterData) counting every observed mutation, plus a window.fetch wrapper recording requests",
+    "click": "the card's own 测试连接 control, dispatched on the real element",
+    "window": "2.5s after the click, enough for the probe and the repaint"
+  },
+  "before": {
+    "test_state": "连接正常 最近测试：2026/9/27 11:27:00",
+    "time_origin": 1790480525663.4
+  },
+  "after": {
+    "test_state": "连接正常 最近测试：2026/9/27 11:42:19",
+    "card_still_in_document": true,
+    "test_state_text": "连接正常最近测试：2026/9/27 11:42:19测试连接"
+  },
+  "observations": {
+    "requests_after_click": [
+      { "method": "POST", "url": "/api/external-connections/tenant/conn_cN-lhbMpQlwpiL7k/test" }
+    ],
+    "request_count_after_click": 1,
+    "catalogue_reads_after_click": 0,
+    "types_reads_after_click": 0,
+    "loading_faces_rendered": 0,
+    "mutations_while_card_absent": 0,
+    "document_navigation": false,
+    "elapsed_ms": 2502
+  },
+  "reading": {
+    "one_request": "the operation is the test and nothing else; the catalogue is not re-read",
+    "no_loading_face": "no mutation ever exposed 正在加载连接… — the list was never replaced by the loading panel",
+    "no_absent_card": "across every observed mutation the card stayed in the document",
+    "no_navigation": "performance.timeOrigin is unchanged, so no document-level navigation occurred",
+    "state_advanced": "最近测试 moved 11:27:00 → 11:42:19 with the verdict intact, from the response payload alone"
+  },
+  "not_exercised_here": [
+    "the effective-row guard (needs a tenant override over a platform template) — covered by tests/test_external_connections_frontend.cjs, mutation-verified",
+    "the 409 test_result_stale re-read (needs a configuration change during the probe) — covered by the same file, mutation-verified"
+  ],
+  "artifacts": ["card-after-test-1142.png"]
+}

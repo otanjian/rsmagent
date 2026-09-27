@@ -259,6 +259,56 @@ def personal_channel_target(service, *, tenant_id, user_id, agent_id,
     return agent_id
 
 
+def legacy_connection_rule(service, tenant_id, connection_id):
+    """Put a connection on the pre-assignment 沿用原权限 rule (``configured=0``).
+
+    Change ``add-external-connection-agent-assignment`` makes a *new* connection
+    start configured with an empty assignment: nobody may use it until an Agent
+    is explicitly added, and a call carrying no trusted Agent context is refused
+    too. A pre-existing test that is about the adapter, the transport, the grant
+    or the runtime's *other* gates is not about assignment, so it says so here
+    and keeps testing the behaviour it was written for.
+    """
+    service._store.execute(  # noqa: SLF001 - the test's own fixture
+        "UPDATE external_connection_agent_assignment_sets SET configured=0"
+        " WHERE tenant_id=? AND logical_connection_id=?",
+        (tenant_id, _logical_connection_id(service, connection_id)))
+
+
+def assign_agents_to_connection(service, tenant_id, connection_id, *agent_ids):
+    """Write the relation an explicit assignment save would write.
+
+    The inverse of :func:`legacy_connection_rule`: the connection becomes
+    configured and the named Agents are the only ones that may use it. Lets a
+    test exercise the assigned path without going through the HTTP save.
+    """
+    logical_id = _logical_connection_id(service, connection_id)
+    for agent_id in agent_ids:
+        service._store.execute(  # noqa: SLF001
+            "INSERT OR IGNORE INTO external_connection_agent_assignments"
+            " (tenant_id, logical_connection_id, agent_id, created_by,"
+            "  created_at) VALUES (?,?,?,'test', unixepoch())",
+            (tenant_id, logical_id, agent_id))
+    service._store.execute(  # noqa: SLF001
+        "INSERT INTO external_connection_agent_assignment_sets"
+        " (tenant_id, logical_connection_id, configured, revision, updated_at)"
+        " VALUES (?,?,1,1,unixepoch())"
+        " ON CONFLICT(tenant_id, logical_connection_id) DO UPDATE SET"
+        " configured=1",
+        (tenant_id, logical_id))
+    return list(agent_ids)
+
+
+def _logical_connection_id(service, connection_id):
+    """The id the relation is keyed on: a tenant override stands in for its template."""
+    rows = service._store.execute(  # noqa: SLF001 - the test's own fixture
+        "SELECT id, base_connection_id FROM external_connections WHERE id=?",
+        (connection_id,))
+    if rows and rows[0]["base_connection_id"]:
+        return str(rows[0]["base_connection_id"])
+    return str(connection_id)
+
+
 def build_identity(path, *, agents=("agent-a",), tenant_code="acme"):
     """Bootstrap a tenant with an identity database at ``path``.
 

@@ -31,7 +31,7 @@ from typing import Any, Callable, Dict, FrozenSet, Iterable, List, Mapping, Opti
 
 from common.log import logger
 
-from integrations.external import authorization, registry
+from integrations.external import assignment, authorization, registry
 from integrations.external.errors import forbidden, not_found
 
 #: Capability label the identity layer's tool projection uses.
@@ -185,11 +185,25 @@ def available_tools(*, tenant_id: Optional[str], actor_user_id: str,
     """
     load_providers()
     out: List[ToolBinding] = []
+    taken: Dict[str, str] = {}
     for _kind, provider in providers().items():
         try:
             for binding in provider(tenant_id, actor_user_id) or ():
                 if connection_id and binding.connection_id != connection_id:
                     continue
+                seen = taken.get(binding.tool.name)
+                if seen is not None and seen != binding.connection_id:
+                    # Two connections claiming one name is the case the names
+                    # are namespaced to make impossible; if it happens anyway,
+                    # the model would hold one name for two capabilities and
+                    # dispatch would answer with whichever connection it
+                    # resolved first. Offering one of them is the smaller lie.
+                    logger.warning(
+                        "[external] connections %s and %s compose the same"
+                        " tool name %r; the second is not offered",
+                        seen, binding.connection_id, binding.tool.name)
+                    continue
+                taken[binding.tool.name] = binding.connection_id
                 out.append(binding)
         except Exception:  # noqa: BLE001 - one type failing must not hide the rest
             continue
@@ -219,7 +233,52 @@ def authorized_tools(*, tenant_id: Optional[str], actor_user_id: str,
         if authorization.may_execute(
                 identity, actor_user_id=actor_user_id, tenant_id=tenant_id,
                 kind=binding.tool.kind, action=binding.tool.action,
-                scope=binding.scope, agent_id=agent_id):
+                scope=binding.scope, agent_id=agent_id,
+                connection_id=binding.connection_id):
+            out.append(binding)
+    return _assigned_to_agent(out, identity=identity, tenant_id=tenant_id,
+                              agent_id=agent_id)
+
+
+def _assigned_to_agent(bindings: List[ToolBinding], *, identity: Any,
+                       tenant_id: Optional[str],
+                       agent_id: str) -> List[ToolBinding]:
+    """Drop the connections this trusted Agent context is not assigned to.
+
+    The rule itself lives in :mod:`integrations.external.assignment`; this is
+    only the batch plumbing, so the projection and the final dispatch cannot
+    disagree. A binding that cannot be *proven* allowed is dropped — an
+    unknown row, a missing state and an unreadable store all answer "no", which
+    is what stops a lookup failure from widening the list (spec: 缺状态/查询异常
+    拒绝). Personal mail is outside the regime and is returned untouched.
+    """
+    store = getattr(identity, "_store", None)
+    if store is None:
+        # Nothing to ask. This is the discovery layer without a connection
+        # store; the pre-existing authorization is still the only gate, which
+        # is the behaviour a build with no assignment state has always had.
+        return list(bindings)
+    try:
+        logical = assignment.logical_ids_for(
+            store, [b.connection_id for b in bindings])
+    except Exception:  # noqa: BLE001 - an unreadable store proves nothing
+        logical = {}
+    out: List[ToolBinding] = []
+    for binding in bindings:
+        if not assignment.call_regime_applies(
+                binding.tool.kind, binding.scope, tenant_id):
+            out.append(binding)
+            continue
+        logical_id = logical.get(str(binding.connection_id))
+        if not logical_id:
+            continue
+        try:
+            allowed, _reason = assignment.assignment_allows(
+                store, tenant_id=tenant_id, logical_id=logical_id,
+                agent_id=agent_id)
+        except Exception:  # noqa: BLE001 - a failed lookup is a refusal
+            continue
+        if allowed:
             out.append(binding)
     return out
 

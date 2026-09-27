@@ -36,7 +36,8 @@ from __future__ import annotations
 import pytest
 
 from integrations.external import registry
-from tests._helpers import build_identity
+from tests._helpers import (assign_agents_to_connection, build_identity,
+                            legacy_connection_rule)
 
 MASTER_KEY = "authz-master-key"
 KIND = registry.KIND_MCP
@@ -80,9 +81,33 @@ def svc(stack):
 
 @pytest.fixture
 def connection(svc, stack):
-    return svc.create_connection(
+    connection = svc.create_connection(
         actor_user_id=stack.root, scope="tenant", tenant_id=stack.tenant_id,
         kind=KIND, name="团队 MCP", config=dict(MCP_CONFIG))
+    # The tests here are about the *grant* gate, and most call with no trusted
+    # Agent context: keep the connection on the pre-assignment 沿用原权限 rule so
+    # the code under assertion is the grant, not an assignment refusal.
+    legacy_connection_rule(svc, stack.tenant_id, connection["id"])
+    return connection
+
+def _mcp_name(action, connection_id, remote=""):
+    """The binding name the adapter composes for one action on one connection.
+
+    Built through the composer rather than written out, because the wire format
+    is a contract with the provider (``^[a-zA-Z0-9_-]+$``) and not a spelling
+    these cases are about: they are about which capabilities are offered and
+    which calls are authorized. The spelling itself is pinned in
+    ``tests/test_tool_name_wire_contract.py``.
+    """
+    from agent.tools.mcp.external import tool_name
+    return tool_name(action=action, connection_id=connection_id,
+                     remote_name=remote)
+
+
+def _model_name(action, connection_id, remote=""):
+    """The name the model sees: the binding name carrying its origin prefix."""
+    from agent.tools.external.external_tool import _external_tool_name
+    return _external_tool_name(_mcp_name(action, connection_id, remote))
 
 
 def _open_read(monkeypatch) -> None:
@@ -469,6 +494,173 @@ def test_the_refusal_does_not_name_the_connection(
     assert TOOLS_LIST_RESOURCE in (result.message or "")
 
 
+# -- 分配即该连接的授权 ------------------------------------------------------
+#
+# 「有智能体的授权就可以了」：连接按智能体分配（``configured=1`` 且该智能体在关系
+# 内）时，分配本身就是这份连接的授权，不再叠加一层 ``external:<kind>:<kind>.<action>``
+# 逐资源授权。这里断言的是这条规则的**边界**，而不只是它的放宽：功能权限、切片、
+# 风险与审批、配额、未配置的存量连接、跨租户 Agent 都必须照旧。
+#
+# 之所以要单独一组：这条规则是 `may_execute` 的第四条入口，与「个人连接凭所有权」同
+# 源；它一旦越界，外部能力就会成为唯一一种「分配了就能执行、不看角色」的资源。
+
+
+def _assigned(svc, stack, connection, *agent_ids):
+    """Put the connection on the assigned rule with exactly these Agents."""
+    return assign_agents_to_connection(
+        svc, stack.tenant_id, connection["id"], *agent_ids)
+
+
+def test_an_assigned_connection_needs_no_per_resource_grant(
+        svc, stack, connection, monkeypatch):
+    """分配之内、功能权限在手 —— 逐资源授权不再是必要条件。"""
+    _open_read(monkeypatch)
+    _assigned(svc, stack, connection, "agent-a")
+    member = _member(stack, "carol", permissions=["tool.execute"])
+
+    result = _invoke(svc, connection, member, tenant_id=stack.tenant_id,
+                     agent_id="agent-a")
+
+    # 传输不会被真的建立，所以「不是 tool_not_authorized」正是授权放行的证据。
+    assert result.code != "tool_not_authorized"
+
+
+def test_an_assigned_connection_is_listed_without_a_grant(
+        svc, stack, connection, monkeypatch):
+    """工具可见与调用对同一条规则作答，不出现「能调但看不到」。"""
+    from integrations.external import tools as external_tools
+
+    _open_read(monkeypatch)
+    _assigned(svc, stack, connection, "agent-a")
+    member = _member(stack, "carol", permissions=["tool.execute"])
+
+    listed = external_tools.authorized_tools(
+        tenant_id=stack.tenant_id, actor_user_id=member,
+        identity=stack.service, agent_id="agent-a")
+
+    assert any(b.tool.kind == KIND for b in listed)
+
+
+def test_the_exemption_still_requires_the_functional_permission(
+        svc, stack, connection, monkeypatch):
+    """只跳过逐资源授权，绝不跳过功能权限。
+
+    分配表达的是「这个智能体可以用这条连接」，不是「调用者可以执行工具」；把
+    ``tool.execute`` 一起跳过，等于让外部能力成为唯一一种不需要功能权限的工具。
+    """
+    _open_read(monkeypatch)
+    _assigned(svc, stack, connection, "agent-a")
+    # A role with no permissions at all: the assignment is in place and the
+    # connection is usable, so the only thing left to refuse the call is the
+    # missing ``tool.execute``.
+    member = _member(stack, "carol", permissions=[])
+
+    result = _invoke(svc, connection, member, tenant_id=stack.tenant_id,
+                     agent_id="agent-a")
+
+    assert result.code == "tool_not_authorized"
+
+
+def test_an_agent_outside_the_relation_still_needs_the_grant(
+        svc, stack, connection, monkeypatch):
+    """关系之外的智能体回到逐资源授权，不因「连接已配置」而搭便车。"""
+    _open_read(monkeypatch)
+    _assigned(svc, stack, connection, "agent-b")
+    member = _member(stack, "carol", permissions=["tool.execute"])
+
+    result = _invoke(svc, connection, member, tenant_id=stack.tenant_id,
+                     agent_id="agent-a")
+
+    assert result.code == "tool_not_authorized"
+
+
+def test_an_empty_assignment_does_not_authorize_anyone(
+        svc, stack, connection, monkeypatch):
+    """清空分配表示禁止所有智能体：一个都不在关系内，就没有豁免。"""
+    _open_read(monkeypatch)
+    _assigned(svc, stack, connection)
+    member = _member(stack, "carol", permissions=["tool.execute"])
+
+    result = _invoke(svc, connection, member, tenant_id=stack.tenant_id,
+                     agent_id="agent-a")
+
+    assert result.code == "tool_not_authorized"
+
+
+def test_a_legacy_unconfigured_connection_keeps_the_grant_requirement(
+        svc, stack, connection, monkeypatch):
+    """存量未配置连接沿用原授权：豁免只属于「有人被明确分配」这条关系。"""
+    _open_read(monkeypatch)
+    member = _member(stack, "carol", permissions=["tool.execute"])
+
+    result = _invoke(svc, connection, member, tenant_id=stack.tenant_id,
+                     agent_id="agent-a")
+
+    assert result.code == "tool_not_authorized"
+
+
+def test_the_exemption_needs_an_agent_context(
+        svc, stack, connection, monkeypatch):
+    """没有受信 Agent，就没有可问的关系，也就没有豁免。"""
+    _open_read(monkeypatch)
+    _assigned(svc, stack, connection, "agent-a")
+    member = _member(stack, "carol", permissions=["tool.execute"])
+
+    result = _invoke(svc, connection, member, tenant_id=stack.tenant_id,
+                     agent_id="")
+
+    assert result.code == "tool_not_authorized"
+
+
+def test_the_exemption_does_not_cross_tenants(
+        svc, stack, connection, monkeypatch):
+    """另一租户的 Agent 不在本租户的关系里，豁免无从生效。"""
+    _open_read(monkeypatch)
+    _assigned(svc, stack, connection, "agent-a")
+    stack.other_tenant()
+    member = _member(stack, "carol", permissions=["tool.execute"])
+
+    result = _invoke(svc, connection, member, tenant_id=stack.tenant_id,
+                     agent_id="other-agent")
+
+    assert result.code == "tool_not_authorized"
+
+
+def test_the_exemption_does_not_open_a_closed_class(
+        svc, stack, connection, monkeypatch):
+    """不绕过执行条件：分配再明确，切片没开就是没开。"""
+    _assigned(svc, stack, connection, "agent-a")
+    member = _member(stack, "carol", permissions=["tool.execute"])
+
+    result = _invoke(svc, connection, member, tenant_id=stack.tenant_id,
+                     agent_id="agent-a")
+
+    assert result.code == "execution_not_available"
+
+
+def test_an_assigned_call_is_still_metered(
+        svc, stack, connection, monkeypatch):
+    """配额照旧：豁免的是授权，不是计费。"""
+    from common.runtime_identity import RuntimeIdentity, use_identity
+
+    _open_read(monkeypatch)
+    _assigned(svc, stack, connection, "agent-a")
+    member = _member(stack, "carol", permissions=["tool.execute"])
+    stack.service.set_quota(actor_user_id=stack.root,
+                            tenant_id=stack.tenant_id, metric="tool_calls",
+                            hard_limit=1, user_id=member)
+    tool = _external_tool(connection["id"])
+    stream = _stream_for(tool)
+
+    with use_identity(RuntimeIdentity(agent_id="agent-a", user_id=member,
+                                      tenant_id=stack.tenant_id)):
+        assert stream._permission_denial(tool.name, {}) is None
+        denial = stream._permission_denial(tool.name, {})
+
+    assert denial is not None and "quota" in denial
+    assert _used(stack, member) == 1
+
+
 # -- 配额 --------------------------------------------------------------------
 
 def _stream_for(tool):
@@ -492,7 +684,7 @@ def _external_tool(connection_id: str):
 
     binding = external_tools.ToolBinding(
         tool=external_tools.ExternalTool(
-            name="mcp.tools.list.%s" % connection_id, kind=KIND,
+            name=_mcp_name("tools.list", connection_id), kind=KIND,
             action="tools.list", write=False, description="list remote tools"),
         connection_id=connection_id, connection_name="团队 MCP",
         scope=registry.SCOPE_TENANT)

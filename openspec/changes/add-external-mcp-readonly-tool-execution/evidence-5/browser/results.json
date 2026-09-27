@@ -1,0 +1,2295 @@
+{
+  "artifact": "/Users/jiantan/ai_assistant/rsmagent/openspec/changes/add-external-mcp-readonly-tool-execution/evidence-5/browser",
+  "scenarios": [
+    {
+      "name": "选择「请求头认证」后要出现填写令牌的字段",
+      "passed": true,
+      "durationMs": 1338
+    },
+    {
+      "name": "切到 stdio 后要出现启动命令",
+      "passed": true,
+      "durationMs": 1018
+    },
+    {
+      "name": "MCP 表单不再出现逐条工具声明，只提交连接级配置",
+      "passed": true,
+      "durationMs": 1145
+    },
+    {
+      "name": "分配弹窗首屏显示已分配列表与卡片摘要",
+      "passed": true,
+      "durationMs": 1776
+    },
+    {
+      "name": "搜索添加智能体并保存差量",
+      "passed": true,
+      "durationMs": 2715
+    },
+    {
+      "name": "行内移除可撤销，取消不落库",
+      "passed": true,
+      "durationMs": 1894
+    },
+    {
+      "name": "首次保存提示影响并允许空配置保存",
+      "passed": true,
+      "durationMs": 1786
+    },
+    {
+      "name": "版本冲突保留草稿并要求重读",
+      "passed": true,
+      "durationMs": 2013
+    },
+    {
+      "name": "窄屏（360px）首屏与草稿仍完整可用",
+      "passed": true,
+      "durationMs": 2611
+    },
+    {
+      "name": "中文输入法组合提交前不重建分配搜索框",
+      "passed": true,
+      "durationMs": 2794
+    },
+    {
+      "name": "中文输入法组合提交前不重建目录搜索框",
+      "passed": true,
+      "durationMs": 1661
+    },
+    {
+      "name": "输入法取消候选的 Escape 不当作关闭弹窗",
+      "passed": true,
+      "durationMs": 1886
+    },
+    {
+      "name": "只读调用方看得见关系但操作全部不可用",
+      "passed": true,
+      "durationMs": 1781
+    },
+    {
+      "name": "分配成功但业务执行关闭时，卡片分别呈现两件事",
+      "passed": true,
+      "durationMs": 2431
+    }
+  ],
+  "pageErrors": [],
+  "unexpectedRoutes": [],
+  "requests": [
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_ace2c63a-201b-4c30-88c7-9d2635d6393a&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_ace2c63a-201b-4c30-88c7-9d2635d6393a/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_ace2c63a-201b-4c30-88c7-9d2635d6393a&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_830b6222-1625-4405-83a1-b8f9852c79c6&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_830b6222-1625-4405-83a1-b8f9852c79c6/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_830b6222-1625-4405-83a1-b8f9852c79c6&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_834a2876-4dfb-4afc-a729-f3322bf9a161&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_834a2876-4dfb-4afc-a729-f3322bf9a161/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_834a2876-4dfb-4afc-a729-f3322bf9a161&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_f874d5ec-623d-4da4-a68a-3e876202f207&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/api/sessions/session_f874d5ec-623d-4da4-a68a-3e876202f207/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_f874d5ec-623d-4da4-a68a-3e876202f207&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_f874d5ec-623d-4da4-a68a-3e876202f207&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_f874d5ec-623d-4da4-a68a-3e876202f207/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_f874d5ec-623d-4da4-a68a-3e876202f207&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_bee2f112-3621-4271-9b8e-087d8ef626e3&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_bee2f112-3621-4271-9b8e-087d8ef626e3/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_bee2f112-3621-4271-9b8e-087d8ef626e3&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_bee2f112-3621-4271-9b8e-087d8ef626e3&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_bee2f112-3621-4271-9b8e-087d8ef626e3/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_bee2f112-3621-4271-9b8e-087d8ef626e3&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-candidates",
+      "query": "?page=1&page_size=20&q=%E5%90%88%E5%90%8C&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_d6d71871-4558-4ebc-9a3f-145a8dde199d&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_d6d71871-4558-4ebc-9a3f-145a8dde199d/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_d6d71871-4558-4ebc-9a3f-145a8dde199d&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_d6d71871-4558-4ebc-9a3f-145a8dde199d&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_d6d71871-4558-4ebc-9a3f-145a8dde199d/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_d6d71871-4558-4ebc-9a3f-145a8dde199d&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_35794e1e-07b7-48c5-9565-60a65735e295&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_35794e1e-07b7-48c5-9565-60a65735e295/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_35794e1e-07b7-48c5-9565-60a65735e295&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_35794e1e-07b7-48c5-9565-60a65735e295&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_35794e1e-07b7-48c5-9565-60a65735e295/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_35794e1e-07b7-48c5-9565-60a65735e295&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_2a9c4943-2008-461d-9971-cb046db2eb07&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_2a9c4943-2008-461d-9971-cb046db2eb07/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_2a9c4943-2008-461d-9971-cb046db2eb07&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_2a9c4943-2008-461d-9971-cb046db2eb07&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_2a9c4943-2008-461d-9971-cb046db2eb07/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_2a9c4943-2008-461d-9971-cb046db2eb07&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_6262059f-5af5-4c8a-b15f-9fd2cdec36f3&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_6262059f-5af5-4c8a-b15f-9fd2cdec36f3/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_6262059f-5af5-4c8a-b15f-9fd2cdec36f3&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_6262059f-5af5-4c8a-b15f-9fd2cdec36f3&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_6262059f-5af5-4c8a-b15f-9fd2cdec36f3/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_6262059f-5af5-4c8a-b15f-9fd2cdec36f3&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-candidates",
+      "query": "?page=1&page_size=20&q=%E5%90%88%E5%90%8C&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_91cd2e22-8bbd-45e3-9562-3ba835a9e378&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_91cd2e22-8bbd-45e3-9562-3ba835a9e378/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_91cd2e22-8bbd-45e3-9562-3ba835a9e378&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_91cd2e22-8bbd-45e3-9562-3ba835a9e378&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_91cd2e22-8bbd-45e3-9562-3ba835a9e378/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_91cd2e22-8bbd-45e3-9562-3ba835a9e378&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-candidates",
+      "query": "?page=1&page_size=20&q=%E5%90%88%E5%90%8C&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_3165e1a0-ac52-4fd9-a251-6d74e3e4717b&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_3165e1a0-ac52-4fd9-a251-6d74e3e4717b/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_3165e1a0-ac52-4fd9-a251-6d74e3e4717b&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_0886e533-d6eb-4bf3-b36a-91bfbdae8041&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_0886e533-d6eb-4bf3-b36a-91bfbdae8041/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_0886e533-d6eb-4bf3-b36a-91bfbdae8041&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_0886e533-d6eb-4bf3-b36a-91bfbdae8041&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_0886e533-d6eb-4bf3-b36a-91bfbdae8041/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_0886e533-d6eb-4bf3-b36a-91bfbdae8041&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_6dbe763c-929c-4e4a-afc1-b54a1aeffe43&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_6dbe763c-929c-4e4a-afc1-b54a1aeffe43/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_6dbe763c-929c-4e4a-afc1-b54a1aeffe43&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_6dbe763c-929c-4e4a-afc1-b54a1aeffe43&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_6dbe763c-929c-4e4a-afc1-b54a1aeffe43/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_6dbe763c-929c-4e4a-afc1-b54a1aeffe43&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "query": "?page=1&page_size=20&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_33d3f679-a9bf-4f77-913c-6e092cc12026&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_33d3f679-a9bf-4f77-913c-6e092cc12026/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_33d3f679-a9bf-4f77-913c-6e092cc12026&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_33d3f679-a9bf-4f77-913c-6e092cc12026&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_33d3f679-a9bf-4f77-913c-6e092cc12026/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_33d3f679-a9bf-4f77-913c-6e092cc12026&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_33d3f679-a9bf-4f77-913c-6e092cc12026&agent=agent-1&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_33d3f679-a9bf-4f77-913c-6e092cc12026/settings",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-1",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_33d3f679-a9bf-4f77-913c-6e092cc12026&agent_id=agent-1&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/types",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/catalog",
+      "query": "?scope=tenant&agent_id=agent-1",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/external-connections/tenant/erp-default",
+      "query": "?agent_id=agent-1",
+      "method": "GET"
+    }
+  ],
+  "writes": [
+    {
+      "pathname": "/api/external-connections/tenant",
+      "body": {
+        "config": {
+          "transport": "streamable_http",
+          "url": "http://127.0.0.1:8080/mcp",
+          "auth": "header",
+          "header_name": "Authorization"
+        },
+        "secrets": {
+          "header": "Bearer TOKEN-123"
+        },
+        "kind": "mcp",
+        "name": "税法知识库",
+        "agent_id": "agent-1"
+      }
+    },
+    {
+      "pathname": "/api/external-connections/tenant",
+      "body": {
+        "config": {
+          "transport": "streamable_http",
+          "url": "http://127.0.0.1:8080/mcp",
+          "auth": "none"
+        },
+        "kind": "mcp",
+        "name": "知识库 MCP",
+        "agent_id": "agent-1"
+      }
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "body": {
+        "expected_revision": 3,
+        "add_agent_ids": [
+          "agent-3"
+        ],
+        "remove_agent_ids": [],
+        "agent_id": "agent-1"
+      }
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "body": {
+        "expected_revision": 3,
+        "add_agent_ids": [],
+        "remove_agent_ids": [],
+        "agent_id": "agent-1"
+      }
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "body": {
+        "expected_revision": 3,
+        "add_agent_ids": [],
+        "remove_agent_ids": [
+          "agent-1"
+        ],
+        "agent_id": "agent-1"
+      }
+    },
+    {
+      "pathname": "/api/external-connections/tenant/mcp-1/agent-assignments",
+      "body": {
+        "expected_revision": 3,
+        "add_agent_ids": [],
+        "remove_agent_ids": [
+          "agent-1"
+        ],
+        "agent_id": "agent-1"
+      }
+    }
+  ],
+  "currentScenario": "分配成功但业务执行关闭时，卡片分别呈现两件事",
+  "scenarioBase": 380
+}

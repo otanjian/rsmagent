@@ -1,0 +1,30 @@
+connection        = weknora-rsmagent conn_cN-lhbMpQlwpiL7k enabled=1 version=5
+tenant            = tnt_EA3qM-lHPLD8ZPwW
+agent             = tax-health-check-test15 actor = usr_EMjtqQ_5s9oey1y1
+
+[0] server published = 12 remote tools
+[1] external_tools_for -> 15 tools
+      external_mcp_tools_list_conn_cN-lhbMpQlwpiL7k                  ok
+      external_mcp_resources_read_conn_cN-lhbMpQlwpiL7k              ok
+      external_mcp_tools_read_conn_cN-lhbMpQlwpiL7k                  ok
+      external_mcp_tools_read_conn_cN-lhbMpQlwpiL7k_add_document     ok
+      external_mcp_tools_read_conn_cN-lhbMpQlwpiL7k_ask              ok
+      external_mcp_tools_read_conn_cN-lhbMpQlwpiL7k_delete_document  ok
+      external_mcp_tools_read_conn_cN-lhbMpQlwpiL7k_grep_chunks      ok
+      external_mcp_tools_read_conn_cN-lhbMpQlwpiL7k_list_documents   ok
+      external_mcp_tools_read_conn_cN-lhbMpQlwpiL7k_list_knowledge_bases ok
+      external_mcp_tools_read_conn_cN-lhbMpQlwpiL7k_read_document    ok
+      external_mcp_tools_read_conn_cN-lhbMpQlwpiL7k_search_knowledge ok
+      external_mcp_tools_read_conn_cN-lhbMpQlwpiL7k_update_document  ok
+      external_mcp_tools_read_conn_cN-lhbMpQlwpiL7k_wiki_index       ok
+      external_mcp_tools_read_conn_cN-lhbMpQlwpiL7k_wiki_read_page   ok
+      external_mcp_tools_read_conn_cN-lhbMpQlwpiL7k_wiki_search      ok
+    non-conforming  : 0
+    chars outside the pattern, anywhere in the set : []
+
+[2] build_tools_schema -> 15 entries (the layer that is actually sent)
+    non-conforming  : 0
+    dropped by gate : []
+
+[3] provider with the real tool list -> status=200 (accepted)
+    19:03 的失败是同一批工具定义得到 400；本次期望 200。

@@ -257,7 +257,7 @@ def test_secret_keep_replace_and_clear_over_http(web):
     # A masked value is refused rather than stored as the new credential.
     masked = web.post(
         "/api/external-connections/tenant/%s/update" % connection_id,
-        {"expected_version": 2, "secrets": {"password": "OA •••• rd"}},
+        {"expected_version": 2, "secrets": {"password": "ERP •••• rd"}},
         token=web.manager_token)
     assert masked.status == "400 Bad Request"
     assert _json(masked)["code"] == "masked_secret"
@@ -616,3 +616,370 @@ def test_the_service_and_the_http_layer_share_one_database(web):
     assert service._store.db_path == web.db_path
     row = service._fetch_row(connection["id"], tenant_id=web.tenant_id)
     assert row is not None and row["name"] == "Shared DB"
+
+
+# -- per-connection Agent assignment over HTTP -----------------------------
+#
+# Change ``add-external-connection-agent-assignment``, task group 2. These drive
+# the real route table so the properties that only exist on the wire are
+# covered: the read is a tenant read, the save adds the manage permission *and*
+# the origin guard, the path (never the body) names the connection, the target
+# is re-qualified at save time under the Agent's own management rule, and the
+# assignment's independent revision is what a concurrent writer loses on.
+
+
+
+@pytest.fixture(scope="module")
+def assign_web(tmp_path_factory):
+    harness = WebAppHarness(tmp_path_factory.mktemp("external-assign-api"))
+    harness.add_agent("agent-a", "agent-b", "agent-c")
+    harness.role("assign-reader", ["external.connections.read", "chat.use"])
+    harness.role("assign-manager", ["external.connections.read",
+                                    "external.connections.manage", "chat.use"])
+    # A member with neither connection permission: the one identity that must
+    # be refused the assignment *read* at the service, not merely at the route.
+    harness.role("assign-none", ["chat.use"])
+    harness.member("assign_reader", ["assign-reader"])
+    harness.member("assign_manager", ["assign-manager"])
+    harness.member("assign_nobody", ["assign-none"])
+    harness.member("assign_plain", ["member"])
+    harness.admin_token = harness.login("root")
+    harness.reader_token = harness.login("assign_reader")
+    harness.manager_token = harness.login("assign_manager")
+    harness.nobody_token = harness.login("assign_nobody")
+    harness.plain_token = harness.login("assign_plain")
+    # A private Agent per member: its owner may assign it, and nobody else —
+    # not even the tenant admin — may see it as a candidate or name it.
+    harness.private_agent(harness.user_id("assign_reader"), "reader-private")
+    harness.private_agent(harness.user_id("assign_manager"), "manager-private")
+    yield harness
+    harness.close()
+
+
+def _create_assign_connection(web, name="ERP 指派"):
+    # ERP (unlike OA) is not a per-tenant singleton, so each test gets its own
+    # connection and the fixtures never fight over "already exists".
+    created = web.post("/api/external-connections/tenant", {
+        "kind": "erp", "name": name, "config": ERP_RFC,
+        "secrets": {"password": SECRET},
+    }, token=web.manager_token)
+    assert created.status == "200 OK", created.data
+    return _json(created)["id"]
+
+
+def _assign(web, connection_id, action, token=None):
+    return web.get("/api/external-connections/tenant/%s/%s"
+                   % (connection_id, action), token=token or web.admin_token)
+
+
+def _save(web, connection_id, body, token=None, **kwargs):
+    return web.post("/api/external-connections/tenant/%s/agent-assignments"
+                    % connection_id, body, token=token or web.admin_token,
+                    **kwargs)
+
+
+def test_assignment_read_is_a_tenant_read(assign_web):
+    connection_id = _create_assign_connection(assign_web, "ERP 读权限")
+    refused = _assign(assign_web, connection_id, "agent-assignments",
+                      token=assign_web.nobody_token)
+    assert refused.status == "403 Forbidden"
+    # The same read is open to a member who holds the tenant read permission.
+    assert _assign(assign_web, connection_id, "agent-assignments",
+                   token=assign_web.reader_token).status.startswith("200")
+
+
+def test_assignment_save_needs_the_manage_permission(assign_web):
+    connection_id = _create_assign_connection(assign_web, "ERP 写权限")
+    refused = _save(assign_web, connection_id,
+                    {"expected_revision": 1, "add_agent_ids": ["agent-a"]},
+                    token=assign_web.reader_token)
+    assert refused.status == "403 Forbidden"
+
+
+def test_assignment_save_applies_the_origin_guard(assign_web):
+    connection_id = _create_assign_connection(assign_web, "ERP 跨域")
+    refused = _save(assign_web, connection_id,
+                    {"expected_revision": 1, "add_agent_ids": ["agent-a"]},
+                    headers={"Origin": "http://evil.example.com"})
+    assert refused.status == "403 Forbidden"
+    assert _json(refused)["code"] == "csrf_failed"
+
+
+def test_assignment_round_trips_over_http(assign_web):
+    connection_id = _create_assign_connection(assign_web, "ERP 往返")
+
+    fresh = _json(_assign(assign_web, connection_id, "agent-assignments"))
+    assert fresh["configured"] is True and fresh["revision"] == 1
+    assert fresh["total"] == 0 and fresh["can_assign"] is True
+
+    saved = _save(assign_web, connection_id,
+                  {"expected_revision": fresh["revision"],
+                   "add_agent_ids": ["agent-a"]})
+    assert saved.status == "200 OK", saved.data
+    body = _json(saved)
+    assert body["added"] == 1 and body["revision"] == 2 and body["configured"]
+
+    listed = _json(_assign(assign_web, connection_id, "agent-assignments"))
+    assert [item["id"] for item in listed["items"]] == ["agent-a"]
+    item = listed["items"][0]
+    assert item["assigned"] is True and item["manageable"] is True
+    assert item["visibility"] == "tenant"
+
+    # A read-only holder sees the same row but is told it cannot change it.
+    read_only = _json(_assign(assign_web, connection_id, "agent-assignments",
+                              token=assign_web.reader_token))
+    assert read_only["can_assign"] is False
+    assert read_only["items"][0]["assigned"] is True
+
+    removed = _json(_save(assign_web, connection_id,
+                          {"expected_revision": body["revision"],
+                           "remove_agent_ids": ["agent-a"]}))
+    assert removed["removed"] == 1
+    assert _json(_assign(assign_web, connection_id,
+                         "agent-assignments"))["total"] == 0
+
+
+def test_a_connection_manager_sees_but_cannot_assign_a_shared_agent(assign_web):
+    """Connection management is not Agent management (spec: 可见但不可管理)."""
+    connection_id = _create_assign_connection(assign_web, "ERP 可见不可管理")
+    listed = _json(_assign(assign_web, connection_id, "agent-assignments",
+                           token=assign_web.manager_token))
+    assert listed["can_assign"] is True  # they may manage the connection
+    assign_web.private_agent(assign_web.user_id("assign_manager"), "manager-only")
+
+    candidates = _json(assign_web.get(
+        "/api/external-connections/tenant/%s/agent-candidates?q=agent"
+        % connection_id, token=assign_web.manager_token))
+    shared = [i for i in candidates["items"] if i["id"] == "agent-a"][0]
+    assert shared["manageable"] is False
+
+    refused = _save(assign_web, connection_id,
+                    {"expected_revision": 1, "add_agent_ids": ["agent-a"]},
+                    token=assign_web.manager_token)
+    assert refused.status == "403 Forbidden"
+    assert _json(refused)["code"] == "agent_not_assignable"
+    # Their own private Agent is theirs to assign, so the rule is per-target.
+    own = _save(assign_web, connection_id,
+                {"expected_revision": 1, "add_agent_ids": ["manager-only"]},
+                token=assign_web.manager_token)
+    assert own.status == "200 OK", own.data
+
+
+def test_assignment_does_not_expire_the_connection_version(assign_web):
+    """Assignment has its own CAS token; the connection's If-Match is untouched."""
+    connection_id = _create_assign_connection(assign_web, "ERP 版本")
+    saved = _save(assign_web, connection_id,
+                  {"expected_revision": 1, "add_agent_ids": ["agent-a"]})
+    assert saved.status == "200 OK"
+    updated = assign_web.post(
+        "/api/external-connections/tenant/%s/update" % connection_id,
+        {"expected_version": 1, "name": "ERP 版本改"},
+        token=assign_web.manager_token)
+    assert updated.status == "200 OK"
+    assert _json(updated)["version"] == 2
+
+
+def test_a_stale_assignment_revision_over_http_is_a_409(assign_web):
+    connection_id = _create_assign_connection(assign_web, "ERP 冲突")
+    stale = _save(assign_web, connection_id,
+                  {"expected_revision": 99, "add_agent_ids": ["agent-a"]})
+    assert stale.status == "409 Conflict"
+    assert _json(stale)["code"] == "assignment_version_conflict"
+
+
+def test_a_page_save_never_clears_rows_outside_the_request(assign_web):
+    """The delta names only what changed: an unloaded page survives."""
+    connection_id = _create_assign_connection(assign_web, "ERP 分页")
+    _save(assign_web, connection_id,
+          {"expected_revision": 1, "add_agent_ids": ["agent-a", "agent-b"]})
+    first_page = _json(assign_web.get(
+        "/api/external-connections/tenant/%s/agent-assignments?page=1&page_size=1"
+        % connection_id, token=assign_web.admin_token))
+    assert first_page["total"] == 2 and len(first_page["items"]) == 1
+    removed = _json(_save(assign_web, connection_id,
+                          {"expected_revision": first_page["revision"],
+                           "remove_agent_ids": [first_page["items"][0]["id"]]}))
+    assert removed["removed"] == 1
+    rest = _json(_assign(assign_web, connection_id, "agent-assignments"))
+    assert rest["total"] == 1
+    assert rest["items"][0]["id"] != first_page["items"][0]["id"]
+
+
+def test_candidate_search_reports_assigned_and_hides_private_agents(assign_web):
+    connection_id = _create_assign_connection(assign_web, "ERP 候选")
+    _save(assign_web, connection_id,
+          {"expected_revision": 1, "add_agent_ids": ["agent-a"]})
+
+    candidates = _json(assign_web.get(
+        "/api/external-connections/tenant/%s/agent-candidates?q=agent"
+        % connection_id, token=assign_web.admin_token))
+    by_id = {item["id"]: item for item in candidates["items"]}
+    assert by_id["agent-a"]["assigned"] is True
+    assert by_id["agent-b"]["assigned"] is False
+    assert "reader-private" not in by_id and "manager-private" not in by_id
+
+    # Nobody but the owner sees a private Agent — not even the tenant admin.
+    hidden = _json(assign_web.get(
+        "/api/external-connections/tenant/%s/agent-candidates?q=private"
+        % connection_id, token=assign_web.admin_token))
+    assert hidden["items"] == []
+    own = _json(assign_web.get(
+        "/api/external-connections/tenant/%s/agent-candidates?q=private"
+        % connection_id, token=assign_web.manager_token))
+    assert [item["id"] for item in own["items"]] == ["manager-private"]
+
+
+def test_an_invisible_private_agent_cannot_be_assigned(assign_web):
+    connection_id = _create_assign_connection(assign_web, "ERP 私有")
+    refused = _save(assign_web, connection_id,
+                    {"expected_revision": 1,
+                     "add_agent_ids": ["reader-private"]})
+    assert refused.status == "403 Forbidden"
+    assert _json(refused)["code"] == "agent_not_assignable"
+    # The whole request is refused, never partially applied.
+    assert _json(_assign(assign_web, connection_id,
+                         "agent-assignments"))["total"] == 0
+
+
+def test_candidate_search_requires_a_term(assign_web):
+    connection_id = _create_assign_connection(assign_web, "ERP 空搜索")
+    refused = _assign(assign_web, connection_id, "agent-candidates")
+    assert refused.status == "400 Bad Request"
+    assert _json(refused)["code"] == "field_required"
+
+
+def test_the_path_not_the_body_addresses_the_connection(assign_web):
+    """A body cannot re-point the write at another connection or tenant."""
+    target = _create_assign_connection(assign_web, "ERP 路径")
+    other = _create_assign_connection(assign_web, "ERP 其他")
+    response = _save(assign_web, target,
+                     {"expected_revision": 1, "add_agent_ids": ["agent-a"],
+                      "connection_id": other, "tenant_id": "someone-else"})
+    assert response.status == "200 OK"
+    assert _json(_assign(assign_web, target, "agent-assignments"))["total"] == 1
+    assert _json(_assign(assign_web, other, "agent-assignments"))["total"] == 0
+
+
+def test_an_unknown_connection_is_a_404(assign_web):
+    refused_list = _assign(assign_web, "conn-missing", "agent-assignments")
+    assert refused_list.status == "404 Not Found"
+    refused_search = _assign(assign_web, "conn-missing",
+                             "agent-candidates").status
+    assert refused_search == "400 Bad Request"  # an empty term is refused first
+    with_term = assign_web.get(
+        "/api/external-connections/tenant/conn-missing/agent-candidates?q=agent",
+        token=assign_web.admin_token)
+    assert with_term.status == "404 Not Found"
+
+
+def test_an_over_limit_delta_is_refused(assign_web):
+    connection_id = _create_assign_connection(assign_web, "ERP 超限")
+    refused = _save(assign_web, connection_id,
+                    {"expected_revision": 1,
+                     "add_agent_ids": ["agent-%03d" % i for i in range(101)]})
+    assert refused.status == "400 Bad Request"
+    assert _json(refused)["code"] == "too_many_changes"
+
+
+def test_a_tenant_assignment_address_without_a_tenant_header_is_refused(assign_web):
+    connection_id = _create_assign_connection(assign_web, "ERP 无租户头")
+    refused = assign_web.get(
+        "/api/external-connections/tenant/%s/agent-assignments" % connection_id,
+        token=assign_web.admin_token, tenant=False)
+    assert refused.status in ("400 Bad Request", "403 Forbidden")
+
+
+def test_an_object_of_another_scope_is_not_addressable(assign_web):
+    """A personal mailbox id is not a tenant connection, and vice versa."""
+    personal = _json(assign_web.post("/api/external-connections/personal", {
+        "kind": "email", "name": "我的邮箱", "config": EMAIL_BOTH,
+        "secrets": {"imap_password": SECRET, "smtp_password": SECRET},
+    }, token=assign_web.admin_token))["id"]
+    refused = _assign(assign_web, personal, "agent-assignments")
+    assert refused.status == "404 Not Found"
+
+
+def test_revoked_connection_manage_qualification_blocks_the_save(assign_web):
+    """Loaded, then lost the connection qualification before saving."""
+    role = assign_web.role("assign-temp", ["external.connections.read",
+                                           "external.connections.manage",
+                                           "chat.use"])
+    assign_web.member("assign_temp", ["assign-temp"])
+    token = assign_web.login("assign_temp")
+    connection_id = _create_assign_connection(assign_web, "ERP 失权")
+
+    assert _assign(assign_web, connection_id, "agent-assignments",
+                   token=token).status.startswith("200")
+    current = [r for r in assign_web.service.list_roles(assign_web.tenant_id)
+               if r["code"] == "assign-temp"][0]
+    assign_web.service.update_role(
+        actor_user_id=assign_web.admin_id, tenant_id=assign_web.tenant_id,
+        role_id=current["id"], name=current["name"],
+        permissions=["external.connections.read", "chat.use"],
+        expected_version=current["version"], resource_grants=[])
+    refused = _save(assign_web, connection_id,
+                    {"expected_revision": 1, "add_agent_ids": ["agent-a"]},
+                    token=token)
+    assert refused.status == "403 Forbidden"
+
+
+def test_a_legacy_connection_is_configured_by_the_first_save(assign_web):
+    """The pre-existing connection starts 沿用原权限 and locks on first save."""
+    connection_id = _create_assign_connection(assign_web, "ERP 存量")
+    assign_web.service._store.execute(
+        "UPDATE external_connection_agent_assignment_sets SET configured=0"
+        " WHERE tenant_id=? AND logical_connection_id=?",
+        (assign_web.tenant_id, connection_id))
+
+    legacy = _json(_assign(assign_web, connection_id, "agent-assignments"))
+    assert legacy["configured"] is False and legacy["revision"] == 1
+
+    # An empty delta is still an explicit "configure empty", not a no-op.
+    saved = _json(_save(assign_web, connection_id, {"expected_revision": 1}))
+    assert saved["configured"] is True and saved["revision"] == 2
+    assert saved["added"] == 0 and saved["removed"] == 0
+    after = _json(_assign(assign_web, connection_id, "agent-assignments"))
+    assert after["configured"] is True and after["total"] == 0
+
+
+def test_counts_never_include_an_invisible_assignment(assign_web):
+    """A colleague's private assignment must not leak through the count."""
+    role = assign_web.role("assign-private", ["external.connections.read",
+                                              "external.connections.manage",
+                                              "chat.use"])
+    assign_web.member("assign_owner", ["assign-private"])
+    owner_token = assign_web.login("assign_owner")
+    assign_web.private_agent(assign_web.user_id("assign_owner"), "owner-private")
+    connection_id = _create_assign_connection(assign_web, "ERP 隐藏计数")
+
+    saved = _save(assign_web, connection_id,
+                  {"expected_revision": 1, "add_agent_ids": ["owner-private"]},
+                  token=owner_token)
+    assert saved.status == "200 OK", saved.data
+
+    own = _json(_assign(assign_web, connection_id, "agent-assignments",
+                        token=owner_token))
+    assert own["total"] == 1 and own["items"][0]["id"] == "owner-private"
+    for token in (assign_web.reader_token, assign_web.admin_token):
+        hidden = _json(_assign(assign_web, connection_id, "agent-assignments",
+                               token=token))
+        assert hidden["total"] == 0 and hidden["items"] == []
+        search = _json(assign_web.get(
+            "/api/external-connections/tenant/%s/agent-candidates?q=owner"
+            % connection_id, token=token))
+        assert search["items"] == []
+
+
+def test_the_catalogue_card_carries_the_assignment_summary(assign_web):
+    """The card entry the console renders needs no per-card assignment call."""
+    connection_id = _create_assign_connection(assign_web, "ERP 卡片摘要")
+    _save(assign_web, connection_id,
+          {"expected_revision": 1, "add_agent_ids": ["agent-a", "agent-b"]})
+
+    cards = _json(assign_web.get("/api/external-connections/catalog?scope=tenant",
+                                 token=assign_web.reader_token))["items"]
+    card = [c for c in cards if c["id"] == connection_id][0]
+    assert card["agent_assignment"]["configured"] is True
+    assert card["agent_assignment"]["visible_count"] == 2
+    assert card["agent_assignment"]["can_assign"] is False  # read-only caller
+    assert card["agent_assignment"]["revision"] == 2

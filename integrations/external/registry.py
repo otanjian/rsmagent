@@ -382,6 +382,11 @@ def _validate_mcp(config: Mapping[str, Any]) -> Dict[str, Any]:
     prefix = _tool_name_prefix(config)
     if prefix:
         out["tool_name_prefix"] = prefix
+    # ``tool_name_prefix`` is optional and carried above. There is deliberately
+    # no per-tool list here: which remote tools a connection publishes is
+    # discovered from the server, and a configuration field naming them would be
+    # a second, hand-maintained copy of that answer -- one the operator would
+    # have to write without being told what the server publishes.
     if transport == "stdio":
         for forbidden in ("url", "auth", "header_name", "oauth_provider"):
             if config.get(forbidden) not in (None, ""):

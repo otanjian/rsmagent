@@ -59,6 +59,8 @@ NOT_AUTHORIZED = "not_authorized"
 BAD_DESTINATION = "bad_backup_destination"
 BACKUP_UNREADABLE = "backup_unreadable"
 BACKUP_DIGEST_MISMATCH = "backup_digest_mismatch"
+#: The backup does not cover Agent assignment while the deployment relies on it.
+BACKUP_INCOMPATIBLE_ASSIGNMENT_STATE = "backup_incompatible_assignment_state"
 
 #: The control-plane tables that belong in a backup. Listed explicitly rather
 #: than discovered from ``sqlite_master``: a backup whose contents depend on
@@ -70,6 +72,11 @@ BACKUP_DIGEST_MISMATCH = "backup_digest_mismatch"
 #: replay a create against a store that already holds the result, and the import
 #: the backup exists to protect is itself idempotent by source hash, so nothing
 #: depends on this table surviving.
+#:
+#: The two Agent-assignment tables *are* here. They hold the 已配置 restriction
+#: that narrows a connection to named Agents, so a backup that omits them is not
+#: a copy of the state an operator would be restoring: it would come back as
+#: 沿用原权限, silently widening every connection the tenant had already narrowed.
 BACKED_UP_TABLES: Sequence[str] = (
     "external_connections",
     "external_connection_catalog_versions",
@@ -79,6 +86,20 @@ BACKED_UP_TABLES: Sequence[str] = (
     "external_connection_migrations",
     "external_connection_maintenance_windows",
     "platform_connection_secrets",
+    "external_connection_agent_assignment_sets",
+    "external_connection_agent_assignments",
+)
+
+#: The Agent-assignment tables, as one named group.
+#:
+#: Named separately because they are also the *coverage marker*: a backup taken
+#: before this change neither holds these rows nor mentions these names, and that
+#: absence is what :func:`assert_restore_compatible` refuses to read as "no
+#: restrictions exist". Taken from one constant so the coverage question has one
+#: answer.
+ASSIGNMENT_TABLES: Sequence[str] = (
+    "external_connection_agent_assignment_sets",
+    "external_connection_agent_assignments",
 )
 
 #: Tables whose rows carry the scope they belong to (``scope_key``, or the
@@ -98,6 +119,16 @@ CONNECTION_KEYED_TABLES: Mapping[str, str] = {
     "external_connection_tenant_access": "platform_connection_id",
     "platform_connection_secrets": "platform_connection_id",
 }
+
+#: Tables keyed by the tenant that owns the row, filtered by the tenants named
+#: in the requested scopes.
+#:
+#: The assignment tables cannot be selected by connection id: their
+#: ``logical_connection_id`` may be the id of a *platform* template while the row
+#: belongs to the consuming tenant, and keying on the connection would either
+#: ship another tenant's relation or drop the tenant's own. The tenant is the
+#: only correct scope, and it is the same column every read path uses.
+TENANT_KEYED_TABLES: Sequence[str] = ASSIGNMENT_TABLES
 
 
 def _service(identity: Any = None, service: Any = None) -> Any:
@@ -222,7 +253,30 @@ def _rows_for_tables(store: Any, scope_keys: Sequence[str]) -> Dict[str, Any]:
     for table, column in CONNECTION_KEYED_TABLES.items():
         out[table] = [row for row in out[table]
                       if str(row.get(column) or "") in connection_ids]
+    # The assignment tables are scoped by tenant rather than by connection: a
+    # tenant's relation to a platform template names the *template* as its
+    # logical connection, which is not in this scope's connection list, while the
+    # row is unambiguously the tenant's. Filtering them by connection id would
+    # drop exactly the relations that restrict an inherited template.
+    tenant_ids = _tenant_ids_for(wanted)
+    for table in TENANT_KEYED_TABLES:
+        out[table] = [row for row in out[table]
+                      if str(row.get("tenant_id") or "") in tenant_ids]
     return out
+
+
+def _tenant_ids_for(scope_keys: Sequence[str]) -> set:
+    """The tenants named by a set of scope keys.
+
+    Read from the same key spelling :func:`~integrations.external.migration.scope_key`
+    produces, so "which tenants does this backup cover" has one answer rather
+    than a second parsing rule that can drift.
+    """
+    from integrations.external import registry
+
+    prefix = "%s:" % registry.SCOPE_TENANT
+    return {str(key)[len(prefix):] for key in scope_keys
+            if str(key).startswith(prefix) and len(str(key)) > len(prefix)}
 
 
 def _row_scope_key(row: Mapping[str, Any]) -> str:
@@ -276,14 +330,21 @@ def create_backup(*, actor_user_id: str, out_dir: str, identity: Any = None,
     files = [_read_source(path) for path in ordered]
 
     keys = list(scope_keys or _all_scope_keys(service))
+    control_plane = (_rows_for_tables(service._store, sorted(keys))  # noqa: SLF001
+                     if include_control_plane else {})
     document: Dict[str, Any] = {
         "format": BACKUP_FORMAT,
         "note": str(note or "")[:500],
         "created_by": actor_user_id,
         "scope_keys": sorted(keys),
         "legacy_files": files,
-        "control_plane": (_rows_for_tables(service._store, sorted(keys))  # noqa: SLF001
-                          if include_control_plane else {}),
+        "control_plane": control_plane,
+        # Named explicitly, not inferred from the row counts: a table that exists
+        # but happens to be empty would otherwise look like a table this backup
+        # never knew about, and the two mean opposite things on a restore. An
+        # assignment-free backup declares nothing, which is the truth: it makes
+        # no claim about the restriction regime.
+        "assignment_tables": (list(ASSIGNMENT_TABLES) if control_plane else []),
     }
     serialized = json.dumps(document, ensure_ascii=False, sort_keys=True,
                             default=str)
@@ -323,6 +384,7 @@ def create_backup(*, actor_user_id: str, out_dir: str, identity: Any = None,
         "scope_keys": sorted(keys),
         "table_counts": {table: len(rows) for table, rows in
                          document["control_plane"].items()},
+        "assignment_tables": list(document["assignment_tables"]),
         "note": str(note or "")[:500],
         "created_by": actor_user_id,
     }
@@ -375,6 +437,7 @@ def verify_backup(path: str, *, with_key: bool = True) -> Dict[str, Any]:
         "legacy_files": manifest.get("legacy_files", []),
         "scope_keys": manifest.get("scope_keys", []),
         "table_counts": manifest.get("table_counts", {}),
+        "assignment_tables": manifest.get("assignment_tables", []),
         "decrypted": False,
     }
     if not with_key:
@@ -395,6 +458,63 @@ def verify_backup(path: str, *, with_key: bool = True) -> Dict[str, Any]:
     report["decrypted"] = True
     report["file_count"] = len(json.loads(plaintext).get("legacy_files", []))
     return report
+
+
+def assert_restore_compatible(path: str, *, identity: Any = None,
+                              service: Any = None) -> Dict[str, Any]:
+    """Refuse a restore whose backup cannot speak about 已配置 restrictions.
+
+    A backup taken before Agent assignment exists holds neither assignment table
+    and says so by not naming them. Restoring it is not merely "older data": the
+    restriction it never knew about would be gone, and the *only* reading of the
+    result that this system allows is 沿用原权限 — every connection the tenant had
+    narrowed coming back open. That is the silent widening the spec forbids, so
+    it is refused here rather than reported after the fact.
+
+    Called by the restore entry point *before* it writes anything, and on a dry
+    run too, so an operator learns about the incompatibility while the decision
+    is still reversible. The check reads only the manifest — no master key
+    needed — because an operator on a host without the key is exactly the one who
+    needs to know that this file is not the restore they think it is.
+
+    A backup that names the tables is compatible whatever their counts: "covered
+    and empty" is a real state (nobody is assigned) and is restored as such.
+    """
+    service = _service(identity, service)
+    verified = verify_backup(path, with_key=False)
+    declared = [str(name) for name in verified.get("assignment_tables") or []]
+    if all(table in declared for table in ASSIGNMENT_TABLES):
+        return {"restorable": True, "assignment_tables": declared,
+                "configured_sets": None, "reason": ""}
+    configured = _configured_assignment_sets(service)
+    if not configured:
+        # Nothing to lose: the deployment has no 已配置 connection, so this
+        # backup restores to a state that is consistent with the live one.
+        return {"restorable": True, "assignment_tables": declared,
+                "configured_sets": 0, "reason": "no_configured_assignments"}
+    raise ExternalConnectionError(
+        "backup %s predates Agent assignment but this deployment holds %d"
+        " configured connection(s); restoring it would silently widen them to"
+        " 沿用原权限. Take a fresh backup, or unconfigure those connections"
+        " first." % (os.path.basename(path), configured),
+        code=BACKUP_INCOMPATIBLE_ASSIGNMENT_STATE, status=409)
+
+
+def _configured_assignment_sets(service: Any) -> int:
+    """How many connections this deployment has narrowed, or 0 when unknown.
+
+    A store that cannot answer is reported as 0 only because the caller has
+    already established the backup does not name the tables; refusing every
+    restore on an unreadable store would block the drill for a different reason
+    than the one being checked.
+    """
+    try:
+        rows = service._store.execute(  # noqa: SLF001
+            "SELECT COUNT(*) AS c FROM external_connection_agent_assignment_sets"
+            " WHERE configured=1")
+    except Exception:  # noqa: BLE001 - a pre-migration store has no such table
+        return 0
+    return int(rows[0]["c"]) if rows else 0
 
 
 def _all_scope_keys(service: Any) -> List[str]:

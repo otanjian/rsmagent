@@ -35,9 +35,19 @@ import json
 import time
 import uuid
 from dataclasses import dataclass, replace
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
-from integrations.external import authorization, maintenance, registry
+from integrations.external import assignment, authorization, maintenance, registry
 from integrations.external.adapters import (
     AdapterError,
     CapabilityReport,
@@ -183,6 +193,33 @@ class ConnectionSnapshot:
     #: whatever the caller records (``external_connection_tests`` stores the
     #: versions a result was produced under).
     source_version: int = 0
+
+
+def slot_markers(rows) -> Dict[str, Dict[str, int]]:
+    """Per-connection ``{slot: marker}`` from already-read secret-ref rows.
+
+    ``rows`` are ``external_connection_secret_refs`` with ``connection_id``,
+    ``slot``, ``secret_version``, ``credential_id``, ``platform_secret_id`` and a
+    ``marker`` alias for ``COALESCE(credential_id, platform_secret_id, '')``.
+
+    Split out of :meth:`ConnectionRuntime.secret_versions` so a page of cards can
+    read every connection's markers in one query. The digest rule lives here and
+    only here: two implementations of "did this credential move?" is how a badge
+    and an approval end up disagreeing about whether a result still applies.
+    """
+    import hashlib
+
+    out: Dict[str, Dict[str, int]] = {}
+    for row in rows:
+        slots = out.setdefault(str(row["connection_id"]), {})
+        marker = str(row["marker"] or "")
+        if not marker:
+            slots[row["slot"]] = 0
+            continue
+        material = "%s@%s" % (marker, int(row["secret_version"] or 0))
+        digest = hashlib.sha256(material.encode("utf-8")).digest()
+        slots[row["slot"]] = int.from_bytes(digest[:4], "big")
+    return out
 
 
 class ConnectionRuntime:
@@ -348,23 +385,13 @@ class ConnectionRuntime:
         compare, and it still changes when the credential it points at changes
         (or is cleared), which is the conservative direction.
         """
-        import hashlib
-
         rows = self._store.execute(
-            "SELECT slot, secret_version, credential_id, platform_secret_id,"
+            "SELECT connection_id, slot, secret_version, credential_id,"
+            " platform_secret_id,"
             " COALESCE(credential_id, platform_secret_id, '') AS marker"
             " FROM external_connection_secret_refs WHERE connection_id=?"
             " ORDER BY slot", (connection_id,))
-        out: Dict[str, int] = {}
-        for row in rows:
-            marker = str(row["marker"] or "")
-            if not marker:
-                out[row["slot"]] = 0
-                continue
-            material = "%s@%s" % (marker, int(row["secret_version"] or 0))
-            digest = hashlib.sha256(material.encode("utf-8")).digest()
-            out[row["slot"]] = int.from_bytes(digest[:4], "big")
-        return out
+        return slot_markers(rows).get(str(connection_id), {})
 
     # -- context -------------------------------------------------------------
 
@@ -523,6 +550,16 @@ class ConnectionRuntime:
                     self, snapshot, actor_user_id, resolved_secrets))
             payload["recorded"] = stored
             payload["stale"] = not stored
+            if stored:
+                # Answer "and what is the state now?" from the record that was
+                # just written. Without this the console has only `outcome` to go
+                # on, and a successful probe of a saved connection came back
+                # looking identical to one that saved nothing.
+                state = test_summary_payload(
+                    int(time.time()),
+                    self.last_test(snapshot.id, tenant_id=snapshot.tenant_id) or {})
+                payload["test_status"] = state["status"]
+                payload["tested_at"] = state["ran_at"]
             if not stored:
                 # The configuration moved while the probe ran. The caller is
                 # told, because showing this result as current would be a lie.
@@ -724,6 +761,106 @@ class ConnectionRuntime:
             con.commit()
         return True
 
+    #: How many of a connection's newest summaries are considered before giving
+    #: up on finding one that still applies. Mirrors the window the single-row
+    #: reader has always used, and is applied in SQL so a connection with a long
+    #: test history costs no more to read than one with a short one.
+    _TEST_LOOKBACK = 5
+
+    def test_observations(self, wanted: Mapping[str, int]
+                          ) -> Dict[str, Dict[str, Any]]:
+        """For each connection, the newest summary that still applies.
+
+        ``wanted`` maps a connection id to the config version in force for it.
+        Callers pass the *effective* row's version, so a tenant override answers
+        for itself while an inherited template answers as the template — the
+        tenant consumes the template's configuration and its credentials, so
+        that is the record that describes what the tenant would actually run.
+
+        Returns ``{id: {"record": <summary|None>, "stale_at": <int|None>}}``: the
+        matching summary in the caller-facing shape, plus the time of the newest
+        summary that no longer matches. Both are returned because "you tested
+        this and the configuration has moved since" is a different fact from
+        "you never tested this", and reporting the first as the second is what
+        makes an operator re-test a connection that was working a minute ago.
+
+        Reading a page of cards costs two statements for the whole page, whatever
+        its size: the version map comes from the caller, then the secret markers
+        and the summaries are read with one ``IN (...)`` each. Both reads are
+        bounded — ``_TEST_LOOKBACK`` rows per connection, and one row per slot.
+        """
+        wanted = {str(k): int(v) for k, v in dict(wanted or {}).items()}
+        out: Dict[str, Dict[str, Any]] = {
+            cid: {"record": None, "stale_at": None} for cid in wanted}
+        if not wanted:
+            return out
+        placeholders = ",".join("?" for _ in wanted)
+        ids = tuple(sorted(wanted))
+        markers = slot_markers(self._store.execute(
+            "SELECT connection_id, slot, secret_version, credential_id,"
+            " platform_secret_id,"
+            " COALESCE(credential_id, platform_secret_id, '') AS marker"
+            " FROM external_connection_secret_refs WHERE connection_id IN (%s)"
+            " ORDER BY connection_id, slot" % placeholders, ids))
+        rows = self._store.execute(
+            # `rowid` is only named inside the window (it is the tie-breaker the
+            # single-row reader has always used); outside, the rank it produced
+            # already carries the same order.
+            "SELECT * FROM ("
+            " SELECT *, ROW_NUMBER() OVER (PARTITION BY connection_id"
+            "  ORDER BY created_at DESC, rowid DESC) AS lookback_rank"
+            " FROM external_connection_tests WHERE connection_id IN (%s)"
+            ") WHERE lookback_rank <= %d"
+            " ORDER BY connection_id, lookback_rank"
+            % (placeholders, self._TEST_LOOKBACK), ids)
+        # One pass over rows that are already newest-first *within* each
+        # connection, so the first match is the answer and no per-connection
+        # query is ever issued.
+        saw_newest: Set[str] = set()
+        settled: Set[str] = set()
+        for row in rows:
+            cid = str(row["connection_id"])
+            if cid not in out or cid in settled:
+                continue
+            if cid not in saw_newest:
+                saw_newest.add(cid)
+                # The newest summary of any kind, kept in case nothing matches.
+                out[cid]["stale_at"] = int(row["created_at"])
+            if int(row["config_version"]) != wanted[cid]:
+                continue
+            try:
+                recorded = json.loads(row["secret_versions_json"] or "{}")
+            except (TypeError, ValueError):
+                recorded = {}
+            if recorded != markers.get(cid, {}):
+                continue
+            out[cid]["record"] = self._summary_of(row)
+            out[cid]["stale_at"] = None
+            settled.add(cid)
+        return out
+
+    @staticmethod
+    def _summary_of(row: Optional[Mapping[str, Any]]
+                    ) -> Optional[Dict[str, Any]]:
+        """The caller-facing summary shape for a recorded row."""
+        if row is None:
+            return None
+        detail: Any = {}
+        try:
+            detail = json.loads(row["detail_json"] or "{}")
+        except (TypeError, ValueError):
+            detail = {}
+        return {
+            "test_id": row["test_id"],
+            "result": row["result"],
+            "stage": row["stage"],
+            "code": row["code"],
+            "config_version": row["config_version"],
+            "ran_at": row["created_at"],
+            "actor_user_id": row["actor_user_id"],
+            "detail": detail,
+        }
+
     def last_test(self, connection_id: str, *,
                   tenant_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """The most recent recorded summary for the *current* version.
@@ -732,35 +869,8 @@ class ConnectionRuntime:
         returned: the console shows ``untested`` instead of a stale green.
         """
         snapshot = self.snapshot(connection_id, tenant_id=tenant_id)
-        rows = self._store.execute(
-            "SELECT * FROM external_connection_tests WHERE connection_id=?"
-            " ORDER BY created_at DESC, rowid DESC LIMIT 5", (connection_id,))
-        current_secrets = self.secret_versions(connection_id)
-        for row in rows:
-            if int(row["config_version"]) != snapshot.version:
-                continue
-            try:
-                recorded = json.loads(row["secret_versions_json"] or "{}")
-            except (TypeError, ValueError):
-                recorded = {}
-            if recorded != current_secrets:
-                continue
-            detail: Any = {}
-            try:
-                detail = json.loads(row["detail_json"] or "{}")
-            except (TypeError, ValueError):
-                detail = {}
-            return {
-                "test_id": row["test_id"],
-                "result": row["result"],
-                "stage": row["stage"],
-                "code": row["code"],
-                "config_version": row["config_version"],
-                "ran_at": row["created_at"],
-                "actor_user_id": row["actor_user_id"],
-                "detail": detail,
-            }
-        return None
+        records = self.test_observations({str(snapshot.id): snapshot.version})
+        return records[str(snapshot.id)]["record"]
 
     # -- invoke --------------------------------------------------------------
 
@@ -849,7 +959,8 @@ class ConnectionRuntime:
         if not authorization.may_execute(
                 self._identity, actor_user_id=actor_user_id,
                 tenant_id=snapshot.tenant_id, kind=snapshot.kind,
-                action=action, scope=snapshot.scope, agent_id=agent_id):
+                action=action, scope=snapshot.scope, agent_id=agent_id,
+                connection_id=snapshot.id):
             # The caller's own authorization for this capability: the grant and
             # the functional permission, or the narrowed tenant-admin
             # exemption. Checked *after* the class so a closed class reports
@@ -860,6 +971,32 @@ class ConnectionRuntime:
             return invoke_failed(
                 authorization.NOT_AUTHORIZED, stage=STAGE_POLICY,
                 message=authorization.describe_refusal(snapshot.kind, action))
+
+        # The per-connection Agent assignment. It is asked *after* the caller's
+        # own authorization so a capability that was never theirs still reports
+        # as unauthorized, and *before* the risk/approval gate so an unassigned
+        # write is refused as "not yours to make" rather than as "you did not
+        # attach an approval" — the second would invite the caller to go and
+        # mint one for a connection they may not use at all.
+        #
+        # The consuming tenant — the argument, not the row's own ``tenant_id``,
+        # which is ``None`` for an inherited platform template — is what the
+        # relation is keyed on, so 继承 and 覆盖 share one set.
+        consuming_tenant = str(tenant_id or snapshot.tenant_id or "")
+        if assignment.call_regime_applies(snapshot.kind, snapshot.scope,
+                                          consuming_tenant):
+            logical_id = assignment.logical_connection_id(snapshot)
+            try:
+                allowed, reason = assignment.assignment_allows(
+                    self._store, tenant_id=consuming_tenant,
+                    logical_id=logical_id, agent_id=agent_id)
+            except Exception:  # noqa: BLE001 - a failed lookup proves nothing
+                allowed, reason = False, assignment.REASON_LOOKUP_FAILED
+            if not allowed:
+                return invoke_failed(
+                    reason, stage=STAGE_POLICY,
+                    message="this connection is not available to the Agent in"
+                            " this context")
 
         if risk_check is not None:
             from integrations.external.errors import ExternalConnectionError as _ExtErr
@@ -933,13 +1070,26 @@ def runtime_for(service) -> ConnectionRuntime:
     return ConnectionRuntime(service)
 
 
-def test_summary_payload(tested_at: int, record: Mapping[str, Any]) -> Dict[str, Any]:
+def test_summary_payload(tested_at: int, record: Mapping[str, Any], *,
+                         stale_at: Optional[int] = None) -> Dict[str, Any]:
     """The shape the console consumes for a connection's test state.
 
     One place decides what "the test state" is, so the catalogue, the detail
     view and the page cannot disagree.
+
+    ``stale_at`` is the time of the newest summary that no longer applies to the
+    current configuration (:meth:`ConnectionRuntime.test_observations`). When
+    nothing applies but such a summary exists, the state is ``expired``: the
+    connection was tested and has moved since, which is worth saying out loud
+    rather than showing the same "never tested" as a connection nobody has
+    touched. The expired payload deliberately carries no stage, code or detail
+    from the stale summary — the one thing a stale result must not do is keep
+    telling the operator what the old configuration did.
     """
     if not record:
+        if stale_at is not None:
+            return {"status": "expired", "stage": "", "code": "",
+                    "ran_at": int(stale_at), "detail": {}}
         return {"status": "untested", "stage": "", "code": "",
                 "ran_at": None, "detail": {}}
     result = str(record.get("result") or "failed")

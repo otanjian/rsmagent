@@ -27,7 +27,11 @@ import secrets
 import sqlite3
 import time
 import uuid
+from contextlib import contextmanager
+from contextvars import ContextVar
+from copy import deepcopy
 from dataclasses import dataclass
+from functools import wraps
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from auth.store import ConnGuard, IdentityStore
@@ -102,7 +106,7 @@ _SIGNED_CONSOLE_PAGES: Dict[str, Dict[str, object]] = {
     # the platform qualification alone.
     "admin.models": {"permission": "", "scope": "tenant", "label": "模型与接入"},
     "admin.channels": {"permission": "", "scope": "platform", "label": "消息渠道"},
-    # 外部系统接入 (change ``add-external-system-access``, task 10.1): one page with
+    # 系统接入 (change ``add-external-system-access``, task 10.1): one page with
     # three relative ranges — a member's own mailbox, the tenant's connections, and
     # the platform MCP service — decided per request by ``auth.object_scope``. The
     # static scope recorded here is ``tenant`` for the same reason ``admin.models``
@@ -119,7 +123,7 @@ _SIGNED_CONSOLE_PAGES: Dict[str, Dict[str, object]] = {
     # page as unavailable (fail-closed for custom roles that never received it).
     "admin.external_connections": {
         "permission": "external.connections.read", "scope": "tenant",
-        "label": "外部系统接入"},
+        "label": "系统接入"},
     "admin.logs": {"permission": "", "scope": "platform", "label": "运行日志"},
     "admin.members": {"permission": "tenant.members.read", "scope": "tenant", "label": "成员管理"},
     "admin.roles": {"permission": "tenant.members.read", "scope": "tenant", "label": "角色权限"},
@@ -496,10 +500,27 @@ class LoginResult:
     is_platform_admin: bool
 
 
+def _catalog_cached(method):
+    """Reuse read facts only inside an explicitly scoped catalog GET."""
+    @wraps(method)
+    def read(self, *args, **kwargs):
+        cache = self._catalog_reads
+        if cache is None:
+            return method(self, *args, **kwargs)
+        key = (method.__name__, args, tuple(sorted(kwargs.items())))
+        if key not in cache:
+            cache[key] = method(self, *args, **kwargs)
+        # Callers may sort/filter a result without changing another gate's facts.
+        return deepcopy(cache[key])
+    return read
+
+
 class IdentityService:
     """High-level identity operations. Thread-safe for independent calls."""
 
     def __init__(self, db_path: str):
+        self._catalog_reads = None
+        self._catalog_bindings = None
         self._store = IdentityStore(db_path)
         self._sessions = SessionStore(db_path)
         self._audit = AuditStore(db_path)
@@ -696,6 +717,7 @@ class IdentityService:
         )
         return dict(rows[0]) if rows else None
 
+    @_catalog_cached
     def get_tenant(self, tenant_id: str) -> Optional[Dict[str, Any]]:
         rows = self._store.execute("SELECT * FROM tenants WHERE id=?", (tenant_id,))
         return dict(rows[0]) if rows else None
@@ -704,6 +726,8 @@ class IdentityService:
 
     def get_agent_binding(self, agent_id: str) -> Optional[Dict[str, Any]]:
         """Return the tenant binding for a global agent_id, or None if unbound."""
+        if self._catalog_bindings is not None:
+            return deepcopy(self._catalog_bindings.get(agent_id))
         rows = self._store.execute(
             "SELECT * FROM agent_bindings WHERE agent_id=?", (agent_id,)
         )
@@ -719,6 +743,7 @@ class IdentityService:
             rows = self._store.execute("SELECT * FROM agent_bindings")
         return [dict(r) for r in rows]
 
+    @_catalog_cached
     def agents_for_tenant(self, tenant_id: str) -> List[Dict[str, Any]]:
         """Agent ids bound to a tenant, ordered for a stable default selection."""
         rows = self._store.execute(
@@ -727,6 +752,7 @@ class IdentityService:
         )
         return [dict(r) for r in rows]
 
+    @_catalog_cached
     def tenant_agent_ids(self, tenant_id: str) -> List[str]:
         return [b["agent_id"] for b in self.agents_for_tenant(tenant_id)]
 
@@ -812,6 +838,7 @@ class IdentityService:
         return {"tenant_id": tenant_id, "user_id": user_id,
                 "default_agent_id": agent_id}
 
+    @_catalog_cached
     def user_default_agent(self, tenant_id: str, user_id: str) -> Dict[str, Any]:
         """The member's registered default Agent with its lock and origin.
 
@@ -1072,6 +1099,7 @@ class IdentityService:
                 redacted_changes=payload, result=result)
             con.commit()
 
+    @_catalog_cached
     def resolve_default_agent(self, tenant_id: str,
                               user_id: Optional[str] = None) -> Dict[str, Any]:
         """The winning Agent **and the reason it won** (task 4.6).
@@ -1966,7 +1994,28 @@ class IdentityService:
                 " WHERE default_agent_id=?", (agent_id,)).rowcount
             removed = con.execute(
                 "DELETE FROM agent_bindings WHERE agent_id=?", (agent_id,)).rowcount
-            if cleared or removed or unregistered:
+            # The Agent's per-connection assignments live in this same database
+            # (change ``add-external-connection-agent-assignment``). A deleted
+            # Agent must not keep a seat on a connection — and every set it sat
+            # on moves revision, so a console save loaded before the delete
+            # conflicts instead of quietly re-creating a relation to an Agent
+            # that no longer exists. Scoped by ``(tenant_id, logical)`` pairs
+            # because one platform template's logical id is shared by the
+            # tenants that were granted it; another tenant's set must not move.
+            assignments = con.execute(
+                "SELECT DISTINCT tenant_id, logical_connection_id"
+                " FROM external_connection_agent_assignments"
+                " WHERE agent_id=?", (agent_id,)).fetchall()
+            seats_removed = con.execute(
+                "DELETE FROM external_connection_agent_assignments"
+                " WHERE agent_id=?", (agent_id,)).rowcount
+            for pair in assignments:
+                con.execute(
+                    "UPDATE external_connection_agent_assignment_sets"
+                    " SET revision=revision+1, updated_at=unixepoch()"
+                    " WHERE tenant_id=? AND logical_connection_id=?",
+                    (pair["tenant_id"], pair["logical_connection_id"]))
+            if cleared or removed or unregistered or seats_removed:
                 self._audit_in_tx(
                     con,
                     actor_username=None, actor_user_id=actor_user_id,
@@ -1975,12 +2024,16 @@ class IdentityService:
                     redacted_changes={"default_agent_id": None, "agent_id": agent_id,
                                       "tenants_cleared": cleared,
                                       "bindings_removed": removed,
-                                      "personal_registrations_cleared": unregistered},
+                                      "personal_registrations_cleared": unregistered,
+                                      "connection_assignments_removed": seats_removed,
+                                      "assignment_sets_bumped": len(assignments)},
                     result="success")
             con.commit()
         return {"agent_id": agent_id, "tenants_cleared": cleared,
                 "bindings_removed": removed,
-                "personal_registrations_cleared": unregistered}
+                "personal_registrations_cleared": unregistered,
+                "connection_assignments_removed": seats_removed,
+                "assignment_sets_bumped": len(assignments)}
 
     def register_default_tenancy(
         self, *, tenant_id: str, private_owner_user_id: str, agent_ids: List[str],
@@ -2025,6 +2078,7 @@ class IdentityService:
         )
         return dict(rows[0]) if rows else None
 
+    @_catalog_cached
     def _membership(self, user_id: str, tenant_id: str) -> Optional[Dict[str, Any]]:
         rows = self._store.execute(
             "SELECT m.*, u.active AS user_active FROM memberships m"
@@ -2046,6 +2100,7 @@ class IdentityService:
         )
         return [r["code"] for r in rows]
 
+    @_catalog_cached
     def _permissions_for_membership(self, membership_id: str) -> set:
         rows = self._store.execute(
             "SELECT r.code, r.permissions_json FROM roles r"
@@ -2087,6 +2142,7 @@ class IdentityService:
             for r in rows
         ]
 
+    @_catalog_cached
     def _role_grants_for_membership(self, membership_id: str) -> List[Dict[str, str]]:
         rows = self._store.execute(
             "SELECT g.resource_kind, g.resource_id, g.action FROM role_resource_grants g"
@@ -2134,6 +2190,7 @@ class IdentityService:
         )
         return bool(rows)
 
+    @_catalog_cached
     def _has_platform_admin_binding(self, user_id: str) -> bool:
         """True when the active user holds the platform_admin role binding.
 
@@ -11342,7 +11399,33 @@ def identity_db_path() -> str:
     return configured or os.path.join(get_data_root(), "identity.db")
 
 
-def get_identity_service() -> IdentityService:
-    """Return a fresh IdentityService bound to the configured identity.db."""
-    return IdentityService(identity_db_path())
+_catalog_identity: ContextVar[Optional[IdentityService]] = ContextVar(
+    "catalog_identity", default=None)
 
+
+@contextmanager
+def agent_catalog_read_scope(tenant_id: Optional[str]):
+    """Batch tenant bindings and reuse identity reads for one catalog response.
+
+    Only read-only Agent catalog handlers enter this scope. There is no shared
+    permission cache: another request (including every write/send) re-reads the
+    current database. ContextVar keeps concurrent callers/tenants independent.
+    """
+    service = get_identity_service()
+    old_reads, old_bindings = service._catalog_reads, service._catalog_bindings
+    service._catalog_reads = {}
+    token = _catalog_identity.set(service)
+    try:
+        service._catalog_bindings = {
+            row["agent_id"]: row for row in service.agents_for_tenant(tenant_id)
+        } if tenant_id else {}
+        yield
+    finally:
+        _catalog_identity.reset(token)
+        service._catalog_reads, service._catalog_bindings = old_reads, old_bindings
+
+
+def get_identity_service() -> IdentityService:
+    """Fresh by default; reuse the service within a catalog read only."""
+    scoped = _catalog_identity.get()
+    return scoped if scoped is not None else IdentityService(identity_db_path())

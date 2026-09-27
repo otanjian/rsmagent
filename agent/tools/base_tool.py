@@ -1,7 +1,41 @@
 from enum import Enum
+import re
 from typing import Any, Optional
 from common.log import logger
 import copy
+
+
+#: The characters a tool name may contain on the wire.
+#:
+#: Every model provider RongAI talks to validates ``tools[].function.name``
+#: against this set — OpenAI's ``^[a-zA-Z0-9_-]{1,64}$``, DeepSeek's
+#: ``^[a-zA-Z0-9_-]+$`` with a 128-character bound — and refuses the **whole
+#: request** when one name violates it. The failure mode is what makes this a
+#: contract rather than a style rule: one bad name in position 18 of the list
+#: means the turn produces no answer at all, and the error names an index
+#: rather than the tool.
+TOOL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+#: The length bound enforced when composing a name.
+#:
+#: 128 is what the provider in use reports (DeepSeek: ``^[a-zA-Z0-9_-]+$`` up to
+#: 128 characters). It is deliberately not the tightest bound in the industry —
+#: OpenAI documents 64 — because the names here carry a connection id and a
+#: remote tool name and 64 would truncate ordinary ones. A deployment that adds
+#: an OpenAI route has to decide its own bound rather than inherit this one.
+MAX_TOOL_NAME = 128
+
+
+def is_wire_safe_name(name: Any) -> bool:
+    """Whether a name can be sent to a model provider as a tool name.
+
+    Used as the last gate before the tool list leaves the process: a name that
+    fails here is a defect in whoever composed it, and the honest handling is to
+    leave that tool out and say so loudly rather than to send it and lose the
+    turn.
+    """
+    text = str(name or "")
+    return bool(TOOL_NAME_RE.match(text)) and len(text) <= MAX_TOOL_NAME
 
 
 class ToolStage(Enum):

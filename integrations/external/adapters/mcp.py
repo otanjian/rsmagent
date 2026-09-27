@@ -65,13 +65,26 @@ from integrations.external.errors import invalid
 # ``readOnlyHint`` is data, not authority, so this action is a *write* — the
 # risk catalogue classifies it high and requires an approval. ``tools.list``
 # and ``resources.read`` are reads against the server.
-
+#
+# ``tools.read`` is the read counterpart of ``tools.call``: it calls a tool the
+# remote server published, and it exists because the two need different answers.
+# Folding them into one action would have to vary the risk level and the open
+# class by the tool being called, which turns the stable ``(kind, action)`` key
+# that authorization, audit, approval and quota are all built on into
+# ``(kind, action, arguments)``.
+#
+# Everything a connection publishes is offered through ``tools.read``. There is
+# no per-tool declaration on the connection: the remote catalogue is itself the
+# answer to "what may be called", and a hand-maintained list next to it would be
+# a second copy of that answer, written by someone who cannot see the first.
 ACTION_TOOLS_LIST = "tools.list"
+ACTION_TOOLS_READ = "tools.read"
 ACTION_TOOLS_CALL = "tools.call"
 ACTION_RESOURCES_READ = "resources.read"
 
 ACTIONS: FrozenSet[str] = frozenset(
-    {ACTION_TOOLS_LIST, ACTION_TOOLS_CALL, ACTION_RESOURCES_READ})
+    {ACTION_TOOLS_LIST, ACTION_TOOLS_READ, ACTION_TOOLS_CALL,
+     ACTION_RESOURCES_READ})
 WRITE_ACTIONS: FrozenSet[str] = frozenset({ACTION_TOOLS_CALL})
 
 #: Our transport names (registry's spelling) -> the MCP client's ``type``.
@@ -118,6 +131,36 @@ def _transport(config: Mapping[str, Any]) -> str:
 
 def _auth(config: Mapping[str, Any]) -> str:
     return str((config or {}).get("auth") or "none").strip().lower()
+
+
+def _remote_call(params: Mapping[str, Any], *,
+                 action: str) -> Tuple[str, Dict[str, Any],
+                                      Optional[InvokeResult]]:
+    """Parse the ``{tool, arguments}`` shape both tool-call actions take.
+
+    Returns ``(name, arguments, failure)`` with exactly one of the last two
+    meaningful: the adapter answers a malformed request with a result rather
+    than an exception (the invoke path's house style), so the failure comes back
+    as the third element instead of being raised.
+
+    The remote tool name may also arrive under ``name``: the connection-level
+    form predates the reviewed one and named callers exist, so both spellings
+    keep working.
+    """
+    name = str((params or {}).get("tool") or (params or {}).get("name")
+               or "").strip()
+    if not name or len(name) > MAX_TOOL_NAME_LENGTH:
+        return "", {}, invoke_failed(
+            "field_required", stage=STAGE_CONFIG,
+            message="%s needs the remote tool name" % action)
+    raw_arguments = (params or {}).get("arguments")
+    if raw_arguments is None:
+        return name, {}, None
+    if isinstance(raw_arguments, Mapping):
+        return name, dict(raw_arguments), None
+    return "", {}, invoke_failed(
+        "field_invalid", stage=STAGE_CONFIG,
+        message="%s arguments must be an object" % action)
 
 
 def _policy_of(ctx: ExecutionContext) -> NetworkPolicy:
@@ -694,6 +737,11 @@ class McpAdapter(ConnectionAdapter):
         return {
             ACTION_TOOLS_LIST: bool(configured),
             ACTION_RESOURCES_READ: bool(configured),
+            # A read tool call needs nothing declared: what the connection may
+            # reach is what its server publishes, and that is discovered rather
+            # than configured. A connection that is not configured at all still
+            # reports the read action as unavailable.
+            ACTION_TOOLS_READ: bool(configured),
             # A tool call is a write; the runtime's open-class check decides it,
             # and for MCP that class is not openable in this build. Reporting it
             # as available here would advertise exactly what the runtime
@@ -723,6 +771,8 @@ class McpAdapter(ConnectionAdapter):
                             "needs an approval bound to it")
         if action == ACTION_TOOLS_CALL:
             return self._invoke_tools_call(ctx, params)
+        if action == ACTION_TOOLS_READ:
+            return self._invoke_tools_read(ctx, params)
         if action == ACTION_TOOLS_LIST:
             return self._invoke_tools_list(ctx, params)
         return self._invoke_resources_read(ctx, params)
@@ -827,27 +877,61 @@ class McpAdapter(ConnectionAdapter):
 
     def _invoke_tools_call(self, ctx: ExecutionContext,
                            params: Mapping[str, Any]) -> InvokeResult:
-        name = str((params or {}).get("tool") or (params or {}).get("name")
-                   or "").strip()
-        if not name or len(name) > MAX_TOOL_NAME_LENGTH:
-            return invoke_failed(
-                "field_required", stage=STAGE_CONFIG,
-                message="tools.call needs the remote tool name")
-        raw_arguments = (params or {}).get("arguments")
-        if raw_arguments is None:
-            arguments: Dict[str, Any] = {}
-        elif isinstance(raw_arguments, Mapping):
-            arguments = dict(raw_arguments)
-        else:
-            return invoke_failed(
-                "field_invalid", stage=STAGE_CONFIG,
-                message="tools.call arguments must be an object")
+        name, arguments, failure = _remote_call(params, action=ACTION_TOOLS_CALL)
+        if failure is not None:
+            return failure
 
         def work(client) -> InvokeResult:
             text = client.call_tool_strict(name, arguments)
             return invoke_ok(text)
 
         return self._with_client(ctx, ACTION_TOOLS_CALL, work)
+
+    def _invoke_tools_read(self, ctx: ExecutionContext,
+                           params: Mapping[str, Any]) -> InvokeResult:
+        """Call one remote tool this connection's server publishes.
+
+        The bound is the *server's own catalogue*, not a list we maintain: the
+        name must be among the tools discovery found for this exact connection
+        version. It is checked before a client is built, so a name the server
+        never published never produces a handshake, let alone a request —
+        contacting the server to ask would both leak the name and make the
+        server's answer the authority this check exists to keep out of the
+        decision.
+
+        A connection with no discovery result for its current version is
+        refused, not waved through: "we do not know what it publishes" is not
+        "it publishes nothing".
+
+        The remote's own ``annotations.readOnlyHint`` is deliberately not
+        consulted. It is data the far side controls, and it decides nothing here
+        — neither granting nor withholding a call.
+        """
+        from agent.tools.mcp.external import remembered_tool_names
+
+        name, arguments, failure = _remote_call(params, action=ACTION_TOOLS_READ)
+        if failure is not None:
+            return failure
+        published = remembered_tool_names(
+            tenant_id=str(ctx.tenant_id or ""), connection_id=ctx.connection_id,
+            version=int(ctx.config_version or 0))
+        if published is None:
+            return invoke_failed(
+                "tool_not_published", stage=STAGE_POLICY,
+                message="this connection has no current discovery result, so "
+                        "the tools it publishes are unknown; none is callable "
+                        "until discovery answers")
+        if name not in published:
+            return invoke_failed(
+                "tool_not_published", stage=STAGE_POLICY,
+                message="%r is not a tool this connection published; only the "
+                        "remote server's own catalogue is callable" % name)
+
+        def work(client) -> InvokeResult:
+            text = client.call_tool_strict(name, arguments)
+            return invoke_ok(text)
+
+        return self._with_client(ctx, ACTION_TOOLS_READ, work)
 
 
 # -- tenant-scoped reads the tool provider needs -----------------------------
@@ -955,25 +1039,36 @@ def _offered_actions(opened: FrozenSet[str]) -> Tuple[str, ...]:
 
     ``tools.call`` is a write and MCP's write class is not openable in this
     build, so it is never offered — the same rule ERP applies to ``rfc.call``.
+    ``tools.read`` is offered for every connection: what it may reach is the
+    server's own catalogue, which is discovered rather than declared, so there
+    is no per-connection condition left to test here.
     """
-    offered = [ACTION_TOOLS_LIST, ACTION_RESOURCES_READ]
+    offered = [ACTION_TOOLS_LIST, ACTION_RESOURCES_READ, ACTION_TOOLS_READ]
     if "write_execute" in opened:
         offered.append(ACTION_TOOLS_CALL)
     return tuple(offered)
 
 
-def discovered_tools_offered() -> bool:
-    """Whether per-tool (discovered) bindings would be offered right now.
+def discovered_tools_offered(rows: Optional[List[Mapping[str, Any]]] = None) -> bool:
+    """Whether per-tool (discovered) bindings could be offered right now.
 
-    A discovered-tool binding exists to call one remote tool, so it is offered
-    exactly when ``tools.call`` is. Discovery performs a handshake, so this is
-    also the switch that decides whether the deployment should spend one at all.
+    A discovered-tool binding exists to call one remote tool, and every
+    published tool is offered through ``tools.read``, so this is exactly the
+    question "is the read class open here". Discovery performs a handshake,
+    which is why the question is asked before spending one at all.
+
+    ``rows`` is accepted for callers that already hold them and is otherwise
+    unused: it no longer narrows the answer. It is kept in the signature because
+    the caller's question ("should I reconcile this batch") is still the same
+    one, and dropping the argument would only move the branch to the call site.
     """
+    del rows
     try:
         opened = registry.open_classes(registry.KIND_MCP)
     except Exception:  # noqa: BLE001 - an unreadable switch is closed
         return False
-    return "read_execute" in opened and ACTION_TOOLS_CALL in _offered_actions(opened)
+    return ACTION_TOOLS_READ in _offered_actions(opened) \
+        and "read_execute" in opened
 
 
 def _mcp_tool_provider(tenant_id: Optional[str],
@@ -989,7 +1084,7 @@ def _mcp_tool_provider(tenant_id: Optional[str],
     Two shapes are offered:
 
     * the *connection-wide* capabilities (``tools.list`` / ``resources.read`` /
-      ``tools.call``), which are the declared, grantable pair
+      ``tools.read`` / ``tools.call``), which are the declared, grantable pair
       ``(kind, action)`` and exist even before discovery has answered; and
     * one binding per **discovered** remote tool, so the model can call a tool
       by the name and schema its own server published. Discovery is memoized
@@ -997,9 +1092,11 @@ def _mcp_tool_provider(tenant_id: Optional[str],
       stays a cheap read on the turn path and re-discovers by itself when the
       connection changes.
 
-    The discovered bindings appear only when ``tools.call`` itself is offered:
-    they exist to call a remote tool, so advertising them while that action is
-    closed would offer the model a name the runtime always refuses.
+    A discovered binding is offered through ``tools.read``: every tool the
+    server publishes is callable as a read, so there is no per-tool condition
+    left to classify. ``tools.call`` remains the *connection-wide* write action
+    (explicit ``{tool, arguments}``, approval-gated, and un-openable for MCP in
+    this build); it never carries a discovered tool.
     """
     from agent.tools.mcp import external as mcp_external
     from integrations.external.tools import ExternalTool, ToolBinding
@@ -1013,46 +1110,72 @@ def _mcp_tool_provider(tenant_id: Optional[str],
         # The deployment has not opened MCP read execution; showing a tool that
         # always fails would be a placeholder, not a capability.
         return []
-    offered = _offered_actions(opened)
+    rows = list_mcp_connections(tenant, enabled_only=True)
+    discover = discovered_tools_offered(rows)
     out: List[Any] = []
-    for row in list_mcp_connections(tenant, enabled_only=True):
+    for row in rows:
         connection_id = str(row["id"])
         name = str(row["name"] or connection_id)
         config = connection_config(row)
         transport = _transport(config)
+        offered = _offered_actions(opened)
+        connection_bindings: List[Any] = []
         for action in offered:
+            composed = mcp_external.tool_name(
+                action=action, connection_id=connection_id)
+            if not composed:
+                # Nothing this connection can be named by, so nothing about it
+                # can be offered: the memo refuses the same connection for the
+                # same reason, and a tool name that fails the wire contract
+                # would cost the whole turn rather than just this tool.
+                logger.warning(
+                    "[ExternalMcpTool] connection %s cannot compose an"
+                    " admissible tool name; it is not offered", connection_id)
+                connection_bindings = []
+                break
             tool = ExternalTool(
-                name=mcp_external.tool_name(
-                    action=action, connection_id=connection_id),
+                name=composed,
                 kind=registry.KIND_MCP, action=action,
                 write=action in WRITE_ACTIONS,
                 description="Run MCP %s against %s (%s)"
                             % (action, name, transport or "unknown"),
                 metadata={"connection_name": name, "transport": transport,
                           "connection_id": connection_id})
-            out.append(ToolBinding(tool=tool, connection_id=connection_id,
-                                   connection_name=name, scope="tenant"))
-        if discovered_tools_offered():
+            connection_bindings.append(ToolBinding(
+                tool=tool, connection_id=connection_id,
+                connection_name=name, scope="tenant"))
+        if not connection_bindings:
+            continue
+        out.extend(connection_bindings)
+        if discover:
             out.extend(_discovered_bindings(
                 tenant_id=tenant, row=row, connection_name=name,
-                connection_id=connection_id, transport=transport))
+                connection_id=connection_id, transport=transport,
+                offered=offered))
     return out
 
 
 def _discovered_bindings(*, tenant_id: str, row: Mapping[str, Any],
                          connection_name: str, connection_id: str,
-                         transport: str) -> List[Any]:
+                         transport: str, offered: Tuple[str, ...] = ()) -> List[Any]:
     """One binding per remote tool this connection has published.
 
     The remote name and its input schema travel in the binding's metadata, so
     the agent-side wrapper can advertise the real shape. Nothing is stored here:
     the memo in ``agent.tools.mcp.external`` is keyed on the connection row, and
     the connection id in the name is what dispatch resolves against.
+
+    Every candidate is bound to ``tools.read``. What the model may call is what
+    the server published, and the adapter's read action re-checks that same
+    catalogue before sending anything — so the listing and the call agree
+    without either of them consulting a per-tool declaration. A candidate is
+    skipped rather than advertised when the read action is not offered here.
     """
     from agent.tools.mcp import external as mcp_external
     from integrations.external.tools import ExternalTool, ToolBinding
 
     out: List[Any] = []
+    named: set = set()
     try:
         tools = mcp_external.remote_tools_for(tenant_id=tenant_id, row=row)
     except Exception:  # noqa: BLE001 - discovery must never break a listing
@@ -1061,11 +1184,35 @@ def _discovered_bindings(*, tenant_id: str, row: Mapping[str, Any],
         remote = str(schema.get("name") or "")
         if not remote or len(remote) > mcp_external.MAX_REMOTE_NAME:
             continue
+        if ACTION_TOOLS_READ not in offered:
+            # No read class here, so there is no action a discovered tool could
+            # be reached through: the write action is connection-wide only.
+            continue
+        action, write = ACTION_TOOLS_READ, False
+        name = mcp_external.tool_name(
+            action=action, connection_id=connection_id, remote_name=remote)
+        if not name:
+            # No name within the wire contract could be composed for this one
+            # (an absurdly long connection id). Skipping it keeps the other
+            # tools usable; composing anyway would fail the whole request.
+            logger.warning(
+                "[ExternalMcpTool] no admissible tool name for remote tool %r"
+                " on connection %s; it is not offered", remote, connection_id)
+            continue
+        if name in named:
+            # Two remote tools never share a wire name (the segment carries a
+            # digest whenever rewriting was needed), so reaching this is a
+            # defect. Advertising both would hand the model one name for two
+            # different remote tools, which is worse than offering one.
+            logger.warning(
+                "[ExternalMcpTool] remote tools on connection %s collapse onto"
+                " the same name %r; %r is not offered", connection_id, name,
+                remote)
+            continue
+        named.add(name)
         tool = ExternalTool(
-            name=mcp_external.tool_name(
-                action=ACTION_TOOLS_CALL, connection_id=connection_id,
-                remote_name=remote),
-            kind=registry.KIND_MCP, action=ACTION_TOOLS_CALL, write=True,
+            name=name,
+            kind=registry.KIND_MCP, action=action, write=write,
             description=(str(schema.get("description") or "")
                          or "Call MCP tool %s on %s" % (remote, connection_name)),
             metadata={"connection_name": connection_name, "transport": transport,
@@ -1106,9 +1253,26 @@ def _mcp_dispatcher(service, binding, params: Mapping[str, Any], *,
     The connection is resolved from the binding's id *now*, so a binding that
     outlived its connection, its grant or its deployment readiness refuses
     instead of running against whatever is left.
+
+    A **discovered** binding names one remote tool, so the model's parameters
+    are that tool's own arguments and the remote name is injected here, from the
+    binding. Deciding it from the binding's metadata -- never from the shape or
+    contents of the model's parameters -- is what keeps a remote tool whose
+    schema happens to have a ``tool`` field from having that field read as the
+    tool name. Connection-level bindings name no remote tool and are passed
+    through untouched, so their explicit ``{tool, arguments}`` form is exactly
+    what the caller wrote.
     """
+    from agent.tools.mcp import external as mcp_external
+
+    metadata = dict(getattr(binding.tool, "metadata", None) or {})
+    remote = str(metadata.get(mcp_external.METADATA_REMOTE_TOOL) or "")
+    call_params: Mapping[str, Any] = dict(params or {})
+    if remote:
+        call_params = {"tool": remote,
+                       "arguments": dict(params or {})}
     return _connection_service(service).invoke_action(
-        binding.connection_id, binding.tool.action, params,
+        binding.connection_id, binding.tool.action, call_params,
         actor_user_id=actor_user_id, tenant_id=tenant_id,
         agent_id=agent_id, run_id=run_id, approval=approval)
 

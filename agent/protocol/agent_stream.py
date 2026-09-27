@@ -20,7 +20,9 @@ from agent.protocol.message_utils import (
     build_compaction_summary_text,
     find_first_user_text_block,
 )
-from agent.tools.base_tool import BaseTool, ToolResult, is_tool_available, renders_own_cards
+from agent.tools.base_tool import (BaseTool, MAX_TOOL_NAME, ToolResult,
+                                   is_tool_available, is_wire_safe_name,
+                                   renders_own_cards)
 from common.log import logger
 from common.i18n import t as _t
 from common.runtime_identity import current_user_id
@@ -143,9 +145,24 @@ def build_tools_schema(tools: list) -> list:
     Prefer get_json_schema() when it yields real properties (lets tools augment
     schema at runtime), otherwise fall back to the static `tool.params` (MCP
     tools rely on this).
+
+    A name that violates the wire contract is left out and reported, never sent.
+    The provider rejects the **whole request** over one such name — the field
+    error was ``Invalid 'tools[18].function.name'`` and it cost the entire turn,
+    with no reply and no hint as to which tool was at fault. Dropping the tool
+    keeps the other tools usable and turns a lost turn into a log line; who
+    composed the name is the defect to fix, which is why it is logged at error
+    level rather than filtered quietly.
     """
     tools_schema = []
     for tool in tools or []:
+        name = getattr(tool, "name", "")
+        if not is_wire_safe_name(name):
+            logger.error(
+                "[Agent] tool %r has a name that cannot be sent to a model "
+                "provider (needs ^[a-zA-Z0-9_-]+$, max %d characters); it is "
+                "not offered this turn", name, MAX_TOOL_NAME)
+            continue
         input_schema = tool.params
         try:
             dynamic = (tool.get_json_schema() or {}).get("parameters") or {}
@@ -154,7 +171,7 @@ def build_tools_schema(tools: list) -> list:
         except Exception:
             pass
         tools_schema.append({
-            "name": tool.name,
+            "name": name,
             "description": tool.description,
             "input_schema": input_schema,
         })

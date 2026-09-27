@@ -514,6 +514,12 @@ def restore_files(backup_path: str, *, out_dir: str, identity: Any = None,
     intentional: a drill that overwrote the live store would turn a rehearsal
     into the incident it rehearses. A restore is verified against the manifest's
     own digest first, so a corrupt backup fails before anything is written.
+
+    Checked before that first write, and on the dry run too: a backup that
+    predates Agent assignment cannot express the 已配置 restriction, and
+    restoring it would put the deployment back on 沿用原权限 for every connection a
+    tenant had narrowed (change ``add-external-connection-agent-assignment``,
+    spec: 恢复缺少状态的旧备份 MUST NOT 静默恢复原可用范围).
     """
     import base64
 
@@ -523,6 +529,8 @@ def restore_files(backup_path: str, *, out_dir: str, identity: Any = None,
 
     service = _service(identity, service)
     service.require_platform_admin(actor_user_id)
+    compatibility = backup_module.assert_restore_compatible(
+        backup_path, service=service)
     verified = backup_module.verify_backup(backup_path, with_key=True)
     with open(backup_path, encoding="utf-8") as handle:
         document = json.loads(decrypt_secret(handle.read()))
@@ -534,6 +542,7 @@ def restore_files(backup_path: str, *, out_dir: str, identity: Any = None,
              for item in items]
     if not confirm:
         return {"dry_run": True, "out_dir": target, "files": files,
+                "assignment_restore": compatibility,
                 "plaintext_sha256": verified["plaintext_sha256"]}
     os.makedirs(target, exist_ok=True)
     written: List[Dict[str, Any]] = []
@@ -557,7 +566,8 @@ def restore_files(backup_path: str, *, out_dir: str, identity: Any = None,
             os.fsync(handle.fileno())
         written.append({"path": dest, "sha256": actual, "bytes": len(payload)})
     return {"dry_run": False, "out_dir": target, "written": written,
-            "files": files, "plaintext_sha256": verified["plaintext_sha256"]}
+            "files": files, "assignment_restore": compatibility,
+            "plaintext_sha256": verified["plaintext_sha256"]}
 
 
 def _sha256(payload: bytes) -> str:

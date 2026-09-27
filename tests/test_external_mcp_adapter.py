@@ -33,6 +33,7 @@ real transport errors is asserted directly.
 from __future__ import annotations
 
 import json
+import re
 import socket
 import ssl
 from types import SimpleNamespace
@@ -58,7 +59,7 @@ from integrations.external.adapters.base import (
     ExecutionContext,
 )
 from integrations.external.adapters.netpolicy import NetworkPolicy
-from tests._helpers import build_identity
+from tests._helpers import build_identity, legacy_connection_rule
 
 MASTER_KEY = "unit-test-master-key"
 HEADER_SECRET = "mcp-header-secret-9f2c41ab"
@@ -104,6 +105,25 @@ def _clean_discovery_memo():
         yield
     finally:
         mcp_external._reset_for_tests()
+
+def _mcp_name(action, connection_id, remote=""):
+    """The binding name the adapter composes for one action on one connection.
+
+    Built through the composer rather than written out, because the wire format
+    is a contract with the provider (``^[a-zA-Z0-9_-]+$``) and not a spelling
+    these cases are about: they are about which capabilities are offered and
+    which calls are authorized. The spelling itself is pinned in
+    ``tests/test_tool_name_wire_contract.py``.
+    """
+    from agent.tools.mcp.external import tool_name
+    return tool_name(action=action, connection_id=connection_id,
+                     remote_name=remote)
+
+
+def _model_name(action, connection_id, remote=""):
+    """The name the model sees: the binding name carrying its origin prefix."""
+    from agent.tools.external.external_tool import _external_tool_name
+    return _external_tool_name(_mcp_name(action, connection_id, remote))
 
 
 def _policy(hosts: Sequence[str] = (ALLOWED_HOST,)) -> NetworkPolicy:
@@ -232,9 +252,11 @@ def test_adapter_registers_for_mcp_with_the_declared_actions():
     assert isinstance(adapter, mcp_adapter.McpAdapter)
     assert adapter.kind == "mcp"
     assert adapter.actions == frozenset(
-        {"tools.list", "tools.call", "resources.read"})
+        {"tools.list", "tools.read", "tools.call", "resources.read"})
     # A tool call is a write: the remote server's own readOnlyHint is data, not
-    # authority (risk catalogue entry for ``(mcp, tools.call)``).
+    # authority (risk catalogue entry for ``(mcp, tools.call)``). The read
+    # action is the one the connection's own declaration unlocks, and it must
+    # not be a way into the write class.
     assert "tools.call" in adapter.write_actions
     assert adapter.write_actions == frozenset({"tools.call"})
 
@@ -547,6 +569,8 @@ def test_capabilities_report_the_stdio_isolation_reason():
     assert report.reasons["test"] == "stdio_requires_isolation"
     assert report.reasons["execute"] == "stdio_requires_isolation"
     assert report.actions["tools.list"] is False
+    # 连接本身没跑起来，读动作也不报告为可用。
+    assert report.actions["tools.read"] is False
     # The write class is not openable for MCP in this build, so the report says
     # so rather than advertising a tool call the runtime refuses.
     assert report.actions["tools.call"] is False
@@ -558,6 +582,8 @@ def test_capabilities_offer_reads_for_a_remote_connection():
     assert set(report.classes) >= {"configure", "test", "read_execute"}
     assert report.actions["tools.list"] is True
     assert report.actions["resources.read"] is True
+    # 读动作不再依赖任何逐工具声明：连接可用即可读。
+    assert report.actions["tools.read"] is True
     assert report.actions["tools.call"] is False
     assert report.metadata["transport"] == "streamable_http"
 
@@ -706,11 +732,17 @@ def _open_classes(monkeypatch, *, read: bool = True, write: bool = False,
 
 
 def _make_connection(svc, stack, *, name: str = "团队 MCP", config=None):
-    return svc.create_connection(
+    connection = svc.create_connection(
         actor_user_id=stack.root, scope="tenant", tenant_id=stack.tenant_id,
         kind="mcp", name=name,
         config=dict(config or STREAMABLE_CONFIG),
         secrets={"header": HEADER_SECRET})
+    # These tests are about discovery, the grant gate, approvals and the runtime
+    # switches, and they call with no trusted Agent context: keep the connection
+    # on the pre-assignment 沿用原权限 rule so the refusal under test is the one
+    # the test names. The assigned path has its own tests.
+    legacy_connection_rule(svc, stack.tenant_id, connection["id"])
+    return connection
 
 
 def _remember(svc, connection: Mapping[str, Any], *,
@@ -739,19 +771,19 @@ def test_discovered_tools_are_bound_to_their_connection(stack, svc, monkeypatch)
     mine = [b for b in bindings if b.tool.kind == "mcp"]
     names = _tool_names(mine)
 
-    assert "mcp.tools.list.%s" % first["id"] in names
-    assert "mcp.tools.call.%s.echo" % first["id"] in names
-    assert "mcp.resources.read.%s" % first["id"] in names
+    assert _mcp_name("tools.list", first["id"]) in names
+    assert _mcp_name("tools.read", first["id"], "echo") in names
+    assert _mcp_name("resources.read", first["id"]) in names
     # Namespaced by connection: the same remote tool on two connections is two
     # distinct identities, never one name that could resolve to the other.
-    assert "mcp.tools.call.%s.echo" % second["id"] in names
+    assert _mcp_name("tools.read", second["id"], "echo") in names
     assert len(names) == len(set(names))
     for binding in mine:
         assert binding.connection_id in {first["id"], second["id"]}
         assert binding.connection_id in binding.tool.name
 
 
-def test_discovered_tool_keeps_the_remote_schema_and_write_flag(
+def test_discovered_tool_keeps_the_remote_schema_and_read_flag(
         stack, svc, monkeypatch):
     from agent.tools.external.external_tool import ExternalConnectionTool
     from agent.tools.mcp.external import ExternalMcpTool, upgrade_external_mcp_tools
@@ -763,19 +795,20 @@ def test_discovered_tool_keeps_the_remote_schema_and_write_flag(
 
     bindings = [b for b in external_tools.available_tools(
         tenant_id=stack.tenant_id, actor_user_id=stack.root)
-        if b.tool.kind == "mcp" and b.tool.action == "tools.call"]
+        if b.tool.kind == "mcp" and b.tool.action == "tools.read"]
     assert bindings
 
     upgraded = upgrade_external_mcp_tools(
         {"external_" + b.tool.name: ExternalConnectionTool(b) for b in bindings})
-    tool = upgraded["external_mcp.tools.call.%s.echo" % connection["id"]]
+    tool = upgraded[_model_name("tools.read", connection["id"], "echo")]
 
     assert isinstance(tool, ExternalMcpTool)
     assert tool.remote_name == "echo"
     # The advertised arguments are the remote server's own schema, not a
     # fabricated or permissive one: a model that cannot see them invents them.
     assert tool.params == TOOL_SCHEMA["inputSchema"]
-    assert tool.binding.tool.write is True
+    # 每个发布的工具都以读动作投放：本 build 里没有写动作可以承载它。
+    assert tool.binding.tool.write is False
     # It is still an ordinary external connection tool, so the per-turn
     # reconcile and the runtime dispatch treat it identically.
     assert isinstance(tool, ExternalConnectionTool)
@@ -799,13 +832,13 @@ def test_the_management_path_refuses_an_unapproved_mcp_write(stack, svc,
 
 def test_the_tool_entry_point_refuses_an_unapproved_mcp_write(stack, svc,
                                                              monkeypatch):
-    """The same refusal through the declared tool name, i.e. the agent seam."""
+    """The same refusal through the declared connection-level write action."""
     from integrations.external import tools as external_tools
 
     _open_classes(monkeypatch, read=True, write=True)
     connection = _make_connection(svc, stack)
     _remember(svc, connection)
-    name = "mcp.tools.call.%s.echo" % connection["id"]
+    name = _mcp_name("tools.call", connection["id"])
     assert external_tools.find_binding(name, tenant_id=stack.tenant_id,
                                       actor_user_id=stack.root) is not None
 
@@ -829,11 +862,11 @@ def test_the_agent_tool_path_refuses_an_unapproved_mcp_write(stack, svc,
     _remember(svc, connection)
 
     binding = external_tools.find_binding(
-        "mcp.tools.call.%s.echo" % connection["id"],
+        _mcp_name("tools.call", connection["id"]),
         tenant_id=stack.tenant_id, actor_user_id=stack.root)
     tool = upgrade_external_mcp_tools(
         {"external_" + binding.tool.name: _wrap(binding)})[
-            "external_mcp.tools.call.%s.echo" % connection["id"]]
+            _model_name("tools.call", connection["id"])]
 
     with use_identity(RuntimeIdentity(
             agent_id="agent-a", user_id=stack.root, tenant_id=stack.tenant_id)):
@@ -855,11 +888,11 @@ def test_the_agent_tool_path_refuses_when_the_connection_is_disabled(
     _remember(svc, connection)
 
     binding = external_tools.find_binding(
-        "mcp.tools.call.%s.echo" % connection["id"],
+        _mcp_name("tools.call", connection["id"]),
         tenant_id=stack.tenant_id, actor_user_id=stack.root)
     tool = upgrade_external_mcp_tools(
         {"external_" + binding.tool.name: _wrap(binding)})[
-            "external_mcp.tools.call.%s.echo" % connection["id"]]
+            _model_name("tools.call", connection["id"])]
 
     svc.update_connection(
         actor_user_id=stack.root, scope="tenant",
@@ -885,11 +918,11 @@ def test_the_agent_tool_path_refuses_without_a_trusted_identity(
     connection = _make_connection(svc, stack)
     _remember(svc, connection)
     binding = external_tools.find_binding(
-        "mcp.tools.call.%s.echo" % connection["id"],
+        _mcp_name("tools.call", connection["id"]),
         tenant_id=stack.tenant_id, actor_user_id=stack.root)
     tool = upgrade_external_mcp_tools(
         {"external_" + binding.tool.name: _wrap(binding)})[
-            "external_mcp.tools.call.%s.echo" % connection["id"]]
+            _model_name("tools.call", connection["id"])]
 
     # No identity at all: nothing to authorize, so nothing runs.
     result = tool.execute({"text": "hi"})
@@ -911,7 +944,7 @@ def test_the_agent_tool_path_uses_the_real_connection_service(stack, svc,
     connection = _make_connection(svc, stack)
     _remember(svc, connection)
     binding = external_tools.find_binding(
-        "mcp.tools.call.%s.echo" % connection["id"],
+        _mcp_name("tools.call", connection["id"]),
         tenant_id=stack.tenant_id, actor_user_id=stack.root)
 
     identity_only = stack.service
@@ -935,7 +968,7 @@ def test_a_disabled_connection_is_not_offered_and_cannot_be_dispatched(
     _open_classes(monkeypatch, read=True, write=True)
     connection = _make_connection(svc, stack)
     _remember(svc, connection)
-    name = "mcp.tools.call.%s.echo" % connection["id"]
+    name = _mcp_name("tools.read", connection["id"], "echo")
     assert external_tools.find_binding(name, tenant_id=stack.tenant_id,
                                       actor_user_id=stack.root) is not None
 
@@ -964,7 +997,7 @@ def test_a_deleted_connection_cannot_be_dispatched_from_a_held_name(
     _open_classes(monkeypatch, read=True, write=True)
     connection = _make_connection(svc, stack)
     _remember(svc, connection)
-    name = "mcp.tools.call.%s.echo" % connection["id"]
+    name = _mcp_name("tools.read", connection["id"], "echo")
     binding = external_tools.find_binding(name, tenant_id=stack.tenant_id,
                                          actor_user_id=stack.root)
     assert binding is not None
@@ -998,7 +1031,7 @@ def test_revoking_the_open_class_refuses_a_tool_that_was_just_listed(
     _open_classes(monkeypatch, read=True, write=True)
     connection = _make_connection(svc, stack)
     _remember(svc, connection)
-    name = "mcp.tools.call.%s.echo" % connection["id"]
+    name = _mcp_name("tools.read", connection["id"], "echo")
     assert external_tools.find_binding(name, tenant_id=stack.tenant_id,
                                       actor_user_id=stack.root) is not None
 
@@ -1066,7 +1099,7 @@ def test_a_connection_of_another_tenant_is_invisible(stack, svc, monkeypatch):
         tenant_id=other["tenant_id"], actor_user_id=other["user_id"]))
     assert theirs["id"] not in " ".join(names)
     with pytest.raises(Exception):
-        external_tools.dispatch(svc, "mcp.tools.call.%s.echo" % theirs["id"],
+        external_tools.dispatch(svc, _mcp_name("tools.read", theirs["id"], "echo"),
                                 {"tool": "echo", "arguments": {}},
                                 tenant_id=other["tenant_id"],
                                 actor_user_id=other["user_id"])
@@ -1156,7 +1189,7 @@ def test_sync_external_into_agent_removes_a_tool_whose_connection_is_gone(
                                tenant_id=stack.tenant_id)
     with use_identity(identity):
         added, removed = manager.sync_external_into_agent(agent)
-        assert "external_mcp.tools.call.%s.echo" % connection["id"] in added
+        assert _model_name("tools.read", connection["id"], "echo") in added
 
         svc.update_connection(
             actor_user_id=stack.root, scope="tenant",
@@ -1178,11 +1211,11 @@ def test_an_mcp_tool_call_still_consumes_the_tool_call_quota(stack, svc,
     connection = _make_connection(svc, stack)
     _remember(svc, connection)
     binding = external_tools.find_binding(
-        "mcp.tools.call.%s.echo" % connection["id"],
+        _mcp_name("tools.read", connection["id"], "echo"),
         tenant_id=stack.tenant_id, actor_user_id=stack.root)
     tool = upgrade_external_mcp_tools(
         {"external_" + binding.tool.name: _wrap(binding)})[
-            "external_mcp.tools.call.%s.echo" % connection["id"]]
+            _model_name("tools.read", connection["id"], "echo")]
 
     monkeypatch.setattr("auth.service.get_identity_service", lambda: stack.service)
 
@@ -1203,3 +1236,478 @@ def test_an_mcp_tool_call_still_consumes_the_tool_call_quota(stack, svc,
         denial = stream._quota_tool_denial(tool.name)
 
     assert denial is not None and "quota" in denial
+
+
+# =========================================================================== #
+# 12. Published tools: offered through a read action, bounded by discovery
+#     (change add-external-mcp-readonly-tool-execution)
+# =========================================================================== #
+#
+# The reported symptom: an Agent assigned to an MCP connection could not see or
+# call the connection's tools. Two of the three layers were structural rather
+# than a bug — ``tools.call`` is a write by design, and MCP's write class is not
+# openable in this build — so the *code path* for "call a tool as a read" did
+# not exist, and no deployment switch could have opened it.
+#
+# These cases pin that path: the read action is its own (kind, action) pair,
+# every tool a connection publishes is offered through it without any per-tool
+# declaration, the remote server's ``readOnlyHint`` decides nothing, the names
+# that may be called are the ones this connection actually published, and a
+# discovered tool's call carries the remote name from the binding so the model
+# only supplies that tool's own arguments.
+
+
+def test_read_only_tool_calls_are_a_read_action_separate_from_the_write_one():
+    from integrations.external import risk
+    from integrations.external.adapters.base import adapter_for
+
+    adapter = adapter_for(registry.KIND_MCP)
+    assert mcp_adapter.ACTION_TOOLS_READ in adapter.actions
+    # 读与写分别归档：新增读动作不得把写动作的判定放宽。
+    assert mcp_adapter.ACTION_TOOLS_READ not in adapter.write_actions
+    assert adapter.write_actions == frozenset({"tools.call"})
+
+    entry = risk.RISK_CATALOGUE[(registry.KIND_MCP, mcp_adapter.ACTION_TOOLS_READ)]
+    assert entry.write is False
+    assert entry.level == risk.RISK_LOW
+
+
+def test_a_per_tool_declaration_is_not_a_configuration_field():
+    """没有逐工具名单：MCP 的字段集合里不存在这样的键。"""
+    assert "read_only_tools" not in registry.spec_for(
+        registry.KIND_MCP).config_keys
+
+    with pytest.raises(AdapterError) as unknown:
+        registry.validate_config(
+            registry.KIND_MCP, dict(STREAMABLE_CONFIG, read_only_tools=["echo"]))
+    assert unknown.value.code == "unknown_field"
+    assert unknown.value.fields == {"read_only_tools": "unknown"}
+
+
+def test_a_stored_row_that_still_carries_the_removed_key_keeps_working(
+        stack, svc, monkeypatch, client_seam):
+    """遗留行不被字段移除打断：读取、调用、再次保存三条路径都不报错。"""
+    fake = client_seam(FakeClient(call_result="echoed"))
+    _open_classes(monkeypatch, read=True)
+    connection = _make_connection(svc, stack)
+
+    # What an in-place upgrade looks like: the key is in the stored JSON and the
+    # field no longer exists. Written directly so the row is exactly that.
+    legacy = json.dumps(dict(STREAMABLE_CONFIG, read_only_tools=["echo"]))
+    svc._store.execute(
+        "UPDATE external_connections SET config_json=? WHERE id=?",
+        (legacy, connection["id"]))
+    row = svc._store.execute(
+        "SELECT * FROM external_connections WHERE id=?", (connection["id"],))[0]
+    assert mcp_adapter.connection_config(row)["read_only_tools"] == ["echo"]
+
+    # Reading it is unaffected, and it decides nothing: the call runs because
+    # the tool is published, not because the leftover names it.
+    _remember(svc, row)
+    result = svc.invoke_action(
+        connection["id"], mcp_adapter.ACTION_TOOLS_READ,
+        {"tool": "echo", "arguments": {}},
+        actor_user_id=stack.root, tenant_id=stack.tenant_id)
+    assert result.ok is True
+    assert fake.calls == [("echo", {})]
+
+    # Re-saving with the shape the console now sends drops the leftover key:
+    # the row migrates itself the first time somebody touches it.
+    svc.update_connection(
+        actor_user_id=stack.root, scope="tenant", connection_id=connection["id"],
+        expected_version=int(connection["version"]), tenant_id=stack.tenant_id,
+        config=dict(STREAMABLE_CONFIG))
+    saved = svc._store.execute(
+        "SELECT * FROM external_connections WHERE id=?", (connection["id"],))[0]
+    assert "read_only_tools" not in mcp_adapter.connection_config(saved)
+
+
+def test_a_published_tool_runs_through_the_read_action(
+        stack, svc, monkeypatch, client_seam):
+    fake = client_seam(FakeClient(call_result={"content": [{"text": "hit"}]}))
+    _open_classes(monkeypatch, read=True)
+    connection = _make_connection(svc, stack)
+    _remember(svc, connection)
+
+    result = svc.invoke_action(
+        connection["id"], mcp_adapter.ACTION_TOOLS_READ,
+        {"tool": "echo", "arguments": {"text": "hi"}},
+        actor_user_id=stack.root, tenant_id=stack.tenant_id)
+
+    assert result.ok is True
+    # 读动作不需要审批，且参数原样到达远端。
+    assert fake.calls == [("echo", {"text": "hi"})]
+
+
+def test_a_tool_the_connection_did_not_publish_is_never_reached(
+        stack, svc, monkeypatch, client_seam):
+    """边界是「服务器发布过这个名字」，不是一份人工维护的名单。"""
+    fake = client_seam(FakeClient())
+    _open_classes(monkeypatch, read=True)
+    connection = _make_connection(svc, stack)
+    _remember(svc, connection)
+
+    result = svc.invoke_action(
+        connection["id"], mcp_adapter.ACTION_TOOLS_READ,
+        {"tool": "delete_everything", "arguments": {}},
+        actor_user_id=stack.root, tenant_id=stack.tenant_id)
+
+    assert result.ok is False
+    assert result.code == "tool_not_published"
+    # 拒绝发生在建立连接之前：远端没有被触达。
+    assert fake.calls == []
+    assert fake.initialized == 0
+
+
+def test_a_read_before_the_connection_was_discovered_is_refused(
+        stack, svc, monkeypatch, client_seam):
+    """发现结果未知时 fail-closed：不猜测、不握手、不放行。"""
+    fake = client_seam(FakeClient())
+    _open_classes(monkeypatch, read=True)
+    connection = _make_connection(svc, stack)
+
+    result = svc.invoke_action(
+        connection["id"], mcp_adapter.ACTION_TOOLS_READ,
+        {"tool": "echo", "arguments": {}},
+        actor_user_id=stack.root, tenant_id=stack.tenant_id)
+
+    assert result.ok is False
+    assert result.code == "tool_not_published"
+    assert fake.calls == []
+    assert fake.initialized == 0
+
+
+def test_the_remote_read_only_hint_changes_nothing(
+        stack, svc, monkeypatch, client_seam):
+    """远端自称只读是数据，不是判定依据：既不因此放行，也不因此拒绝。"""
+    fake = client_seam(FakeClient())
+    _open_classes(monkeypatch, read=True)
+    for hint in (True, False, None):
+        annotations = {} if hint is None else {"readOnlyHint": hint}
+        connection = _make_connection(svc, stack, name="hint %s" % hint)
+        _remember(svc, connection,
+                  tools=[dict(TOOL_SCHEMA, annotations=annotations)])
+
+        result = svc.invoke_action(
+            connection["id"], mcp_adapter.ACTION_TOOLS_READ,
+            {"tool": "echo", "arguments": {}},
+            actor_user_id=stack.root, tenant_id=stack.tenant_id)
+        assert result.ok is True, (hint, result.code)
+
+    assert fake.calls == [("echo", {}), ("echo", {}), ("echo", {})]
+
+
+def test_published_candidates_are_offered_when_only_the_read_class_is_open(
+        stack, svc, monkeypatch):
+    from integrations.external import tools as external_tools
+
+    _open_classes(monkeypatch, read=True, write=False)
+    connection = _make_connection(svc, stack)
+    _remember(svc, connection)
+    monkeypatch.setattr(mcp_external, "_discover_in_background", lambda **_: None)
+
+    names = _tool_names(external_tools.available_tools(
+        tenant_id=stack.tenant_id, actor_user_id=stack.root))
+
+    assert _mcp_name("tools.read", connection["id"], "echo") in names
+    # 写入仍不开放：写动作不被投放。
+    assert _mcp_name("tools.call", connection["id"], "echo") not in names
+
+
+def test_a_connection_needs_no_declaration_to_offer_its_tools(
+        stack, svc, monkeypatch):
+    """本 change 的反转：没有任何声明的连接照样投放它发布的工具。"""
+    from integrations.external import tools as external_tools
+
+    _open_classes(monkeypatch, read=True)
+    connection = _make_connection(svc, stack, config=STREAMABLE_CONFIG)
+    _remember(svc, connection)
+    monkeypatch.setattr(mcp_external, "_discover_in_background", lambda **_: None)
+
+    names = _tool_names(external_tools.available_tools(
+        tenant_id=stack.tenant_id, actor_user_id=stack.root))
+
+    assert _mcp_name("tools.read", connection["id"], "echo") in names
+    # 读切片开放不等于写切片开放。
+    assert _mcp_name("tools.call", connection["id"], "echo") not in names
+
+
+def test_a_discovered_tool_call_carries_the_remote_name_and_the_model_arguments(
+        stack, svc, monkeypatch, client_seam):
+    """发现工具的远端名由绑定注入，模型只给该工具自己的参数。"""
+    from agent.tools.mcp.external import upgrade_external_mcp_tools
+    from integrations.external import tools as external_tools
+
+    fake = client_seam(FakeClient(call_result="echoed"))
+    _open_classes(monkeypatch, read=True)
+    monkeypatch.setattr("auth.service.get_identity_service",
+                        lambda: stack.service)
+    connection = _make_connection(svc, stack)
+    _remember(svc, connection)
+
+    binding = external_tools.find_binding(
+        _mcp_name("tools.read", connection["id"], "echo"),
+        tenant_id=stack.tenant_id, actor_user_id=stack.root)
+    tool = upgrade_external_mcp_tools(
+        {"external_" + binding.tool.name: _wrap(binding)})[
+            _model_name("tools.read", connection["id"], "echo")]
+
+    with use_identity(RuntimeIdentity(
+            agent_id="agent-a", user_id=stack.root, tenant_id=stack.tenant_id)):
+        result = tool.execute({"text": "hi"})
+
+    assert result.status != "error", result.result
+    # 关键断言：远端收到工具名与 arguments，而不是缺工具名的 field_required。
+    assert fake.calls == [("echo", {"text": "hi"})]
+
+
+def test_a_remote_parameter_named_tool_is_not_read_as_the_tool_name(
+        stack, svc, monkeypatch, client_seam):
+    """封装按绑定判定，不按参数内容猜：远端工具自己的 ``tool`` 参数原样保留。"""
+    from agent.tools.mcp.external import upgrade_external_mcp_tools
+    from integrations.external import tools as external_tools
+
+    fake = client_seam(FakeClient())
+    _open_classes(monkeypatch, read=True)
+    monkeypatch.setattr("auth.service.get_identity_service",
+                        lambda: stack.service)
+    schema = {"name": "echo", "inputSchema": {
+        "type": "object", "properties": {"tool": {"type": "string"}}}}
+    connection = _make_connection(svc, stack)
+    _remember(svc, connection, tools=[schema])
+
+    binding = external_tools.find_binding(
+        _mcp_name("tools.read", connection["id"], "echo"),
+        tenant_id=stack.tenant_id, actor_user_id=stack.root)
+    tool = upgrade_external_mcp_tools(
+        {"external_" + binding.tool.name: _wrap(binding)})[
+            _model_name("tools.read", connection["id"], "echo")]
+
+    with use_identity(RuntimeIdentity(
+            agent_id="agent-a", user_id=stack.root, tenant_id=stack.tenant_id)):
+        tool.execute({"tool": "search"})
+
+    assert fake.calls == [("echo", {"tool": "search"})]
+
+
+def test_a_connection_level_read_keeps_the_explicit_form(
+        stack, svc, monkeypatch, client_seam):
+    """连接级动作显式给出工具名与参数，语义不因本次封装而改变。
+
+    封装只按绑定的 metadata 判定，所以没有 ``remote_tool`` 的绑定（连接级
+    动作）原样透传：这里的参数与连接级读取语义都不经过二次封装。
+    """
+    from integrations.external import tools as external_tools
+
+    fake = client_seam(FakeClient())
+    _open_classes(monkeypatch, read=True)
+    connection = _make_connection(svc, stack)
+    _remember(svc, connection)
+
+    result = external_tools.dispatch(
+        svc, _mcp_name("tools.read", connection["id"]),
+        {"tool": "echo", "arguments": {"text": "hi"}},
+        tenant_id=stack.tenant_id, actor_user_id=stack.root)
+
+    assert result.ok is True
+    assert fake.calls == [("echo", {"text": "hi"})]
+
+
+def test_closing_read_execution_refuses_a_read_tool_that_was_just_listed(
+        stack, svc, monkeypatch, client_seam):
+    """读切片关闭后，刚展示过的只读工具在下一次派发前被拒。"""
+    from integrations.external import tools as external_tools
+
+    fake = client_seam(FakeClient())
+    _open_classes(monkeypatch, read=True)
+    connection = _make_connection(svc, stack)
+    _remember(svc, connection)
+    name = _mcp_name("tools.read", connection["id"], "echo")
+    assert external_tools.find_binding(name, tenant_id=stack.tenant_id,
+                                       actor_user_id=stack.root) is not None
+
+    _open_classes(monkeypatch, read=False)
+
+    assert external_tools.find_binding(name, tenant_id=stack.tenant_id,
+                                       actor_user_id=stack.root) is None
+    result = svc.invoke_action(
+        connection["id"], mcp_adapter.ACTION_TOOLS_READ,
+        {"tool": "echo", "arguments": {}},
+        actor_user_id=stack.root, tenant_id=stack.tenant_id)
+    assert result.ok is False
+    assert result.code == "execution_not_available"
+    assert fake.calls == []
+
+
+def test_a_disabled_connection_refuses_the_read_action(
+        stack, svc, monkeypatch, client_seam):
+    fake = client_seam(FakeClient())
+    _open_classes(monkeypatch, read=True)
+    connection = _make_connection(svc, stack)
+    svc.update_connection(
+        actor_user_id=stack.root, scope="tenant", connection_id=connection["id"],
+        expected_version=int(connection["version"]), tenant_id=stack.tenant_id,
+        enabled=False)
+
+    result = svc.invoke_action(
+        connection["id"], mcp_adapter.ACTION_TOOLS_READ,
+        {"tool": "echo", "arguments": {}},
+        actor_user_id=stack.root, tenant_id=stack.tenant_id)
+
+    assert result.ok is False
+    assert result.code in {"connection_disabled", "not_found"}
+    assert fake.calls == []
+
+
+def test_a_tool_that_stops_being_published_is_refused(
+        stack, svc, monkeypatch, client_seam):
+    """发现结果按新值生效：不再发布的名字既不被投放，也不被放行。"""
+    from integrations.external import tools as external_tools
+
+    fake = client_seam(FakeClient())
+    _open_classes(monkeypatch, read=True)
+    connection = _make_connection(svc, stack)
+    _remember(svc, connection)
+    name = _mcp_name("tools.read", connection["id"], "echo")
+    assert external_tools.find_binding(name, tenant_id=stack.tenant_id,
+                                       actor_user_id=stack.root) is not None
+
+    # The remote stops publishing ``echo``. The connection row is untouched, so
+    # the discovery result is the only thing that moved — which is exactly the
+    # invalidation path this case exists to pin.
+    _remember(svc, connection, tools=[dict(TOOL_SCHEMA, name="search")])
+
+    assert external_tools.find_binding(name, tenant_id=stack.tenant_id,
+                                       actor_user_id=stack.root) is None
+    result = svc.invoke_action(
+        connection["id"], mcp_adapter.ACTION_TOOLS_READ,
+        {"tool": "echo", "arguments": {}},
+        actor_user_id=stack.root, tenant_id=stack.tenant_id)
+    assert result.ok is False
+    assert result.code == "tool_not_published"
+    assert fake.calls == []
+
+
+# -- 工具名的线路契约 --------------------------------------------------------
+#
+# 现场报告：在智能体里问「你可以使用的mcp工具？」得到
+#
+#   Invalid 'tools[18].function.name': string does not match pattern
+#   '^[a-zA-Z0-9_-]+$'
+#
+# 名字里的 `.` 来自动作 id（``tools.read``）与组合分隔符。DeepSeek 的工具名契约
+# 只接受 ``[A-Za-z0-9_-]`` 且不超过 128 个字符 —— 违反时被拒绝的是**整次请求**，
+# 不是那一个工具：模型连一句话都答不出来。所以这不是「某个名字不好看」，而是
+# 「这个名字根本发不出去」，契约在这里被断言成一条不变量。
+#
+# 两个边界都要覆盖：字符集（远端名可以含任意字符，它来自第三方服务器）与长度
+# （``MAX_REMOTE_NAME`` 曾允许 128，加上前缀与连接标识后必然超过 128）。
+
+#: The contract the provider enforces, spelled out literally rather than imported,
+#: so a change to it has to be a deliberate edit here as well.
+WIRE_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
+
+
+def _offered_names(stack, monkeypatch):
+    """Every name this tenant's MCP bindings carry, plus the model-visible one."""
+    from integrations.external import tools as external_tools
+
+    monkeypatch.setattr(mcp_external, "_discover_in_background", lambda **_: None)
+    bindings = [b for b in external_tools.available_tools(
+        tenant_id=stack.tenant_id, actor_user_id=stack.root)
+        if b.tool.kind == "mcp"]
+    return bindings, _tool_names(bindings), {_wrap(b).name for b in bindings}
+
+
+def _discovered_names(bindings) -> set:
+    """Only the names that came from a remote tool, not the connection-level ones."""
+    return {b.tool.name for b in bindings
+            if b.tool.metadata.get(mcp_external.METADATA_REMOTE_TOOL)}
+
+
+def test_every_name_sent_to_the_model_satisfies_the_wire_contract(
+        stack, svc, monkeypatch):
+    """字符集：远端名可以含任意字符，模型看到的名字不能。"""
+    _open_classes(monkeypatch, read=True)
+    connection = _make_connection(svc, stack)
+    _remember(svc, connection, tools=[
+        dict(TOOL_SCHEMA, name="echo"),
+        dict(TOOL_SCHEMA, name="tools.read"),         # a dot, like the action ids
+        dict(TOOL_SCHEMA, name="weird name/with, junk"),
+        dict(TOOL_SCHEMA, name="知识库检索"),           # non-ASCII
+        dict(TOOL_SCHEMA, name="a" * 200),            # past MAX_REMOTE_NAME
+    ])
+
+    bindings, binding_names, model_names = _offered_names(stack, monkeypatch)
+
+    assert len(bindings) >= 5, "every published tool must still be offered"
+    for name in binding_names | model_names:
+        assert WIRE_NAME_RE.match(name), name
+    # The model-visible name is the one that was actually rejected in the field,
+    # so it is asserted on its own rather than left implied by the binding name.
+    assert model_names and all(WIRE_NAME_RE.match(n) for n in model_names)
+
+
+def test_a_remote_name_with_illegal_characters_stays_addressable(
+        stack, svc, monkeypatch):
+    """规范化丢掉了信息，所以名字要绑回原始身份，而不是只把非法字符抹平。
+
+    ``tools.read`` 与 ``tools-read`` 抹平后是同一个串。只抹平会让两个不同的远端
+    工具共用一个名字：模型无法分别寻址，而派发按绑定的远端名执行，谁被调用就取决于
+    列表顺序。加上原始名的摘要后两者可区分，且与顺序无关。
+    """
+    _open_classes(monkeypatch, read=True)
+    connection = _make_connection(svc, stack)
+    _remember(svc, connection, tools=[
+        dict(TOOL_SCHEMA, name="tools.read"),
+        dict(TOOL_SCHEMA, name="tools-read"),
+    ])
+
+    bindings, binding_names, _ = _offered_names(stack, monkeypatch)
+
+    discovered = _discovered_names(bindings)
+    assert len(discovered) == 2, binding_names
+    assert "tools.read" not in " ".join(binding_names)
+
+
+def test_two_distant_remote_names_do_not_share_one_name(
+        stack, svc, monkeypatch):
+    """同名不等于同工具：远端名不同，模型看到的名字必须不同。"""
+    _open_classes(monkeypatch, read=True)
+    connection = _make_connection(svc, stack)
+    # Long enough that the composed name would pass the provider's 128-character
+    # bound, still inside what discovery accepts from the server.
+    long_a = "search_" + "x" * 113
+    long_b = "search_" + "y" * 113
+    assert len(long_a) <= mcp_external.MAX_REMOTE_NAME
+    _remember(svc, connection, tools=[
+        dict(TOOL_SCHEMA, name=long_a),
+        dict(TOOL_SCHEMA, name=long_b),
+    ])
+
+    bindings, binding_names, model_names = _offered_names(stack, monkeypatch)
+
+    discovered = _discovered_names(bindings)
+    assert len(discovered) == 2, binding_names
+    assert all(WIRE_NAME_RE.match(n) for n in model_names)
+
+
+def test_a_long_connection_id_cannot_push_a_name_over_the_limit(
+        stack, svc, monkeypatch):
+    """长度预算按实际连接标识算，不是按一个假定值。"""
+    _open_classes(monkeypatch, read=True)
+    connection = _make_connection(svc, stack)
+    _remember(svc, connection, tools=[dict(TOOL_SCHEMA, name="e" * 128)])
+
+    # A connection id at the top of what the store can produce, plus the longest
+    # remote name discovery accepts, is the worst case the budget must survive.
+    assert mcp_external.MAX_REMOTE_NAME == 128
+    _, binding_names, model_names = _offered_names(stack, monkeypatch)
+    assert all(WIRE_NAME_RE.match(n) for n in model_names)
+
+    from agent.tools.mcp.external import tool_name
+    worst = tool_name(action="resources.read", connection_id="conn_" + "z" * 22,
+                      remote_name="e" * mcp_external.MAX_REMOTE_NAME)
+    from agent.tools.external.external_tool import _external_tool_name
+    assert WIRE_NAME_RE.match(_external_tool_name(worst)), len(
+        _external_tool_name(worst))

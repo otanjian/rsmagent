@@ -1,0 +1,68 @@
+tenant = tnt_EA3qM-lHPLD8ZPwW  agent = tax-health-check-test15
+  租户管理员 usr_9ZxVPz7M2FuOro1q (租户管理员)
+  普通成员   usr_EMjtqQ_5s9oey1y1 (test15-2名)
+
+[1] 分配状态行（external_connection_agent_assignment_sets）
+    OneAgent HTTP MCP      configured=0 assigned=[]
+        assignment_allows(tax-health-check-test15) = allowed=True reason=unconfigured
+    weknora-rsmagent       configured=1 assigned=['tax-health-check-test15']
+        assignment_allows(tax-health-check-test15) = allowed=True reason=assigned
+
+[2] may_execute() 的三条入口分开看
+    per-resource grant = 变更前的逐资源授权（external:mcp:... execute）
+    assignment         = 本次新增：关系里明确写了该智能体
+    admin exemption    = 变更前就有的租户管理员豁免
+
+    --- 租户管理员 ---
+        OneAgent HTTP MCP      may_execute=True  grant=False assignment=False
+        weknora-rsmagent       may_execute=True  grant=False assignment=True 
+
+    --- 普通成员 ---
+        OneAgent HTTP MCP      may_execute=False grant=False assignment=False
+        weknora-rsmagent       may_execute=True  grant=False assignment=True 
+
+[3] 最终投影（authorized_tools 的 connection-level 名字）
+    租户管理员 + 已分配的 agent    (agent=tax-health-check-test15) -> 18
+         mcp_resources_read_conn_8r2lE23PRk0Sd_Wb
+         mcp_resources_read_conn_cN-lhbMpQlwpiL7k
+         mcp_tools_list_conn_8r2lE23PRk0Sd_Wb
+         mcp_tools_list_conn_cN-lhbMpQlwpiL7k
+         mcp_tools_read_conn_8r2lE23PRk0Sd_Wb
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_add_document
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_ask
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_delete_document
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_grep_chunks
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_list_documents
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_list_knowledge_bases
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_read_document
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_search_knowledge
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_update_document
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_wiki_index
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_wiki_read_page
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_wiki_search
+    租户管理员 + 未分配的 agent    (agent=knowledge-qa-test15) -> 3
+         mcp_resources_read_conn_8r2lE23PRk0Sd_Wb
+         mcp_tools_list_conn_8r2lE23PRk0Sd_Wb
+         mcp_tools_read_conn_8r2lE23PRk0Sd_Wb
+    普通成员   + 已分配的 agent    (agent=tax-health-check-test15) -> 15
+         mcp_resources_read_conn_cN-lhbMpQlwpiL7k
+         mcp_tools_list_conn_cN-lhbMpQlwpiL7k
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_add_document
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_ask
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_delete_document
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_grep_chunks
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_list_documents
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_list_knowledge_bases
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_read_document
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_search_knowledge
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_update_document
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_wiki_index
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_wiki_read_page
+         mcp_tools_read_conn_cN-lhbMpQlwpiL7k_wiki_search
+
+[4] 与 run.log 19:18:27 的 `external tools synced` 对齐
+    现场那次投放的 6 个 connection-level 名字，正是 [3] 第一行的 6 个。
+    现场身份是租户管理员（界面左下角「租户管理员」），不是普通成员；
+    [3] 第三行说明换成普通成员后，红框那 3 个名字不再出现。

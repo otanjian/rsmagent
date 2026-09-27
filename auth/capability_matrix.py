@@ -375,7 +375,7 @@ SLICES: Tuple[Slice, ...] = (
         capability="external-connection-management",
         consumer="external_connections",
         # The console page (task group 10 of ``add-external-system-access``): the
-        # "模型与接入 / 外部系统接入" entry, registered as the view
+        # "模型与接入 / 系统接入" entry, registered as the view
         # ``external_connections`` in ``console.js`` and served by
         # ``static/js/external-connections.js``.
         #
@@ -424,6 +424,14 @@ SLICES: Tuple[Slice, ...] = (
             # it, so the caller must be the one entitled to define connections.
             "draft_test": ACCESS_READ,
             "runtime": ACCESS_READ,
+            # Per-connection Agent assignment. The list/candidate reads are
+            # reads of *visible* Agents; the save is a configuration change and
+            # the route carries the manage permission, while the service
+            # re-derives read/manage per target. Declaring the actions here is
+            # what lets the console ask at all — the service still refuses a
+            # caller without the connection/target qualification.
+            "agent_assignments": ACCESS_READ,
+            "agent_candidates": ACCESS_READ,
         },
         # The control plane exists and is exercised over the real WSGI app in
         # ``tests/test_external_connections_api.py`` (session-derived ownership,

@@ -1760,7 +1760,7 @@ _migrations.append(_migration_29)
 
 
 def _migration_30(con: sqlite3.Connection) -> None:
-    """Open the 外部系统接入 console entry for built-in roles.
+    """Open the 系统接入 console entry for built-in roles.
 
     Change ``add-external-system-access`` registers ``admin.external_connections``
     and the ``external.connections.read`` / ``manage`` catalogue ids, but leaves
@@ -2067,6 +2067,90 @@ def _migration_34(con: sqlite3.Connection) -> None:
 
 
 _migrations.append(_migration_34)
+
+
+def _migration_35(con: sqlite3.Connection) -> None:
+    """Per-connection Agent assignment (change
+    ``add-external-connection-agent-assignment``, tasks 1.2/1.3).
+
+    Two tables, both keyed on the **logical** connection so a platform MCP
+    template and the tenant's own override of it share one assignment set:
+
+    * ``external_connection_agent_assignments`` — the many-to-many relation
+      ``(tenant, logical connection) -> agent``. Only the relation is stored;
+      credentials, configuration, tool allow/deny lists and roles are untouched,
+      so assigning never widens an Agent's tool range or copies a secret.
+    * ``external_connection_agent_assignment_sets`` — one row per
+      ``(tenant, logical connection)`` holding ``configured`` and an independent
+      ``revision``. The revision is deliberately separate from the connection's
+      own ``version``: assigning an Agent must not invalidate the connection's
+      test badge or its ``If-Match`` token.
+
+    ``configured`` is the compatibility boundary. A pre-existing connection is
+    backfilled as ``configured=0`` (沿用原权限) so going live does not silently
+    narrow anyone; the first save flips it to ``1`` and only then does the
+    relation restrict use. A connection created after this change, and a
+    platform template newly granted to a tenant, start ``configured=1`` with an
+    empty set (see the service), so nothing is usable before it is assigned.
+
+    The backfill covers every live tenant connection and every live platform
+    tenant-access grant. It deliberately writes **no** assignments: the
+    migration cannot know which Agents a human meant to authorize, and guessing
+    would either lock out or over-grant.
+    """
+    con.execute(
+        """
+        CREATE TABLE external_connection_agent_assignments (
+            tenant_id             TEXT NOT NULL REFERENCES tenants(id),
+            logical_connection_id TEXT NOT NULL
+                REFERENCES external_connections(id),
+            agent_id              TEXT NOT NULL,
+            created_by            TEXT NOT NULL,
+            created_at            INTEGER NOT NULL DEFAULT (unixepoch()),
+            PRIMARY KEY (tenant_id, logical_connection_id, agent_id)
+        )
+        """
+    )
+    con.execute(
+        "CREATE INDEX idx_ext_conn_agent_assign_agent"
+        " ON external_connection_agent_assignments(tenant_id, agent_id)"
+    )
+    con.execute(
+        """
+        CREATE TABLE external_connection_agent_assignment_sets (
+            tenant_id             TEXT NOT NULL REFERENCES tenants(id),
+            logical_connection_id TEXT NOT NULL
+                REFERENCES external_connections(id),
+            configured            INTEGER NOT NULL DEFAULT 0,
+            revision              INTEGER NOT NULL DEFAULT 1,
+            updated_at            INTEGER NOT NULL DEFAULT (unixepoch()),
+            PRIMARY KEY (tenant_id, logical_connection_id)
+        )
+        """
+    )
+    # Existing tenant connections: an MCP override is keyed on the platform
+    # template it stands in for, every other kind on its own id — the same
+    # ``COALESCE(base_connection_id, id)`` rule the runtime and the console use.
+    con.execute(
+        "INSERT OR IGNORE INTO external_connection_agent_assignment_sets"
+        " (tenant_id, logical_connection_id, configured, revision)"
+        " SELECT tenant_id, COALESCE(base_connection_id, id), 0, 1"
+        " FROM external_connections"
+        " WHERE scope='tenant' AND tenant_id IS NOT NULL AND deleted_at IS NULL"
+    )
+    # Existing platform grants: the assignment belongs to the consuming tenant,
+    # so the logical id is the template's own id.
+    con.execute(
+        "INSERT OR IGNORE INTO external_connection_agent_assignment_sets"
+        " (tenant_id, logical_connection_id, configured, revision)"
+        " SELECT a.tenant_id, a.platform_connection_id, 0, 1"
+        " FROM external_connection_tenant_access a"
+        " JOIN external_connections c ON c.id = a.platform_connection_id"
+        " WHERE c.deleted_at IS NULL"
+    )
+
+
+_migrations.append(_migration_35)
 
 
 class IdentityStoreError(RuntimeError):

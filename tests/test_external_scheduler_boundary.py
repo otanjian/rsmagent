@@ -105,6 +105,25 @@ def member(stack):
     """
     return _ready_member(stack, "member")
 
+def _mcp_name(action, connection_id, remote=""):
+    """The binding name the adapter composes for one action on one connection.
+
+    Built through the composer rather than written out, because the wire format
+    is a contract with the provider (``^[a-zA-Z0-9_-]+$``) and not a spelling
+    these cases are about: they are about which capabilities are offered and
+    which calls are authorized. The spelling itself is pinned in
+    ``tests/test_tool_name_wire_contract.py``.
+    """
+    from agent.tools.mcp.external import tool_name
+    return tool_name(action=action, connection_id=connection_id,
+                     remote_name=remote)
+
+
+def _model_name(action, connection_id, remote=""):
+    """The name the model sees: the binding name carrying its origin prefix."""
+    from agent.tools.external.external_tool import _external_tool_name
+    return _external_tool_name(_mcp_name(action, connection_id, remote))
+
 
 def _ready_member(stack, username):
     """Create a member holding both the baseline role and connection access."""
@@ -438,7 +457,7 @@ def test_the_quota_is_consumed_where_the_call_happens_not_where_it_was_planned(
     connection_id = "conn_scheduled"
     binding = external_tools.ToolBinding(
         tool=external_tools.ExternalTool(
-            name="mcp.tools.call.%s.echo" % connection_id,
+            name=_mcp_name("tools.call", connection_id, "echo"),
             kind=MCP_KIND, action="tools.call", write=True,
             description="call echo"),
         connection_id=connection_id, connection_name="Remote MCP",

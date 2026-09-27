@@ -102,6 +102,17 @@ RISK_CATALOGUE: Dict[Tuple[str, str], RiskEntry] = {
         kind=registry.KIND_MCP, action="tools.list", level=RISK_LOW,
         label_key="risk_mcp_tools_list", write=False, reversible=True,
         notes="List the tools a server offers. Read-only against the server."),
+    (registry.KIND_MCP, "tools.read"): RiskEntry(
+        kind=registry.KIND_MCP, action="tools.read", level=RISK_LOW,
+        label_key="risk_mcp_tools_read", write=False, reversible=True,
+        notes="Call an MCP tool the remote server publishes. Approval is not "
+              "required. This is the only action a discovered tool is offered "
+              "through, and nothing local decides whether a tool is safe: the "
+              "remote server's own readOnlyHint grants and withholds nothing, "
+              "and there is no per-tool declaration on the connection. What "
+              "bounds it is the connection's assignment, the resource grant and "
+              "the deployment's read_execute switch -- plus the requirement "
+              "that the name be one this connection actually published."),
     (registry.KIND_MCP, "tools.call"): RiskEntry(
         kind=registry.KIND_MCP, action="tools.call", level=RISK_HIGH,
         label_key="risk_mcp_tools_call", write=True, reversible=False,

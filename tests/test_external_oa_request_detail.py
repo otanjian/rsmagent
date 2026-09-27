@@ -257,7 +257,7 @@ def oa_stack(tmp_path, monkeypatch):
     # the resolved limits; pointing it at the test's tmp_path keeps the test off
     # the developer's real workspace.
     monkeypatch.setattr("config.conf", lambda: {"agent_workspace": str(tmp_path)})
-    from tests._helpers import build_identity
+    from tests._helpers import build_identity, legacy_connection_rule
     from integrations.external.service import ExternalConnectionService
     from integrations.external.oa import store as oa_store
 
@@ -268,6 +268,7 @@ def oa_stack(tmp_path, monkeypatch):
         actor_user_id=stack.root, scope="tenant", tenant_id=stack.tenant_id,
         kind=registry.KIND_OA, name="OA",
         config=dict(OA_LOGIN_CONFIG), secrets={"password": PASSWORD})
+    legacy_connection_rule(service, stack.tenant_id, connection["id"])
     return stack, service, connection
 
 
@@ -646,7 +647,7 @@ def test_an_openapi_site_refuses_the_e9_only_reads(
     monkeypatch.setenv("COW_CREDENTIAL_MASTER_KEY", "unit-test-master-key")
     monkeypatch.setattr("config.conf",
                         lambda: {"agent_workspace": str(tmp_path)})
-    from tests._helpers import build_identity
+    from tests._helpers import build_identity, legacy_connection_rule
     from integrations.external.service import ExternalConnectionService
     from integrations.external.oa import store as oa_store
 
@@ -660,6 +661,7 @@ def test_an_openapi_site_refuses_the_e9_only_reads(
         config={"base_url": NODE, "username": "alice", "app_key": "key-1",
                 "corp_id": "corp-1"},
         secrets={"password": PASSWORD, "app_secret": "APP-SECRET-VALUE"})
+    legacy_connection_rule(service, stack.tenant_id, connection["id"])
     install_transport(_openapi_ready)
     result = _invoke(service, stack, connection, action, {"request_id": "100"})
     assert result.ok is False

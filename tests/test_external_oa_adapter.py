@@ -816,7 +816,7 @@ def test_a_read_timeout_is_a_plain_failure_not_unknown(
 @pytest.fixture
 def oa_stack(tmp_path, monkeypatch):
     monkeypatch.setenv("COW_CREDENTIAL_MASTER_KEY", "unit-test-master-key")
-    from tests._helpers import build_identity
+    from tests._helpers import build_identity, legacy_connection_rule
     from integrations.external.service import ExternalConnectionService
     from integrations.external.oa import store as oa_store
 
@@ -827,6 +827,11 @@ def oa_stack(tmp_path, monkeypatch):
         actor_user_id=stack.root, scope="tenant", tenant_id=stack.tenant_id,
         kind=registry.KIND_OA, name="OA",
         config=dict(OA_LOGIN_CONFIG), secrets={"password": PASSWORD})
+    # These tests are about the adapter, the transport and the runtime's other
+    # gates, and they call with no trusted Agent context: keep the connection on
+    # the pre-assignment 沿用原权限 rule so the refusal under test is the one the
+    # test names.
+    legacy_connection_rule(service, stack.tenant_id, connection["id"])
     return stack, service, connection
 
 

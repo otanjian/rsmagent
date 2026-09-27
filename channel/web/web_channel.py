@@ -102,6 +102,7 @@ from channel.web.admin_audit_handlers import (
 )
 from channel.web.admin_token_usage_handlers import AdminTokenUsageHandler
 from channel.web.external_connection_handlers import (
+    ExternalConnectionAgentAssignmentHandler,
     ExternalConnectionCatalogHandler,
     ExternalConnectionDraftTestHandler,
     ExternalConnectionPersonalDetailHandler,

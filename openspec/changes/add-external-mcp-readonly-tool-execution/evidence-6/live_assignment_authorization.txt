@@ -1,0 +1,46 @@
+connection        = weknora-rsmagent conn_cN-lhbMpQlwpiL7k kind=mcp scope=tenant enabled=1 version=5
+tenant            = tnt_EA3qM-lHPLD8ZPwW
+actor             = usr_EMjtqQ_5s9oey1y1
+open classes      = ['configure', 'read_execute', 'test']
+
+[1] assignment    = allowed=True reason=assigned
+[2] may_execute   = assigned=True unassigned=False (no external: grant exists in this deployment)
+
+[3] memo names    = 12 published by the server
+       add_document, ask, delete_document, grep_chunks, list_documents, list_knowledge_bases, read_document, search_knowledge, update_document, wiki_index, wiki_read_page, wiki_search
+    assigned   tax-health-check-test15 -> 15 bindings
+       mcp.tools.list.conn_cN-lhbMpQlwpiL7k
+       mcp.resources.read.conn_cN-lhbMpQlwpiL7k
+       mcp.tools.read.conn_cN-lhbMpQlwpiL7k
+       mcp.tools.read.conn_cN-lhbMpQlwpiL7k.add_document
+       mcp.tools.read.conn_cN-lhbMpQlwpiL7k.ask
+       mcp.tools.read.conn_cN-lhbMpQlwpiL7k.delete_document
+       mcp.tools.read.conn_cN-lhbMpQlwpiL7k.grep_chunks
+       mcp.tools.read.conn_cN-lhbMpQlwpiL7k.list_documents
+       mcp.tools.read.conn_cN-lhbMpQlwpiL7k.list_knowledge_bases
+       mcp.tools.read.conn_cN-lhbMpQlwpiL7k.read_document
+       mcp.tools.read.conn_cN-lhbMpQlwpiL7k.search_knowledge
+       mcp.tools.read.conn_cN-lhbMpQlwpiL7k.update_document
+       mcp.tools.read.conn_cN-lhbMpQlwpiL7k.wiki_index
+       mcp.tools.read.conn_cN-lhbMpQlwpiL7k.wiki_read_page
+       mcp.tools.read.conn_cN-lhbMpQlwpiL7k.wiki_search
+    unassigned knowledge-qa-test15    -> 0 bindings
+
+[4] external_tools_for (the agent turn's own seam)
+    assigned   tax-health-check-test15 -> 15 tools
+       external_mcp.tools.list.conn_cN-lhbMpQlwpiL7k
+       external_mcp.resources.read.conn_cN-lhbMpQlwpiL7k
+       external_mcp.tools.read.conn_cN-lhbMpQlwpiL7k
+       external_mcp.tools.read.conn_cN-lhbMpQlwpiL7k.add_document
+       external_mcp.tools.read.conn_cN-lhbMpQlwpiL7k.ask
+       external_mcp.tools.read.conn_cN-lhbMpQlwpiL7k.delete_document
+       external_mcp.tools.read.conn_cN-lhbMpQlwpiL7k.grep_chunks
+       external_mcp.tools.read.conn_cN-lhbMpQlwpiL7k.list_documents
+       external_mcp.tools.read.conn_cN-lhbMpQlwpiL7k.list_knowledge_bases
+       external_mcp.tools.read.conn_cN-lhbMpQlwpiL7k.read_document
+       external_mcp.tools.read.conn_cN-lhbMpQlwpiL7k.search_knowledge
+       external_mcp.tools.read.conn_cN-lhbMpQlwpiL7k.update_document
+       external_mcp.tools.read.conn_cN-lhbMpQlwpiL7k.wiki_index
+       external_mcp.tools.read.conn_cN-lhbMpQlwpiL7k.wiki_read_page
+       external_mcp.tools.read.conn_cN-lhbMpQlwpiL7k.wiki_search
+    unassigned knowledge-qa-test15    -> 0 tools

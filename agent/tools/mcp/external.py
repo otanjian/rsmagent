@@ -39,28 +39,43 @@ Three consequences shape this module:
 
 from __future__ import annotations
 
+import hashlib
+import re
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Sequence, Tuple
 
-from agent.tools.external.external_tool import ExternalConnectionTool
+from agent.tools.base_tool import MAX_TOOL_NAME, is_wire_safe_name
+from agent.tools.external.external_tool import TOOL_PREFIX, ExternalConnectionTool
 from common.log import logger
 
-#: Separator between a connection id and a remote tool name in a composed tool
-#: name. Connection ids are server-generated as ``conn_<token>`` and therefore
-#: never contain it, which is what makes the composed name unambiguous: reading
-#: the segment after the last known prefix yields the connection, and no remote
-#: name can move it.
-TOOL_NAME_SEPARATOR = "."
+#: Separator between the parts of a composed tool name.
+#:
+#: A readability device, not a parseable delimiter: nothing decodes a name back
+#: into its parts (``find_binding`` compares whole names, and the binding's
+#: metadata carries the real remote tool name). It is ``_`` rather than the
+#: ``.`` this used to be because the model providers reject any character
+#: outside ``[A-Za-z0-9_-]`` — with a dot, **every** external tool made the
+#: whole request fail (``Invalid 'tools[18].function.name'``), which is how this
+#: was found. Unambiguity is therefore provided by :func:`_wire_part` plus
+#: :func:`_remote_segment`, not by the delimiter.
+TOOL_NAME_SEPARATOR = "_"
 
 #: Bound on how many tools one connection may contribute. A server advertising
 #: thousands of tools must not be able to blow up the model's tool list.
 MAX_TOOLS_PER_CONNECTION = 200
 
-#: Bound on a remote tool's own name, so a hostile server cannot compose a name
-#: that is unusable in a prompt, a log line or a grant id.
+#: Bound on a remote tool's own name, so a hostile server cannot push an
+#: unbounded string into a prompt, a log line or a memo. The *composed* name is
+#: additionally bounded by :data:`agent.tools.base_tool.MAX_TOOL_NAME`, which is
+#: what a name past this bound runs into.
 MAX_REMOTE_NAME = 128
+
+#: Length of the digest appended to a remote segment that had to be rewritten.
+#: 48 bits: two names sharing one is far less likely than the same connection
+#: publishing two tools whose names differ only in characters we cannot carry.
+REMOTE_DIGEST_LEN = 12
 
 #: Fallback discovery bound when the deployment's pool limit cannot be read.
 DEFAULT_DISCOVERY_TIMEOUT = 30.0
@@ -72,31 +87,81 @@ METADATA_INPUT_SCHEMA = "input_schema"
 METADATA_CONNECTION_ID = "connection_id"
 
 
+def _wire_part(value: Any) -> str:
+    """One name segment, rewritten to the characters a provider accepts.
+
+    The remote name is third-party input: ``tools.read``, ``weird name/x`` and
+    non-ASCII are all names a real server may publish, and none of them can be
+    carried on the wire as-is. Replacing rather than rejecting keeps the tool
+    addressable; :func:`_remote_segment` is what keeps it *distinct*.
+    """
+    return re.sub(r"[^A-Za-z0-9_-]", "_", str(value or ""))
+
+
+def _remote_segment(remote_name: str, budget: int) -> str:
+    """The remote-tool segment of a name, within ``budget`` characters.
+
+    Rewriting destroys information — ``tools.read`` and ``tools-read`` both
+    become ``tools_read`` — so whenever anything had to be rewritten (or the
+    name is too long), the segment is bound back to the original by appending a
+    digest of the *whole* original name. Two remote tools therefore never share
+    a wire name, and the mapping does not depend on the order the server
+    happened to list them in, which matters because dispatch runs against the
+    remote name the binding carries: a name that could resolve to the other
+    tool would call the other tool.
+
+    A name that needs no rewriting is returned verbatim, so the ordinary case
+    reads as the server wrote it.
+    """
+    if budget <= 0:
+        return ""
+    safe = _wire_part(remote_name)
+    if safe == remote_name and len(safe) <= budget:
+        return safe
+    digest = hashlib.sha1(
+        remote_name.encode("utf-8", "replace")).hexdigest()[:REMOTE_DIGEST_LEN]
+    if budget <= REMOTE_DIGEST_LEN:
+        return digest[:budget]
+    head = safe[:budget - REMOTE_DIGEST_LEN - 1].strip("_")
+    return "%s%s%s" % (head, TOOL_NAME_SEPARATOR, digest) if head else digest
+
+
 def tool_name(*, action: str, connection_id: str,
               remote_name: str = "") -> str:
-    """The model-visible name of an MCP capability on one connection.
+    """The binding name of an MCP capability on one connection.
 
-    ``mcp.<action>.<connection_id>`` for the connection-wide capability and
-    ``mcp.<action>.<connection_id>.<remote tool>`` for one discovered tool, so
+    ``mcp_<action>_<connection_id>`` for the connection-wide capability and
+    ``mcp_<action>_<connection_id>_<remote tool>`` for one discovered tool, so
     the name answers "which connection" before it answers "which tool". Two
     connections can never collide on it.
+
+    The result satisfies :func:`agent.tools.base_tool.is_wire_safe_name` **after**
+    the model-visible prefix is added, which is why the budget is computed
+    against that prefix rather than against the bare name — the length that
+    matters is the one the provider sees. Returns ``""`` when no name within the
+    contract can be composed; callers skip such a candidate rather than
+    advertise a name that would fail the request.
     """
-    base = "mcp%s%s%s%s" % (TOOL_NAME_SEPARATOR, action,
-                            TOOL_NAME_SEPARATOR, connection_id)
-    if remote_name:
-        return "%s%s%s" % (base, TOOL_NAME_SEPARATOR, remote_name)
-    return base
-
-
-def _nameable(connection_id: str, remote_name: str) -> bool:
-    """Whether a composed name is unambiguous and within bounds."""
-    return bool(connection_id) and TOOL_NAME_SEPARATOR not in connection_id \
-        and bool(remote_name) and len(remote_name) <= MAX_REMOTE_NAME
+    base = "%s%s%s%s%s" % ("mcp", TOOL_NAME_SEPARATOR, _wire_part(action),
+                           TOOL_NAME_SEPARATOR, _wire_part(connection_id))
+    if not _wire_part(action) or not _wire_part(connection_id):
+        # An unnamed action or connection would compose a name that reads like a
+        # real binding (``mcp_tools_read_``) while resolving to nothing.
+        return ""
+    if not remote_name:
+        return base if is_wire_safe_name(TOOL_PREFIX + base) else ""
+    budget = (MAX_TOOL_NAME - len(TOOL_PREFIX) - len(base)
+              - len(TOOL_NAME_SEPARATOR))
+    segment = _remote_segment(remote_name, budget)
+    if not segment:
+        return ""
+    composed = "%s%s%s" % (base, TOOL_NAME_SEPARATOR, segment)
+    return composed if is_wire_safe_name(TOOL_PREFIX + composed) else ""
 
 
 def _connection_nameable(connection_id: str) -> bool:
     """Whether a connection id may take part in a composed tool name."""
-    return bool(connection_id) and TOOL_NAME_SEPARATOR not in connection_id
+    return bool(tool_name(action="tools.read", connection_id=connection_id))
 
 
 # --------------------------------------------------------------------------- #
@@ -455,6 +520,32 @@ def remote_tools_for(*, tenant_id: str, row: Mapping[str, Any],
     return tuple(entry.tools) if entry is not None else ()
 
 
+def remembered_tool_names(*, tenant_id: str, connection_id: str,
+                          version: int) -> Optional[FrozenSet[str]]:
+    """The remote names memoized for exactly this connection version.
+
+    Read-only, and deliberately not a discovery: the caller is asking "what did
+    this connection publish, as of the version I am acting on". A connection
+    whose row moved on has a memo that no longer describes it, and a connection
+    never discovered has none at all — both answer ``None``, which is "not
+    known right now" rather than "published nothing".
+
+    Callers that authorize *by* this answer must refuse on ``None``: the whole
+    point of asking is that the set of callable names is the server's actual
+    catalogue, and an unknown catalogue is not an empty one that may be widened.
+    """
+    key = _memo_key(tenant_id, connection_id)
+    with _MEMO_LOCK:
+        entry = _MEMO.get(key)
+        if entry is None or not entry.enabled:
+            return None
+        if int(entry.version) != int(version):
+            return None
+        return frozenset(
+            str(tool.get("name") or "") for tool in entry.tools
+            if str(tool.get("name") or ""))
+
+
 def remember_tools(*, tenant_id: str, connection_id: str, version: int,
                    tools: Sequence[Mapping[str, Any]],
                    enabled: bool = True,
@@ -526,12 +617,14 @@ def refresh_tenant_tools(*, tenant_id: str, actor_user_id: str = "") -> int:
     tenant = str(tenant_id or "").strip()
     if not tenant:
         return 0
-    if not discovered_tools_offered():
+    rows = list_mcp_connections(tenant, enabled_only=True)
+    if not discovered_tools_offered(rows):
         # Nothing in this deployment would offer a discovered tool, so a
         # handshake would be I/O spent on a name the runtime always refuses.
+        # The rows are consulted so "this deployment declared nothing" costs no
+        # handshake at all, rather than one per connection.
         forget_tenant(tenant)
         return 0
-    rows = list_mcp_connections(tenant, enabled_only=True)
     reconcile_memo(tenant_id=tenant, rows=rows)
     for row in rows:
         refresh_connection(tenant_id=tenant, row=row,

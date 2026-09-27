@@ -468,6 +468,13 @@ def restore_files_cmd(backup_path, out_dir, actor, confirmed, as_json):
                        % (item["name"], item["bytes"],
                           str(item["sha256"])[:12]))
         click.echo("out_dir: %s" % report["out_dir"])
+        # Said out loud rather than left to the operator's memory of which
+        # version wrote the file: a backup without assignment coverage restores
+        # to 沿用原权限, which is a fact about the restored state.
+        restore = report.get("assignment_restore") or {}
+        if restore.get("reason") == "no_configured_assignments":
+            click.echo("note: this backup predates Agent assignment; no"
+                       " connection here is configured, so nothing is widened.")
         if report["dry_run"]:
             click.echo("Dry run: pass --yes to write.")
         else:

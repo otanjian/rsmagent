@@ -30,7 +30,7 @@ turn a display mask into a credential.
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import web
 
@@ -181,6 +181,24 @@ def _query_kwargs() -> Dict[str, Any]:
         "limit": limit,
         "cursor": inp.cursor or None,
     }
+
+
+def _pagination(inp) -> Tuple[int, int]:
+    """``(page, page_size)`` from a query, clamped to the service's bounds.
+
+    The service clamps again server-side; clamping here keeps the projection
+    honest about the bounds it actually served and stops a huge ``page_size``
+    from ever reaching a query builder.
+    """
+    def _int(value, fallback):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return fallback
+    page = max(1, _int(getattr(inp, "page", 1), 1))
+    page_size = _int(getattr(inp, "page_size", 20), 20)
+    page_size = max(1, min(100, page_size))
+    return page, page_size
 
 
 # -- reads -----------------------------------------------------------------
@@ -579,6 +597,57 @@ class ExternalConnectionPersonalWriteHandler:
             return _error("connection write failed", 500, "internal")
 
 
+# -- Agent assignment ------------------------------------------------------
+
+class ExternalConnectionAgentAssignmentHandler:
+    """Tenant-scope Agent assignment: list, candidate search and delta save.
+
+    All three live on one class because they share an address family
+    (``.../agent-assignments`` and ``.../agent-candidates``); the *method* and
+    the path suffix decide which one runs, and the service derives the scope and
+    the caller from the verified context. A read never mutates, and the save is
+    a delta guarded by an independent assignment revision — never a full
+    replacement of whatever the caller happened to load.
+    """
+
+    def GET(self, connection_id: str):
+        ctx, service = _guard(require_tenant=True)
+        try:
+            inp = web.input(q="", page="1", page_size="20")
+            page, page_size = _pagination(inp)
+            if _is_agent_candidates_path():
+                return _ok(service.search_agent_candidates(
+                    actor_user_id=ctx.user_id, tenant_id=ctx.tenant_id,
+                    connection_id=connection_id, q=inp.q or "",
+                    page=page, page_size=page_size))
+            return _ok(service.list_agent_assignments(
+                actor_user_id=ctx.user_id, tenant_id=ctx.tenant_id,
+                connection_id=connection_id, q=inp.q or None,
+                page=page, page_size=page_size))
+        except ExternalConnectionError as error:
+            _fail(error)
+        except Exception as error:  # noqa: BLE001
+            logger.error("[ExternalConnections] assignment read failed: %s" % error)
+            return _error("failed to read Agent assignments", 500, "internal")
+
+    def POST(self, connection_id: str):
+        _require_management_write()
+        ctx, service = _guard(require_tenant=True)
+        data = _body()
+        try:
+            return _ok(service.save_agent_assignments(
+                actor_user_id=ctx.user_id, tenant_id=ctx.tenant_id,
+                connection_id=connection_id,
+                expected_revision=_revision(data),
+                add_agent_ids=data.get("add_agent_ids") or (),
+                remove_agent_ids=data.get("remove_agent_ids") or ()))
+        except ExternalConnectionError as error:
+            _fail(error)
+        except Exception as error:  # noqa: BLE001
+            logger.error("[ExternalConnections] assignment save failed: %s" % error)
+            return _error("Agent assignment save failed", 500, "internal")
+
+
 # -- path helpers ----------------------------------------------------------
 
 def _ok(payload: Dict[str, Any]):
@@ -598,6 +667,10 @@ def _path() -> str:
         return str(web.ctx.path or "").rstrip("/")
     except Exception:  # noqa: BLE001 - a direct handler call has no ctx
         return ""
+
+
+def _is_agent_candidates_path() -> bool:
+    return _path().endswith("/agent-candidates")
 
 
 def _is_erp_default_path() -> bool:
@@ -646,4 +719,5 @@ __all__ = [
     "ExternalConnectionTenantWriteHandler",
     "ExternalConnectionPlatformWriteHandler",
     "ExternalConnectionPersonalWriteHandler",
+    "ExternalConnectionAgentAssignmentHandler",
 ]

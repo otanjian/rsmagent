@@ -51,6 +51,25 @@ def connection(svc, stack):
         actor_user_id=stack.root, scope="tenant", tenant_id=stack.tenant_id,
         kind=KIND, name="Gate MCP", config=MCP_CONFIG)
 
+def _mcp_name(action, connection_id, remote=""):
+    """The binding name the adapter composes for one action on one connection.
+
+    Built through the composer rather than written out, because the wire format
+    is a contract with the provider (``^[a-zA-Z0-9_-]+$``) and not a spelling
+    these cases are about: they are about which capabilities are offered and
+    which calls are authorized. The spelling itself is pinned in
+    ``tests/test_tool_name_wire_contract.py``.
+    """
+    from agent.tools.mcp.external import tool_name
+    return tool_name(action=action, connection_id=connection_id,
+                     remote_name=remote)
+
+
+def _model_name(action, connection_id, remote=""):
+    """The name the model sees: the binding name carrying its origin prefix."""
+    from agent.tools.external.external_tool import _external_tool_name
+    return _external_tool_name(_mcp_name(action, connection_id, remote))
+
 
 def _open(monkeypatch, *classes):
     from config import conf
@@ -127,7 +146,7 @@ def test_write_tools_are_omitted_from_agent_discovery_while_write_class_is_close
         stack.tenant_id, stack.root)}
     assert "tools.call" not in offered
     assert external_tools.find_binding(
-        "mcp.tools.call.%s" % connection["id"],
+        _mcp_name("tools.call", connection["id"]),
         tenant_id=stack.tenant_id, actor_user_id=stack.root) is None
 
 

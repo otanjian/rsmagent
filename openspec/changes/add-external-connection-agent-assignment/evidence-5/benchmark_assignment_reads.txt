@@ -1,0 +1,17 @@
+data: 5000 agents, 1000 assigned relations, page_size=20
+
+path                                latency    queries     items    total
+assigned page 1                      0.009s          8        20     1000
+assigned page 50                     0.006s          8        20     1000
+assigned search                      0.006s          8         1        1
+candidate search                     0.009s          8         1        1
+candidate search (no match)          0.008s          8         0        0
+
+pre-fix baseline (per-row auth)      latency    queries
+assigned page 1                      0.504s       2008
+assigned page 50                     0.511s       2008
+assigned search                      0.505s       2008
+candidate search                     2.493s      10008
+candidate search (no match)          2.468s      10008
+
+PASS: 8 queries on every path, slowest 0.009s, paging is server-side
