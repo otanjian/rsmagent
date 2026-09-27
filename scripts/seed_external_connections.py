@@ -286,7 +286,7 @@ def grant_access(identity, db_path: str, *, tenant_id: str, admin_user_id: str,
 
     if role is None:
         created = identity.create_role(
-            admin_user_id, tenant_id, ACCESS_ROLE_CODE, "外部系统接入",
+            admin_user_id, tenant_id, ACCESS_ROLE_CODE, "系统接入",
             permissions=wanted)
         check("access role %r created" % ACCESS_ROLE_CODE, True,
               "id=%s" % created["id"])

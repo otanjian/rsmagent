@@ -1,5 +1,5 @@
 # encoding:utf-8
-"""Built-in roles reach 外部系统接入 after the page opens (migration 30).
+"""Built-in roles reach 系统接入 after the page opens (migration 30).
 
 The console entry is gated by both a ``menu`` grant and
 ``external.connections.read``. New tenants get both from
@@ -100,6 +100,15 @@ class FreshTenantSeesThePageTests(unittest.TestCase):
         self.assertFalse(page.get("menu_denied"), page)
         self.assertTrue(page["available"], page)
         self.assertTrue(page["read_allowed"], page)
+
+    def test_the_role_editor_lists_the_page_under_its_displayed_name(self):
+        # The same name the sidebar and the page title show. This projection is
+        # what a tenant admin reads when granting the menu, so a label left
+        # behind would offer a page by a name the product no longer uses.
+        items = self.svc.authorization_catalog(self.ta, kind="menu")["items"]
+        entry = [i for i in items if i["resource_id"] == PAGE_GRANT]
+        self.assertEqual(len(entry), 1, "the page is grantable")
+        self.assertEqual(entry[0]["name"], "系统接入")
 
 
 class Migration30BackfillTests(unittest.TestCase):

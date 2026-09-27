@@ -1,0 +1,32 @@
+{
+  "evidence": "rename-console-entry-system-access",
+  "what": "该页显示名由「外部系统接入」改为「系统接入」后的真实运行面观测",
+  "server": {
+    "url": "http://localhost:9899",
+    "process": "PID 35987（重启后），.venv/bin/python app.py，cwd 仓库根",
+    "restart_note": "旧进程 PID 2014 启动于改动之前，内存中持有旧的 _SIGNED_CONSOLE_PAGES，必须先重启才能复验服务端 label；重启时保留了 COW_CREDENTIAL_MASTER_KEY 与 COW_DESKTOP=1，输出追加到 run.log"
+  },
+  "observed": {
+    "sidebar_entry": {"zh": "系统接入", "zh-Hant": "系統接入", "en": "System Access"},
+    "page_heading": {"zh": "系统接入", "zh-Hant": "系統接入", "en": "System Access"},
+    "heading_note": "页标题由页面模块在渲染时取 ec_title，因此按语言切换并重载后复验；仅调用 setLanguage() 而不重载时标题保持上一次渲染的语言（既有行为，非本次改动引入）",
+    "menu_resource_name": {"id": "nav:admin.external_connections", "name": "系统接入"},
+    "menu_resource_endpoint": "GET /api/tenant/authorization/catalog?kind=menu — 实测 total=22，该页条目 name 为「系统接入」",
+    "old_name_in_dom": false,
+    "identity_and_routes_unchanged": {
+      "capability": "external-system-access-console",
+      "console_page_id": "admin.external_connections",
+      "view_id": "external_connections",
+      "hash": "#view-external-connections"
+    }
+  },
+  "screenshot": "console-system-access.png",
+  "checks": {
+    "frontend_tests": "tests/test_external_connections_frontend.cjs 25/25 pass",
+    "i18n_parity": "tests/test_console_i18n_parity.cjs 6/6 pass",
+    "browser_suites": "tests/test_external_connections_browser.cjs pass; tests/test_desktop_external_broker.cjs 6/6 pass",
+    "backend_subset": "test_external_connections_menu.py + test_console_menu_mapping.py + test_console_migration_drill.py + test_tenant_admin_skills_menu.py + test_external_connections_browser.py = 67 passed, 1 skipped",
+    "mutation": "分别回退 i18n 值 / chat.html 回退文本 / 服务端 label，对应用例各自转红，恢复后全绿",
+    "openspec": "openspec validate rename-console-entry-system-access --strict → valid；--deltas-only deltaCount=2（RENAMED + MODIFIED）"
+  }
+}

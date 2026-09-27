@@ -1,6 +1,6 @@
 // Desktop external-connection transport (change add-external-system-access, task 11.1).
 //
-// 外部系统接入页与 ERP 连接列表都是普通 ``/api/**`` 业务路径：Desktop 主进程 broker
+// 系统接入页与 ERP 连接列表都是普通 ``/api/**`` 业务路径：Desktop 主进程 broker
 // 必须像对待其它业务 API 一样附加 Bearer 与 X-Tenant-ID，渲染层不得持有 token、
 // 不得用绝对 URL 直连后端，也不得为此发明第二条 IPC 通道。
 //

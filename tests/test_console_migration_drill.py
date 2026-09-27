@@ -259,7 +259,7 @@ class MenuGrantMappingDrill(_DrillBase):
                                  "映射目标必须恰好一条(多对一不得重复): %s" % page)
             self.assertIn("nav:workbench.history", member, "原有正式页不得被收走")
             # 内置角色的版本只能断言「相对基线确有自增」:链条上随后注册的版本
-            # 也会为内置角色追加授权(27 补 nav:admin.models、30 补外部系统接入、
+            # 也会为内置角色追加授权(27 补 nav:admin.models、30 补系统接入、
             # 31 补 todo.assign),绝对值会随链尾增长而过期 —— 这正是上面注释说的
             # 「加法健壮」。自增的幂等性由 re-open 与 crash 两个用例逐字段覆盖。
             self.assertGreater(_role_version(con, "r_member"), 7)

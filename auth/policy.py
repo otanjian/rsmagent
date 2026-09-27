@@ -223,7 +223,7 @@ MEMBER_DEFAULT_PERMISSIONS: Tuple[str, ...] = (
     "model.read",
     "model.use",
     "chat.use",
-    # 外部系统接入：成员只读本人物件（本人邮箱），租户/平台物件由对象范围拒绝。
+    # 系统接入：成员只读本人物件（本人邮箱），租户/平台物件由对象范围拒绝。
     # 不默认授予 manage：新建租户连接是管理员动作。
     "external.connections.read",
 )
@@ -256,8 +256,8 @@ TENANT_ADMIN_DEFAULT_PERMISSIONS: Tuple[str, ...] = (
     "model.read",
     "model.use",
     "chat.use",
-    # 外部系统接入（change add-external-system-access）：配置面已验收，租户管理员
-    # 必须能打开「外部系统接入」页并维护本租户连接。``test`` 仍不默认授予——测试/
+    # 系统接入（change add-external-system-access）：配置面已验收，租户管理员
+    # 必须能打开「系统接入」页并维护本租户连接。``test`` 仍不默认授予——测试/
     # 执行由 readiness 与单独权限控制，默认关闭。
     "external.connections.read",
     "external.connections.manage",

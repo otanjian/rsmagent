@@ -335,13 +335,13 @@
                             <i class="fas fa-tower-broadcast item-icon text-xs w-5 text-center"></i>
                             <span data-i18n="menu_channels">消息渠道</span>
                         </a>
-                        <!-- 外部系统接入（change add-external-system-access, 任务 10.1）：
+                        <!-- 系统接入（change add-external-system-access, 任务 10.1）：
                              紧随「消息渠道」，classic/split 共用。模块在首次进入视图时才按需注入
                              （console.js 的 LAZY_VIEW_MODULES），chat.html 不引用它。 -->
                         <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
                            data-view="external_connections">
                             <i class="fas fa-plug item-icon text-xs w-5 text-center"></i>
-                            <span data-i18n="menu_external_connections">外部系统接入</span>
+                            <span data-i18n="menu_external_connections">系统接入</span>
                         </a>
                     </div>
                 </div>
@@ -2103,7 +2103,7 @@
                 </div>
 
                 <!-- ====================================================== -->
-                <!-- VIEW: External System Access (task 10.1)                -->
+                <!-- VIEW: System Access (task 10.1)                       -->
                 <!-- 容器只是锚点：面板由 assets/js/external-connections.js   -->
                 <!-- 在首次进入本视图时渲染（按需注入，chat.html 不引用它）。 -->
                 <!-- ====================================================== -->
