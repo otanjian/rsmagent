@@ -439,6 +439,7 @@ from channel.web.fork.handlers.files import (
     _owner_of_db_path,
     _platform_file_root,
     _preview_consumer_may_read,
+    _shared_users_roots,
     _static_path_private_owner,
     _tenant_workspace_root_owners,
     _tenant_workspace_roots,

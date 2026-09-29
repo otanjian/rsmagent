@@ -85,16 +85,22 @@ def _workspace_path_allowed(ctx, roots: list):
 
     One seam for the whole file surface's ownership rule
     (:func:`channel.web.web_channel._db_path_visible`): a private Agent, an
-    ambiguous root, and another member's ``user/<user_id>`` in a shared Agent
-    are all invisible. Used both to prune a recursive search before it walks
-    into a directory and to filter one listing level.
+    ambiguous root, another member's ``user/<user_id>`` in a shared Agent and the
+    shared root's own ``users/<user_id>`` account tree are all invisible. Used
+    both to prune a recursive search before it walks into a directory and to
+    filter one listing level.
     """
     from channel.web.web_channel import _db_path_visible
+    from channel.web.web_channel import _shared_users_roots
     ctx_roots = roots
+    # Resolved once per listing: the same rule runs for every entry, and neither
+    # the tenant roots nor its shared root change between them.
+    shared_roots = _shared_users_roots(ctx)
 
     def allowed(abs_path: str) -> bool:
         try:
-            return _db_path_visible(ctx, os.path.realpath(abs_path), ctx_roots)
+            return _db_path_visible(ctx, os.path.realpath(abs_path), ctx_roots,
+                                    shared_roots)
         except (TypeError, ValueError):
             return False
 

@@ -18,6 +18,7 @@ import json
 import mimetypes
 import os
 import random
+import re
 import web
 
 
@@ -668,22 +669,98 @@ def _user_subtree_state(real_path: str, roots: list) -> tuple:
     return classify_agent_user_path(real, best)
 
 
+#: The tenant shared root's per-account layout, ``<shared root>/users/<user_id>``
+#: (``common.state_dir.user_root``). Distinct from the ``user/`` container
+#: *inside* an Agent workspace that ``classify_agent_user_path`` owns -- which is
+#: why that classifier alone left this tree unguarded.
+_USERS_LAYOUT = "users"
+
+#: ``common.state_dir``'s user-id shape, repeated so a malformed segment fails
+#: closed here instead of being interpolated into an ownership comparison.
+_USER_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,128}")
+
+
+def _shared_users_roots(ctx=None) -> list:
+    """Real tenant shared roots -- the parents of every ``users/<user_id>``.
+
+    Server-derived, never from the request. With a request context the caller's
+    own tenant is used; with no context (identity-free response hardening) every
+    tenant is, so a lookup without a request still recognises a private tree.
+    A context that carries no tenant resolves to nothing rather than to
+    everybody's roots.
+    """
+    try:
+        from auth.service import get_identity_service
+        svc = get_identity_service()
+        if ctx is None:
+            return [os.path.realpath(rec["shared_root"])
+                    for rec in svc.tenant_shared_roots()
+                    if (rec or {}).get("shared_root")]
+        tenant_id = getattr(ctx, "tenant_id", None)
+        if not tenant_id:
+            return []
+        root = svc.tenant_shared_root(tenant_id)
+        return [os.path.realpath(root)] if root else []
+    except Exception as e:  # noqa: BLE001 - an unresolvable root fails closed
+        logger.debug(f"[WebChannel] tenant shared roots unavailable: {e}")
+        return []
+
+
+def _shared_users_state(real_path: str, shared_roots: list) -> tuple:
+    """``(state, owner)`` for a ``<shared root>/users/<user_id>`` path.
+
+    The same vocabulary as ``common.state_dir.classify_agent_user_path``, but
+    anchored on the tenant *shared root* instead of an Agent workspace. That root
+    keeps each account's private tree (``MEMORY.md``, ``PERSONA.md``,
+    ``memory/``, ``runs/``, ``output/``) under ``users/``, so it is neither
+    shared data nor an Agent's platform files and needs its own ownership rule:
+    without one the file panel -- whose root *is* the shared root -- listed every
+    ``users/<user_id>`` and served its contents to any member.
+    """
+    if not real_path or not shared_roots:
+        return "none", None
+    real = os.path.realpath(real_path)
+    for shared in shared_roots:
+        base = os.path.realpath(os.path.join(shared, _USERS_LAYOUT))
+        if not _is_under(real, base):
+            continue
+        if real == base:
+            return "container", None
+        owner = os.path.relpath(real, base).split(os.sep)[0]
+        if not _USER_ID_RE.fullmatch(owner or ""):
+            return "unowned", None
+        return "user", owner
+    return "none", None
+
+
 def _owner_of_db_path(ctx, real_path: str) -> tuple:
     """Single-resource :func:`_db_path_owner` against the caller's roots."""
     from channel.web.web_channel import _db_file_root_owners
     return _db_path_owner(real_path, _db_file_root_owners(ctx))
 
 
-def _db_path_visible(ctx, real_path: str, roots: list = None) -> bool:
-    """False when ``real_path`` is ambiguous, another member's private Agent, or
-    somebody else's ``user/<user_id>`` files in a shared Agent.
+def _db_path_visible(ctx, real_path: str, roots: list = None,
+                     shared_roots: list = None) -> bool:
+    """False when ``real_path`` is ambiguous, another member's private Agent,
+    somebody else's ``user/<user_id>`` files in a shared Agent, or the tenant
+    shared root's ``users/<user_id>`` account tree (or its bare container).
 
     The single ownership rule for the file surface: apply it to the path that was
     actually addressed, never to the Agent the request merely *declared*.
     ``roots`` lets a caller listing many entries resolve the tenant's roots once.
+    ``shared_roots`` does the same for the tenant shared root (the parent of
+    ``users/``); both are re-derived when omitted.
+    ``shared_roots`` does the same for the tenant shared root (the parent of
+    ``users/``); both are re-derived when omitted.
     The user-container rule is decided first and by ownership alone, so neither
     sharing the Agent nor an administrator qualification widens it; the bare
     container stays visible because its entries are filtered one at a time.
+
+    The tenant shared root's ``users/`` layout is the *other* per-account tree
+    (see :func:`_shared_users_state`): it is decided here too, by ownership and
+    with no administrator shortcut, because the panel's root is that shared root.
+    Its bare container is refused rather than filtered -- its only entries are
+    private trees, exactly as the project picker's ``_foreign_tree_of`` rules.
     """
     from channel.web.web_channel import _db_file_root_owners
     from channel.web.web_channel import _db_path_owner_forbidden
@@ -698,6 +775,13 @@ def _db_path_visible(ctx, real_path: str, roots: list = None) -> bool:
         return bool(getattr(ctx, "user_id", None)) and owner == ctx.user_id
     if state == "container":
         return True
+    users_state, users_owner = _shared_users_state(
+        real_path, shared_roots if shared_roots is not None
+        else _shared_users_roots(ctx))
+    if users_state in ("unowned", "container"):
+        return False
+    if users_state == "user":
+        return bool(getattr(ctx, "user_id", None)) and users_owner == ctx.user_id
     kind, agent_id = _db_path_owner(real_path, roots)
     if kind == "ambiguous":
         return False
@@ -707,16 +791,24 @@ def _db_path_visible(ctx, real_path: str, roots: list = None) -> bool:
 
 
 def _path_in_user_subtree(real_path: str) -> bool:
-    """True when the path belongs to a user's private ``user/<id>`` subtree.
+    """True when the path belongs to a user's private per-account tree.
 
     Identity-free (static registration), used for response hardening: a private
-    file's response must not be cached by a shared cache.
+    file's response must not be cached by a shared cache. Covers both the Agent
+    workspace's ``user/<id>`` platform files and the shared root's
+    ``users/<id>`` account tree.
     """
     try:
         state, _ = _static_path_user_state(real_path)
     except Exception:
         return True  # fail closed: an unanswerable lookup is not "public"
-    return state in ("user", "unowned")
+    if state in ("user", "unowned"):
+        return True
+    try:
+        users_state, _ = _shared_users_state(real_path, _shared_users_roots())
+    except Exception:
+        return True
+    return users_state in ("user", "unowned", "container")
 
 
 def _authorize_db_file_path(ctx, real_path: str) -> tuple:
@@ -749,6 +841,18 @@ def _authorize_db_file_path(ctx, real_path: str) -> tuple:
     if user_state == "unowned":
         return False, "not_found"
     if user_state == "user" and user_owner != getattr(ctx, "user_id", None):
+        return False, "forbidden"
+
+    # The shared root's ``users/<user_id>`` tree (every account's private
+    # memory/persona/run/output data) is the other per-account layout and is
+    # decided the same way, also before the pass-throughs: the panel's root is
+    # that shared root, so a member could otherwise list and read colleagues'
+    # trees. Its bare container is refused as not-found rather than listed.
+    users_state, users_owner = _shared_users_state(
+        real_path, _shared_users_roots(ctx))
+    if users_state in ("unowned", "container"):
+        return False, "not_found"
+    if users_state == "user" and users_owner != getattr(ctx, "user_id", None):
         return False, "forbidden"
 
     platform_root = os.path.realpath(_platform_file_root())
