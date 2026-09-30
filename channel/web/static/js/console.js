@@ -5908,6 +5908,24 @@ window.fetch = function(input, init) {
             }
         }
     }
+    // A turn sent while a local directory is the committed selection carries the
+    // non-secret reference for it, so the server reads *that* directory instead
+    // of the server workspace (task 2.3). Attached at the one transport seam
+    // every /message caller already goes through -- send, regenerate and steer
+    // -- and outside the agent guard, because a single-Agent install has no
+    // `activeAgentId` and still needs its local directory read.
+    if (/^\/message\b/.test(url) && typeof init.body === 'string') {
+        const context = _desktopContextForRequest();
+        if (context) {
+            try {
+                const body = JSON.parse(init.body);
+                if (body && typeof body === 'object' && !Array.isArray(body)) {
+                    body.desktop_context = context;
+                    init.body = JSON.stringify(body);
+                }
+            } catch (_) {}
+        }
+    }
     return _nativeFetch(input, init);
 };
 
@@ -7021,6 +7039,45 @@ document.addEventListener('click', (e) => {
 // =====================================================================
 let _wsSelState = { current: null, recents: [], defaultWorkspace: '', projectsRoot: '' };
 
+// The local-directory reference a chat turn carries (change
+// fix-desktop-local-context-and-tool-calls, task 2.3). Non-secret by design:
+// server ids plus a version, no path, and it is a *target* the server
+// re-verifies against the live identity, pairing, Agent and session.
+//
+// It is remembered together with the Agent + session it was confirmed for, so
+// switching either one stops the reference from being sent without having to
+// hunt down every switch site -- and a confirmation that lands after the user
+// already moved on is dropped instead of adopted (task 2.6).
+let _desktopContext = null;
+let _desktopContextKey = '';
+
+/** The Agent + session a local reference belongs to. */
+function _desktopSelectionKey() {
+    return `${activeAgentId || ''}\u0000${sessionId || ''}`;
+}
+
+/** Drop the local reference (server project, disconnect, session/Agent move). */
+function _desktopContextClear() {
+    _desktopContext = null;
+    _desktopContextKey = '';
+}
+
+/**
+ * The reference to attach to this request, or null.
+ *
+ * Null unless a local directory is the *committed* selection for the Agent and
+ * session the request is being made in: the server has to re-verify it, and an
+ * invalid reference is refused rather than silently falling back to the server
+ * workspace, so sending a stale one would fail a turn the user expected to work.
+ */
+function _desktopContextForRequest() {
+    if (!_desktopContext) return null;
+    if (_desktopContextKey !== _desktopSelectionKey()) return null;
+    if (!_wsSelState.current
+            || String(_wsSelState.current.path || '').indexOf('desktop:') !== 0) return null;
+    return _desktopContext;
+}
+
 function _wsSelBtn() { return document.getElementById('workspace-selector-btn'); }
 function _wsSelMenu() { return document.getElementById('workspace-selector-menu'); }
 
@@ -7112,10 +7169,7 @@ function _wsSelHide() {
     _wsSelBtn()?.classList.remove('open');
 }
 
-function renderWorkspaceSelectorMenu() {
-    const menu = _wsSelMenu();
-    if (!menu) return;
-
+function _wsSelBuildMenuParts(includeLocalDir) {
     const parts = [];
     const isDefault = !_wsSelState.current;
     parts.push(`<div class="ws-sel-section-title">${escapeHtml(t('ws_sel_title'))}</div>`);
@@ -7144,15 +7198,138 @@ function renderWorkspaceSelectorMenu() {
     }
 
     parts.push(`<div class="ws-sel-divider"></div>`);
-    // Host-filesystem folder picker stays closed — only new-project / recents /
-    // default space remain.
+    // Desktop container: native 「选择本机目录」 when local-files is open. The
+    // server-disk folder picker stays closed in database mode.
+    if (includeLocalDir) {
+        parts.push(`
+            <button class="ws-sel-item" onclick="wsSelChooseLocalDir()" data-ws-sel-local-dir>
+                <i class="fas fa-laptop-file"></i>
+                <span class="ws-sel-name">${escapeHtml(t('ws_sel_local_dir'))}</span>
+            </button>`);
+    }
     parts.push(`
         <button class="ws-sel-item" onclick="wsSelNewProjectDialog()">
             <i class="fas fa-folder-plus"></i>
             <span class="ws-sel-name">${escapeHtml(t('ws_sel_new'))}</span>
         </button>`);
+    return parts;
+}
 
-    menu.innerHTML = parts.join('');
+function renderWorkspaceSelectorMenu() {
+    const menu = _wsSelMenu();
+    if (!menu) return;
+    menu.innerHTML = _wsSelBuildMenuParts(false).join('');
+    if (typeof CowDesktopHost === 'undefined'
+            || typeof CowDesktopHost.canChooseWorkspace !== 'function') return;
+    CowDesktopHost.canChooseWorkspace().then((ok) => {
+        if (!ok) return;
+        const live = _wsSelMenu();
+        if (!live || live.classList.contains('hidden')) return;
+        live.innerHTML = _wsSelBuildMenuParts(true).join('');
+    }).catch(() => { /* keep the browser menu */ });
+}
+
+/** Stable opaque id for grant scoping until native device registration lands. */
+function _desktopInstallationId() {
+    const key = 'cow_desktop_installation_id';
+    try {
+        let id = localStorage.getItem(key);
+        if (id && /^[A-Za-z0-9_-]{22,128}$/.test(id)) return id;
+        const bytes = new Uint8Array(24);
+        (crypto.getRandomValues || (() => { throw new Error('no crypto'); }))(bytes);
+        id = btoa(String.fromCharCode.apply(null, bytes))
+            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        localStorage.setItem(key, id);
+        return id;
+    } catch (_) {
+        return 'local_' + String(Date.now()) + '_' + Math.random().toString(36).slice(2, 12);
+    }
+}
+
+async function _desktopLocalGrantScope() {
+    const tenantId = sessionStorage.getItem('cow_tenant_id') || '';
+    if (!tenantId) return null;
+    let self = _baseAccountSelf && _baseAccountSelf();
+    if (!self || !self.user || !self.user.id) {
+        try { await fetchAccountSelf(); } catch (_) { /* fall through */ }
+        self = _baseAccountSelf && _baseAccountSelf();
+    }
+    const userId = self && self.user && self.user.id ? String(self.user.id) : '';
+    if (!userId) return null;
+    let serverId = '';
+    try {
+        serverId = 'srv_' + btoa(String(location.origin || 'local'))
+            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '').slice(0, 48);
+    } catch (_) {
+        serverId = 'srv_local';
+    }
+    return {
+        serverId,
+        userId,
+        tenantId,
+        deviceId: 'dev_' + _desktopInstallationId().slice(0, 40),
+    };
+}
+
+async function wsSelChooseLocalDir() {
+    _wsSelHide();
+    if (typeof CowDesktopHost === 'undefined'
+            || typeof CowDesktopHost.chooseWorkspace !== 'function') return;
+    const scope = await _desktopLocalGrantScope();
+    if (!scope) {
+        _wsToast(t('ws_sel_local_dir_unavailable') || t('ws_sel_select_failed'));
+        return;
+    }
+    // The Agent + session this pick belongs to. Anything that lands after the
+    // user moved on is dropped rather than adopted (task 2.6).
+    const requestKey = _desktopSelectionKey();
+    try {
+        const result = await CowDesktopHost.chooseWorkspace(scope);
+        if (!result || !result.activated || !result.grant) return;  // cancelled: leave the old selection
+        const grant = result.grant;
+        if (requestKey !== _desktopSelectionKey()) return;
+        // A picked directory is not usable until the server confirmed it: the
+        // binding, the workspace and the grant version all have to exist, or a
+        // turn would fall back to the server workspace while the chip claims a
+        // local one (task 2.2).
+        if (typeof CowDesktopHost.bindContext !== 'function') {
+            throw new Error(t('ws_sel_select_failed'));
+        }
+        const confirmed = await CowDesktopHost.bindContext({
+            scope,
+            installationId: _desktopInstallationId(),
+            label: String(grant.label || ''),
+            agentId: activeAgentId || '',
+            businessSessionId: sessionId || '',
+            contextNonce: (() => {
+                const bytes = new Uint8Array(24);
+                (crypto.getRandomValues || (() => { throw new Error('no crypto'); }))(bytes);
+                return btoa(String.fromCharCode.apply(null, bytes))
+                    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            })(),
+        });
+        if (!confirmed || confirmed.ok === false || !confirmed.bindingId || !confirmed.workspaceId) {
+            throw new Error((confirmed && confirmed.message) || t('ws_sel_select_failed'));
+        }
+        if (requestKey !== _desktopSelectionKey()) return;
+        _desktopContext = {
+            binding_id: String(confirmed.bindingId),
+            workspace_id: String(confirmed.workspaceId),
+            grant_version: parseInt(confirmed.grantVersion, 10) || 0,
+        };
+        _desktopContextKey = requestKey;
+        _wsSelState.current = {
+            path: 'desktop:' + String(grant.id || ''),
+            name: String(grant.label || t('ws_sel_local_dir')),
+        };
+        _wsSelUpdateLabel();
+    } catch (err) {
+        // A pick that could not be confirmed must not be published: keep the
+        // previous selection and say why, rather than showing a directory the
+        // tools cannot read.
+        _desktopContextClear();
+        _wsToast((err && err.message) || t('ws_sel_select_failed'));
+    }
 }
 
 // Escape a path for safe embedding inside a single-quoted inline handler.
@@ -7310,6 +7487,11 @@ function _wsSelRevealFiles() {
 // Kept for callers that select without a dialog (default / recents).
 async function selectWorkspaceProject(projectDir) {
     _wsSelHide();
+    // Leaving the local directory: drop the reference now rather than relying on
+    // the next request noticing. Switching back to a directory later mints a new
+    // binding, and carrying the old one over that gap is the stale-selection bug
+    // this change fixes (task 2.6).
+    _desktopContextClear();
     await _wsSelApply('/api/projects/select', { session: sessionId, project_dir: projectDir });
 }
 
@@ -12122,6 +12304,11 @@ function switchSession(newSessionId, agentId) {
     sessionId = newSessionId;
     _sessCfg = null;
     _wsSelState = { current: null, recents: [], defaultWorkspace: '', projectsRoot: '' };
+    // The committed local selection belonged to the session being left; the new
+    // session gets its own pick, so drop the reference rather than let the
+    // key check be the only thing standing between it and a stale binding
+    // (task 2.6).
+    _desktopContextClear();
     _wsSelUpdateLabel();
     updateEditButtonsState();
     writeScopedPreference(activeSessionStorageKey(), sessionId);
@@ -21766,6 +21953,13 @@ async function handleLogout() {
     _resetHistorySearch();
     const epoch = _authEpoch;
     _renderSidebarAccount();
+    // Suspend the host's local context *before* the session ends: after the
+    // logout call the page may still be alive for a moment, and a host holding
+    // the previous tenant's context must not be used (task 5.2).
+    if (window.CowDesktopHost) window.CowDesktopHost.suspendLocalContext('logout');
+    // The reference belongs to the tenant that minted it; a later turn must not
+    // carry it into whatever session comes next (task 2.6).
+    _desktopContextClear();
     try {
         const response = await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
         const data = await response.json();
@@ -22800,6 +22994,14 @@ function _resolveOneShotTenantSwitch(self) {
                     && data.tenants.some(tn => tn.id === target);
                 if (valid) {
                     sessionStorage.setItem('cow_tenant_id', target);
+                    // The previous tenant's context must not stay live in the
+                    // desktop host (change add-desktop-remote-web-workbench,
+                    // task 5.2). A browser has no host and this resolves as a
+                    // no-op, so there is no branch here.
+                    if (window.CowDesktopHost) window.CowDesktopHost.suspendLocalContext('tenant-switch');
+                    // The reference names a binding in the *old* tenant; drop it
+                    // so the first turn in the new tenant cannot carry it.
+                    _desktopContextClear();
                     if (typeof bumpTenantGeneration === 'function') bumpTenantGeneration();
                     // strip the one-shot param
                     url.searchParams.delete('switch_tenant');

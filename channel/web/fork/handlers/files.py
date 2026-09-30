@@ -684,10 +684,16 @@ def _db_path_visible(ctx, real_path: str, roots: list = None) -> bool:
     The user-container rule is decided first and by ownership alone, so neither
     sharing the Agent nor an administrator qualification widens it; the bare
     container stays visible because its entries are filtered one at a time.
+
+    Unpublished desktop staging trees (``desktop-staging/``) are never visible
+    through ordinary browse/preview, even to the owner (task 11.2).
     """
     from channel.web.web_channel import _db_file_root_owners
     from channel.web.web_channel import _db_path_owner_forbidden
+    from integrations.desktop.publish import path_is_unpublished_staging
     if not real_path:
+        return False
+    if path_is_unpublished_staging(real_path):
         return False
     if roots is None:
         roots = _db_file_root_owners(ctx)

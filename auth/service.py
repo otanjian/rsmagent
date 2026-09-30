@@ -3081,10 +3081,54 @@ class IdentityService:
         # even if the session's own TTL has not yet elapsed.
         if user["must_change_password"] and self._unusable_temp(user):
             return None
+        # Desktop Web child sessions follow their native parent (task 3.5). This
+        # is deliberately the *generic* seam -- the console gate, the CSRF check,
+        # the desktop flow and every business handler resolve identity here -- so
+        # a revoked parent stops the child everywhere, not just at /auth/check.
+        # A session with no link is unaffected: the lookup returns nothing and
+        # the ordinary path is byte-identical to before.
+        if not self._desktop_child_parent_live(row):
+            return None
         return {"user": user, "session": row}
 
+    def _desktop_child_parent_live(self, session_row) -> bool:
+        """True unless this session is a Web child whose parent is no longer live."""
+        try:
+            rows = self._store.execute(
+                "SELECT * FROM desktop_web_links"
+                " WHERE web_session_id=? AND revoked_at IS NULL",
+                (session_row["id"],))
+        except Exception:  # pragma: no cover - the table ships with migration 36
+            logging.getLogger(__name__).warning(
+                "desktop web-link lookup failed; parent check skipped")
+            return True
+        if not rows:
+            return True
+        from auth.desktop_web_session import service_for
+        return service_for(self).parent_is_live(dict(rows[0]))
+
     def revoke_session(self, token: str) -> None:
+        row = self._sessions.get_by_token(token)
         self._sessions.revoke(token)
+        if not row:
+            return
+        # Mutual revocation (task 3.6): revoking either half of a desktop pair
+        # tears the pair down. Both calls are idempotent and only touch links
+        # that exist, so an ordinary Web logout is unchanged.
+        from auth.desktop_web_session import service_for
+        service = service_for(self)
+        service.revoke_for_native(row["id"], reason="native_logout")
+        service.revoke_for_web_session(row["id"], reason="web_logout")
+        # Task 8.7: a logout also stops every live file binding / workspace of
+        # the same user. Best-effort -- a missing table on a pre-migration
+        # store must not break logout.
+        try:
+            from integrations.desktop.devices import service_for as devices_for
+            devices_for(self).revoke_for_user(
+                row["user_id"], reason="session_revoked")
+        except Exception:  # pragma: no cover - pre-migration / best-effort
+            logging.getLogger(__name__).warning(
+                "desktop binding revoke on logout failed", exc_info=True)
 
     def audit_denied_login(self, account: str, source: str,
                            category: str, retry_after: Optional[int]) -> None:
@@ -6770,6 +6814,17 @@ class IdentityService:
             for instance_id in self._member_personal_instance_ids(
                     tenant_id, membership["user_id"]):
                 self._reconcile_personal_runtime(instance_id)
+            # Task 8.7: Membership stop also stops desktop file bindings for
+            # this tenant. Best-effort; the membership write already committed.
+            try:
+                from integrations.desktop.devices import service_for as devices_for
+                devices_for(self).revoke_for_membership(
+                    membership["user_id"], tenant_id,
+                    reason="membership_revoked")
+            except Exception:  # pragma: no cover - pre-migration / best-effort
+                logging.getLogger(__name__).warning(
+                    "desktop binding revoke on membership disable failed",
+                    exc_info=True)
         return {"id": member_id, "active": active, "version": membership["version"] + 1}
 
     def member_is_active(self, user_id: str, tenant_id: str) -> bool:

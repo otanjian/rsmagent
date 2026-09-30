@@ -3221,6 +3221,12 @@
          its own init, the same reason the functional modules above come first.
          It attaches one window namespace and mounts nothing at load time. -->
     <script defer src="assets/js/coding.js"></script>
+    <!-- Environment adapter (change add-desktop-remote-web-workbench, task 5.1).
+         Loaded before console.js: console.js and the page views ask
+         window.CowDesktopHost instead of testing for a desktop host themselves,
+         so they keep one code path for both the browser and the desktop
+         container. It attaches one namespace and mounts nothing. -->
+    <script defer src="assets/js/fork/desktop-host.js"></script>
     <script defer src="assets/js/console.js"></script>
     <script defer src="assets/js/scenes/index.js"></script>
     <script defer src="assets/js/workspace.js"></script>

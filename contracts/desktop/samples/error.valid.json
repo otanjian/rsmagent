@@ -1,0 +1,7 @@
+{
+  "status": "error",
+  "code": "bootstrap_consumed",
+  "message": "the bootstrap id was already consumed",
+  "retryable": false,
+  "request_id": "req_sample_1"
+}

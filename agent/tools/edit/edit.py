@@ -207,6 +207,10 @@ class Edit(BaseTool):
             result = {
                 "message": message,
                 "path": path,
+                # The resolved location, so a later replay does not have to guess
+                # which directory `path` was relative to (the session's working
+                # directory can change after the run, e.g. opening a project).
+                "abs_path": absolute_path,
                 "diff": diff_result['diff'],
                 "first_changed_line": diff_result['first_changed_line']
             }

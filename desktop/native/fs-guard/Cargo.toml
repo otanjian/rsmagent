@@ -1,0 +1,31 @@
+[package]
+name = "fs-guard"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Root-anchored read-only file helper for the 容大AI desktop client"
+publish = false
+
+# Locked, minimal dependency set. The helper is a security boundary that ships
+# as a signed binary inside the app, so every dependency is a liability: only
+# what the protocol and the per-component path checks need is listed.
+#
+# `serde`/`serde_json` carry the private stdio protocol; `libc` is required
+# because the whole point of the helper is `openat`-style *relative* opening
+# (decision D6: "不以 realpath + open 充当竞态保护"), which `std::fs` does not
+# expose. Nothing here does networking, so the helper cannot talk to anything
+# even if it wanted to.
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+libc = "0.2"
+
+[profile.release]
+# A small, fast, reproducible artifact: no LTO surprises across toolchains, and
+# panic=unwind so a bug in one request is reported as an error frame rather than
+# aborting the process mid-session.
+opt-level = "z"
+lto = false
+codegen-units = 1
+panic = "unwind"
+strip = true

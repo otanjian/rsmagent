@@ -37,6 +37,7 @@ import ChannelsPage from './pages/ChannelsPage'
 import TasksPage from './pages/TasksPage'
 import LogsPage from './pages/LogsPage'
 import AgentsPage from './pages/AgentsPage'
+import RemoteConnectPage from './pages/RemoteConnectPage'
 import { useAgentStore } from './store/agentStore'
 import { product } from '@product'
 
@@ -66,6 +67,11 @@ const App: React.FC = () => {
         ? 'ok'
         : 'need_login'
   const [productAuthed, setProductAuthed] = useState(false)
+  // Local vs remote mode (change add-desktop-remote-web-workbench, task 2.3).
+  // The main process decides; this window only asks. `unknown` while the answer
+  // is in flight so a remote launch never flashes the local workbench (which
+  // would immediately fail: no local backend is running in remote mode).
+  const [desktopMode, setDesktopMode] = useState<'local' | 'remote' | 'unknown'>('unknown')
   // Optional gate provided by '@product'. `product.auth` is constant for the
   // whole build, so calling its hook conditionally is stable across renders.
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -74,6 +80,29 @@ const App: React.FC = () => {
   useEffect(() => {
     if (backend.status === 'ready') apiClient.setBaseUrl(backend.baseUrl)
   }, [backend.status, backend.baseUrl])
+
+  // Ask the main process which mode this launch is in, once. A build without
+  // the channel (or a refusal) stays in local mode, which is the safe default:
+  // local mode is the shape every existing install already runs.
+  useEffect(() => {
+    let cancelled = false
+    const api = window.electronAPI
+    if (!api?.desktopModeGet) {
+      setDesktopMode('local')
+      return
+    }
+    api
+      .desktopModeGet()
+      .then((reply) => {
+        if (!cancelled) setDesktopMode(reply?.mode === 'remote' ? 'remote' : 'local')
+      })
+      .catch(() => {
+        if (!cancelled) setDesktopMode('local')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // A file dropped where no drop zone handles it makes Chromium navigate to
   // that file, replacing the app. Swallow those at the document level; pages
@@ -177,6 +206,17 @@ const App: React.FC = () => {
 
   const handleLangChange = useCallback(() => forceUpdate((n) => n + 1), [])
 
+  // Remote mode renders the trusted local connection shell and nothing else:
+  // the business UI is the server's, and the local business backend is not
+  // running. Until the mode is known, show the connecting state rather than
+  // guessing.
+  if (desktopMode === 'unknown') {
+    return <StatusScreen status="connecting" onRetry={() => undefined} />
+  }
+  if (desktopMode === 'remote') {
+    return <RemoteConnectPage onLangChange={handleLangChange} />
+  }
+
   if (backend.status !== 'ready') {
     return (
       <StatusScreen
@@ -213,11 +253,12 @@ const App: React.FC = () => {
   }
 
   // A signed-in account with no active tenant membership keeps its account
-  // domain: settings, logs and (for a platform admin) platform entry points.
+  // domain: settings, logs, the server-connection shell and (for a platform
+  // admin) platform entry points.
   // Tenant business -- chat, sessions, memory, channels, knowledge, agents and
   // tasks -- is not initialized, and no forged tenant/Membership is sent.
   const zeroTenant = !!context.session && context.session.tenants.length === 0
-  const ACCOUNT_ONLY_PATHS = ['/settings', '/models', '/logs']
+  const ACCOUNT_ONLY_PATHS = ['/settings', '/models', '/logs', '/remote']
   if (zeroTenant && !ACCOUNT_ONLY_PATHS.includes(location.pathname) && !(product.routes || []).some((r) => r.path === location.pathname)) {
     return (
       <div className="flex h-screen overflow-hidden bg-base text-content">
@@ -326,6 +367,11 @@ const App: React.FC = () => {
             {/* Legacy /models route now lives as a tab inside settings */}
             <Route path="/models" element={<SettingsPage baseUrl={backend.baseUrl} onLangChange={handleLangChange} />} />
             <Route path="/logs" element={<LogsPage baseUrl={backend.baseUrl} />} />
+            {/* The connection shell is reachable from Settings while the app is
+                still in local mode -- that is how a user enters remote mode in
+                the first place. In remote mode the whole window is the page
+                (see the early return above), so this route is local-only. */}
+            <Route path="/remote" element={<RemoteConnectPage onLangChange={handleLangChange} />} />
             {product.routes?.map((r) => (
               <Route key={r.path} path={r.path} element={r.element} />
             ))}

@@ -61,6 +61,7 @@ from channel.web.auth_handlers import (
     DbUserAvatarHandler,
     DesktopAuthorizeHandler,
     DesktopTokenHandler,
+    DesktopWebSessionHandler,
 )
 from channel.web.admin_handlers import (
     PlatformUsersHandler,
@@ -190,6 +191,24 @@ from channel.web.fork.handlers.chat import (
 )
 from channel.web.fork.handlers.config import (
     ConfigHandler,
+)
+from channel.web.fork.handlers.desktop import (
+    DesktopMetaHandler,
+    DesktopDevicesHandler,
+    DesktopDeviceHandler,
+    DesktopBindingsHandler,
+    DesktopBindingResolveHandler,
+    DesktopBindingHandler,
+    DesktopWorkspacesHandler,
+    DesktopWorkspaceHandler,
+    DesktopBindingWorkspaceHandler,
+    DesktopCommandsHandler,
+    DesktopCommandHandler,
+    DesktopCommandCancelHandler,
+    DesktopTransfersHandler,
+    DesktopTransferHandler,
+    DesktopTransferChunkHandler,
+    DesktopTransferCommitHandler,
 )
 from channel.web.fork.handlers.files import (
     FileServeHandler,
@@ -653,6 +672,7 @@ from channel.web.fork.runtime import (
     _session_roster,
     _session_settings_state,
     _session_team_state,
+    _session_workspace_root,
     _skill_service,
     _steer_reply_text,
     _system_workspace_service,

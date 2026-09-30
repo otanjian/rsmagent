@@ -449,9 +449,18 @@ def _paths_written_by_step(step: dict) -> list:
     `write`/`edit` name theirs in the arguments. A `subagent` step lists the
     ones its sub agents wrote in its result: those files never passed through
     a tool call of this agent's own, so nothing else records them.
+
+    A saved absolute location is preferred over the raw argument, because the
+    argument may be relative to a working directory that has since changed
+    (change ``use-personal-workspace-for-shared-agents``: opening a project
+    after the run must not re-point a file that was written in the caller's own
+    directory). Steps recorded before that field existed keep the old behaviour.
     """
     name = step.get("name")
     if name in ("write", "edit"):
+        recorded = _recorded_abs_path(step)
+        if recorded:
+            return [recorded]
         args = step.get("arguments")
         path = str((args or {}).get("path") or "").strip() if isinstance(args, dict) else ""
         return [path] if path else []
@@ -468,6 +477,74 @@ def _paths_written_by_step(step: dict) -> list:
     ]
 
 
+def _recorded_abs_path(step: dict) -> Optional[str]:
+    """The absolute location a `write`/`edit` step recorded, if it recorded one."""
+    raw = step.get("result")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (ValueError, TypeError):
+            return None
+    if not isinstance(raw, dict):
+        return None
+    path = raw.get("abs_path")
+    return path if isinstance(path, str) and os.path.isabs(path) else None
+
+
+def _session_workspace_root(session_id: Optional[str] = None,
+                            agent_id: Optional[str] = None) -> str:
+    """The directory a session's relative business paths are resolved against.
+
+    The live agent knows its own ``effective_cwd`` — the project it has open, or
+    a shared Agent's ``user/<user id>`` default — so asking it first keeps the
+    media/artifact rewrite anchored to where the run actually wrote (the agent
+    stream reports artifacts with the same root). None of these fallbacks can
+    invent a directory: a session with no live instance and no project resolves
+    its shared-Agent default read-only, and a private Agent stays on its
+    workspace.
+
+    Deliberately separate from ``_get_workspace_root``: that one is also the
+    *file service* root (the console's tree/search and the tenant browse scope),
+    whose broader reach is by design and must not be narrowed here.
+    """
+    if session_id:
+        try:
+            from bridge.bridge import Bridge
+
+            live = Bridge().get_agent_bridge().peek_agent(session_id, agent_id)
+        except Exception as e:  # noqa: BLE001 - fall back to the configured root
+            logger.debug(f"[WebChannel] live cwd lookup skipped: {e}")
+            live = None
+        if live is not None and callable(getattr(live, "effective_cwd", None)):
+            try:
+                cwd = live.effective_cwd()
+            except Exception:
+                cwd = None
+            if cwd:
+                return cwd
+        try:
+            from agent.workspace import project_store
+
+            project = project_store.get_project_dir(session_id, agent_id)
+        except Exception:
+            project = None
+        if project:
+            return project
+
+    try:
+        from agent.workspace.personal_default import personal_default_dir
+
+        personal = personal_default_dir(agent_id)
+    except Exception:
+        personal = None
+    if personal:
+        return personal
+
+    from channel.web.web_channel import _get_workspace_root
+
+    return _get_workspace_root(session_id, agent_id)
+
+
 def _artifacts_from_steps(steps, session_id: str = None, agent_id: str = None) -> list:
     """
     Rebuild the artifact cards of a persisted assistant message.
@@ -478,21 +555,36 @@ def _artifacts_from_steps(steps, session_id: str = None, agent_id: str = None) -
     a client mirroring the rules can't do.
 
     ``session_id`` anchors detection to the session's working dir (the project
-    dir when one is open), matching the live SSE path; otherwise state_root.
+    dir when one is open, a shared Agent's per-user dir otherwise), matching the
+    live SSE path; otherwise state_root. A step that saved its own absolute
+    location keeps that file reachable even when the session's directory has
+    moved since (change ``use-personal-workspace-for-shared-agents``).
     """
-    from channel.web.web_channel import _get_workspace_root
     from agent.protocol.artifact import get_workspace_root, safe_build_artifact
 
     out = []
     seen = set()
     root = None
+    workspace_root = None
     for step in steps or []:
         if not isinstance(step, dict) or step.get("type") != "tool" or step.get("is_error"):
             continue
         for path in _paths_written_by_step(step):
             if root is None:
-                root = _get_workspace_root(session_id, agent_id) if session_id else get_workspace_root()
-            info = safe_build_artifact(path, root)
+                root = (_session_workspace_root(session_id, agent_id)
+                        if session_id else get_workspace_root())
+            step_root = root
+            if os.path.isabs(path) and not _under(path, root):
+                # The saved location outlives the session's directory. The
+                # Agent's own workspace still contains a member's own folder
+                # (``<workspace>/user/<id>``), so measuring against it keeps the
+                # file openable instead of re-pointing it into the project the
+                # user opened afterwards.
+                if workspace_root is None:
+                    workspace_root = get_workspace_root()
+                if _under(path, workspace_root):
+                    step_root = workspace_root
+            info = safe_build_artifact(path, step_root)
             if not info or info["path"] in seen:
                 continue
             seen.add(info["path"])
@@ -500,6 +592,18 @@ def _artifacts_from_steps(steps, session_id: str = None, agent_id: str = None) -
             if payload:
                 out.append(payload)
     return out
+
+
+def _under(path: str, root: str) -> bool:
+    """Whether ``path`` resolves inside ``root`` (realpath, so symlinks agree)."""
+    try:
+        real_path = os.path.realpath(os.path.expanduser(path))
+        real_root = os.path.realpath(root)
+    except (TypeError, ValueError, OSError):
+        return False
+    if not real_root:
+        return False
+    return real_path == real_root or real_path.startswith(real_root + os.sep)
 
 
 def _add_subagent_displays(steps) -> None:
@@ -898,7 +1002,7 @@ class WebChannel(ChatChannel):
                 if reply.type == ReplyType.TEXT and content:
                     try:
                         display_content = _rewrite_relative_media(
-                            content, _get_workspace_root(session_id, context.get("agent_id"))
+                            content, _session_workspace_root(session_id, context.get("agent_id"))
                         )
                     except Exception as e:
                         logger.debug(f"[WebChannel] media rewrite skipped: {e}")
@@ -954,7 +1058,7 @@ class WebChannel(ChatChannel):
                     try:
                         content = _rewrite_relative_media(
                             content,
-                            _get_workspace_root(session_id, context.get("agent_id")),
+                            _session_workspace_root(session_id, context.get("agent_id")),
                         )
                     except Exception as e:
                         logger.debug(f"[WebChannel] media rewrite skipped: {e}")
@@ -1615,6 +1719,43 @@ class WebChannel(ChatChannel):
                     "inline_reply": msg_text,
                 }, ensure_ascii=False)
 
+            # Optional local-directory reference from the composer. It is only
+            # a *target reference*: resolve it against this identity, Agent and
+            # business session before it becomes a run context. An invalid
+            # reference fails the turn explicitly rather than silently falling
+            # back to the server workspace (change
+            # ``fix-desktop-local-context-and-tool-calls``, task 2.3).
+            desktop_context = None
+            raw_desktop_context = json_data.get("desktop_context")
+            if raw_desktop_context:
+                from integrations.desktop.errors import DesktopAccessError
+                from integrations.desktop.session_context import (
+                    parse_reference, verify_reference)
+                from channel.web.auth_handlers import _get_service
+                try:
+                    reference = parse_reference(raw_desktop_context)
+                    if reference is not None:
+                        if auth_context is None:
+                            raise DesktopAccessError(
+                                "a signed-in identity is required",
+                                "auth_required", 401)
+                        desktop_context = verify_reference(
+                            service=_get_service(),
+                            user_id=auth_context.user_id,
+                            tenant_id=auth_context.tenant_id,
+                            agent_id=resolved_agent_id,
+                            session_id=session_id,
+                            reference=reference,
+                        )
+                except DesktopAccessError as exc:
+                    logger.info(
+                        "[WebChannel] desktop_context rejected: %s", exc.code)
+                    return json.dumps({
+                        "status": "error",
+                        "code": getattr(exc, "code", "invalid_request"),
+                        "message": str(exc),
+                    }, ensure_ascii=False)
+
             # Append file references to the prompt (same format as QQ channel)
             context_attachments = []
             if attachments:
@@ -1734,6 +1875,11 @@ class WebChannel(ChatChannel):
             # separate thread where ContextVars don't carry, so snapshot the
             # identity onto the context here and let _identity_for rebuild it.
             context["runtime_identity"] = _web_runtime_identity_snapshot()
+            if desktop_context is not None:
+                # The verified local-directory reference for this turn, consumed
+                # by the client_files tool via the bridge (task 2.3). Never the
+                # client's absolute path.
+                context["desktop_context"] = desktop_context
 
             threading.Thread(target=self.produce, args=(context,)).start()
 
@@ -2553,10 +2699,18 @@ def _annotate_sessions_with_projects(store, result: dict, agent_id: Optional[str
                   users can find a conversation by where it belongs.
     """
     from agent.workspace import project_store
-    from common.state_dir import state_root_str
 
     project_map = project_store.get_project_map(agent_id)
-    default_workspace = state_root_str()
+    # The default space this Agent's project-less sessions sit in. Only the
+    # shared-Agent case moves: the caller's own `user/<user id>` directory
+    # (change ``use-personal-workspace-for-shared-agents``); every other shape
+    # keeps the pre-existing value.
+    from agent.workspace.personal_default import personal_default_dir
+    from common.runtime_identity import current_identity
+    from common.state_dir import state_root_str
+
+    default_workspace = (personal_default_dir(agent_id, current_identity())
+                         or state_root_str())
 
     for session in result.get("sessions") or []:
         path = project_map.get(session["session_id"])
@@ -3239,33 +3393,58 @@ def _mark_memory_dirty(agent_id: str = None) -> None:
         logger.warning(f"[WebChannel] Failed to mark memory index dirty: {e}")
 
 
+def _default_workspace(agent_id: Optional[str] = None, identity=None) -> str:
+    """The directory a session falls back to when no project is selected.
+
+    A tenant-shared Agent's members work inside their own
+    ``user/<user id>`` subtree (change
+    ``use-personal-workspace-for-shared-agents``), so that is the value that
+    matches the file panel's landing and the tools' cwd. A private Agent, an
+    Agent with no tenant binding, a coding Agent and a caller with no verified
+    end user all keep the pre-existing value — the installed default, or the
+    caller's tenant shared root in database mode.
+
+    Read-only: this never materializes the directory. An unsafe ``user``
+    container still raises, so a projection cannot quietly present the shared
+    root as if it were the member's own.
+    """
+    from common import state_dir
+    from common.runtime_identity import current_identity
+
+    ident = (identity if identity is not None else current_identity())
+    scoped = ident.derive(agent_id=agent_id)
+
+    from agent.workspace.personal_default import personal_default_dir
+
+    personal = personal_default_dir(agent_id, scoped)
+    if personal:
+        return personal
+    if scoped.user_id and scoped.tenant_id:
+        from auth.service import get_identity_service
+
+        shared = get_identity_service().tenant_shared_root(scoped.tenant_id)
+        return shared or state_dir.state_root_str(scoped)
+    return state_dir.state_root_str(scoped)
+
+
 def _project_state(session_id: str, agent_id: str = None) -> dict:
     """Assemble the project picker state: current selection + recents + root."""
     from agent.workspace import project_store
-    from common.runtime_identity import RuntimeIdentity, current_identity
-    from common import state_dir
+    from common.runtime_identity import current_identity
 
     current = project_store.get_project_dir(session_id, agent_id) if session_id else None
     ident = current_identity()
     if ident.user_id and ident.tenant_id:
-        # Database mode: resolve against the tenant's trusted shared root (same
-        # rule as _get_workspace_root), so the hint points at the caller's
-        # tenant root rather than a bare agent id (or host default workspace).
-        from auth.service import get_identity_service
-        shared = get_identity_service().tenant_shared_root(ident.tenant_id)
-        default_workspace = shared or state_dir.state_root_str(ident)
-        projects_root = project_store.user_projects_root() or project_store.projects_root()
+        projects_root = (project_store.user_projects_root()
+                         or project_store.projects_root())
     else:
-        # Legacy mode: default to the Agent this session belongs to so the
-        # selector hint matches the file panel's real root in multi-Agent setups.
-        default_workspace = state_dir.state_root_str(RuntimeIdentity(agent_id=agent_id))
         projects_root = project_store.projects_root()
     return {
         "current": (
             {"path": current, "name": os.path.basename(current) or current}
             if current else None
         ),
-        "default_workspace": default_workspace,
+        "default_workspace": _default_workspace(agent_id, ident),
         "projects_root": projects_root,
         "recents": project_store.list_recents(),
     }

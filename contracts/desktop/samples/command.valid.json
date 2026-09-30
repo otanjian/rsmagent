@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "type": "command",
+  "request_id": "cmd_sample_1",
+  "connection_epoch": "ce_sample_1",
+  "binding_id": "bind_sample_1",
+  "workspace_id": "ws_sample_1",
+  "grant_version": 3,
+  "op": "read_text",
+  "params": {
+    "relative_path": "2026年/销售台账.txt",
+    "offset": 0,
+    "limit": 16384,
+    "encoding": "utf-8"
+  },
+  "deadline": "2026-09-28T08:01:00Z",
+  "params_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+}

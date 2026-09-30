@@ -531,12 +531,14 @@ class ProjectSelectHandler:
                     )
                 # Retarget an already-instantiated session agent immediately, so the
                 # change takes effect on the next message without a fresh get_agent.
+                # A cleared project resolves to the session default (the caller's
+                # own directory for a shared Agent), not to the shared root.
                 try:
                     from bridge.bridge import Bridge
                     ab = Bridge().get_agent_bridge()
                     agent = ab.get_cached_agent(session_id, agent_id)
-                    if agent is not None and getattr(agent, "apply_project_dir", None):
-                        agent.apply_project_dir(applied)
+                    if agent is not None:
+                        ab.apply_session_workspace(agent, session_id, agent_id)
                 except Exception as e:
                     logger.debug(f"[WebChannel] project apply-to-agent skipped: {e}")
                 state = _project_state(session_id, agent_id)
@@ -576,8 +578,8 @@ class ProjectCreateHandler:
                         from bridge.bridge import Bridge
                         ab = Bridge().get_agent_bridge()
                         agent = ab.get_cached_agent(session_id, agent_id)
-                        if agent is not None and getattr(agent, "apply_project_dir", None):
-                            agent.apply_project_dir(path)
+                        if agent is not None:
+                            ab.apply_session_workspace(agent, session_id, agent_id)
                     except Exception as e:
                         logger.debug(f"[WebChannel] project apply-to-agent skipped: {e}")
                 state = _project_state(session_id or None, agent_id)

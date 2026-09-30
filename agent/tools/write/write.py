@@ -101,6 +101,10 @@ class Write(BaseTool):
             result = {
                 "message": f"Successfully wrote {bytes_written} bytes to {path}",
                 "path": path,
+                # The resolved location, so a later replay does not have to guess
+                # which directory `path` was relative to (the session's working
+                # directory can change after the run, e.g. opening a project).
+                "abs_path": absolute_path,
                 "bytes_written": bytes_written
             }
             warnings = [w for w in (warning, syntax_warning) if w]

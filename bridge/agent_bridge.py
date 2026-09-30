@@ -615,6 +615,29 @@ class AgentLLMModel(LLMModel):
         return chunk
 
 
+def _attach_desktop_context_to_tools(agent, context) -> None:
+    """Hand the server-verified local-directory reference to the tools.
+
+    Change ``fix-desktop-local-context-and-tool-calls`` (task 2.3): the
+    ``client_files`` tool must never trust a model-supplied binding. The
+    reference is injected per turn by the transport layer after it validated
+    the binding against the current ``(user, tenant, agent, session)`` tuple,
+    and it is reset to ``None`` on every turn so a stale reference from a
+    previous session/agent/device never leaks into a later run.
+    """
+    tools = getattr(agent, "tools", None)
+    if not tools:
+        return
+    reference = (context or {}).get("desktop_context") or None
+    for tool in tools:
+        if getattr(tool, "name", "") != "client_files":
+            continue
+        try:
+            tool.desktop_context = reference
+        except Exception as e:
+            logger.warning(f"[AgentBridge] Failed to attach desktop context: {e}")
+
+
 class AgentBridge:
     """
     Bridge class that integrates super Agent with COW
@@ -1163,20 +1186,53 @@ class AgentBridge:
             return
         restore(agent, session_id, host.workspace, host_agent_id)
 
+    def apply_session_workspace(self, agent, session_id: str,
+                                agent_id: str = None) -> None:
+        """Apply the session's effective working directory to a live agent.
+
+        The public form of :meth:`_apply_session_project` for the console's
+        project routes, which retarget the already-instantiated session agent so
+        a selection (or a clear) takes effect without waiting for the next
+        ``get_agent``. Clearing a project therefore lands on the same default
+        the runtime would use, not on the raw workspace root.
+        """
+        self._apply_session_project(agent, session_id, agent_id)
+
     def _apply_session_project(self, agent, session_id: str, agent_id: str) -> None:
         """Retarget the agent's working directory to the session's project dir.
 
-        A no-op when the session has no project selected (clears any previous
-        override). Failures are swallowed: a bad project setting must not break
-        the chat, it just falls back to the default workspace.
+        With a project selected that is the working directory. Without one, a
+        tenant-shared Agent falls back to the caller's *own* directory
+        (``<agent workspace>/user/<user id>``, change
+        ``use-personal-workspace-for-shared-agents``) rather than to the shared
+        workspace root, which holds everyone's Agent configuration. Private
+        Agents, coding Agents and callers with no verified end user keep the
+        previous behaviour.
+
+        A bad project *setting* is swallowed — a corrupt binding must not break
+        the chat, it just falls back to the default. Preparing the personal
+        directory is not: an unusable directory is reported, because silently
+        continuing would write this user's work into the shared root.
         """
+        from agent.workspace import project_store
+
         try:
-            from agent.workspace import project_store
             project_dir = project_store.get_project_dir(session_id, agent_id)
-            if getattr(agent, "apply_project_dir", None):
-                agent.apply_project_dir(project_dir)
         except Exception as e:
             logger.debug(f"[AgentBridge] apply_session_project failed: {e}")
+            project_dir = None
+
+        scope = "project" if project_dir else None
+        if not project_dir:
+            # No project (never picked, cleared, or its folder is gone): use the
+            # caller's own directory when this Agent is tenant-shared.
+            from agent.workspace.personal_default import personal_default_dir
+
+            project_dir = personal_default_dir(agent_id, ensure=True)
+            scope = "personal" if project_dir else None
+
+        if getattr(agent, "apply_project_dir", None):
+            agent.apply_project_dir(project_dir, scope=scope)
 
     def _apply_scene_context(self, agent, session_id: str) -> None:
         """Apply an activated scene's context to the session Agent.
@@ -1633,6 +1689,10 @@ class AgentBridge:
                 filtered_tools = [tool for tool in agent.tools if tool.name != "scheduler"]
                 agent.tools = filtered_tools
                 logger.info(f"[AgentBridge] Scheduled task execution: excluded scheduler tool ({len(filtered_tools)}/{len(original_tools)} tools)")
+
+            # Local-directory reference for *this* turn (change
+            # ``fix-desktop-local-context-and-tool-calls``, task 2.3).
+            _attach_desktop_context_to_tools(agent, context)
 
             if context and agent.tools:
                 for tool in agent.tools:

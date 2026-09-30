@@ -13,6 +13,10 @@ from typing import List, Dict, Any, Optional, Callable, Tuple
 
 from agent.protocol.cancel import AgentCancelledError
 from agent.protocol.models import LLMRequest, LLMModel
+from agent.protocol.tool_protocol import (
+    ToolProtocolError,
+    is_text_tool_call_anomaly,
+)
 from agent.protocol.message_utils import (
     sanitize_claude_messages,
     compress_turn_to_text_only,
@@ -516,7 +520,9 @@ class AgentStreamExecutor:
             return
 
         data = result.get("result")
-        path = data.get("path") if isinstance(data, dict) else None
+        path = data.get("abs_path") if isinstance(data, dict) else None
+        if not path:
+            path = data.get("path") if isinstance(data, dict) else None
         if not path:
             path = (tool_call.get("arguments") or {}).get("path")
         if not path:
@@ -1928,7 +1934,23 @@ class AgentStreamExecutor:
 
         # Filter full_content one more time (in case tags were split across chunks)
         full_content = self._filter_think_tags(full_content)
-        
+
+        # Known anomaly (change ``fix-desktop-local-context-and-tool-calls``,
+        # task 3.2): the model put a DSML tool-call wrapper in its prose instead
+        # of returning a structured call. Fire only when this turn produced NO
+        # structured call at all -- a real call batch is always the source of
+        # truth and a marker beside it must never discard it. Raised here,
+        # after the retry/fallback seam, so it is not auto-retried, and before
+        # the assistant message is appended, so no success history/persist/
+        # completion happens. The generic ``except`` in ``run_stream`` turns it
+        # into the existing ``error`` event.
+        if not tool_calls and is_text_tool_call_anomaly(full_content):
+            logger.error(
+                "[Agent] tool protocol error: model returned a DSML text "
+                "tool-call wrapper with no structured tool_calls"
+            )
+            raise ToolProtocolError()
+
         # Add assistant message to history (Claude format uses content blocks)
         assistant_msg = {"role": "assistant", "content": []}
 

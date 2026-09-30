@@ -1,0 +1,156 @@
+{
+  "contract": "desktop-remote-web-workbench",
+  "version": 1,
+  "note": "Machine-readable form of openspec/changes/add-desktop-remote-web-workbench/contracts.md. Python (auth/desktop_contracts.py) and the desktop client (desktop/src/main/remote/connection.ts, checked by tests/test_desktop_remote_config.cjs) both read this file, so a version or limit can only be changed in one place. Field names are snake_case; sizes are bytes.",
+  "protocols": {
+    "web_session": { "major": 1, "minor": 0, "required": true },
+    "bridge": { "major": 1, "minor": 0, "required": true },
+    "files": { "major": 1, "minor": 0, "required": false },
+    "gateway": { "major": 1, "minor": 0, "required": false }
+  },
+  "origins": {
+    "scheme": "https",
+    "path_prefix_allowed": false,
+    "userinfo_allowed": false,
+    "query_allowed": false,
+    "fragment_allowed": false,
+    "max_length": 255
+  },
+  "error_codes": {
+    "invalid_request": 400,
+    "invalid_path": 400,
+    "unsupported_origin": 400,
+    "protocol_mismatch": 400,
+    "auth_required": 401,
+    "session_revoked": 401,
+    "permission_denied": 403,
+    "grant_revoked": 403,
+    "unsafe_path": 403,
+    "password_change_required": 403,
+    "resource_not_found": 404,
+    "bootstrap_consumed": 409,
+    "stale_context": 409,
+    "file_changed": 409,
+    "chunk_conflict": 409,
+    "transfer_expired": 410,
+    "limit_exceeded": 413,
+    "unsupported_format": 422,
+    "checksum_mismatch": 422,
+    "queue_full": 429,
+    "quota_exceeded": 429,
+    "feature_unavailable": 503,
+    "device_offline": 503,
+    "quota_unavailable": 503,
+    "audit_unavailable": 503,
+    "deadline_exceeded": 504
+  },
+  "error_envelope": {
+    "required": ["status", "code", "message"],
+    "optional": ["retryable", "request_id"],
+    "status_value": "error",
+    "message_max_bytes": 512
+  },
+  "web_session": {
+    "path": "/auth/desktop/web-session",
+    "cookie_name": "cow_session",
+    "cookie_attributes": {
+      "host_only": true,
+      "http_only": true,
+      "secure": true,
+      "same_site": "Lax",
+      "path": "/"
+    },
+    "bootstrap_id_min_chars": 22,
+    "instance_id_min_chars": 22,
+    "secret_in_body_allowed": false
+  },
+  "meta_envelope": {
+    "required": ["remote_web", "protocols", "entry_path", "console_entry_paths", "features"],
+    "forbidden_keys": ["user", "user_id", "tenant_id", "devices", "directories", "connections"],
+    "max_bytes": 65536
+  },
+  "bridge": {
+    "version": "1.0",
+    "methods": [
+      "getCapabilities",
+      "suspendLocalContext",
+      "bindContext",
+      "chooseWorkspace",
+      "disconnectWorkspace",
+      "saveArtifact",
+      "openExternal",
+      "notify",
+      "onHostEvent"
+    ],
+    "phase1_methods": ["getCapabilities", "suspendLocalContext", "saveArtifact", "openExternal", "onHostEvent"],
+    "forbidden_capabilities": ["fs", "child_process", "ipcRenderer", "shell", "token"]
+  },
+  "gateway": {
+    "path": "/api/desktop/connect",
+    "frame_types": ["hello", "command", "ack", "result", "error", "cancelled", "heartbeat"],
+    "result_frame_max_bytes": 65536,
+    "chunk_request_max_bytes": 4194304,
+    "idle_timeout_seconds": 90
+  },
+  "commands": {
+    "states": ["queued", "dispatched", "acknowledged", "running", "succeeded", "failed", "cancelled", "expired"],
+    "ops": {
+      "list": { "params": ["relative_path", "cursor", "limit"], "limit_max": 200 },
+      "stat": { "params": ["relative_path"] },
+      "search": { "params": ["relative_path", "query", "mode"], "modes": ["name", "text"], "results_max": 100 },
+      "read_text": { "params": ["relative_path", "offset", "limit", "encoding"], "limit_max": 16384 },
+      "materialize": { "params": ["relative_path", "expected_version"] },
+      "inspect": { "params": ["processor_id", "source_ref", "options"] }
+    }
+  },
+  "transfers": {
+    "states": ["reserved", "receiving", "verifying", "publishing", "committed"],
+    "terminal_states": ["committed", "cancelled", "expired", "failed"]
+  },
+  "downloads": {
+    "note": "Phase-1 'save as' on the client. The page never names a local path: it may only ask the host to take a same-origin server URL (or a relative artifact_ref), and the host owns the destination, the overwrite decision and the byte bound. See desktop/src/main/remote/downloads.ts.",
+    "document_prefixes": ["/preview", "/uploads"],
+    "attachment_prefixes": ["/api/file", "/api/workspace", "/api/knowledge", "/api/logs", "/api/artifacts"],
+    "forbidden_query_keys": ["token", "access_token", "accesstoken", "auth", "authorization", "signature", "sig", "secret", "password", "passwd", "key", "apikey", "api_key", "credential", "code", "bootstrap"],
+    "chunk_bytes": 1048576,
+    "save_artifact_max_bytes": 16777216,
+    "temp_suffix": ".cowpart",
+    "filename_max_chars": 180,
+    "overwrite_requires_confirmation": true
+  },
+  "limits": {
+    "ws_frame_max_bytes": 65536,
+    "heartbeat_seconds": 20,
+    "offline_seconds": 60,
+    "lease_seconds": 60,
+    "reconnect_seconds": [1, 2, 4, 8, 16, 30],
+    "reconnect_jitter": 0.2,
+    "parallel_commands_per_device": 4,
+    "pending_queue": 32,
+    "read_deadline_seconds": 60,
+    "offline_wait_seconds": 30,
+    "directory_page_max": 200,
+    "search_candidates_max": 10000,
+    "search_file_max_bytes": 2097152,
+    "search_seconds": 30,
+    "transfer_chunk_max_bytes": 4194304,
+    "file_max_bytes": 536870912,
+    "job_input_max_bytes": 2147483648,
+    "parallel_transfers_per_device": 2,
+    "chunk_timeout_seconds": 60,
+    "transfer_timeout_seconds": 1800,
+    "staging_ttl_hours": 24,
+    "job_input_retention_days": 7,
+    "csv_xlsx_input_max_bytes": 52428800,
+    "parser_output_max_bytes": 1048576,
+    "parser_seconds": 60,
+    "parser_memory_bytes": 536870912,
+    "xlsx_expanded_max_bytes": 209715200,
+    "xlsx_zip_entries_max": 10000,
+    "parser_rows_max": 100000,
+    "parser_columns_max": 256,
+    "parser_value_max_bytes": 32768,
+    "sample_rows_default": 20,
+    "sample_rows_max": 100
+  }
+}

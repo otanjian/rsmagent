@@ -169,9 +169,38 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('open-session', handler)
   },
 
+  // ---- Remote-mode configuration (change add-desktop-remote-web-workbench) --
+  //
+  // The local shell's own half of remote mode: choose/probe a server, switch
+  // mode. It is a *different* API from ``window.desktopHost``, which the remote
+  // Web container gets and which exposes no server management at all.
+  desktopModeGet: () =>
+    ipcRenderer.invoke('desktop-mode-get') as Promise<{
+      ok: boolean
+      mode: 'local' | 'remote'
+      profiles: Array<{ id: string; origin: string; displayName: string }>
+      activeProfileId: string | null
+      refused: string
+      containerSupported: boolean
+      containerUnsupportedReason: string
+    }>,
+  desktopRemoteProbe: (origin: string) => ipcRenderer.invoke('desktop-remote-probe', origin),
+  desktopRemoteAddServer: (payload: { origin: string; displayName?: string }) =>
+    ipcRenderer.invoke('desktop-remote-add-server', payload),
+  desktopRemoteRemoveServer: (id: string) => ipcRenderer.invoke('desktop-remote-remove-server', id),
+  desktopRemoteSetActive: (id: string | null) => ipcRenderer.invoke('desktop-remote-set-active', id),
+  desktopRemoteSetMode: (mode: 'local' | 'remote') => ipcRenderer.invoke('desktop-remote-set-mode', mode),
+  // Attach/detach the remote container (tasks 4.1/4.6). The remote page never
+  // gets these two channels: only the local shell can ask for them.
+  desktopRemoteConnect: () => ipcRenderer.invoke('remote-container-start') as Promise<{
+    ok: boolean; code?: string; message?: string
+  }>,
+  desktopRemoteDisconnect: () => ipcRenderer.invoke('remote-container-stop') as Promise<{
+    ok: boolean; revoked: boolean; message: string
+  }>,
+
   platform: process.platform,
   // OS UI language (e.g. "zh-CN"), read synchronously so the renderer can pick
-  // a default language on first run. Falls back to '' if unavailable.
   systemLocale: (() => {
     try {
       return ipcRenderer.sendSync('get-system-locale') as string

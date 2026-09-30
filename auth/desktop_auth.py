@@ -222,7 +222,7 @@ def render_consent_page(*, backend_origin: str, username: str,
 
 def render_notice_page(*, title: str, message: str,
                        console_path: str = "/chat") -> str:
-    """A plain browser notice (sign in first / finish the password change)."""
+    """A plain browser notice (finish the password change / session expired)."""
     body = (
         "<h1>{title}</h1><p>{message}</p>"
         "<p><a href=\"{console}\">Open the Web console</a></p>"
@@ -231,10 +231,65 @@ def render_notice_page(*, title: str, message: str,
     return _page(title, body)
 
 
+def render_sign_in_page() -> str:
+    """Same-origin sign-in for an unauthenticated Desktop authorize GET.
+
+    The Desktop broker opens authorize on its backend origin (``localhost`` or
+    ``127.0.0.1``). A Web console Cookie on the *other* loopback name is a
+    different browser origin, so "open the console, then start again" left
+    users stuck. Collecting the password here keeps the Cookie on the exact
+    host the consent POST will need, then reloads this authorize URL.
+    """
+    body = (
+        "<h1>Sign in to continue</h1>"
+        "<p>Sign in on this page to authorize the Desktop app. "
+        "Use the same account you use in the Web console.</p>"
+        "<form id=\"desktop-auth-login\">"
+        "<p><label>Username <input name=\"username\" autocomplete=\"username\" "
+        "required></label></p>"
+        "<p><label>Password <input name=\"password\" type=\"password\" "
+        "autocomplete=\"current-password\" required></label></p>"
+        "<p id=\"desktop-auth-login-error\" style=\"color:#b91c1c\" hidden></p>"
+        "<p><button type=\"submit\">Sign in</button></p>"
+        "</form>"
+        "<script>(function(){"
+        "var f=document.getElementById('desktop-auth-login');"
+        "var err=document.getElementById('desktop-auth-login-error');"
+        "f.addEventListener('submit',function(ev){"
+        "ev.preventDefault();"
+        "err.hidden=true;"
+        "var fd=new FormData(f);"
+        "fetch('/auth/login',{"
+        "method:'POST',"
+        "credentials:'same-origin',"
+        "headers:{'Content-Type':'application/json','Accept':'application/json'},"
+        "body:JSON.stringify({"
+        "username:String(fd.get('username')||''),"
+        "password:String(fd.get('password')||'')"
+        "})"
+        "}).then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})"
+        ".then(function(x){"
+        "if(x.ok&&x.j&&x.j.status==='success'){location.reload();return;}"
+        "err.textContent=(x.j&&x.j.message)||'Sign-in failed';"
+        "err.hidden=false;"
+        "}).catch(function(){"
+        "err.textContent='Sign-in failed';"
+        "err.hidden=false;"
+        "});"
+        "});"
+        "})();</script>"
+    )
+    return _page("Sign in to continue", body)
+
+
 def _page(title: str, body: str) -> str:
+    # ``same-origin`` (not ``no-referrer``): the Authorize form POST is
+    # same-origin and needs a Referer/Origin for browsers that omit Origin on
+    # navigational form posts, while the redirect to the loopback callback is
+    # cross-origin so the referrer (and the authorize query string) is stripped.
     return (
         "<!doctype html><html><head><meta charset=\"utf-8\">"
-        "<meta name=\"referrer\" content=\"no-referrer\">"
+        "<meta name=\"referrer\" content=\"same-origin\">"
         "<title>%s</title></head><body>%s</body></html>"
         % (html.escape(title), body)
     )
@@ -455,8 +510,16 @@ class DesktopAuthService:
     # -- step 2: the exact-origin exchange ---------------------------------
 
     def exchange(self, *, code: str, verifier: str, client_id: str,
-                 redirect_uri: str) -> Dict[str, Any]:
-        """Trade a code + verifier for an independent native session."""
+                 redirect_uri: str, origin: str = "") -> Dict[str, Any]:
+        """Trade a code + verifier for an independent native session.
+
+        ``origin`` is the exact origin this token request was served at. It is
+        recorded in ``desktop_native_origins`` *in the same transaction* that
+        mints the native session (task 3.2), which is what a later Web-session
+        bootstrap re-verifies (``auth.desktop_web_session``). It is taken from
+        the live request -- never guessed from a header the client controls, and
+        never inferred from a stored User-Agent.
+        """
         _validate_client(client_id)
         if not is_registered_redirect_uri(redirect_uri):
             raise DesktopAuthError("unregistered redirect uri",
@@ -498,13 +561,26 @@ class DesktopAuthService:
                 raise DesktopAuthError("invalid grant", "invalid_grant", 400)
 
             token = generate_token()
+            native_session_id = secrets.token_urlsafe(18)
+            native_hash = hash_token(token)
             con.execute(
                 "INSERT INTO auth_sessions"
                 " (id, token_hash, user_id, expires_at, restricted)"
                 " VALUES (?,?,?,?,0)",
-                (secrets.token_urlsafe(18), hash_token(token), row["user_id"],
+                (native_session_id, native_hash, row["user_id"],
                  now + session_ttl_seconds(False)),
             )
+            # Task 3.2: register the origin this native session was minted at,
+            # atomically with the session itself. A native session with no
+            # registration cannot bootstrap a Web child (fail closed).
+            if origin:
+                con.execute(
+                    "INSERT OR REPLACE INTO desktop_native_origins"
+                    " (id, session_id, native_session_hash, origin, created_at)"
+                    " VALUES (?,?,?,?,?)",
+                    (secrets.token_urlsafe(18), native_session_id, native_hash,
+                     origin, now),
+                )
             con.commit()
 
         user = self._svc._find_user_by_id(row["user_id"])

@@ -458,6 +458,15 @@ available_setting = {
     "mcp_tool_retrieval_enabled": False,    # switch for on-demand MCP tool retrieval
     "mcp_tool_retrieval_threshold": 20,     # only retrieve when MCP tool count exceeds this
     "mcp_tool_retrieval_top_k": 10,         # max relevant MCP tools injected per turn
+    # Desktop remote web workbench (change add-desktop-remote-web-workbench,
+    # design D12). Deployment switches narrow already-declared slices. Phase 1
+    # (remote web), phase 2 (local files) and phase 3A (notifications) are
+    # opened for local validation; phase 3B (local processing) stays off until
+    # the fixed parser worker exists. Handlers still re-authorize every request.
+    "desktop_remote_web_enabled": True,        # phase 1: carry the server Web in a container
+    "desktop_local_files_enabled": True,       # phase 2: read-only local directory access
+    "desktop_native_notifications_enabled": True,  # phase 3A: system notifications
+    "desktop_local_processing_enabled": False,     # phase 3B: fixed CSV/XLSX parsers (not yet)
 }
 
 
@@ -656,6 +665,19 @@ def load_config():
     # A backup model configured before the fallback chain must survive the
     # upgrade, so normalize it into the current shape before anything reads it.
     _migrate_chat_fallback(config)
+
+    # Desktop phase switches: fill missing keys from available_setting so an
+    # existing config.json that predates this change inherits the declaration
+    # defaults (currently open for remote web / local files / notifications;
+    # closed for local processing). Never overwrite a key the operator set.
+    for _desktop_key in (
+        "desktop_remote_web_enabled",
+        "desktop_local_files_enabled",
+        "desktop_native_notifications_enabled",
+        "desktop_local_processing_enabled",
+    ):
+        if _desktop_key not in config:
+            config[_desktop_key] = available_setting[_desktop_key]
 
     # Fresh desktop installs default to the stricter "workspace-write"; every
     # other case keeps the template's "full-access". A packaged client only

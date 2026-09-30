@@ -287,6 +287,18 @@ body * {
   -webkit-app-region: no-drag;
 }
 
+/* When a full-bleed remote/local WebContentsView covers the shell (TOP_INSET=0),
+   the parent's titlebar-drag strips still steal clicks from the guest's top
+   chrome. Drop every drag region and pointer capture on the covered shell. */
+html.cow-remote-covering,
+html.cow-remote-covering body {
+  pointer-events: none;
+}
+html.cow-remote-covering .titlebar-drag,
+html.cow-remote-covering .titlebar-no-drag {
+  -webkit-app-region: no-drag !important;
+}
+
 /* ============================================================
    Animations
    ============================================================ */

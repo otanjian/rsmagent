@@ -151,6 +151,13 @@ class Agent:
         # directory (bash cwd, relative file paths) while memory/skills stay
         # anchored to workspace_dir. None means "use workspace_dir".
         self.project_dir = None
+        # Which kind of override `project_dir` is: ``"project"`` when the user
+        # picked the directory, ``"personal"`` when it is the caller's own
+        # folder inside a tenant-shared Agent (change
+        # ``use-personal-workspace-for-shared-agents``). None alongside a
+        # ``project_dir`` keeps the historical "the user opened a project"
+        # wording; None alongside no ``project_dir`` means no override at all.
+        self.workspace_scope = None
         # How much this session may change (see agent.permission). None means
         # "follow the global setting", resolved at check time so a change to the
         # global default reaches sessions that never picked a mode themselves.
@@ -202,7 +209,7 @@ class Agent:
         """The working directory in force: the project override, else workspace."""
         return self.project_dir or self.workspace_dir or os.getcwd()
 
-    def apply_project_dir(self, project_dir):
+    def apply_project_dir(self, project_dir, scope=None):
         """Point the working directory at ``project_dir`` (None resets to workspace).
 
         Retargets the cwd of file/shell tools so bash, read, write, etc. operate
@@ -210,6 +217,11 @@ class Agent:
         workspace because they resolve absolute paths of their own. The system
         prompt is rebuilt per turn via ``get_full_system_prompt`` and reads
         ``effective_cwd`` there, so no prompt refresh is needed here.
+
+        ``scope`` records *why* the override exists — ``"project"`` for a
+        directory the user selected, ``"personal"`` for a shared Agent's
+        caller's own folder — so the prompt can describe the right one. It is
+        cleared whenever the override is, since it describes that override.
         """
         # Normalize: an empty or workspace-equal value means "no project".
         if project_dir:
@@ -222,6 +234,7 @@ class Agent:
             project_dir = None
 
         self.project_dir = project_dir
+        self.workspace_scope = scope if project_dir else None
         cwd = self.effective_cwd()
         for tool in self.tools:
             name = getattr(tool, "name", None)
@@ -323,6 +336,7 @@ class Agent:
                 memory_manager=self.memory_manager,
                 runtime_info=self.runtime_info,
                 project_dir=self.project_dir,
+                workspace_scope=self.workspace_scope,
                 permission_mode=self.effective_permission_mode(),
             )
             if self.extra_system_suffix:

@@ -49,6 +49,7 @@ class PromptBuilder:
         memory_manager: Any = None,
         runtime_info: Optional[Dict[str, Any]] = None,
         project_dir: Optional[str] = None,
+        workspace_scope: Optional[str] = None,
         permission_mode: Optional[str] = None,
         **kwargs
     ) -> str:
@@ -79,6 +80,7 @@ class PromptBuilder:
             memory_manager=memory_manager,
             runtime_info=runtime_info,
             project_dir=project_dir,
+            workspace_scope=workspace_scope,
             permission_mode=permission_mode,
             **kwargs
         )
@@ -95,6 +97,7 @@ def build_agent_system_prompt(
     memory_manager: Any = None,
     runtime_info: Optional[Dict[str, Any]] = None,
     project_dir: Optional[str] = None,
+    workspace_scope: Optional[str] = None,
     permission_mode: Optional[str] = None,
     **kwargs
 ) -> str:
@@ -160,7 +163,8 @@ def build_agent_system_prompt(
     # hold when the context files were actually loaded, which sub agents skip.
     sections.extend(
         _build_workspace_section(
-            workspace_dir, language, bool(context_files), project_dir=project_dir
+            workspace_dir, language, bool(context_files), project_dir=project_dir,
+            workspace_scope=workspace_scope,
         )
     )
 
@@ -704,7 +708,7 @@ def _build_docs_section(workspace_dir: str, language: str) -> List[str]:
 
 def _build_workspace_section(
     workspace_dir: str, language: str, context_files_loaded: bool = True,
-    project_dir: Optional[str] = None,
+    project_dir: Optional[str] = None, workspace_scope: Optional[str] = None,
 ) -> List[str]:
     """Build the workspace section.
 
@@ -714,9 +718,16 @@ def _build_workspace_section(
     both misinform it and talk it out of reading the workspace rules itself.
 
     ``project_dir`` switches the section to the dual-directory layout used when
-    the user has pointed the session at a project: the *project* is the working
-    directory (relative paths, artifacts) while the Agent's workspace stays the
-    *system* directory (memory/skills), reached with absolute paths.
+    the session's working directory is not the Agent's own workspace: the
+    working directory holds relative paths and artifacts while the Agent's
+    workspace stays the *system* directory (memory/skills), reached with
+    absolute paths.
+
+    ``workspace_scope`` says which of the two that override is, so the wording
+    does not lie: ``"project"`` is a directory the user picked, ``"personal"``
+    is the caller's own directory inside a tenant-shared Agent (change
+    ``use-personal-workspace-for-shared-agents``), which nobody selected and
+    which no other member shares.
     """
     normalized_project = None
     if project_dir:
@@ -727,6 +738,10 @@ def _build_workspace_section(
             normalized_project = project_dir
 
     if normalized_project:
+        if workspace_scope == "personal":
+            return _build_personal_workspace_section(
+                workspace_dir, normalized_project, language, context_files_loaded
+            )
         return _build_project_workspace_section(
             workspace_dir, normalized_project, language, context_files_loaded
         )
@@ -823,6 +838,95 @@ def _build_workspace_section(
     if cloud_website_lines:
         lines.extend(cloud_website_lines)
     
+    return lines
+
+
+def _build_personal_workspace_section(
+    workspace_dir: str, personal_dir: str, language: str, context_files_loaded: bool
+) -> List[str]:
+    """Workspace section for a shared Agent's caller working in their own folder.
+
+    Same two-directory layout as a project, different fact: nobody selected this
+    directory. It is the caller's own business folder inside a tenant-shared
+    Agent, which is why it is *not* called a project and why the section says
+    where it comes from. Calling it a project would invite the model to treat a
+    picker selection as in force, and would misdescribe a directory the user
+    cannot share with the other members of the Agent.
+    """
+    if language == "en":
+        lines = [
+            "## 📂 Workspace",
+            "",
+            "This Agent is **shared** with other members. With no project selected,"
+            " your working directory is **your own folder** inside it — everything"
+            " you write with a relative path stays there and is not shared.",
+            "",
+            f"- **Current working directory (your own folder)**: `{personal_dir}`",
+            f"- **System directory (memory & skills)**: `{workspace_dir}`",
+            "",
+            "**Path rules** (very important):",
+            "",
+            f"1. **Relative paths are based on your working directory** `{personal_dir}`."
+            " Put your work products here (documents, code, generated files, etc.).",
+            f"   - ✅ relative `output/report.html` → `{personal_dir}/output/report.html`",
+            "",
+            f"2. **Memory and skills stay in the system directory** `{workspace_dir}`."
+            " Never write them into your folder. Memory tools handle this for you;"
+            " if you ever touch these files directly, use **absolute paths** under"
+            " the system directory.",
+            f"   - ✅ absolute `{workspace_dir}/MEMORY.md`",
+            f"   - ❌ relative `MEMORY.md` (that would land in your folder, which is wrong)",
+            "",
+            "3. **Accessing any other directory**: use absolute paths.",
+            "",
+            "4. **When unsure**: run `bash pwd` to confirm the current directory.",
+            "",
+            "If the user later selects a project, the working directory switches to"
+            " it; clearing the project brings it back here.",
+            "",
+        ]
+    else:
+        lines = [
+            "## 📂 工作空间",
+            "",
+            "该智能体由**多人共享**。未选择项目时，你的工作目录是你在其中的**个人目录**——"
+            "用相对路径生成的内容都落在这里，不会与其他人共享。",
+            "",
+            f"- **当前工作目录（你的个人目录）**: `{personal_dir}`",
+            f"- **系统目录（记忆与技能）**: `{workspace_dir}`",
+            "",
+            "**路径使用规则** (非常重要):",
+            "",
+            f"1. **相对路径基于当前工作目录** `{personal_dir}`。你的工作产物（文档、代码、生成的文件等）都放在这里。",
+            f"   - ✅ 相对路径 `output/report.html` → `{personal_dir}/output/report.html`",
+            "",
+            f"2. **记忆和技能仍在系统目录** `{workspace_dir}`，不要写入个人目录。记忆操作由记忆工具自动完成；若确需直接访问这些文件，请使用系统目录下的**绝对路径**。",
+            f"   - ✅ 绝对路径 `{workspace_dir}/MEMORY.md`",
+            f"   - ❌ 相对路径 `MEMORY.md`（那会落到你的个人目录里，是错误的）",
+            "",
+            "3. **访问其他任意目录**：使用绝对路径。",
+            "",
+            "4. **不确定时**：用 `bash pwd` 确认当前目录。",
+            "",
+            "用户后续选择项目时会切换到该项目；清除项目后回到这个个人目录。",
+            "",
+        ]
+
+    if context_files_loaded:
+        if language == "en":
+            lines += [
+                "**Files already auto-loaded** (no need to `read` again): `AGENT.md`, `USER.md`, `RULE.md`, `MEMORY.md` (from the system directory).",
+                "",
+            ]
+        else:
+            lines += [
+                "**已自动加载的文件**（无需再次 `read`）：`AGENT.md`、`USER.md`、`RULE.md`、`MEMORY.md`（来自系统目录）。",
+                "",
+            ]
+
+    cloud_website_lines = _build_cloud_website_section(workspace_dir)
+    if cloud_website_lines:
+        lines.extend(cloud_website_lines)
     return lines
 
 

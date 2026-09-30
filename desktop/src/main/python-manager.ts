@@ -161,8 +161,19 @@ export class PythonBackend extends EventEmitter {
    * intact: when the executable went missing this used to return the read-only
    * install dir, so a user following the on-screen instructions opened a folder
    * that had no run.log in it at all.
+   *
+   * An explicit ``COW_DATA_DIR`` wins in *every* build. The bundled app needs it
+   * (its own directory is replaced on update), and a source run accepts it too so
+   * a run can be pointed at a private directory instead of the checkout. The
+   * backend already reads this same variable (config.py ``get_data_root``), and
+   * a shell that picked its port from one config file while the backend served
+   * another is exactly the disagreement this removes.
    */
   getDataDir(): string {
+    const override = process.env.COW_DATA_DIR
+    if (override) {
+      return override.replace(/^~(?=$|[/\\])/, os.homedir())
+    }
     return this.packaged ? COW_DATA_DIR : this.backendPath
   }
 

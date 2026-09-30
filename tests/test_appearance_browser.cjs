@@ -178,6 +178,18 @@ async function open(ctx) {
     const page = await ctx.newPage();
     page.setDefaultTimeout(10000);
     await page.goto(origin + '/chat', { waitUntil: 'networkidle' });
+    // Credentials must be submitted before the tenant group appears (product
+    // gates that step on a successful password login).
+    if (await page.locator('#login-form').isVisible()) {
+        if (await page.locator('#login-username').isVisible()) {
+            await page.locator('#login-username').fill('appearance-member');
+            await page.locator('#login-password').fill('fixture-only-password');
+        }
+        if (await page.locator('#login-tenant-group').isVisible()) {
+            await page.locator('#login-tenant-select').selectOption('fixture-tenant');
+        }
+        await page.locator('#login-btn').click();
+    }
     if (await page.locator('#login-tenant-group').isVisible()) {
         await page.locator('#login-tenant-select').selectOption('fixture-tenant');
         await page.locator('#login-btn').click();
@@ -611,6 +623,16 @@ const panelAuditSelectors = [
             await page.locator('#workspace-selector-menu').waitFor({ state: 'visible' });
             const workspacePopup = await page.locator('#workspace-selector-menu').boundingBox();
             assert.ok(workspacePopup.x >= 0 && workspacePopup.x + workspacePopup.width <= viewport.width + 1);
+            assert.ok(workspacePopup.y >= 0, 'workspace menu must not clip above the viewport');
+            assert.ok(
+                workspacePopup.y + workspacePopup.height <= viewport.height + 1,
+                'workspace menu must not clip below the viewport',
+            );
+            const composerBox = await page.locator('#composer-card').boundingBox();
+            assert.ok(
+                workspacePopup.y + workspacePopup.height <= composerBox.y + 1,
+                'home workspace menu opens above the composer',
+            );
             await page.locator('#workspace-selector-btn').click();
         }
         await page.setViewportSize({ width: 1440, height: 900 });

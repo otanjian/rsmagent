@@ -96,9 +96,76 @@ export interface ElectronAPI {
   // onOpenSession with the session id.
   notify?: (payload: { title?: string; body?: string; sessionId?: string; silent?: boolean; force?: boolean }) => Promise<boolean>
   onOpenSession?: (callback: (sessionId: string) => void) => () => void
+  // ---- Remote-mode configuration (change add-desktop-remote-web-workbench) --
+  // Optional: the local shell reads the stored mode and manages servers. A
+  // pre-remote build has none of these, so every call site must tolerate
+  // `undefined` (the app simply stays in local mode).
+  desktopModeGet?: () => Promise<DesktopModeReply>
+  desktopRemoteProbe?: (origin: string) => Promise<RemoteProbeReply>
+  desktopRemoteAddServer?: (payload: { origin: string; displayName?: string }) => Promise<RemoteConfigReply>
+  desktopRemoteRemoveServer?: (id: string) => Promise<RemoteConfigReply>
+  desktopRemoteSetActive?: (id: string | null) => Promise<RemoteConfigReply>
+  desktopRemoteSetMode?: (mode: 'local' | 'remote') => Promise<RemoteConfigReply>
+  // Attach/detach the remote container. Only the local shell can call these;
+  // the remote page's own bridge (window.desktopHost) has neither.
+  desktopRemoteConnect?: () => Promise<{ ok: boolean; code?: string; message?: string }>
+  desktopRemoteDisconnect?: () => Promise<{ ok: boolean; revoked: boolean; message: string }>
   platform: string
   // OS UI language (e.g. "zh-CN"); used to default the language on first run.
   systemLocale?: string
+}
+
+/** A server the user added locally. The origin is an exact HTTPS origin. */
+export interface RemoteServerProfile {
+  id: string
+  origin: string
+  displayName: string
+}
+
+/** The stored mode projection. Never carries a token, cookie or path. */
+export interface DesktopModeProjection {
+  mode: 'local' | 'remote'
+  profiles: RemoteServerProfile[]
+  activeProfileId: string | null
+  /** Non-empty when a newer build wrote the config and this build refused it. */
+  refused: string
+  /** False on a runtime without WebContentsView (the Electron 22 legacy line). */
+  containerSupported: boolean
+  containerUnsupportedReason: string
+}
+
+export interface DesktopModeReply extends DesktopModeProjection {
+  ok: boolean
+}
+
+export interface RemoteFailure {
+  kind: 'tls' | 'network' | 'http' | 'protocol' | 'identity' | 'downgrade'
+  code: string
+  message: string
+}
+
+export interface RemoteProbeReply {
+  ok: boolean
+  meta?: {
+    remote_web: { implemented: boolean; accepted: boolean; configured: boolean; available: boolean; reason: string }
+    protocols: Record<string, { major: number; minor: number }>
+    entry_path: string
+    console_entry_paths: string[]
+    features: Record<string, { available: boolean; reason: string }>
+  }
+  failure?: RemoteFailure
+}
+
+export interface RemoteConfigReply {
+  ok: boolean
+  reason?: string
+  code?: string
+  message?: string
+  config?: DesktopModeProjection
+  saved?: DesktopModeProjection
+  applied?: boolean
+  id?: string
+  existed?: boolean
 }
 
 // Mirrors UpdateStatus in src/main/updater.ts.
