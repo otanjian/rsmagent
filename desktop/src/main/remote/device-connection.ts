@@ -43,6 +43,25 @@ export function deviceConnectUrl(origin: string): string {
   return `${wsProtocol}//${parsed.host}/api/desktop/connect`
 }
 
+/** Only the registered bundled backend may advertise a loopback gateway port. */
+export async function localGatewayPort(origin: string, fetcher: typeof fetch = fetch): Promise<number> {
+  const parsed = new URL(origin)
+  if (parsed.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)
+    || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+    throw new Error('local gateway discovery requires the registered loopback backend')
+  }
+  const response = await fetcher(`${parsed.origin}/api/desktop/meta`, {
+    redirect: 'error', signal: AbortSignal.timeout(5000),
+  })
+  if (!response.ok) throw new Error('local gateway metadata unavailable')
+  const payload = await response.json() as { data?: { local_gateway_port?: unknown } } | null
+  const port = payload?.data?.local_gateway_port
+  if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('the bundled backend has no running desktop gateway')
+  }
+  return port
+}
+
 /** Refuse a page-supplied absolute WS URL. Only {@link deviceConnectUrl} may mint one. */
 export function assertNotArbitraryWsUrl(candidate: string): void {
   const lower = candidate.trim().toLowerCase()

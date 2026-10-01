@@ -425,8 +425,25 @@ def _build_preview_url(abs_path: str) -> str:
 
 
 def _build_artifact_payload(data: dict) -> dict:
-    """Turn an agent `artifact` event into an SSE payload for the web clients."""
+    """Turn an agent `artifact` event into an SSE payload for the web clients.
+
+    Two shapes, decided by the artifact's origin (task 9.1). A server artifact is
+    unchanged: it gets the server ``abs_path`` and the URLs this process can
+    actually serve. A **local** artifact gets no absolute path and no server URL
+    at all -- minting ``/api/file?path=/Users/...`` for a file on the user's own
+    machine would advertise a fetch that either 404s or, worse, works on a
+    single-machine deployment and teaches the client to expect a copy. It carries
+    the device/project/run identity and the relative path instead, so the client
+    resolves it through the local project it already has open.
+
+    A local artifact may arrive with no server-side path at all (a device's own
+    report, which this process is not allowed to stat), so the origin is checked
+    *before* the path.
+    """
     from channel.web.web_channel import _build_preview_url
+    origin = data.get("origin")
+    if isinstance(origin, dict) and origin.get("source") == "desktop":
+        return _local_artifact_payload(data, origin)
     file_path = data.get("path", "")
     if not file_path:
         return None
@@ -441,6 +458,138 @@ def _build_artifact_payload(data: dict) -> dict:
         "raw_url": f"/api/file?path={quote(file_path)}",
         "preview_url": _build_preview_url(file_path),
     }
+
+
+def _local_artifact_payload(data: dict, origin: dict) -> dict:
+    """The device-facing shape: identifiers and a relative id, no server URL."""
+    from agent.protocol.artifact import classify_kind, is_previewable
+
+    relative = origin.get("relative_path") or ""
+    name = origin.get("file_name") or os.path.basename(relative)
+    # The *display* kind stays the panel's vocabulary (markdown/code/...) so the
+    # existing renderer keeps choosing the right icon and editor; the contract's
+    # own bucket travels separately as ``artifact_kind``.
+    kind = data.get("kind") or classify_kind(name) or "file"
+    size = data.get("size")
+    if size in (None, ""):
+        size = origin.get("size", 0)
+    return {
+        "type": "artifact",
+        "source": "desktop",
+        "local": True,
+        "artifact_id": origin.get("artifact_id") or "",
+        "artifact_kind": origin.get("kind") or "binary",
+        "artifact_protocol": origin.get("artifact_protocol") or "",
+        "device_id": origin.get("device_id") or "",
+        "workspace_id": origin.get("workspace_id") or "",
+        "binding_id": origin.get("binding_id") or "",
+        "project_mode": origin.get("project_mode") or "",
+        "run_id": origin.get("run_id") or "",
+        "tool_call_id": origin.get("tool_call_id") or "",
+        "relative_path": relative,
+        # Display/legacy alias: the renderer reads `rel_path`, and the relative
+        # id is the honest thing to show for a local file.
+        "rel_path": relative,
+        "file_name": name,
+        "kind": kind,
+        "size": size,
+        "source_version": origin.get("source_version") or "",
+        "previewable": bool(data.get("previewable",
+                                    is_previewable(classify_kind(name)))),
+        "revalidate": True,
+        # Whether the reference can be followed *here* (task 9.6). A replayed
+        # card is a record of what a run produced, so it survives the file being
+        # moved away -- but it must say so instead of offering an action that
+        # would resolve to whatever same-named file is open now.
+        "resolution": origin.get("resolution") or "ok",
+    }
+
+
+def _project_holding(path: str, identity: Any = None):
+    """The live local registration that holds ``path``, or None (task 9.6).
+
+    History replay has to answer *which* project produced a file. The registered
+    roots are the only thing that knows: they are what this process can actually
+    read, and they are live, so a revoked grant or a re-picked directory answers
+    None instead of being resurrected from "recently used". See
+    ``LocalRootRegistry.entry_for_path`` for the three properties.
+    """
+    if not path or not os.path.isabs(str(path)):
+        return None
+    try:
+        from agent.desktop_local import registry as local_registry
+
+        if identity is None:
+            from common.runtime_identity import current_identity
+
+            identity = current_identity()
+        if identity is None:
+            return None
+        return local_registry().entry_for_path(
+            path,
+            user_id=str(getattr(identity, "user_id", "") or ""),
+            tenant_id=str(getattr(identity, "tenant_id", "") or ""),
+        )
+    except Exception as e:  # noqa: BLE001 - an unanswerable lookup is "no project"
+        logger.debug(f"[WebChannel] local project lookup failed: {e}")
+        return None
+
+
+def _origin_for_entry(entry: Any, step: dict) -> Optional[dict]:
+    """The artifact origin of a file produced under one registration (9.6).
+
+    Built from the *registration* rather than from the session's current
+    target, so the card keeps the device/workspace/binding the run really had.
+    """
+    from agent.protocol.artifact import desktop_origin
+    from agent.workspace.execution_target import desktop_target
+
+    try:
+        target = desktop_target(
+            device_id=entry.device_id, workspace_id=entry.workspace_id,
+            binding_id=entry.binding_id, grant_version=entry.grant_version,
+            project_mode=entry.project_mode,
+        )
+    except Exception as e:  # noqa: BLE001 - a bad registration names no project
+        logger.debug(f"[WebChannel] artifact origin refused: {e}")
+        return None
+    return desktop_origin(
+        target,
+        run_id=str(step.get("run_id") or ""),
+        tool_call_id=str(step.get("id") or step.get("tool_call_id") or ""),
+    )
+
+
+def _missing_local_card(path: str, root: str, origin: dict) -> Optional[dict]:
+    """The card for a recorded local file that is no longer there (task 9.6).
+
+    Live emission *drops* an artifact whose file is missing, because that card
+    is a promise about a file the user can open right now. A history card is a
+    different claim -- "this run produced this file" -- so dropping it would
+    erase the only trace of the work, and turning it into a server reference
+    would point at a file this process never had. It is rendered, marked
+    ``resolution: missing``, and carries no version it could not read.
+    """
+    from agent.protocol.artifact import artifact_id, protocol_kind
+
+    try:
+        relative = os.path.relpath(path, root)
+    except (TypeError, ValueError):
+        return None
+    if os.path.isabs(relative) or relative.startswith(".."):
+        return None
+    complete = dict(origin)
+    complete.update({
+        "artifact_id": artifact_id(complete.get("run_id", ""),
+                                   complete.get("tool_call_id", ""), relative),
+        "relative_path": relative,
+        "file_name": os.path.basename(path),
+        "kind": protocol_kind(path),
+        "size": 0,
+        "source_version": "",
+        "resolution": "missing",
+    })
+    return _local_artifact_payload({"previewable": False}, complete)
 
 
 def _paths_written_by_step(step: dict) -> list:
@@ -566,6 +715,16 @@ def _artifacts_from_steps(steps, session_id: str = None, agent_id: str = None) -
     seen = set()
     root = None
     workspace_root = None
+    # Which project produced each file (task 9.6). Answered per path from the
+    # **live** registrations that really hold it, not from the session's current
+    # target: a run may have happened in a project the session has since
+    # switched away from, and re-deriving from "what is open now" would either
+    # lose the card or re-file it under a project that happens to hold a file of
+    # the same name. A revoked grant or another machine answers None, and then
+    # the path is treated as a server file at most -- never claimed as local.
+    from common.runtime_identity import current_identity
+
+    identity = current_identity()
     for step in steps or []:
         if not isinstance(step, dict) or step.get("type") != "tool" or step.get("is_error"):
             continue
@@ -574,7 +733,20 @@ def _artifacts_from_steps(steps, session_id: str = None, agent_id: str = None) -
                 root = (_session_workspace_root(session_id, agent_id)
                         if session_id else get_workspace_root())
             step_root = root
-            if os.path.isabs(path) and not _under(path, root):
+            origin = None
+            entry = _project_holding(path, identity) if os.path.isabs(path) else None
+            if entry is not None:
+                # This machine really holds the file, inside a project this user
+                # still has open, so the card names that device and project.
+                step_root = entry.absolute_path
+                origin = _origin_for_entry(entry, step)
+                if origin is not None and not os.path.isfile(path):
+                    missing = _missing_local_card(path, step_root, origin)
+                    if missing is not None and missing["relative_path"] not in seen:
+                        seen.add(missing["relative_path"])
+                        out.append(missing)
+                    continue
+            elif os.path.isabs(path) and not _under(path, step_root):
                 # The saved location outlives the session's directory. The
                 # Agent's own workspace still contains a member's own folder
                 # (``<workspace>/user/<id>``), so measuring against it keeps the
@@ -584,7 +756,7 @@ def _artifacts_from_steps(steps, session_id: str = None, agent_id: str = None) -
                     workspace_root = get_workspace_root()
                 if _under(path, workspace_root):
                     step_root = workspace_root
-            info = safe_build_artifact(path, step_root)
+            info = safe_build_artifact(path, step_root, origin)
             if not info or info["path"] in seen:
                 continue
             seen.add(info["path"])
@@ -1766,22 +1938,30 @@ class WebChannel(ChatChannel):
                     if not fpath:
                         continue
                     if ftype == "workspace_ref":
-                        # Already lives in the workspace (dragged from the file panel
-                        # or picked with @); reference it in place so the agent opens
-                        # the original instead of an uploaded copy. Naming the kind
-                        # tells the agent whether to `read` it or `ls` into it.
-                        # Resolve relative to the session's working root (project
-                        # dir when opened, else the workspace).
-                        is_dir = os.path.isdir(
-                            os.path.join(
-                                _get_workspace_root(session_id, resolved_agent_id), fpath
-                            )
+                        # Already lives in the session's project (dragged from the
+                        # file panel or picked with @); reference it in place so the
+                        # agent opens the original instead of an uploaded copy.
+                        # Naming the kind tells the agent whether to `read` it or
+                        # `ls` into it.
+                        #
+                        # The reference is resolved through the same source the file
+                        # panel uses (task 3.6). For a local project that is the
+                        # local one: the marker says so, so the model reads it with
+                        # the local tools rather than asking the server for a
+                        # same-named file -- and a reference that cannot be resolved
+                        # is reported instead of silently dropped. Nothing is ever
+                        # uploaded from here.
+                        from agent.desktop_local.source_resolver import (
+                            reference_line, source_for_session,
                         )
-                        label = (
-                            i18n.t('工作空间目录', 'Workspace directory') if is_dir
-                            else i18n.t('工作空间文件', 'Workspace file')
-                        )
-                        file_refs.append(f"[{label}: {fpath}]")
+                        from common.runtime_identity import current_identity
+
+                        source = source_for_session(
+                            session_id, resolved_agent_id,
+                            server_root=_get_workspace_root(
+                                session_id, resolved_agent_id),
+                            identity=current_identity())
+                        file_refs.append(reference_line(source, fpath))
                     elif ftype == "image":
                         file_refs.append(f"[{i18n.t('图片', 'Image')}: {fpath}]")
                         # The path marker above stays (it is what history shows
@@ -2368,14 +2548,26 @@ class WebChannel(ChatChannel):
         except OSError as e:
             _log_bind_failure(host, port, e)
             raise
+        # WSGI cannot upgrade /api/desktop/connect. The bundled desktop has no
+        # reverse proxy, so run the existing gateway on a private loopback port.
+        if os.environ.get("COW_DESKTOP") == "1":
+            from channel.web.auth_handlers import _get_service
+            from integrations.desktop.local_gateway import local_gateway
+            try:
+                local_gateway.start(_get_service())
+            except Exception:
+                server.stop()
+                raise
         SERVING.set()
         _log_startup_banner()
         try:
             server.serve()
         except (KeyboardInterrupt, SystemExit):
-            server.stop()
+            self.stop()
 
     def stop(self):
+        from integrations.desktop.local_gateway import local_gateway
+        local_gateway.stop()
         if self._http_server:
             try:
                 self._http_server.stop()
@@ -3451,5 +3643,4 @@ def _project_state(session_id: str, agent_id: str = None) -> dict:
 
 
 _DRIVES_SENTINEL = "__DRIVES__"
-
 

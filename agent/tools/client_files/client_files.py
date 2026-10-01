@@ -55,7 +55,10 @@ class ClientFiles(BaseTool):
             },
             "relative_path": {
                 "type": "string",
-                "description": "Path relative to the authorized root (never absolute).",
+                "description": (
+                    "Path relative to the authorized root (never absolute). "
+                    "For list at the root, omit this parameter; do not send an empty string or '.'."
+                ),
             },
             "query": {
                 "type": "string",
@@ -80,7 +83,12 @@ class ClientFiles(BaseTool):
             },
             "expected_version": {
                 "type": "string",
-                "description": "Optional source version for materialize.",
+                "description": (
+                    "Optional source version for materialize, in the form a "
+                    "device stat reported it (`<size>:<modified>`). When given, "
+                    "the device refuses with file_changed unless the file still "
+                    "is that version -- the copy must be the one approved."
+                ),
             },
             "transfer_id": {
                 "type": "string",
@@ -217,6 +225,20 @@ class ClientFiles(BaseTool):
         state = command.get("state")
         command_id = command.get("id")
         if state == "succeeded":
+            if op == "materialize":
+                payload = command.get("result") or {}
+                transfer_id = payload.get("transfer_id") if isinstance(payload, dict) else None
+                if not transfer_id:
+                    return ToolResult.fail("the device returned no committed transfer",
+                                           ext_data={"code": "invalid_request", "phase": "error"})
+                from common.runtime_identity import current_identity
+                result = self._materialize_committed({
+                    "transfer_id": transfer_id,
+                    "run_id": current_identity().run_id or "adhoc",
+                }, command_id=command_id)
+                if result.status == "success":
+                    result.result.update(op=op, command_id=command_id, state=state)
+                return result
             self._emit_phase("ready", op=op, command_id=command_id)
             return ToolResult.success({
                 "phase": "ready",
@@ -312,10 +334,13 @@ class ClientFiles(BaseTool):
                       "command_id": command_id,
                       "state": last.get("state")})
 
-    def _materialize_committed(self, args: Dict[str, Any]) -> ToolResult:
+    def _materialize_committed(self, args: Dict[str, Any], *,
+                               command_id: Optional[str] = None) -> ToolResult:
         """Copy a committed transfer into the run work dir (server path only)."""
         transfer_id = str(args.get("transfer_id") or "").strip()
         run_id = str(args.get("run_id") or "adhoc").strip() or "adhoc"
+        if run_id in (".", "..") or any(c in run_id for c in ("/", "\\", "\x00")):
+            return ToolResult.fail("invalid run id", ext_data={"code": "invalid_request"})
         try:
             from common.runtime_identity import current_identity
             from channel.web.auth_handlers import _get_service
@@ -337,7 +362,10 @@ class ClientFiles(BaseTool):
                 "transfer not found",
                 ext_data={"code": "resource_not_found", "phase": "error"})
         transfer = dict(rows[0])
-        if transfer["user_id"] != ident.user_id:
+        if (transfer["user_id"] != ident.user_id
+                or transfer["tenant_id"] != ident.tenant_id
+                or transfer["agent_id"] != ident.agent_id
+                or (command_id is not None and transfer["command_id"] != command_id)):
             return ToolResult.fail(
                 "transfer not found",
                 ext_data={"code": "resource_not_found", "phase": "error"})

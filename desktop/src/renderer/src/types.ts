@@ -110,6 +110,13 @@ export interface ElectronAPI {
   // the remote page's own bridge (window.desktopHost) has neither.
   desktopRemoteConnect?: () => Promise<{ ok: boolean; code?: string; message?: string }>
   desktopRemoteDisconnect?: () => Promise<{ ok: boolean; revoked: boolean; message: string }>
+  /**
+   * The host's sign-out feed (change `fix-desktop-relogin-session-sync`, task
+   * 2.2). The container asked to end the account; the local shell has to
+   * refresh its login/connection entry even though the document that asked is
+   * already gone. The payload is a phase and an outcome -- no account, no token.
+   */
+  onDesktopLogoutState?: (callback: (notice: DesktopLogoutStateNotice) => void) => () => void
   platform: string
   // OS UI language (e.g. "zh-CN"); used to default the language on first run.
   systemLocale?: string
@@ -166,6 +173,21 @@ export interface RemoteConfigReply {
   applied?: boolean
   id?: string
   existed?: boolean
+}
+
+/**
+ * One step of the host's sign-out feed (mirrors LogoutStateNotice in
+ * src/main/remote/remote-container-ipc.ts). `phase: 'started'` is emitted
+ * before the container is torn down, `'finished'` after -- every path,
+ * including a failure, must end in a `'finished'` notice so the shell's gate
+ * can never be left waiting.
+ */
+export interface DesktopLogoutStateNotice {
+  phase: 'started' | 'finished'
+  ok: boolean
+  revoked: boolean
+  code: string
+  message: string
 }
 
 // Mirrors UpdateStatus in src/main/updater.ts.

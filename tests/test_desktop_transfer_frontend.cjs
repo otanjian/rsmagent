@@ -52,14 +52,17 @@ test('uploadWithSingleChunkWindow posts sequential chunks and commits', async ()
   const result = await transfer.uploadWithSingleChunkWindow({
     handle,
     filename: 'sample.bin',
+    commandId: 'cmd_1',
     chunkSize: 8,
-    create: async ({ sourceRef, sourceVersion, totalBytes }) => {
+    create: async ({ commandId, sourceRef, sourceVersion, totalBytes }) => {
+      assert.equal(commandId, 'cmd_1', 'a transfer names the command it belongs to');
       assert.equal(sourceRef, 'src:sample.bin');
       assert.equal(totalBytes, body.length);
       assert.ok(sourceVersion.includes(':'));
       return { id: 'xfer_1', chunk_size: 8, acknowledged_offset: 0 };
     },
-    putChunk: async (offset, buf, sha256) => {
+    putChunk: async (transferId, offset, buf, sha256) => {
+      assert.equal(transferId, 'xfer_1', 'every chunk names its own transfer');
       chunks.push({ offset, len: buf.length, sha256 });
       assert.equal(
         sha256,
@@ -94,12 +97,13 @@ test('upload retries once on file_changed then succeeds', async () => {
   const result = await transfer.uploadWithSingleChunkWindow({
     handle,
     filename: 'v.bin',
+    commandId: 'cmd_v',
     chunkSize: 64,
     create: async () => {
       creates += 1;
       return { id: 'xfer_' + creates, chunk_size: 64, acknowledged_offset: 0 };
     },
-    putChunk: async (offset, buf) => {
+    putChunk: async (_transferId, offset, buf) => {
       if (forceChange) {
         forceChange = false;
         // Mutate the on-disk file so restat after the loop sees a new version.
@@ -128,6 +132,7 @@ test('upload gives up after a second file_changed', async () => {
       transfer.uploadWithSingleChunkWindow({
         handle,
         filename: 'u.bin',
+        commandId: 'cmd_u',
         create: async () => ({
           id: 'xfer_x',
           chunk_size: 64,

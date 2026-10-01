@@ -66,6 +66,8 @@
   },
   "meta_envelope": {
     "required": ["remote_web", "protocols", "entry_path", "console_entry_paths", "features"],
+    "optional": ["local_gateway_port"],
+    "local_gateway_port": "Integer 1..65535, present only while the bundled backend's private loopback gateway is running. The native host may use it only for its registered local backend; remote origins keep the same-origin gateway path.",
     "forbidden_keys": ["user", "user_id", "tenant_id", "devices", "directories", "connections"],
     "max_bytes": 65536
   },
@@ -79,10 +81,11 @@
       "disconnectWorkspace",
       "saveArtifact",
       "openExternal",
+      "signOut",
       "notify",
       "onHostEvent"
     ],
-    "phase1_methods": ["getCapabilities", "suspendLocalContext", "saveArtifact", "openExternal", "onHostEvent"],
+    "phase1_methods": ["getCapabilities", "suspendLocalContext", "saveArtifact", "openExternal", "signOut", "onHostEvent"],
     "forbidden_capabilities": ["fs", "child_process", "ipcRenderer", "shell", "token"]
   },
   "gateway": {

@@ -159,12 +159,16 @@ def build_agent_system_prompt(
             _build_knowledge_section(workspace_dir, language, project_dir, asset_scope)
         )
 
-    # 4. Workspace (working environment description). Two of its blocks only
+    # 4. Workspace (working environment description). Two of those blocks only
     # hold when the context files were actually loaded, which sub agents skip.
     sections.extend(
         _build_workspace_section(
             workspace_dir, language, bool(context_files), project_dir=project_dir,
             workspace_scope=workspace_scope,
+            client_platform=(
+                str(kwargs.get("client_platform") or "").strip()
+                or _client_platform(tools)
+            ),
         )
     )
 
@@ -198,6 +202,13 @@ def build_agent_system_prompt(
         sections.extend(_build_runtime_section(runtime_info, language))
         sections.extend(_build_team_section(runtime_info, language))
 
+    # A selected desktop input is not the server workspace described above.
+    # Emit the verified per-turn fact explicitly; tool schemas alone do not
+    # tell the model that the user has actually selected a directory.
+    sections.extend(build_desktop_directory_guidance(
+        kwargs.get("desktop_context"), tools, language, workspace_scope,
+    ))
+
     # 8. Response language (always appended, independent of the skeleton language)
     sections.extend(_build_response_language_section(language))
 
@@ -210,6 +221,63 @@ def build_agent_system_prompt(
     )
 
     return "\n".join(sections)
+
+
+def build_desktop_directory_guidance(
+    reference: Optional[Dict[str, Any]], tools: Optional[List[Any]],
+    language: str, workspace_scope: Optional[str] = None,
+) -> List[str]:
+    """Describe a verified input selection without exposing ids or client paths.
+
+    Local execution projects already route their ordinary tools to the client
+    and have their own guidance. Read-only inputs use client_files instead.
+    Callers supply the same available tools that are offered to the model.
+    """
+    if not reference or not reference.get("binding_id") or workspace_scope == "local":
+        return []
+    available = any(getattr(tool, "name", "") == "client_files" for tool in tools or [])
+    if language == "en":
+        lines = [
+            "## Selected desktop input", "",
+            "The user has selected a desktop directory for this turn. Requests about "
+            "the current project's files or data refer to that directory.",
+            "The server workspace described above is not this selected directory. "
+            "An empty result from server bash/read/ls cannot establish that the "
+            "selected directory has no files; do not search other server directories as a substitute.",
+        ]
+        if available:
+            lines += [
+                'First list the selected input with client_files({"op":"list"}); '
+                'omit relative_path for the root (never use "" or "."), '
+                "then use search/stat/read_text to inspect relevant files.",
+                "For Excel, PDF or other binary files, use client_files with op=materialize "
+                "and a relative_path, then analyze the returned server path with existing tools. "
+                "Do not pass client paths or URIs to server tools.",
+                "Selection does not grant tool permissions. If reading fails, report the actual "
+                "permission/device/network error; do not call the directory empty or claim to have read it.",
+            ]
+        else:
+            lines.append("The client_files tool is currently unavailable. Explain that the selected "
+                         "input cannot currently be read; do not claim that it contains no data.")
+    else:
+        lines = [
+            "## 本轮桌面输入来源", "",
+            "本轮已选择客户端本地目录。用户所说的当前项目文件或数据，指该目录。",
+            "上述服务器工作区不是所选客户端目录。服务器 bash/read/ls 即使返回空，也不能据此判断所选目录没有文件；"
+            "不要继续扫描其他服务器目录来替代本地读取。",
+        ]
+        if available:
+            lines += [
+                '先调用 client_files({"op":"list"}) 列出所选目录；根目录须省略 relative_path，不能传空字符串或 "."。'
+                "再用 search/stat/read_text 查看相关文件。",
+                "Excel、PDF 等二进制文件先用 client_files 的 materialize 和 relative_path 导入，"
+                "再用现有工具分析返回的服务器文件路径；不要把客户端路径或 URI 当成服务器路径。",
+                "选择目录不等于授予工具权限。读取失败时如实说明权限、设备或网络错误，"
+                "不能声称目录为空或已经读取文件。",
+            ]
+        else:
+            lines.append("client_files 当前不可用，请明确说明暂时无法读取所选目录，不能声称其中没有数据。")
+    return lines + [""]
 
 
 def _build_response_language_section(language: str) -> List[str]:
@@ -252,6 +320,7 @@ def _build_tooling_section(tools: List[Any], language: str) -> List[str]:
             "ls": "list directory contents",
             "search_files": "search inside files by regex, or find files by name",
             "bash": "run shell commands",
+            "client_files": "read the selected desktop input directory; materialize files for server analysis",
             "terminal": "manage background processes",
             "web_search": "web search",
             "web_fetch": "fetch URL content",
@@ -272,6 +341,7 @@ def _build_tooling_section(tools: List[Any], language: str) -> List[str]:
             "ls": "列出目录内容",
             "search_files": "按正则搜索文件内容，或按文件名查找文件",
             "bash": "执行shell命令",
+            "client_files": "读取所选客户端目录，或导入文件供服务器分析",
             "terminal": "管理后台进程",
             "web_search": "网络搜索",
             "web_fetch": "获取URL内容",
@@ -706,9 +776,129 @@ def _build_docs_section(workspace_dir: str, language: str) -> List[str]:
     return []
 
 
+def _client_platform(tools: Optional[List[Any]]) -> str:
+    """The client's platform for this run, or ``""`` when there is no client.
+
+    Read from the run's script tool, which asks the *launcher* -- the only thing
+    that can actually know, since the command runs on the user's machine. A tool
+    that offers no hint is not an error: a server-side run has no client, and an
+    unknown platform must stay unknown (see ``_local_execution_notes``).
+
+    The first non-empty answer wins. Two script tools in one view are the same
+    platform by construction -- ``tool_view_for_run`` builds them together -- so
+    there is no conflict to resolve.
+    """
+    for tool in tools or []:
+        hint = getattr(tool, "platform_hint", None)
+        if not callable(hint):
+            continue
+        try:
+            value = str(hint() or "").strip()
+        except Exception as e:  # noqa: BLE001 - a failed hint is simply no hint
+            logger.debug(f"Client platform hint skipped: {e}")
+            continue
+        if value:
+            return value
+    return ""
+
+
+def _local_execution_notes(language: str, client_platform: str = "") -> List[str]:
+    """What the model must not get wrong about a local project (task 8.7).
+
+    Three corrections, each of them a natural misreading:
+
+    * ``cwd`` names a directory on the *user's* machine, not a server directory;
+    * the project grant covers the project, and does **not** extend to skill or
+      memory maintenance -- those keep their original authorization and service
+      ownership (``desktop-project-execution``: memory, knowledge, remote APIs
+      and MCP keep their existing service ownership, and must not be handed
+      client paths they cannot resolve);
+    * the platform is the *client's*. The server's own platform is not evidence
+      about a command that runs on the user's machine, so the real platform and
+      the real missing pieces are read from this run's script tool.
+
+    ``client_platform`` is the launcher-reported platform, or ``""`` when it
+    cannot be determined. An unknown platform is said to be unknown rather than
+    quietly filled in with the server's -- that substitution is the exact
+    mistake these notes exist to prevent.
+    """
+    if language == "en":
+        lines = [
+            "",
+            "**This project is on the user's own computer.**",
+            "",
+            "- The working directory above is a directory on the user's machine,",
+            "  reached through their desktop client; it is not on the server.",
+            "- Work in it with the ordinary file and shell tools. Do not ask the",
+            "  user to copy files out, and do not assume `~` means this directory.",
+            "- Deliver what the user asked for *into this project*: write outputs,",
+            "  reports and generated files under the project directory (a relative",
+            "  path already means that). Do not leave a deliverable in a scratch or",
+            "  temporary directory, and do not send the user hunting for it.",
+            "- This project's permission is a permission on **this directory**. It",
+            "  does not extend to maintaining skills or memory: those keep their",
+            "  original authority and live in the system directory above. Never",
+            "  write them through the project, and never pass a client path to a",
+            "  tool that resolves its paths on the server (memory, knowledge,",
+            "  MCP, remote APIs) -- tell the user the tool cannot take that path",
+            "  instead of inventing one.",
+            "- Whether this session may *change* the project (not just read it) is",
+            "  decided per tool call, not by this section. If a tool is refused,",
+            "  report the refusal instead of retrying with another path.",
+        ]
+        if client_platform:
+            lines.append(
+                f"- Commands here run on the client's platform (**{client_platform}**),"
+                " not on the server's. Use the shell semantics of this run's script"
+                " tool, which also names any missing runtime; do not assume the"
+                " server's operating system or Unix-only commands."
+            )
+        else:
+            lines.append(
+                "- Commands here run on the client's platform, which this run could"
+                " not determine; do not assume it is the server's. The run's script"
+                " tool description states the real platform, the shell and any"
+                " missing runtime -- read it before writing platform-specific"
+                " commands, and do not fall back to Unix-only commands."
+            )
+        lines.append("")
+        return lines
+    lines = [
+        "",
+        "**该项目位于用户自己的电脑上。**",
+        "",
+        "- 上面的工作目录是用户本机的目录，通过其桌面客户端访问，不在服务器上。",
+        "- 用常规的文件与命令工具在其中工作；不要让用户把文件拷出来，也不要把 `~`",
+        "  当作该目录。",
+        "- 用户要的成果要落进**这个项目**：输出、报告与生成的文件都写在项目目录下",
+        "  （相对路径本来就是这个意思）。不要把成果留在临时目录里，也不要让用户自己去找。",
+        "- 该项目授予的是**这个目录**上的权限，不延伸到技能与记忆维护：二者仍遵循原有权限，",
+        "  仍在上面那个系统目录中。不要经由项目去写它们；也不要把客户端路径交给",
+        "  在服务端解析路径的工具（记忆、知识、MCP、远程业务 API）——工具无法接受该路径时",
+        "  应如实说明，而不是自己编一个。",
+        "- 本次会话能否*修改*该项目（而非仅读取）由每次工具调用决定，本段不作判定。",
+        "  工具被拒绝时应如实说明，不要换路径重试。",
+    ]
+    if client_platform:
+        lines.append(
+            f"- 这里的命令运行在**客户端**平台（`{client_platform}`）上，不是服务器平台。"
+            "请按本轮脚本工具描述的 Shell 语义来写，其中也列出了缺失的运行时；不要假设"
+            "服务器的操作系统，也不要用仅 Unix 可用的命令。"
+        )
+    else:
+        lines.append(
+            "- 这里的命令运行在**客户端**平台上，而本轮未能确定该平台；不要假设它就是"
+            "服务器的平台。本轮脚本工具的描述里写明了真实平台、Shell 与缺失的运行时，"
+            "写平台相关命令前请先读它，不要退回到仅 Unix 可用的命令。"
+        )
+    lines.append("")
+    return lines
+
+
 def _build_workspace_section(
     workspace_dir: str, language: str, context_files_loaded: bool = True,
     project_dir: Optional[str] = None, workspace_scope: Optional[str] = None,
+    client_platform: str = "",
 ) -> List[str]:
     """Build the workspace section.
 
@@ -727,7 +917,12 @@ def _build_workspace_section(
     does not lie: ``"project"`` is a directory the user picked, ``"personal"``
     is the caller's own directory inside a tenant-shared Agent (change
     ``use-personal-workspace-for-shared-agents``), which nobody selected and
-    which no other member shares.
+    which no other member shares, and ``"local"`` is a directory the user
+    picked on their *own machine*.
+
+    ``client_platform`` is the platform a local run's commands execute on, as
+    the client reported it (task 8.7). ``""`` means unknown, which is stated as
+    unknown rather than replaced with this server's platform.
     """
     normalized_project = None
     if project_dir:
@@ -742,6 +937,17 @@ def _build_workspace_section(
             return _build_personal_workspace_section(
                 workspace_dir, normalized_project, language, context_files_loaded
             )
+        if workspace_scope == "local":
+            # The working directory is on the *user's own machine*, reached
+            # through the desktop client rather than the server's filesystem.
+            # The layout is the project one, so reuse it; the extra lines say
+            # where the directory actually is, because "the working directory"
+            # would otherwise read as a server path.
+            lines = _build_project_workspace_section(
+                workspace_dir, normalized_project, language, context_files_loaded
+            )
+            lines += _local_execution_notes(language, client_platform)
+            return lines
         return _build_project_workspace_section(
             workspace_dir, normalized_project, language, context_files_loaded
         )

@@ -5812,7 +5812,7 @@ function updateEditButtonsState() {
         }
     });
 }
-let streamBuffers = {};   // request_id -> { items: [event...], timestamp } for re-attach replay
+let streamBuffers = {};   // request_id -> { items, timestamp, ownerContext, titleInfo } for re-attach replay
 let isComposing = false;
 let appConfig = { use_agent: false, title: PRODUCT_NAME, subtitle: '', providers: {}, api_bases: {} };
 
@@ -7058,8 +7058,13 @@ function _desktopSelectionKey() {
 
 /** Drop the local reference (server project, disconnect, session/Agent move). */
 function _desktopContextClear() {
+    const had = !!_desktopContext;
     _desktopContext = null;
     _desktopContextKey = '';
+    // The panel follows the source: once no local project is in effect here, its
+    // landing is the Agent's own folder again, and keeping the local listing on
+    // screen would show files the session no longer reads.
+    if (had && typeof wsSourceChanged === 'function') wsSourceChanged();
 }
 
 /**
@@ -7076,6 +7081,77 @@ function _desktopContextForRequest() {
     if (!_wsSelState.current
             || String(_wsSelState.current.path || '').indexOf('desktop:') !== 0) return null;
     return _desktopContext;
+}
+
+/**
+ * Resume the local project this chat already has open on this machine (9.3).
+ *
+ * A reload takes every page-side variable with it -- the reference, the chip, the
+ * watch -- while the confirmation itself lives in the host. Asking for it back is
+ * what keeps a refresh from silently dropping the user out of their project;
+ * asking the *host* (rather than reading something the page stored) is what keeps
+ * a cached name from standing in for an authorization that may be gone. The
+ * answer is derived live from the grant registry and the device connection, and a
+ * chat with no confirmation gets `none` -- nothing is invented, and nothing is
+ * resumed for a session that never opened a local project.
+ *
+ * Runs once, after the Agent and session are resolved, because the answer is
+ * about *this* chat: an answer that arrives after the user moved to another
+ * Agent or session is dropped rather than adopted (task 2.6).
+ */
+async function _desktopRestoreContext() {
+    if (typeof CowDesktopHost === 'undefined'
+            || typeof CowDesktopHost.localContext !== 'function') return;
+    const requestKey = _desktopSelectionKey();
+    let reply = null;
+    try {
+        reply = await CowDesktopHost.localContext({
+            agent_id: activeAgentId || '',
+            business_session_id: sessionId || '',
+        });
+    } catch (_) {
+        return;  // no host, or the host refused: the page simply has no local project
+    }
+    if (requestKey !== _desktopSelectionKey()) return;
+    if (!reply || reply.state !== 'live') {
+        // `stale` is a real answer: this chat had a local project and its
+        // authorization no longer holds. Saying so is the point -- the user must
+        // not be left thinking their files are on this machine when they are not.
+        if (reply && reply.state === 'stale') _wsToast(t('ws_sel_local_lost'));
+        return;
+    }
+    _desktopContext = {
+        binding_id: String(reply.binding_id || ''),
+        workspace_id: String(reply.workspace_id || ''),
+        grant_version: parseInt(reply.grant_version, 10) || 0,
+    };
+    _desktopContextKey = requestKey;
+    _wsSelState.current = {
+        path: 'desktop:' + String(reply.grant_id || ''),
+        name: String(reply.label || '') || t('ws_sel_local_dir'),
+    };
+    _wsSelUpdateLabel();
+    if (typeof wsSourceChanged === 'function') wsSourceChanged();
+}
+
+/**
+ * The local project behind this chat stopped being authorized (task 9.3).
+ *
+ * Reported when the host stops watching because the binding moved on or was
+ * revoked, and when a local read comes back `stale_context`. The reference is
+ * dropped *first* -- a chip and a panel that keep naming a directory nothing can
+ * read are exactly the drift this closes -- and the selector is re-read from the
+ * server so the page and the execution target describe the same project again.
+ * Idempotent: only a reference that was actually in effect is worth telling the
+ * user about, so a repeated report is silent.
+ */
+function _desktopLocalLost(reason) {
+    const had = !!_desktopContext;
+    _desktopContextClear();
+    if (!had) return;
+    try { refreshWorkspaceSelector(); } catch (_) { /* the selector is not on this page */ }
+    void reason;
+    _wsToast(t('ws_sel_local_lost'));
 }
 
 function _wsSelBtn() { return document.getElementById('workspace-selector-btn'); }
@@ -7113,8 +7189,15 @@ async function refreshWorkspaceSelector() {
         const data = await res.json();
         if (sessionId !== requestSession || activeAgentId !== requestAgent) return;
         if (data.status !== 'success') return;
+        // A local project is not a server project: the backend cannot report it,
+        // so taking its `current` at face value would drop the chip -- and, with
+        // it, the panel's source -- while the project was still open, which is
+        // precisely the panel and the session's target drifting apart (9.3). The
+        // local entry survives only while its reference is still the live one for
+        // *this* Agent and session; every other answer is the server's.
+        const local = _desktopContextForRequest() ? _wsSelState.current : null;
         _wsSelState = {
-            current: data.current || null,
+            current: local || data.current || null,
             recents: data.recents || [],
             defaultWorkspace: data.default_workspace || '',
             projectsRoot: data.projects_root || '',
@@ -7229,21 +7312,49 @@ function renderWorkspaceSelectorMenu() {
     }).catch(() => { /* keep the browser menu */ });
 }
 
-/** Stable opaque id for grant scoping until native device registration lands. */
+/**
+ * CSPRNG bytes, or a clear failure.
+ *
+ * ``crypto.getRandomValues`` is a method of the crypto object: calling it
+ * through a bare reference (``(crypto.getRandomValues)(bytes)``) loses the
+ * receiver, and Chromium answers with ``Illegal invocation`` (task 2.1). A
+ * missing CSPRNG is an error the caller must report, not a reason to mint a
+ * value the next call cannot reproduce.
+ */
+function _desktopRandomBytes(len) {
+    const c = (typeof crypto !== 'undefined' && crypto) ? crypto : null;
+    if (!c || typeof c.getRandomValues !== 'function') {
+        throw new Error('crypto unavailable');
+    }
+    const bytes = new Uint8Array(len);
+    c.getRandomValues(bytes);   // keep the receiver: crypto.getRandomValues(bytes)
+    return bytes;
+}
+
+/** Random bytes as a base64url token without padding. */
+function _desktopRandomToken(len) {
+    return btoa(String.fromCharCode.apply(null, _desktopRandomBytes(len)))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
+ * Stable opaque id for grant scoping and device association (task 2.2).
+ *
+ * It identifies this installation; it is never an authorization. The value has
+ * to persist -- a freshly generated one the next call could not read back would
+ * silently detach every grant from the machine that made it, and an unstable id
+ * is worse than an explicit "unavailable".
+ */
 function _desktopInstallationId() {
     const key = 'cow_desktop_installation_id';
-    try {
-        let id = localStorage.getItem(key);
-        if (id && /^[A-Za-z0-9_-]{22,128}$/.test(id)) return id;
-        const bytes = new Uint8Array(24);
-        (crypto.getRandomValues || (() => { throw new Error('no crypto'); }))(bytes);
-        id = btoa(String.fromCharCode.apply(null, bytes))
-            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-        localStorage.setItem(key, id);
-        return id;
-    } catch (_) {
-        return 'local_' + String(Date.now()) + '_' + Math.random().toString(36).slice(2, 12);
-    }
+    let id = null;
+    try { id = localStorage.getItem(key); } catch (_) { id = null; }
+    if (id && /^[A-Za-z0-9_-]{22,128}$/.test(id)) return id;
+    const fresh = _desktopRandomToken(24);
+    // Throws when it cannot persist (private frame, quota): report unavailable
+    // rather than hand out an id the next page load will not recognise.
+    localStorage.setItem(key, fresh);
+    return fresh;
 }
 
 async function _desktopLocalGrantScope() {
@@ -7275,15 +7386,15 @@ async function wsSelChooseLocalDir() {
     _wsSelHide();
     if (typeof CowDesktopHost === 'undefined'
             || typeof CowDesktopHost.chooseWorkspace !== 'function') return;
-    const scope = await _desktopLocalGrantScope();
-    if (!scope) {
-        _wsToast(t('ws_sel_local_dir_unavailable') || t('ws_sel_select_failed'));
-        return;
-    }
     // The Agent + session this pick belongs to. Anything that lands after the
     // user moved on is dropped rather than adopted (task 2.6).
     const requestKey = _desktopSelectionKey();
     try {
+        const scope = await _desktopLocalGrantScope();
+        if (!scope) {
+            _wsToast(t('ws_sel_local_dir_unavailable') || t('ws_sel_select_failed'));
+            return;
+        }
         const result = await CowDesktopHost.chooseWorkspace(scope);
         if (!result || !result.activated || !result.grant) return;  // cancelled: leave the old selection
         const grant = result.grant;
@@ -7297,18 +7408,24 @@ async function wsSelChooseLocalDir() {
         }
         const confirmed = await CowDesktopHost.bindContext({
             scope,
+            // Legacy migration hint only (task 2.2): the main process owns the
+            // installation id now and adopts this value at most once, on the
+            // first run after the upgrade, so the device registered from it is
+            // not orphaned. It is not an authorization either way.
             installationId: _desktopInstallationId(),
             label: String(grant.label || ''),
             agentId: activeAgentId || '',
             businessSessionId: sessionId || '',
-            contextNonce: (() => {
-                const bytes = new Uint8Array(24);
-                (crypto.getRandomValues || (() => { throw new Error('no crypto'); }))(bytes);
-                return btoa(String.fromCharCode.apply(null, bytes))
-                    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-            })(),
+            contextNonce: _desktopRandomToken(24),
         });
         if (!confirmed || confirmed.ok === false || !confirmed.bindingId || !confirmed.workspaceId) {
+            // A binding the server refused *because the session is gone* is the
+            // re-login entry, not a toast: the previous selection is dropped so
+            // the directory cannot be shown as if it were bound (task 2.4).
+            if (_desktopSessionInvalid(confirmed && confirmed.code)) {
+                _desktopRequireSignIn();
+                return;
+            }
             throw new Error((confirmed && confirmed.message) || t('ws_sel_select_failed'));
         }
         if (requestKey !== _desktopSelectionKey()) return;
@@ -7323,13 +7440,42 @@ async function wsSelChooseLocalDir() {
             name: String(grant.label || t('ws_sel_local_dir')),
         };
         _wsSelUpdateLabel();
+        // The panel must follow the source it just committed to (task 9.2): the
+        // files it shows from here are the ones in the directory the user picked,
+        // read locally, not the server's copy of a folder with the same name.
+        if (typeof wsSourceChanged === 'function') wsSourceChanged({ reveal: true });
     } catch (err) {
         // A pick that could not be confirmed must not be published: keep the
         // previous selection and say why, rather than showing a directory the
         // tools cannot read.
         _desktopContextClear();
+        // The one refusal that is not a dead end (task 2.4): the native login is
+        // gone, so the page offers the desktop re-login instead of a toast that
+        // invites the user to repeat an action that cannot succeed. Everything
+        // else -- a tool permission, a tenant rule, a device or network problem --
+        // keeps its own message and is never misreported as a missing login.
+        if (_desktopSessionInvalid(err && err.code)) {
+            _desktopRequireSignIn();
+            return;
+        }
         _wsToast((err && err.message) || t('ws_sel_select_failed'));
     }
+}
+
+/**
+ * The stable codes that mean "the native session is gone" (task 2.4).
+ *
+ * One list, so the directory entry and the account menu agree on what counts as
+ * a lost login. Deliberately excludes permission, tenant, device and network
+ * codes: rewriting those into a re-login prompt would send the user to a login
+ * that changes nothing.
+ */
+const _DESKTOP_SESSION_INVALID_CODES = [
+    'auth_required', 'session_revoked', 'unauthorized', 'invalid_session',
+];
+
+function _desktopSessionInvalid(code) {
+    return _DESKTOP_SESSION_INVALID_CODES.indexOf(String(code || '')) >= 0;
 }
 
 // Escape a path for safe embedding inside a single-quoted inline handler.
@@ -8077,13 +8223,18 @@ function sendVoiceMessage(text, audioUrl) {
     const isFirstMessage = !!ws;
     if (ws) ws.remove();
 
-    const titleInfo = isFirstMessage ? { sid: sessionId, userMsg: text } : null;
+    const ownerContext = { sid: sessionId, agentId: activeAgentId, authEpoch: _authEpoch,
+        tenantId: sessionStorage.getItem('cow_tenant_id') || '' };
+    const isCurrentIdentity = () => ownerContext.authEpoch === _authEpoch
+        && ownerContext.tenantId === (sessionStorage.getItem('cow_tenant_id') || '');
+    const titleInfo = isFirstMessage ? { sid: sessionId, agentId: activeAgentId, userMsg: text } : null;
     const timestamp = new Date();
     addUserVoiceMessage(audioUrl, text, timestamp);
     const loadingEl = addLoadingIndicator();
 
     const body = {
         session_id: sessionId,
+        agent_id: ownerContext.agentId,
         message: text,
         stream: true,
         timestamp: timestamp.toISOString(),
@@ -8094,6 +8245,7 @@ function sendVoiceMessage(text, audioUrl) {
     const MAX_RETRIES = 2;
     const RETRY_DELAY_MS = 1000;
     function postWithRetry(attempt) {
+        if (!isCurrentIdentity()) return;
         fetch('/message', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -8101,16 +8253,19 @@ function sendVoiceMessage(text, audioUrl) {
         })
         .then(readMessageResponse)
         .then(data => {
+            if (!isCurrentIdentity()) return;
             if (data.status === 'success') {
+                if (!data.inline_reply) _refreshHistoryList();
+                const ownerVisible = ownerContext.sid === sessionId && ownerContext.agentId === activeAgentId;
                 rememberLiveSpeaker(data);
                 setLoadingSpeaker(loadingEl, data.request_id);
                 if (data.inline_reply) {
                     // Synchronous fast-path reply (e.g. /cancel); skip SSE.
                     loadingEl.remove();
-                    addBotMessage(data.inline_reply, new Date());
+                    if (ownerVisible) addBotMessage(data.inline_reply, new Date());
                 } else if (data.stream) {
-                    setSendBtnCancelMode(data.request_id);
-                    startSSE(data.request_id, loadingEl, timestamp, titleInfo);
+                    if (ownerVisible) setSendBtnCancelMode(data.request_id);
+                    startSSE(data.request_id, loadingEl, timestamp, titleInfo, null, ownerContext);
                 } else {
                     loadingContainers[data.request_id] = loadingEl;
                 }
@@ -8121,6 +8276,7 @@ function sendVoiceMessage(text, audioUrl) {
             }
         })
         .catch(err => {
+            if (!isCurrentIdentity()) return;
             if (attempt < MAX_RETRIES) {
                 setTimeout(() => postWithRetry(attempt + 1), RETRY_DELAY_MS * (attempt + 1));
                 return;
@@ -8419,7 +8575,11 @@ function sendMessage() {
     const isFirstMessage = !!ws;
     if (ws) ws.remove();
 
-    const titleInfo = (isFirstMessage && text) ? { sid: sessionId, userMsg: text } : null;
+    const ownerContext = { sid: sessionId, agentId: activeAgentId, authEpoch: _authEpoch,
+        tenantId: sessionStorage.getItem('cow_tenant_id') || '' };
+    const isCurrentIdentity = () => ownerContext.authEpoch === _authEpoch
+        && ownerContext.tenantId === (sessionStorage.getItem('cow_tenant_id') || '');
+    const titleInfo = (isFirstMessage && text) ? { sid: sessionId, agentId: activeAgentId, userMsg: text } : null;
     syncTeamFromText(text);
     renderComposerIdentity();
 
@@ -8436,7 +8596,7 @@ function sendMessage() {
     sendBtn.disabled = true;
     if (typeof resetTurnArtifacts === 'function') resetTurnArtifacts();
 
-    const body = { session_id: sessionId, message: text, stream: true, timestamp: timestamp.toISOString(), lang: currentLang };
+    const body = { session_id: sessionId, agent_id: ownerContext.agentId, message: text, stream: true, timestamp: timestamp.toISOString(), lang: currentLang };
     // Naming somebody hands them the turn. Sent explicitly because the composer
     // already knows who it wrote, and the server re-checks it either way.
     const addressed = addressedAgentId(text);
@@ -8454,6 +8614,7 @@ function sendMessage() {
     const RETRY_DELAY_MS = 1000;
 
     function postWithRetry(attempt) {
+        if (!isCurrentIdentity()) return;
         fetch('/message', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -8461,11 +8622,14 @@ function sendMessage() {
         })
         .then(readMessageResponse)
         .then(data => {
+            if (!isCurrentIdentity()) return;
             if (data.status === 'success') {
+                if (!data.inline_reply) _refreshHistoryList();
+                const ownerVisible = ownerContext.sid === sessionId && ownerContext.agentId === activeAgentId;
                 rememberLiveSpeaker(data);
                 // The turn has now persisted the session: the context entry can
                 // read a real row instead of the quiet pre-persistence state.
-                if (typeof _contextAfterSessionChange === 'function' && _contextNewSession) {
+                if (ownerVisible && typeof _contextAfterSessionChange === 'function' && _contextNewSession) {
                     _contextAfterSessionChange(true);
                 }
                 setLoadingSpeaker(loadingEl, data.request_id);
@@ -8473,10 +8637,10 @@ function sendMessage() {
                     // Channel handled synchronously (e.g. /cancel fast-path);
                     // render as a bot bubble and skip SSE entirely.
                     loadingEl.remove();
-                    addBotMessage(data.inline_reply, new Date());
+                    if (ownerVisible) addBotMessage(data.inline_reply, new Date());
                 } else if (data.stream) {
-                    setSendBtnCancelMode(data.request_id);
-                    startSSE(data.request_id, loadingEl, timestamp, titleInfo);
+                    if (ownerVisible) setSendBtnCancelMode(data.request_id);
+                    startSSE(data.request_id, loadingEl, timestamp, titleInfo, null, ownerContext);
                 } else {
                     loadingContainers[data.request_id] = loadingEl;
                 }
@@ -8487,6 +8651,7 @@ function sendMessage() {
             }
         })
         .catch(err => {
+            if (!isCurrentIdentity()) return;
             if (err.name === 'AbortError') {
                 loadingEl.remove();
                 addBotMessage(t('error_timeout'), new Date());
@@ -8507,7 +8672,7 @@ function sendMessage() {
     postWithRetry(0);
 }
 
-function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
+function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, ownerContext) {
     let botEl = null;
     let stepsEl = null;    // .agent-steps  (thinking summaries + tool indicators)
     let contentEl = null;  // .answer-content (final streaming answer)
@@ -8540,15 +8705,22 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
     // persists); when foreign it does not touch the view but still records
     // every event into a buffer, so returning to the session can rebuild the
     // bubble by replaying the buffer and then resume live rendering.
-    const ownerSession = sessionId;
-    const ownerAgent = activeAgentId;
+    // Keep ownership and the pending first title in the existing buffer. A
+    // re-attach must consume the same title, even after switching Agents.
+    const buffer = streamBuffers[requestId] || { items: [], timestamp,
+        ownerContext: ownerContext || { sid: sessionId, agentId: activeAgentId,
+            authEpoch: _authEpoch, tenantId: sessionStorage.getItem('cow_tenant_id') || '' },
+        titleInfo };
+    streamBuffers[requestId] = buffer;
+    const owner = buffer.ownerContext;
+    const ownerSession = owner.sid;
+    const ownerAgent = owner.agentId;
+    const isCurrentIdentity = () => owner.authEpoch === _authEpoch
+        && owner.tenantId === (sessionStorage.getItem('cow_tenant_id') || '');
     const ownerKey = runtimeSessionKey(ownerSession, ownerAgent);
-    const isActive = () => ownerSession === sessionId && ownerAgent === activeAgentId;
+    const isActive = () => isCurrentIdentity() && ownerSession === sessionId && ownerAgent === activeAgentId;
     sessionActiveRequest[ownerKey] = requestId;
     updateEditButtonsState();
-    // Per-request event buffer used to rebuild the bubble on re-attach.
-    const buffer = streamBuffers[requestId] || { items: [], timestamp };
-    streamBuffers[requestId] = buffer;
     const clearOwnerRequest = () => {
         if (sessionActiveRequest[ownerKey] === requestId) {
             delete sessionActiveRequest[ownerKey];
@@ -8938,17 +9110,6 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
 
                 if (typeof maybeAutoOpenArtifact === 'function') maybeAutoOpenArtifact();
 
-                if (titleInfo) {
-                    generateSessionTitle(titleInfo.sid, titleInfo.userMsg, '');
-                    titleInfo = null;
-                } else {
-                    // A session's title may have been regenerated/re-ordered or its
-                    // activity updated. Refresh the visible history list, otherwise
-                    // mark it dirty so the next visit re-reads the latest state.
-                    if (_historyVisible) loadSessionList();
-                    else _historyDirty = true;
-                }
-
             } else if (item.type === 'voice_attach') {
                 // TTS finished — attach a playable audio element to the
                 // persisted bot bubble. If history is still loading after a
@@ -8996,14 +9157,23 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
     }
 
     function connect() {
+        if (!isCurrentIdentity()) { clearOwnerRequest(); return; }
         const es = new EventSource(
             `/stream?request_id=${encodeURIComponent(requestId)}`
             + `&after_seq=${lastSeq}`
+            + `&agent_id=${encodeURIComponent(ownerAgent)}`
         );
         currentEs = es;
         activeStreams[requestId] = es;
 
         es.onmessage = function(e) {
+            if (!isCurrentIdentity()) {
+                done = true;
+                es.close();
+                delete activeStreams[requestId];
+                clearOwnerRequest();
+                return;
+            }
             let item;
             try { item = JSON.parse(e.data); } catch (_) { return; }
 
@@ -9030,6 +9200,12 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
             // is intentionally skipped. Notify for both foreground and
             // background sessions, before the render guard below.
             if (item.type === 'done') {
+                _refreshHistoryList();
+                const firstTitle = buffer.titleInfo;
+                buffer.titleInfo = null;
+                if (firstTitle) {
+                    generateSessionTitle(firstTitle.sid, firstTitle.userMsg, '', firstTitle.agentId);
+                }
                 mainDone = true;
                 if (item.bot_seq !== undefined && item.bot_seq !== null) {
                     completedBotSeq = item.bot_seq;
@@ -9053,7 +9229,7 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
             // and persists, but skip rendering into the now-foreign view. The
             // buffer above still grows so returning to the session can rebuild
             // the bubble and resume live rendering.
-            if (ownerSession !== sessionId) {
+            if (!isActive()) {
                 if (item.type === 'stream_end' || item.type === 'error' || item.type === 'resync_required') {
                     done = true;
                     es.close();
@@ -9122,6 +9298,7 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
     // not animated) before connecting for the live tail. `processSSEItem`
     // is the same renderer used by the live onmessage handler, so the
     // snapshot matches exactly what live rendering would have produced.
+    if (!isCurrentIdentity()) { clearOwnerRequest(); return; }
     if (replayItems && replayItems.length) {
         for (const item of replayItems) {
             const seq = Number(item.seq || 0);
@@ -9146,11 +9323,15 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
 
 function startPolling() {
     const gen = ++pollGeneration;
+    const authEpoch = _authEpoch;
+    const tenantId = sessionStorage.getItem('cow_tenant_id') || '';
+    const isCurrent = () => gen === pollGeneration && authEpoch === _authEpoch
+        && tenantId === (sessionStorage.getItem('cow_tenant_id') || '');
     isPolling = true;
     let pollInFlight = false;
 
     function poll() {
-        if (gen !== pollGeneration) return;
+        if (!isCurrent()) return;
         if (pollInFlight) return;
         // Keep polling while hidden: push messages are exactly what the
         // notification below should deliver to a background tab.
@@ -9163,8 +9344,9 @@ function startPolling() {
         .then(r => r.json())
         .then(data => {
             pollInFlight = false;
-            if (gen !== pollGeneration) return;
+            if (!isCurrent()) return;
             if (data.status === 'success' && data.has_content) {
+                _refreshHistoryList();
                 const rid = data.request_id;
                 if (loadingContainers[rid]) {
                     loadingContainers[rid].remove();
@@ -10956,6 +11138,10 @@ function _sidebarRecentDenied() {
 
 let _sidebarRecentItems = [];
 let _sidebarRecentSeq = 0;
+let _sidebarRecentDirty = false;
+function _sidebarRecentEditing() {
+    return !!document.getElementById('sidebar-recent-list')?.querySelector('.sidebar-recent-rename-input');
+}
 // Declared before sidebar/history init so mid-script DOMContentLoaded or
 // deferred callbacks cannot hit temporal-dead-zone on these lets.
 let _dragSpaceKey = null;
@@ -10989,6 +11175,7 @@ function renderSidebarRecentSessions() {
     const list = document.getElementById('sidebar-recent-list');
     const more = document.getElementById('sidebar-recent-more');
     if (!list) return;
+    if (_sidebarRecentEditing()) { _sidebarRecentDirty = true; return; }
     list.innerHTML = '';
     const items = _sidebarRecentLimit(_sidebarRecentItems);
     if (!items.length) {
@@ -11102,13 +11289,20 @@ function loadSidebarRecentSessions() {
         return;
     }
     const seq = ++_sidebarRecentSeq;
-    fetch(`/api/sessions?page=1&page_size=${sidebarRecentLimitCount()}&scope=all`)
+    if (_sidebarRecentEditing()) { _sidebarRecentDirty = true; return; }
+    _sidebarRecentDirty = false;
+    const authEpoch = _authEpoch;
+    const tenantId = sessionStorage.getItem('cow_tenant_id') || '';
+    const isCurrent = () => seq === _sidebarRecentSeq && authEpoch === _authEpoch
+        && tenantId === (sessionStorage.getItem('cow_tenant_id') || '');
+    return fetch(`/api/sessions?page=1&page_size=${sidebarRecentLimitCount()}&scope=all`)
         .then(async r => {
             const data = await r.json().catch(() => ({}));
             return { ok: r.ok, data };
         })
         .then(({ ok, data }) => {
-            if (seq !== _sidebarRecentSeq) return;
+            if (!isCurrent()) return;
+            if (_sidebarRecentEditing()) { _sidebarRecentDirty = true; return; }
             if (!ok || !data || data.status !== 'success') {
                 _sidebarRecentItems = [];
                 const list = document.getElementById('sidebar-recent-list');
@@ -11125,7 +11319,8 @@ function loadSidebarRecentSessions() {
             renderSidebarRecentSessions();
         })
         .catch(() => {
-            if (seq !== _sidebarRecentSeq) return;
+            if (!isCurrent()) return;
+            if (_sidebarRecentEditing()) { _sidebarRecentDirty = true; return; }
             _sidebarRecentItems = [];
             const list = document.getElementById('sidebar-recent-list');
             if (!list) return;
@@ -11151,6 +11346,7 @@ function _initSidebarRecent() {
         event.preventDefault();
         event.stopPropagation();
         setOpen(!wrap.classList.contains('open'));
+        if (wrap.classList.contains('open')) loadSidebarRecentSessions();
     });
     // Double-click the label to open the full history page (search/filter),
     // same as the previous top-level「历史对话」entry.
@@ -11247,12 +11443,17 @@ function renameSidebarSession(sessionId, agentId) {
     input.focus();
     input.select();
 
+    const authEpoch = _authEpoch;
+    const tenantId = sessionStorage.getItem('cow_tenant_id') || '';
+    const isCurrentIdentity = () => authEpoch === _authEpoch
+        && tenantId === (sessionStorage.getItem('cow_tenant_id') || '');
     let done = false;
-    const restore = (title) => {
+    const restore = (title, refresh = true) => {
         done = true;
         if (title !== undefined) setSidebarRowTitle(btn, title);
         input.remove();
         btn.classList.remove('hidden');
+        if (refresh && _sidebarRecentDirty) loadSidebarRecentSessions();
     };
     const revert = (title) => {
         if (entry) entry.title = title;
@@ -11264,7 +11465,8 @@ function renameSidebarSession(sessionId, agentId) {
         if (!newTitle || newTitle === oldTitle) { restore(oldTitle); return; }
         // Optimistic: the row and the cached entry both move to the new title.
         if (entry) entry.title = newTitle;
-        restore(newTitle);
+        // Wait for the write before applying a refresh deferred during editing.
+        restore(newTitle, false);
         fetch(`/api/sessions/${encodeURIComponent(sessionId)}?agent_id=${encodeURIComponent(owner)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -11272,13 +11474,18 @@ function renameSidebarSession(sessionId, agentId) {
         })
             .then(r => r.json())
             .then(data => {
+                if (!isCurrentIdentity()) return;
                 if (data.status === 'success') return;
                 revert(oldTitle);
                 _wsToast(data.message || t('session_settings_failed'));
             })
             .catch(() => {
+                if (!isCurrentIdentity()) return;
                 revert(oldTitle);
                 _wsToast(t('session_settings_failed'));
+            })
+            .finally(() => {
+                if (isCurrentIdentity() && _sidebarRecentDirty) loadSidebarRecentSessions();
             });
     };
 
@@ -12581,20 +12788,19 @@ function clearContext() {
         .catch(() => {});
 }
 
-function generateSessionTitle(sid, userMsg, assistantReply) {
-    fetch(`/api/sessions/${encodeURIComponent(sid)}/generate_title`, {
+function generateSessionTitle(sid, userMsg, assistantReply, agentId = activeAgentId) {
+    const authEpoch = _authEpoch;
+    const tenantId = sessionStorage.getItem('cow_tenant_id') || '';
+    fetch(`/api/sessions/${encodeURIComponent(sid)}/generate_title?agent_id=${encodeURIComponent(agentId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_message: userMsg, assistant_reply: assistantReply }),
+        body: JSON.stringify({ user_message: userMsg, assistant_reply: assistantReply, agent_id: agentId }),
     })
         .then(r => r.json())
         .then(data => {
-            if (data.status !== 'success') return;
-            // The list only exists on the history page now; refresh it if it is
-            // the active view, otherwise mark it dirty so the next visit re-reads
-            // the freshly generated title.
-            if (_historyVisible) loadSessionList();
-            else _historyDirty = true;
+            if (data.status !== 'success' || authEpoch !== _authEpoch
+                || tenantId !== (sessionStorage.getItem('cow_tenant_id') || '')) return;
+            _refreshHistoryList();
         })
         .catch(() => {});
 }
@@ -21823,7 +22029,7 @@ function showLoginScreen() {
     _accountHidden('login-overlay', false);
     _accountHidden('app', true);
     _accountHidden('auth-check-panel', true);
-    _accountHidden('login-form', false);
+    _desktopLoginMode();
     _accountHidden('login-error', true);
     _accountHidden('login-username-wrap', false);
     const password = document.getElementById('login-password');
@@ -21832,13 +22038,65 @@ function showLoginScreen() {
     if (icon) icon.classList.replace('fa-eye-slash', 'fa-eye');
     const btn = document.getElementById('login-btn');
     if (btn) btn.disabled = !!_accountWritePending;
+    const recoveryBtn = document.getElementById('login-recovery-btn');
+    if (recoveryBtn) recoveryBtn.disabled = !!_accountWritePending;
     _renderSidebarAccount();
+    // A container's only way in is the shell's own login, so the password field
+    // must not steal the focus it cannot use (task 2.4).
+    if (_desktopLoginRecovery()) return;
     document.getElementById('login-username')?.focus();
+}
+
+/**
+ * Whether this page must offer the desktop re-login instead of the password
+ * form (task 2.4).
+ *
+ * Asked of the adapter, never of the raw bridge: an unknown/old host answers
+ * "not a desktop", and the ordinary page is served as before.
+ */
+function _desktopLoginRecovery() {
+    return typeof CowDesktopAccount !== 'undefined' && CowDesktopAccount.isDesktop();
+}
+
+/**
+ * Draw the login the current environment is actually allowed to offer.
+ *
+ * In a container the password form is not a way in: it would mint a Web-only
+ * session the native host knows nothing about -- the page would look signed in
+ * while the next local directory bind answers "not signed in". So the desktop
+ * entry stands in its place, and the password form is left exactly as it was
+ * for the browser (task 2.4).
+ */
+function _desktopLoginMode() {
+    const recovery = _desktopLoginRecovery();
+    _accountHidden('login-form', recovery);
+    _accountHidden('login-recovery', !recovery);
+    _accountHidden('login-recovery-error', true);
+}
+
+/**
+ * Show the desktop re-login entry, saying why it is needed (task 2.4).
+ *
+ * Reached from a directory that could not be opened *because the login is
+ * gone*. A toast would leave the user repeating an action that cannot succeed;
+ * this is the failure that has its own way out. It is never called for a
+ * permission, tenant, device or network refusal -- those keep their own message.
+ */
+function _desktopRequireSignIn(message) {
+    _desktopContextClear();
+    showLoginScreen();
+    _accountText('login-recovery-error', message || t('account_desktop_session_lost'));
+    _accountHidden('login-recovery-error', false);
 }
 
 async function _submitAccountLogin(event) {
     event.preventDefault();
     if (_accountWritePending || _pendingTenantPicker) return false;
+    // A password login is not a desktop recovery (task 2.4). It would create the
+    // Web-only session this change exists to remove, so the form is refused and
+    // the re-login entry is drawn in its place -- the guard the spec asks for,
+    // not a path a user is meant to reach.
+    if (_desktopLoginRecovery()) { _desktopRequireSignIn(); return false; }
     const pwdInput = document.getElementById('login-password');
     const userInput = document.getElementById('login-username');
     if (!pwdInput?.value) return false;
@@ -21960,11 +22218,33 @@ async function handleLogout() {
     // The reference belongs to the tenant that minted it; a later turn must not
     // carry it into whatever session comes next (task 2.6).
     _desktopContextClear();
-    try {
+    const onDesktop = _desktopLoginRecovery();
+    // The Web end, sequenced by the adapter (task 2.3). The container may retry
+    // an already-revoked session; a browser keeps 401 as the failure it was.
+    const endWebSession = async (alreadyGoneOk) => {
         const response = await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
+        if (epoch !== _authEpoch) return { ok: false };
+        const ended = (response.ok && data && data.status === 'success')
+            || Boolean(alreadyGoneOk && response.status === 401);
+        return { ok: ended, status: response.status };
+    };
+    try {
+        if (onDesktop) {
+            // Serial sign-out, and the reason there is no reload here: a page that
+            // reloads into the ordinary password form looks signed in while the
+            // native host holds no session, and the next directory bind says
+            // "not signed in". The adapter ends the account; the shell draws login.
+            const reply = await CowDesktopAccount.logout({ webLogout: () => endWebSession(true) });
+            if (epoch !== _authEpoch) return;
+            // Not confirmed: keep everything as it is and let the account menu
+            // offer the retry, rather than pretending the session ended.
+            if (!reply.ok) _accountState = _emptyAccount('logout_error');
+            return;
+        }
+        const ended = await endWebSession(false);
         if (epoch !== _authEpoch) return;
-        if (!response.ok || !data || data.status !== 'success') throw new Error('Logout unconfirmed');
+        if (!ended.ok) throw new Error('Logout unconfirmed');
         window.location.reload();
     } catch (_) {
         if (epoch === _authEpoch) _accountState = _emptyAccount('logout_error');
@@ -21974,6 +22254,64 @@ async function handleLogout() {
     }
 }
 window.handleLogout = handleLogout;
+
+/**
+ * What to tell the user when a desktop sign-out did not finish (task 2.3).
+ *
+ * The three answers need three different actions, so they are not collapsed
+ * into one "退出失败": an old build must be upgraded, a browser is not a
+ * desktop at all, and anything else may simply be retried.
+ */
+function _desktopAccountMessage(reply) {
+    const code = (reply && reply.code) || '';
+    if (code === 'host_outdated') return t('account_desktop_upgrade_required');
+    if (code === 'no_host') return t('account_desktop_no_host');
+    return t('account_logout_unconfirmed');
+}
+
+/**
+ * The desktop re-login entry (task 2.4).
+ *
+ * Reached from the login screen when the container's session is gone but its
+ * page is still here. It does what a password login deliberately cannot: end the
+ * Web session *and* the native one, in that order, so the shell can present its
+ * own login over a host that is genuinely signed out.
+ */
+async function desktopRelogin() {
+    if (_accountWritePending) return;
+    // The entry is desktop-only, and this is the guard that keeps it so: a plain
+    // browser has nothing to end natively and must not be sent here.
+    if (typeof CowDesktopAccount === 'undefined' || !CowDesktopAccount.isDesktop()) return;
+    _accountWritePending = 'logout';
+    ++_authEpoch;   // late answers from the old session must not reopen the form
+    _invalidateAccountIdentity('logout_pending');
+    _resetHistorySearch();
+    const epoch = _authEpoch;
+    if (window.CowDesktopHost) window.CowDesktopHost.suspendLocalContext('logout');
+    _desktopContextClear();
+    _accountHidden('login-recovery-error', true);
+    const button = document.getElementById('login-recovery-btn');
+    if (button) button.disabled = true;
+    try {
+        const reply = await CowDesktopAccount.logout({
+            webLogout: async () => {
+                const response = await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
+                const data = await response.json().catch(() => ({}));
+                // Already ended counts as ended: this is a recovery, so a session
+                // that is gone must not block the native half from finishing.
+                const ended = (response.ok && data && data.status === 'success') || response.status === 401;
+                return { ok: ended, status: response.status };
+            }
+        });
+        if (epoch !== _authEpoch || reply.ok) return;
+        _accountText('login-recovery-error', _desktopAccountMessage(reply));
+        _accountHidden('login-recovery-error', false);
+    } finally {
+        _accountWritePending = null;
+        if (button) button.disabled = false;
+    }
+}
+window.desktopRelogin = desktopRelogin;
 
 // Only a 401 from the current identity can show the login screen. Preserve
 // the earlier Agent-routing fetch wrapper and return the original response.
@@ -22030,6 +22368,11 @@ function initApp() {
         renderComposerIdentity();
         sessionId = loadOrCreateSessionId();
         refreshWorkspaceSelector();
+        // Then resume whatever local project this chat already has open on this
+        // machine (task 9.3). After the selector read, so the restored entry is
+        // not overwritten by the server's answer, and after the session id, so
+        // the host is asked about the chat that is actually being shown.
+        _desktopRestoreContext();
         // History waits for these settings before rendering team authors.
         // Let that path issue the single initial read.
         _sessCfg = null;

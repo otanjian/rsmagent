@@ -1,0 +1,231 @@
+{
+  "contract": "desktop-project-execution",
+  "version": 2,
+  "note": "Machine-readable form of openspec/changes/align-desktop-project-execution-with-master/execution-contract.md. v1.json keeps describing the read-only remote workbench and is NOT widened by this file: v2 adds execution frames, phases, effects, limits and artifacts as a separate protocol major that a client may declare optional. Python reads it through auth/desktop_contracts_v2.py; the desktop client compiles the same constants in desktop/src/main/project-execution/contract.ts and tests/test_desktop_execution_contract.cjs fails if any of them drifts from this document, so a phase name or a limit can only change in one place. Field names are snake_case; sizes are bytes; times are seconds unless the key says otherwise.",
+  "protocol": {
+    "name": "project_execution",
+    "major": 2,
+    "minor": 0,
+    "required": false,
+    "absent_means": "the new entry point is unavailable; v1 inspects/materializes stay as they are, and a v2 operation is never downgraded into them"
+  },
+  "platforms": {
+    "note": "Whether this build's execution end has an accepted launcher for the platform. A platform that is not supported reports platform_unsupported and offers no tools at all -- claiming the file tools while the launcher cannot confine a process would be the more dangerous half-truth.",
+    "posix": {
+      "supported": true,
+      "launcher": "posix-spawn-launcher-v1",
+      "note": "macOS/Linux via the same sandbox path the local worker uses"
+    },
+    "win32": {
+      "supported": false,
+      "launcher": "",
+      "note": "the Windows launcher and probes are not accepted yet; v2 frames are refused with platform_unsupported rather than translated"
+    }
+  },
+  "tools": {
+    "note": "The master tool names a v2 frame may carry. The server proxies the *current* tool view, so the name, its description and its JSON schema stay the master's; only the execution end changes.",
+    "schema_version": 1,
+    "required": ["read", "write", "edit", "ls", "search_files", "bash"],
+    "effectful": ["write", "edit", "bash"],
+    "readonly": ["read", "ls", "search_files"],
+    "script_tools": ["bash"],
+    "platform_syntax": {
+      "posix": {
+        "bash": "sh -c with $VAR expansion and POSIX quoting, as the master bash tool documents"
+      },
+      "windows": {
+        "bash": "unsupported until the Windows launcher and probes are accepted. Today win32 is not an accepted platform at all, so a bash frame on it is refused by the platform check with unsupported_platform (422), before the tool is even considered. If win32 is ever accepted as a platform, the tool check must still refuse this frame -- feature_unavailable (503), never a translation into POSIX syntax.",
+        "shell": "not offered in this version"
+      }
+    }
+  },
+  "frames": {
+    "note": "Frame types added on top of v1's gateway frame_types. A v2 frame always carries protocol_major=2 so a v1-only reader refuses it instead of guessing.",
+    "types": ["execute_tool", "execution_heartbeat", "execution_status", "execution_result", "execution_cancelled", "execution_start_permit"],
+    "execute_tool": {
+      "required": ["type", "protocol_major", "command_id", "run_id", "tool_call_id",
+                   "binding_id", "workspace_id", "device_id", "grant_version",
+                   "selection_generation", "connection_epoch", "tool",
+                   "tool_schema_version", "arguments", "params_digest", "expires_at"],
+      "optional": ["session_id", "agent_id", "skill_resources", "deadline_seconds",
+                   "background", "approval_id", "permission_mode", "origin"],
+      "forbidden": ["cwd", "root_path", "absolute_path", "env", "server_url",
+                    "authorization", "token", "module", "class_name", "argv_path"],
+      "forbidden_note": "the project root comes from the main process resolving workspace_id; arguments never name a cwd, a module path or a credential, and the endpoint never accepts a caller-chosen URL or header"
+    },
+    "execution_result": {
+      "required": ["type", "protocol_major", "command_id", "run_id", "tool_call_id",
+                   "state", "execution_phase", "effects", "started_at", "finished_at"],
+      "optional": ["exit_code", "stdout", "stderr", "truncated", "artifacts",
+                   "error_code", "error_message", "log_ref", "journal_id",
+                   "heartbeat_at", "cancel_requested", "result"],
+      "stdout_max_bytes": 32768,
+      "stderr_max_bytes": 16384,
+      "result_note": "the tool's own payload, exactly as the execution end's tool produced it: {status, result, display, ext_data, duration_ms}. A file tool's answer travels here; stdout/stderr/exit_code describe a script. The server hands it to the model unedited, so both modes return one shape.",
+      "result_status_values": ["success", "error"]
+    },
+    "execution_heartbeat": {
+      "required": ["type", "protocol_major", "command_id", "run_id", "connection_epoch",
+                   "heartbeat_at", "output_bytes"],
+      "optional": ["phase", "permit_expires_at"]
+    }
+  },
+  "phases": {
+    "note": "The visible phase is derived from the existing server command state plus cancel_requested; the states themselves are v1's command states and are not renamed.",
+    "names": ["queued", "preparing", "running", "succeeded", "failed", "cancelling",
+              "cancelled", "expired", "outcome_unknown"],
+    "terminal": ["succeeded", "failed", "cancelled", "expired", "outcome_unknown"],
+    "from_state": {
+      "queued": "queued",
+      "dispatched": "preparing",
+      "acknowledged": "preparing",
+      "running": "running",
+      "succeeded": "succeeded",
+      "failed": "failed",
+      "cancelled": "cancelled",
+      "expired": "expired"
+    },
+    "cancelling_overrides": ["queued", "preparing", "running"],
+    "outcome_unknown_code": "outcome_unknown"
+  },
+  "effects": {
+    "note": "What a terminal result may claim about the project directory. A stopped process never promises a rollback.",
+    "names": ["none", "partial", "completed", "unknown"],
+    "by_phase": {
+      "queued": "none",
+      "preparing": "none",
+      "running": "none",
+      "cancelled": "unknown",
+      "expired": "none"
+    },
+    "by_error_code": {
+      "permission_denied": "none",
+      "grant_revoked": "none",
+      "stale_context": "none",
+      "device_offline": "none",
+      "runtime_unavailable": "none",
+      "dependency_missing": "none",
+      "incompatible_skill": "none",
+      "resource_unavailable": "none",
+      "limit_exceeded": "none",
+      "deadline_exceeded": "partial",
+      "file_changed": "partial",
+      "outcome_unknown": "unknown"
+    }
+  },
+  "error_codes": {
+    "note": "Only codes v2 adds. v1's error_codes stay the single source for the codes they already define; auth/desktop_contracts_v2.status_for() merges the two and refuses a code that appears in both with different statuses.",
+    "approval_required": 403,
+    "protocol_incompatible": 400,
+    "unsupported_platform": 422,
+    "command_conflict": 409,
+    "already_started": 409,
+    "permit_expired": 409,
+    "runtime_unavailable": 503,
+    "dependency_missing": 503,
+    "incompatible_skill": 422,
+    "resource_unavailable": 404,
+    "outcome_unknown": 504,
+    "cancelled": 409
+  },
+  "limits": {
+    "note": "v2 additions. Keys listed in reuse_v1 are read from v1.json instead of being restated here, so the two documents cannot disagree.",
+    "advisory": [
+      "worker_memory_bytes"
+    ],
+    "advisory_note": "Declared budgets the current launcher does NOT enforce. They stay in this document as the intended bound, but they are withheld from the capability block's advertised `limits`: a client reads that block as \"these are the caps that will be applied\", and this module's rule is the same one that makes a Windows build report no script tool -- never advertise an enforcement the launcher does not have. Moving a key out of `advisory` requires the enforcement to land first (A17's resource-limit dimension, currently open).",
+    "reuse_v1": ["ws_frame_max_bytes", "heartbeat_seconds", "offline_seconds",
+                 "parallel_commands_per_device", "pending_queue",
+                 "offline_wait_seconds", "transfer_chunk_max_bytes"],
+    "script_timeout_default_seconds": 120,
+    "script_timeout_max_seconds": 600,
+    "start_permit_ttl_seconds": 10,
+    "start_permit_single_use": true,
+    "run_heartbeat_seconds": 10,
+    "run_liveness_seconds": 30,
+    "effectful_per_project": 1,
+    "readonly_parallel_per_project": 4,
+    "preview_max_bytes": 16777216,
+    "skill_package_transfer_max_bytes": 67108864,
+    "skill_package_expanded_max_bytes": 268435456,
+    "skill_package_files_max": 10000,
+    "worker_memory_bytes": 1073741824,
+    "journal_retain_days": 7,
+    "inline_stdout_max_bytes": 32768,
+    "inline_stderr_max_bytes": 16384
+  },
+  "artifact": {
+    "note": "What a local result references. The client's absolute paths never enter the server artifact; relative_path is inside the authorised workspace.",
+    "required": ["source", "artifact_id", "device_id", "workspace_id", "run_id",
+                 "tool_call_id", "relative_path", "file_name", "kind", "size",
+                 "source_version"],
+    "source_value": "desktop",
+    "kinds": ["text", "office", "image", "pdf", "archive", "binary"],
+    "source_version_note": "derived from file identity, size and mtime (plus a digest when needed), never from the display name",
+    "revalidate_before_preview": true
+  },
+  "start_permit": {
+    "note": "Short-lived, single-use proof that the server still allows this command to start. Credentials never travel into the worker.",
+    "required": ["permit_id", "command_id", "run_id", "params_digest", "workspace_id",
+                 "grant_version", "expires_at", "server_time"],
+    "optional": ["permission_mode", "approval_id", "quota_remaining"],
+    "used_marker": "permit_id"
+  },
+  "journal": {
+    "note": "The local start journal. Written before the worker can touch the project, so a crash leaves evidence instead of an ambiguous silence.",
+    "required": ["journal_id", "command_id", "params_digest", "origin", "device_id",
+                 "workspace_id", "run_id", "tool_call_id", "tool", "grant_version",
+                 "started_at"],
+    "optional": ["skill_digests", "connection_epoch", "permit_id"],
+    "dedup_key": ["origin", "user_id", "tenant_id", "device_id", "command_id"],
+    "conflict_code": "command_conflict",
+    "started_without_completed_note": "neither 'not executed' nor 'succeeded' may be inferred; only the original journal and files may be inspected"
+  },
+  "broker": {
+    "note": "Narrow endpoints the desktop main process calls before and during an execution. They reuse the existing native-only authentication, access service, command records and audit. No generic server URL, no caller-chosen auth header, no arbitrary module path.",
+    "paths": {
+      "prepare": "/api/desktop/execution/prepare",
+      "start": "/api/desktop/execution/start",
+      "heartbeat": "/api/desktop/execution/heartbeat",
+      "status": "/api/desktop/execution/status",
+      "skill_package": "/api/desktop/execution/skill-package"
+    },
+    "methods": {"prepare": "POST", "start": "POST", "heartbeat": "POST", "status": "GET", "skill_package": "GET"},
+    "required": ["command_id", "device_id", "binding_id", "workspace_id", "grant_version",
+                 "params_digest"],
+    "checks": ["membership", "agent_use", "tool_eligibility", "skill_use", "approval",
+               "quota", "binding_ownership", "grant_version", "workspace_scope",
+               "protocol_major", "platform_support"],
+    "forbidden": ["server_url", "authorization_header", "module_path", "class_name",
+                  "cwd", "root_path"],
+    "single_use_start": true,
+    "skill_package": {
+      "note": "The one broker read that returns bytes. A device that was told to run a pinned skill version but does not hold it asks for exactly that version, naming the command it was told to run and the digest it was given; the server answers only when the pair is in the set that command was authorized with. The bytes come from the server's own skill directory after a live authorization check, and the digest is recomputed there, so what is shipped is what the digest covers.",
+      "extra_query": ["skill_id", "digest"],
+      "response": ["skill_id", "digest", "resources", "entries"],
+      "entry_fields": ["relative_path", "body_base64"],
+      "refusals": {"incompatible_skill": 422, "resource_not_found": 404, "limit_exceeded": 413},
+      "limits": ["skill_package_transfer_max_bytes", "skill_package_expanded_max_bytes",
+                 "skill_package_files_max"]
+    }
+  },
+  "capability": {
+    "note": "The optional project_execution block a v2 client reads from meta/hello. It reports only limits that are actually enforced; tests and probes decide what may be claimed, not this file alone.",
+    "required": ["available", "reason", "protocol_major", "protocol_minor", "required",
+                 "tools", "tool_schema_version", "platform", "runtime",
+                 "files_write_verified", "scripts_verified", "limits",
+                 "artifact_protocol", "single_source"],
+    "optional": ["surfaces"],
+    "surface_names": ["files", "scripts"],
+    "surface_required": ["available", "reason"],
+    "forbidden": ["user", "user_id", "tenant_id", "devices", "directories", "bindings",
+                  "workspaces", "roots", "tokens", "secrets"],
+    "reason_values": ["available", "not_implemented", "not_accepted",
+                      "disabled_by_deployment", "platform_unsupported"],
+    "artifact_protocol": "local-artifact-v1"
+  },
+  "meta_additions": {
+    "note": "Keys a v2 build adds to the existing meta envelope. The v1 required keys and forbidden keys are unchanged, and the payload stays inside the v1 byte cap.",
+    "keys": ["project_execution"]
+  }
+}

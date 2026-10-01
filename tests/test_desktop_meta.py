@@ -56,6 +56,17 @@ class DesktopMetaWireTests(unittest.TestCase):
         self.assertEqual(body["protocols"]["bridge"], {"major": 1, "minor": 0})
         self.assertEqual(body["protocols"]["files"], {"major": 1, "minor": 0})
 
+    def test_only_running_local_gateway_is_advertised(self):
+        from integrations.desktop.local_gateway import local_gateway
+        self.assertNotIn("local_gateway_port", self._body(self.app.get("/api/desktop/meta")))
+        local_gateway.start(self.app.service)
+        try:
+            body = self._body(self.app.get("/api/desktop/meta"))
+            self.assertEqual(body["local_gateway_port"], local_gateway.port)
+        finally:
+            local_gateway.stop()
+        self.assertNotIn("local_gateway_port", self._body(self.app.get("/api/desktop/meta")))
+
     def test_capabilities_report_opened_phases(self):
         """Phase 1/2/3A are open; phase 3B (local processing) stays closed."""
         body = self._body(self.app.get("/api/desktop/meta"))

@@ -35,8 +35,17 @@ export interface SourceHandle {
   close(): Promise<void>
 }
 
+/**
+ * Append one window to an already-open transfer.
+ *
+ * The transfer id travels with every chunk rather than being remembered by the
+ * poster: two uploads can overlap (different files, different commands), and a
+ * poster that kept "the current transfer" would be able to append one file's
+ * bytes to the other's.
+ */
 export interface ChunkPoster {
   (
+    transferId: string,
     offset: number,
     body: Buffer,
     sha256: string,
@@ -45,6 +54,14 @@ export interface ChunkPoster {
 
 export interface TransferCreate {
   (args: {
+    /**
+     * The server command this transfer belongs to.
+     *
+     * The server keys the transfer on ``(command_id, source_version)``: that is
+     * what makes a replayed command idempotent instead of a second copy, and
+     * what ties the published artifact back to the authorized request.
+     */
+    commandId: string
     sourceRef: string
     sourceVersion: string
     totalBytes: number
@@ -143,6 +160,8 @@ function sha256Hex(buf: Buffer): string {
 export async function uploadWithSingleChunkWindow(args: {
   handle: SourceHandle
   filename: string
+  /** The server command that authorizes this transfer. */
+  commandId: string
   create: TransferCreate
   putChunk: ChunkPoster
   commit: TransferCommit
@@ -156,6 +175,7 @@ export async function uploadWithSingleChunkWindow(args: {
     attempt += 1
     const before = await args.handle.restat()
     const created = await args.create({
+      commandId: args.commandId,
       sourceRef: before.sourceRef,
       sourceVersion: before.sourceVersion,
       totalBytes: before.size,
@@ -172,7 +192,7 @@ export async function uploadWithSingleChunkWindow(args: {
         }
         hasher.update(body)
         const digest = sha256Hex(body)
-        const ack = await args.putChunk(offset, body, digest)
+        const ack = await args.putChunk(created.id, offset, body, digest)
         if (ack.acknowledged_offset < offset + body.length) {
           throw new TransferError(
             'invalid_request',

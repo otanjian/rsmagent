@@ -6,6 +6,7 @@ Provides streaming output, event system, and complete tool-call loop
 import contextvars
 import copy
 import json
+import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -312,6 +313,317 @@ class AgentStreamExecutor:
         # sequence on the same file only surfaces one card in the UI.
         self._emitted_artifacts = set()
 
+        # This run's local (desktop) tool view, built lazily the first time a
+        # tool call resolves to a local project (task 3.5). ``None`` until then,
+        # which is also the state for every run that has no local project -- the
+        # pre-existing behaviour, byte for byte.
+        self._local_tools: Optional[Dict[str, Any]] = None
+        self._local_tools_cwd: Optional[str] = None
+
+    def _run_tool(self, tool_name: str, arguments: Optional[Dict] = None):
+        """``(tool, refusal, kind)`` for this call's dispatch.
+
+        ``(shared_instance, None, "")`` when the ambient identity carries no
+        desktop target: nothing about the server-side path changes. For a desktop
+        run the tool comes from a view built for *this run* and pinned to the
+        directory frozen at message entry, so a concurrent turn retargeting the
+        Agent's shared tools cannot move an in-flight run. A refusal is returned
+        instead when the target no longer resolves (revoked grant, disconnected
+        device, re-picked directory, deleted folder) -- but only for a call that
+        would actually act in that directory, so a memory or knowledge lookup in
+        the same session keeps working.
+
+        ``kind`` says which limit refused, so the caller can report it honestly:
+        ``""`` nothing to refuse, ``"unavailable"`` the directory/grant is gone,
+        ``"capability"`` the call is not allowed *in* a local project (a script
+        with no launcher, a write under a read-only grant, a mode that forbids
+        it). Both are refusals -- nothing ran and nothing fell back to a server
+        directory -- but only the second one is the user's to change.
+        """
+        shared = self.tools.get(tool_name)
+        if shared is None:
+            # Nothing to gate: the caller's own "no such tool" error is more
+            # accurate than a refusal about a project.
+            return None, None, ""
+        try:
+            from agent.desktop_local.capabilities import local_call_refusal
+            from agent.desktop_local.run_context import (
+                needs_local_directory, run_local_cwd, tool_view_for_run,
+            )
+            from agent.desktop_local.tool_disposition import (
+                unclassified_writer_refusal,
+            )
+            from common.runtime_identity import current_identity
+
+            identity = current_identity()
+            cwd, refusal = run_local_cwd(identity)
+        except Exception:
+            # A broken resolver must not take the tool call down with it, and it
+            # must not invent a directory either: keep the existing behaviour.
+            return shared, None, ""
+        if refusal:
+            return ((None, refusal, "unavailable")
+                    if needs_local_directory(shared, tool_name)
+                    else (shared, None, ""))
+        if not cwd:
+            return shared, None, ""
+        # What this run may do *in* the project (task 5.2): a read-only input
+        # grant does not write, a script needs the platform launcher, and the
+        # session's own mode is still a ceiling.
+        capability_refusal = local_call_refusal(
+            identity, tool_name, shared, arguments, agent=self.agent)
+        if capability_refusal:
+            return None, capability_refusal, "capability"
+        # A36 (task 8.6). A tool that can write files and has no disposition for a
+        # local project must not run: it would write wherever its own default cwd
+        # points -- the server -- and nothing would report it. The known writers are
+        # all classified, so this refuses only a tool nobody has classified yet,
+        # which is exactly the omission the acceptance line is about.
+        disposition_refusal = unclassified_writer_refusal(tool_name)
+        if disposition_refusal:
+            return None, disposition_refusal, "capability"
+        if self._local_tools is None or self._local_tools_cwd != cwd:
+            # The run's pinned skill directories travel with the view (task 8.8):
+            # a script the model runs from the skill cache must be readable by the
+            # sandbox, and only the run that authorized the pin may grant them.
+            self._local_tools = tool_view_for_run(
+                self.tools, cwd, identity=identity,
+                target=getattr(identity, "execution_target", None),
+                skill_roots=self._local_skill_roots())
+            self._local_tools_cwd = cwd
+        return self._local_tools.get(tool_name) or shared, None, ""
+
+    def _remote_call(self, tool_name: str, arguments: Optional[Dict] = None):
+        """``Plan`` for this call's device delegation, or ``None``.
+
+        The other half of ``_run_tool`` (task 6.3). ``None`` means "not a remote
+        call": no desktop target, a read-only reference, a server-side tool
+        (memory, knowledge, an API client), the local mode, or a deployment that
+        has not opened the switch. In every one of those cases the caller's
+        pre-existing decision stands unchanged -- this seam only ever *adds* the
+        device branch for a run that explicitly authorized project execution on
+        a machine this process cannot reach.
+
+        A returned ``Plan`` is either a refusal (reported by the caller exactly
+        like a local refusal, with the device's own code) or the proxy tool. The
+        plan is decided here, *after* the permission gate, so a delegated call
+        passes the same tool table, allow/deny policy and mode checks as a local
+        one.
+        """
+        if self.tools.get(tool_name) is None:
+            return None
+        try:
+            from agent.desktop_remote.dispatch import plan
+            from agent.desktop_remote.mode import remote_mode_for
+            from common.runtime_identity import current_identity
+
+            identity = current_identity()
+            if not remote_mode_for(identity):
+                return None
+            planned = plan(
+                identity=identity, tool_name=tool_name,
+                tool=self.tools.get(tool_name), arguments=arguments,
+                agent=self.agent,
+                # The run's pinned skill versions travel with the plan (task
+                # 8.9), exactly as its skill directories travel with the local
+                # view. The device is told which versions to run and refuses any
+                # other, so a stale snapshot cannot be run in their place.
+                skill_pins=self._local_skill_pins())
+        except Exception:
+            # A broken planner must not take the tool call down with it, and it
+            # must not invent a device either: keep the existing behaviour.
+            logger.warning("🖥️ Remote execution planning failed", exc_info=True)
+            return None
+        return planned if (planned.tool is not None or planned.refusal) else None
+
+    def _stage_local_inputs(self, tool: Any, tool_name: str, arguments: Any):
+        """``(arguments, refusal)``: this call's inputs, resolved to one source.
+
+        The third surface of task 3.6. A local run's arguments are resolved
+        against the *same* source the file panel and `@` references use, so a
+        path the session can see in the panel is the path the tool reads, and a
+        server-side path this machine cannot see is refused by name instead of
+        being passed to a local tool as if the file were there. Nothing is
+        uploaded here: landing a remote input is an explicit transport the
+        executor does not have yet, so the honest answer is the refusal.
+
+        Task 8.4 adds the *typed* forms on top: a ``skill:`` reference resolves
+        into the read-only version pinned for this run, and a ``backend:``
+        reference is refused. Both come from :meth:`_local_skills`, which deploys
+        the skills the run is already authorized for -- so a skill reference
+        cannot reach a directory this run was not granted.
+
+        ``server_root`` is deliberately not passed for the server branch: the
+        pre-existing server resolution is the caller's (the tool's own cwd and
+        permission gates), and this seam must not become a second copy of it.
+        """
+        if not arguments:
+            return arguments, None
+        try:
+            from agent.desktop_local.run_context import needs_local_directory
+            from agent.desktop_local.source_resolver import (
+                source_for_identity, prepare_tool_inputs,
+            )
+            from common.runtime_identity import current_identity
+
+            if not needs_local_directory(tool, tool_name):
+                # A server-side tool (memory, knowledge, an API client) is not
+                # made collateral damage of a local project, and its arguments
+                # are not reinterpreted as local paths.
+                return arguments, None
+            source = source_for_identity(current_identity())
+            if not source.is_desktop:
+                return arguments, None
+            if source.refusal:
+                return arguments, source.refusal
+            staged = prepare_tool_inputs(
+                source, tool_name, arguments, skills=self._local_skills(),
+                landing=self._local_landing())
+        except Exception as e:  # noqa: BLE001 - never fail a call on this seam
+            logger.warning(f"🖥️ Local input staging failed for {tool_name}: {e}")
+            return arguments, None
+        if not staged.ok:
+            return arguments, staged.message()
+        if staged.rewrites:
+            logger.info(
+                f"🖥️ Local input rewritten for {tool_name}: "
+                f"{len(staged.rewrites)} path(s) resolved into the local project")
+        return staged.arguments, None
+
+    def _local_landing(self):
+        """The verified landing a ``resource:`` reference is staged through (8.6).
+
+        Lazy and per stream, like :meth:`_local_skills`, and for the same reason:
+        a run that never receives a server attachment pays nothing -- no directory
+        is created in the project until something is actually landed, because
+        ``RunLanding`` only provisions the run's input directory on first use.
+
+        Returns the run's landing object rather than a directory, so the caller
+        cannot mistake "where it would go" for "it is there". A run with no local
+        project never reaches this method at all (``_stage_local_inputs`` returns
+        early for a server source).
+        """
+        if getattr(self, "_local_landing_engine", "unset") != "unset":
+            return self._local_landing_engine
+        self._local_landing_engine = None
+        try:
+            from agent.desktop_local.run_inputs import landing_for_identity
+            from common.runtime_identity import current_identity
+
+            self._local_landing_engine = landing_for_identity(current_identity())
+        except Exception as e:  # noqa: BLE001 - no landing means an honest refusal
+            logger.warning(f"🖥️ Local landing unavailable: {e}")
+        return self._local_landing_engine
+
+    def _local_skills(self):
+        """This stream's deployed skill set, built once and reused.
+        Lazy on purpose: a run without a local project never builds it, so the
+        existing server behaviour pays nothing. Built once per stream rather than
+        once per call because deploying re-verifies and re-hashes every skill
+        resource, and a run that calls five tools should not do that five times.
+
+        Returns ``None`` when there is nothing to deploy, a manager is missing, or
+        deployment fails -- and ``prepare_tool_inputs`` treats "no skills" as
+        "refuse a skill reference by name", never as "read it from the project".
+        """
+        if getattr(self, "_local_skill_runtime", "unset") != "unset":
+            return self._local_skill_runtime
+        self._local_skill_runtime = None
+        try:
+            manager = getattr(self.agent, "skill_manager", None)
+            if manager is None:
+                return None
+            from agent.desktop_local.skill_runtime import runtime_for_identity
+            from common.runtime_identity import current_identity
+
+            # The *device's* platform, not the server's: the worker runs here, so
+            # a skill that only supports another platform must be refused now
+            # rather than producing a call that assumes the wrong paths.
+            platform = "win32" if os.name == "nt" else "posix"
+            runtime = runtime_for_identity(
+                manager, identity=current_identity(), platform=platform)
+            runtime.prepare()
+            self._local_skill_runtime = runtime
+            if runtime.problems:
+                logger.info(
+                    "🖥️ Skills not deployed for this run: "
+                    + ", ".join(f"{p.skill_id}({p.code})" for p in runtime.problems))
+        except Exception as e:  # noqa: BLE001 - a skill that cannot deploy is a refusal
+            logger.warning(f"🖥️ Local skill deployment failed: {e}")
+            self._local_skill_runtime = None
+        return self._local_skill_runtime
+
+    def _local_skill_roots(self) -> List[str]:
+        """The read-only directories this run's pinned skills live in (8.8).
+
+        Empty when nothing was deployed -- the ordinary case for a run with no
+        skills, and the value that leaves the sandbox exactly as it was before.
+
+        An undeployed skill is *not* an error here: ``prepare`` reports one broken
+        skill through ``problems`` instead of raising, and a run that can still do
+        useful work must not be turned into a refusal by a skill it never used.
+        """
+        runtime = self._local_skills()
+        if runtime is None:
+            return []
+        try:
+            return [str(root) for root in runtime.roots()]
+        except Exception as e:  # noqa: BLE001 - unreadable roots mean "grant none"
+            logger.warning(f"🖥️ Reading local skill roots failed: {e}")
+            return []
+
+    def _local_skill_pins(self) -> List[Dict[str, str]]:
+        """The versions this run pinned, in the portable form (task 8.9).
+
+        :meth:`_local_skill_roots` answers "which directories may the sandbox
+        read"; this answers the question the *remote* half has to ask, because a
+        device has neither this cache nor these paths. Same source, one
+        definition of "what this run is pinned to": the two cannot disagree.
+
+        Empty when nothing is pinned -- a run with no skills is the ordinary case
+        and must leave the device command exactly as it was.
+        """
+        runtime = self._local_skills()
+        if runtime is None:
+            return []
+        try:
+            return [dict(entry) for entry in runtime.pins()]
+        except Exception as e:  # noqa: BLE001 - unreadable pins mean "require none"
+            logger.warning(f"🖥️ Reading local skill pins failed: {e}")
+            return []
+
+    def _release_local_skills(self) -> None:
+        """Drop this stream's skill pins. Called when the run ends.
+
+        The pin is what keeps a deployed version alive against garbage
+        collection, so a run that never releases leaks one version per run.
+        """
+        runtime = getattr(self, "_local_skill_runtime", None)
+        if runtime is None:
+            return
+        try:
+            runtime.release()
+        except Exception as e:  # noqa: BLE001 - releasing must not fail a run
+            logger.warning(f"🖥️ Releasing local skills failed: {e}")
+        self._local_skill_runtime = None
+
+    def _run_cwd(self, fallback: Optional[str]) -> Optional[str]:
+        """The directory this run acts in: the frozen local root, else ``fallback``.
+
+        Used for decisions that need the working directory but do not own it (the
+        tenant-isolation scope). A run whose local project is unavailable keeps
+        the fallback here only because its tool calls are refused before they can
+        use it.
+        """
+        try:
+            from agent.desktop_local.run_context import run_local_cwd
+            from common.runtime_identity import current_identity
+
+            cwd, _refusal = run_local_cwd(current_identity())
+        except Exception:
+            return fallback
+        return cwd or fallback
+
     def _check_cancelled(self) -> None:
         """Raise AgentCancelledError if the user requested cancellation.
 
@@ -511,14 +823,28 @@ class AgentStreamExecutor:
     _ARTIFACT_TOOLS = ("write", "edit")
 
     def _maybe_emit_artifact(self, tool_call: dict, result: dict) -> None:
-        """Report a file written by `write`/`edit` so clients can preview it."""
-        if not self.on_event:
+        """Report a file written by `write`/`edit` so clients can preview it.
+
+        Reporting is a *projection*, not part of the tool's outcome. This runs
+        in the streaming loop, outside any handler that could turn a raise into
+        a readable tool error, so anything escaping here would abort the turn
+        over a card. Every failure below therefore degrades to "no card", and
+        the guard reads the sink defensively because the dispatch seam is also
+        driven by minimally built executors.
+        """
+        if not getattr(self, "on_event", None):
             return
         if tool_call.get("name") not in self._ARTIFACT_TOOLS:
             return
         if result.get("status") != "success":
             return
 
+        try:
+            self._publish_artifact(tool_call, result)
+        except Exception as e:  # noqa: BLE001 - a card must not fail the turn
+            logger.warning(f"🗂  Artifact reporting failed: {e}")
+
+    def _publish_artifact(self, tool_call: dict, result: dict) -> None:
         data = result.get("result")
         path = data.get("abs_path") if isinstance(data, dict) else None
         if not path:
@@ -532,22 +858,134 @@ class AgentStreamExecutor:
 
         # Anchor artifact detection to the session's working dir. In project mode
         # this is the project dir, so files written there surface as cards; the
-        # default state_root is used when no project is open.
+        # default state_root is used when no project is open. A desktop run is
+        # anchored to the local directory it actually writes in (task 3.5), or a
+        # file written there would be dropped as outside the anchor.
         art_root = None
         try:
             eff = getattr(self.agent, "effective_cwd", None)
             if callable(eff):
-                art_root = eff()
+                art_root = self._run_cwd(eff())
         except Exception:
             art_root = None
-        artifact = safe_build_artifact(path, art_root)
+        # A file written into a local project also records *which* device and run
+        # produced it (task 9.1), so its card can stay pointed at the machine
+        # that holds the bytes. A server-side write gets no origin at all, which
+        # is what keeps the pre-existing artifact shape untouched.
+        origin = self._local_artifact_origin(tool_call.get("id") or "")
+        artifact = safe_build_artifact(path, art_root, origin)
         if not artifact:
+            # Nothing verifiable was written -- not "the model says it wrote it".
+            # A remote (device) write lands here too: this process has no such
+            # file, and inventing a card from the model's prose is exactly what
+            # A35 refuses.
             return
         if artifact["path"] in self._emitted_artifacts:
             return
         self._emitted_artifacts.add(artifact["path"])
         logger.info(f"🗂  Artifact: {artifact['rel_path']} ({artifact['kind']})")
         self._emit_event("artifact", artifact)
+
+    def _local_artifact_origin(self, tool_call_id: str):
+        """The device/project/run identity a locally written file must carry.
+
+        ``None`` unless this run really is acting in a local project this
+        process resolved: a target whose directory is not registered here (a
+        remote device, or a revoked grant) has no file this process can vouch
+        for, so it must not stamp a desktop origin onto whatever path happens to
+        exist in the server workspace.
+        """
+        try:
+            from agent.desktop_local.run_context import run_local_cwd
+            from agent.protocol.artifact import desktop_origin
+            from common.runtime_identity import current_identity
+            from common.utils import current_agent_run_id
+
+            identity = current_identity()
+            target = getattr(identity, "execution_target", None)
+            if target is None or not getattr(target, "is_desktop", False):
+                return None
+            cwd, _refusal = run_local_cwd(identity)
+            if not cwd:
+                return None
+            return desktop_origin(
+                target,
+                run_id=current_agent_run_id() or (identity.run_id or ""),
+                tool_call_id=tool_call_id,
+                owner=identity.user_id or "",
+                tenant_id=identity.tenant_id or "",
+            )
+        except Exception as e:  # noqa: BLE001 - metadata must not fail the turn
+            logger.debug(f"🖥️ Local artifact origin unavailable: {e}")
+            return None
+
+    def _maybe_emit_remote_artifacts(self, result: Any, tool_call_id: str) -> None:
+        """Publish cards for files a *device* reported it produced (task 9.1).
+
+        The other half of :meth:`_maybe_emit_artifact`, for the case where the
+        bytes are on another machine. This process never stats those paths --
+        doing so would stat a same-named *server* file and report it as the
+        device's output, which is exactly the mistake the local-source rules
+        exist to prevent. What makes the report publishable is that it arrived
+        inside a verified terminal result of a run this server authorized, and
+        that every reference satisfies the v2 artifact contract (relative path,
+        known kind, a version). A report that fails any of those is dropped
+        whole: a card the client cannot resolve is worse than no card.
+        """
+        if not getattr(self, "on_event", None) or getattr(result, "status", "") != "success":
+            return
+        ext = getattr(result, "ext_data", None)
+        reported = ext.get("desktop_artifacts") if isinstance(ext, dict) else None
+        if not reported:
+            return
+        try:
+            from agent.protocol.artifact import desktop_origin
+            from auth.desktop_contracts_v2 import validate_artifact
+            from common.runtime_identity import current_identity
+            from common.utils import current_agent_run_id
+
+            identity = current_identity()
+            target = getattr(identity, "execution_target", None)
+            base = desktop_origin(
+                target,
+                run_id=current_agent_run_id() or (identity.run_id or ""),
+                tool_call_id=tool_call_id,
+                owner=identity.user_id or "",
+                tenant_id=identity.tenant_id or "",
+            )
+            if base is None:
+                return
+            workspace_id = str(getattr(target, "workspace_id", "") or "")
+            for entry in reported if isinstance(reported, list) else []:
+                if not isinstance(entry, dict):
+                    continue
+                problems = validate_artifact(entry, workspace_id=workspace_id)
+                if problems:
+                    logger.warning(
+                        "🖥️ Dropped an unverifiable device artifact for %s: %s",
+                        tool_call_id, "; ".join(problems))
+                    continue
+                origin = dict(base)
+                origin.update({
+                    "artifact_id": entry.get("artifact_id"),
+                    "artifact_protocol": "local-artifact-v1",
+                    "relative_path": entry["relative_path"],
+                    "file_name": entry["file_name"],
+                    "kind": entry["kind"],
+                    "size": entry["size"],
+                    "source_version": entry["source_version"],
+                })
+                if origin["artifact_id"] in self._emitted_artifacts:
+                    continue
+                self._emitted_artifacts.add(origin["artifact_id"])
+                logger.info(
+                    "🗂  Artifact (device %s): %s (%s)",
+                    origin.get("device_id"), origin["relative_path"],
+                    origin["kind"])
+                self._emit_event("artifact", {"type": "artifact",
+                                              "origin": origin})
+        except Exception as e:  # noqa: BLE001 - metadata must not fail the turn
+            logger.warning(f"🖥️ Device artifact reporting failed: {e}")
 
     def _is_thinking_enabled(self) -> bool:
         """Whether deep-thinking mode is on at the model layer.
@@ -2124,6 +2562,102 @@ class AgentStreamExecutor:
             # failure limit that aborts the conversation.
             return result
 
+        # Remote execution boundary (change ``align-desktop-project-execution-with-master``,
+        # task 6.3). The same authorization, the other machine: the session's
+        # project is not reachable from *this* process, so the call is planned
+        # against the bound device instead of being refused. A refusal here comes
+        # from the device's own declaration or from the run's own grant/mode
+        # rules, carries its own code (``device_offline``, ``protocol_incompatible``,
+        # ``permission_denied``, ...), and never falls back to the server.
+        remote_plan = self._remote_call(tool_name, arguments)
+        remote_tool = None
+        if remote_plan is not None and remote_plan.refusal:
+            logger.info(f"🖥️ Remote project unavailable for tool {tool_name}: "
+                        f"{remote_plan.code or remote_plan.kind}")
+            # The gate charged this call before the device was consulted; the
+            # plan just proved it will not run anywhere, so the charge is
+            # released against the same meter the gate wrote (task 6.7).
+            self._release_unspent_tool_call(remote_plan.code or remote_plan.kind,
+                                            tool_id)
+            result = {"status": "error", "result": remote_plan.refusal,
+                      "execution_time": 0}
+            self._emit_event("tool_execution_start", {
+                "tool_call_id": tool_id,
+                "tool_name": tool_name,
+                "arguments": arguments,
+            })
+            self._emit_event("tool_execution_end", {
+                "tool_call_id": tool_id,
+                "tool_name": tool_name,
+                ("remote_capability_denied" if remote_plan.kind == "capability"
+                 else "remote_context_unavailable"): True,
+                "remote_error_code": remote_plan.code,
+                **result,
+            })
+            # Not a tool failure: the tool did not run, and a refusal must not
+            # count toward the consecutive-failure limit that aborts the chat.
+            return result
+        if remote_plan is not None:
+            remote_tool = remote_plan.tool
+
+        # Local execution boundary (change ``align-desktop-project-execution-with-master``,
+        # task 3.5). A desktop run acts in the directory frozen for it at message
+        # entry, and only for as long as the authorization behind that directory
+        # still resolves. Anything else is a refusal reported as a normal tool
+        # error: silently falling back to the Agent's own directory would run the
+        # work somewhere the session never authorized, and a *changed* directory
+        # would move an already-started run. A delegated (remote) call has no
+        # local directory to resolve, so this branch is skipped for it -- the two
+        # modes are decided once, above, and never both applied to one call.
+        if remote_tool is None:
+            local_tool, local_refusal, refusal_kind = self._run_tool(tool_name, arguments)
+        else:
+            local_tool, local_refusal, refusal_kind = None, None, ""
+        if local_refusal:
+            logger.info(f"🖥️ Local project unavailable for tool {tool_name}: {local_refusal}")
+            result = {"status": "error", "result": local_refusal, "execution_time": 0}
+            self._emit_event("tool_execution_start", {
+                "tool_call_id": tool_id,
+                "tool_name": tool_name,
+                "arguments": arguments,
+            })
+            self._emit_event("tool_execution_end", {
+                "tool_call_id": tool_id,
+                "tool_name": tool_name,
+                ("local_capability_denied" if refusal_kind == "capability"
+                 else "local_context_unavailable"): True,
+                **result,
+            })
+            # Not a tool failure: the tool did not run, and a refusal must not
+            # count toward the consecutive-failure limit that aborts the chat.
+            return result
+
+        # Local input staging (task 3.6). The same source the file panel and `@`
+        # references resolve through decides whether this call's path arguments
+        # are reachable here: a path inside the local project is used as-is (or
+        # rewritten to its project-relative form), and a server-side path this
+        # machine cannot see is refused by name rather than handed to the local
+        # tool. Nothing is uploaded -- landing is a separate, explicit transport.
+        if local_tool is not None:
+            staged_arguments, input_refusal = self._stage_local_inputs(
+                local_tool, tool_name, arguments)
+            if input_refusal:
+                logger.info(f"🖥️ Local input unavailable for {tool_name}: {input_refusal}")
+                result = {"status": "error", "result": input_refusal, "execution_time": 0}
+                self._emit_event("tool_execution_start", {
+                    "tool_call_id": tool_id,
+                    "tool_name": tool_name,
+                    "arguments": arguments,
+                })
+                self._emit_event("tool_execution_end", {
+                    "tool_call_id": tool_id,
+                    "tool_name": tool_name,
+                    "local_input_unavailable": True,
+                    **result,
+                })
+                return result
+            arguments = staged_arguments
+
         # Check for consecutive failures (retry protection)
         should_stop, stop_reason, is_critical = self._check_consecutive_failures(tool_name, arguments)
         if should_stop:
@@ -2146,7 +2680,7 @@ class AgentStreamExecutor:
                 }
             return result
 
-        tool = tool_override or self.tools.get(tool_name)
+        tool = tool_override or remote_tool or local_tool or self.tools.get(tool_name)
         start_event = {
             "tool_call_id": tool_id,
             "tool_name": tool_name,
@@ -2216,6 +2750,10 @@ class AgentStreamExecutor:
             # Record tool result for failure tracking
             success = result.status == "success"
             self._record_tool_result(tool_name, arguments, success)
+            # A device's own report of what it wrote (task 9.1). Emitted from the
+            # real terminal result, never from the model's prose, and never by
+            # stat-ing the device's path from here.
+            self._maybe_emit_remote_artifacts(result, tool_id)
 
             # Auto-refresh skills after skill creation
             if tool_name == "bash" and result.status == "success":
@@ -2282,7 +2820,7 @@ class AgentStreamExecutor:
             # the tenant roots. This runs before every other check so nothing
             # can cross tenants.
             isolation = isolation_decision(
-                tool_name, arguments, cwd=agent.effective_cwd()
+                tool_name, arguments, cwd=self._run_cwd(agent.effective_cwd())
             )
             if not isolation.allowed:
                 self._last_denial_kind = "isolation"
@@ -2352,6 +2890,25 @@ class AgentStreamExecutor:
             arguments.clear()
             arguments.update(decision.parameters)
         return None if decision.allowed else decision.reason
+
+    def _release_unspent_tool_call(self, reason: str, tool_call_id: str) -> None:
+        """Give back the quota charge for a delegated call that did not run.
+
+        A thin pass-through on purpose: the release belongs to the desktop layer
+        (``agent.desktop_remote.dispatch``), which owns the meter's twin call and
+        the whole set of "this never executed" branches. This method only carries
+        the *current* identity there, because the executor is the side that knows
+        the refusal just happened.
+        """
+        try:
+            from agent.desktop_remote.dispatch import release_tool_call_quota
+            from common.runtime_identity import current_identity
+
+            release_tool_call_quota(current_identity(), reason=reason,
+                                    reference=str(tool_call_id or ""))
+        except Exception:
+            logger.warning("🖥️ Releasing an unspent tool-call quota failed",
+                           exc_info=True)
 
     def _quota_tool_denial(self, tool_name: str) -> Optional[str]:
         """Charge one tool call against the current identity's ``tool_calls``

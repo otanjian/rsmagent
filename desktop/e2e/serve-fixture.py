@@ -602,12 +602,21 @@ def seed_local_identity(data_dir):
     account of its own. This is the same real stack the Python suites build
     (``tests._helpers.build_identity``): a bootstrapped tenant with a root
     administrator, no fixture-specific shortcut and no user data from anywhere
-    else. Only the credential the browser leg needs is printed.
+    else. Only the credentials the browser leg needs are printed.
+
+    A *second* account is seeded beside the root one so the journey can change
+    accounts rather than only re-enter as the same user. It is an ordinary
+    member carrying the same agent access the root account has and nothing
+    more: no extra role and no widened slice. Cross-account isolation is
+    therefore checked without granting anything the install did not already
+    have.
     """
     from tests._helpers import IdentityStack, build_identity
 
     os.makedirs(data_dir, exist_ok=True)
     stack = build_identity(data_dir, agents=("default",), tenant_code="local")
+    stack.agent_role("local-member", ["default"])
+    stack.member("member", ["local-member"])
     # The bootstrap records the tenant's shared root; make the directory it named
     # exist before a real backend starts against it.
     os.makedirs(os.path.join(data_dir, "shared"), exist_ok=True)
@@ -615,6 +624,11 @@ def seed_local_identity(data_dir):
         "username": "root",
         "password": IdentityStack.ROOT_PASSWORD,
         "tenant_id": stack.tenant_id,
+        "second_user": {
+            "username": "member",
+            "password": IdentityStack.MEMBER_PASSWORD,
+            "tenant_id": stack.tenant_id,
+        },
     }
 
 

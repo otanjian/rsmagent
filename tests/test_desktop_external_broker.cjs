@@ -116,3 +116,40 @@ test('ecPathFor builds relative external-connection URLs under /api/', () => {
     assert.match(ecPathFor, /\/api\/external-connections\//);
     assert.doesNotMatch(ecPathFor, /https?:\/\//);
 });
+
+// --------------------------------------------------------------------------
+// 退出：状态不足以判断，必须问会话本身（change fix-desktop-relogin-session-sync）
+// --------------------------------------------------------------------------
+
+test('a sign-out the status does not confirm asks the session, not the status', () => {
+    const broker = read('desktop/src/main/auth-broker.ts');
+    const section = broker.slice(
+        broker.indexOf('async function sessionIsGone'),
+        broker.indexOf('export async function changePassword'),
+    );
+    const body = section.slice(section.indexOf('export async function logout'));
+    // 容器内的退出是串行的：网页先结束 Web 会话，而配对状态下这一步已经把原生父
+    // 会话一并撤销。宿主随后的 ``POST /auth/logout`` 因此带着一个身份库已不认识
+    // 的 Bearer 到达，写路由的 CSRF 门把它当作来源问题，回 ``403 cross_origin``
+    // ——一个「会话已不在」的事实被报成了「来源不被信任」。只看状态码无法与「服务
+    // 端拒绝撤销一个仍然有效的会话」区分，所以确认不了时必须回读会话本身；把 403
+    // 直接当成成功会放过一个仍然有效的会话，把 403 当成失败则会把已完成的退出报成
+    // 未完成（真机验收观察到的就是后者）。
+    assert.match(body, /revoked = reply\.status === 200 \|\| reply\.status === 401/,
+        'only 200/401 confirm the revocation by status');
+    assert.match(body, /if \(!revoked\) revoked = await sessionIsGone\(session\.token\)/,
+        'an unconfirmed status must be resolved by asking the session');
+    assert.match(body, /state\.blockedReason = 'logout_incomplete'/,
+        'a session that is not proven gone must still block');
+
+    // 回读必须是一个只认凭据的 GET，并且只把明确的「已失效」当作证据：把非 200
+    // 一律当成「已结束」会在服务端出错时误报退出成功。
+    const probe = section.slice(0, section.indexOf('export async function logout'));
+    assert.match(probe, /fetchWithToken\('\/auth\/me', token\)/,
+        '/auth/me resolves the caller from the credential alone');
+    assert.match(probe, /return reply\.status === 401 \|\| reply\.status === 403/,
+        'only a 401/403 is proof the session is gone');
+    assert.doesNotMatch(probe, /status !== 200/, 'a server error is never proof of a sign-out');
+    assert.doesNotMatch(body, /status === 403\)\s*\{?\s*revoked = true/,
+        'a 403 must never by itself be read as a completed sign-out');
+});

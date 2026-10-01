@@ -186,6 +186,18 @@ const App: React.FC = () => {
   // Subscribe to auto-update status from the main process (no-op in dev).
   useEffect(() => initUpdateListener(), [])
 
+  // The host's sign-out feed (change fix-desktop-relogin-session-sync, task 2.2).
+  // The remote container asked to end the account; the container document is
+  // already being destroyed, so *this* window has to re-read the authoritative
+  // gate rather than keep rendering the previous identity.
+  useEffect(() => {
+    const off = window.electronAPI?.onDesktopLogoutState?.((notice) => {
+      if (!notice || notice.phase !== 'finished') return
+      void desktopContext.probe()
+    })
+    return off
+  }, [])
+
   // Handle app-menu / shortcut actions forwarded from the main process.
   useEffect(() => {
     const off = window.electronAPI?.onMenuAction?.(async (action) => {

@@ -47,6 +47,7 @@ const RemoteConnectPage: React.FC<Props> = () => {
   const [attached, setAttached] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [logoutBlocked, setLogoutBlocked] = useState(false)
   const api = typeof window !== 'undefined' ? window.electronAPI : undefined
 
   const refresh = useCallback(async () => {
@@ -67,6 +68,49 @@ const RemoteConnectPage: React.FC<Props> = () => {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  // A sign-out started inside the container ends *its* session, not this
+  // window's (change fix-desktop-relogin-session-sync, task 2.2). When it
+  // finishes this page must drop the old "connected" state -- the container is
+  // gone -- and either offer the ordinary reconnection entry (success) or the
+  // retry the unconfirmed sign-out needs (failure).
+  useEffect(() => {
+    const off = api?.onDesktopLogoutState?.((noticeReply) => {
+      if (!noticeReply || noticeReply.phase !== 'finished') return
+      setAttached(false)
+      if (noticeReply.ok) {
+        setLogoutBlocked(false)
+        setError('')
+        setNotice(t('remote_disconnected'))
+      } else {
+        setLogoutBlocked(true)
+        setError(t('account_logout_unconfirmed'))
+        setNotice('')
+      }
+      void refresh()
+    })
+    return off
+  }, [api, refresh])
+
+  // Retry the sign-out the server never confirmed. The container is already
+  // gone, so this only re-runs the broker's revocation through the same
+  // detach path; a confirmed retry clears the block so reconnection works.
+  const retrySignOut = async () => {
+    if (!api?.desktopRemoteDisconnect) return
+    setBusy(true)
+    try {
+      const reply = await api.desktopRemoteDisconnect()
+      if (reply?.ok) {
+        setLogoutBlocked(false)
+        setError('')
+        setNotice(t('remote_disconnected'))
+      } else {
+        setError(t('account_logout_unconfirmed'))
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const probeAndAdd = async () => {
     if (!api?.desktopRemoteAddServer || !api?.desktopRemoteProbe) return
@@ -286,6 +330,16 @@ const RemoteConnectPage: React.FC<Props> = () => {
                 className="inline-flex items-center gap-1 rounded-lg border border-default px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-50 cursor-pointer"
               >
                 {t('remote_disconnect')}
+              </button>
+            ) : null}
+            {logoutBlocked ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void retrySignOut()}
+                className="inline-flex items-center gap-1 rounded-lg border border-danger-border px-3 py-2 text-sm text-danger hover:bg-danger-soft disabled:opacity-50 cursor-pointer"
+              >
+                {t('account_retry_logout')}
               </button>
             ) : null}
             <button

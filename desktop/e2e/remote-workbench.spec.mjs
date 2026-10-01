@@ -380,7 +380,12 @@ async function authorize(name, credentials) {
 /** Sign in to the bundled backend (local mode). */
 async function signInLocally() {
   const backendOrigin = await authorize(LABEL.login, LOCAL_USER)
-  assert.match(backendOrigin, /^http:\/\/127\.0\.0\.1:\d+$/,
+  // ``localhost`` and ``127.0.0.1`` are both the loopback origin; the app
+  // deliberately announces ``localhost`` so the system-browser authorize URL
+  // shares a cookie jar with the console URL the backend prints (see
+  // ``index.ts``: ``announceLocalBackendOrigin``). What the claim is about is
+  // that the address is loopback and nothing else, so both spellings pass.
+  assert.match(backendOrigin, /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):\d+$/,
     `the bundled backend is a plain loopback origin, got ${backendOrigin}`)
   // The gate is gone only once the session is accepted and the projection is in.
   await waitFor('the local session to be accepted', () =>
@@ -479,8 +484,8 @@ test('a fresh profile boots local, runs the bundled backend and signs in through
   assert.equal(mode.containerSupported, true, 'this runtime must support the container')
 
   const backendOrigin = await signInLocally()
-  assert.ok(backendOrigin.startsWith('http://127.0.0.1:'),
-    'the bundled backend is announced as a loopback origin')
+  assert.ok(/^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):/.test(backendOrigin),
+    `the bundled backend is announced as a loopback origin (got ${backendOrigin})`)
 })
 
 test('the local shell reaches the connection surface from Settings', async () => {

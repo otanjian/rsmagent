@@ -330,7 +330,11 @@ function loadContainer(overrides = {}) {
         setBounds(bounds) { this.bounds = bounds; },
     };
     const window = {
-        contentBounds: { width: 1200, height: 800 },
+        // A real getContentBounds() reports the content area in *screen*
+        // coordinates, so x/y are the window's position on the desktop. The
+        // double carries a non-zero origin so that copying those x/y into a
+        // child view's bounds is visible here rather than only on a real screen.
+        contentBounds: { x: 44, y: 46, width: 1200, height: 800 },
         getContentBounds() { return this.contentBounds; },
         contentView: { addChildView: () => undefined, removeChildView: () => undefined },
         events: {},
@@ -376,6 +380,24 @@ test('the container never hands the bridge to a content surface', () => {
     assert.ok(prefs.partition.indexOf('persist:') === -1, 'the partition is memory-only');
     assert.equal(prefs.preload, '/app/dist/main/remote-preload.js');
     assert.deepEqual(prefs.additionalArguments, []);
+});
+
+test('the container covers the window instead of inheriting its screen position', () => {
+    const { view, options } = loadContainer();
+    // getContentBounds() reports the content area in screen coordinates: this
+    // window sits at (44, 46) and reports exactly that. A child view's bounds
+    // are relative to its parent, so the origin must not survive into
+    // setBounds(). Letting it through shifts the page right by the window's x
+    // and pushes its bottom edge off the window -- the sidebar's account footer
+    // is the first thing to disappear.
+    assert.deepEqual(view.view.bounds, { x: 0, y: 0, width: 1200, height: 800 });
+
+    // A resize must land on the same rectangle. The first paint and the
+    // post-resize paint disagreeing is what let this ship: the wrong origin was
+    // only corrected once the user happened to resize the window.
+    options.window.contentBounds = { x: 30, y: 90, width: 1400, height: 900 };
+    (options.window.events.resize || []).forEach((handler) => handler());
+    assert.deepEqual(view.view.bounds, { x: 0, y: 0, width: 1400, height: 900 });
 });
 
 test('a content navigation opens the isolated window instead of being dropped', () => {
@@ -529,4 +551,53 @@ test('host events are delivered only through the preload listener', async () => 
     assert.deepEqual(seen, [{ type: 'suspended' }]);
     assert.equal(typeof off, 'function');
     assert.equal(exposed.desktopHost.ipcRenderer, undefined);
+});
+
+// ---------------------------------------------------------------------------
+// The live local context for a chat (task 9.3)
+// ---------------------------------------------------------------------------
+
+test('the local-context call carries the chat it is asking about', async () => {
+    const { exposed, invoked } = loadPreload();
+    await exposed.desktopHost.localContext({
+        agent_id: 'agent_a', business_session_id: 'session_1',
+    });
+    const call = invoked.find((entry) => entry.channel === 'desktop:bridge:call');
+    assert.equal(call.payload.method, 'localContext');
+    assert.equal(call.payload.params.agent_id, 'agent_a');
+    assert.equal(call.payload.params.business_session_id, 'session_1');
+});
+
+test('the local-context call is shape-checked like every other method', () => {
+    assert.deepEqual(hostBridge.checkBridgeCall({
+        method: 'localContext', params: { agent_id: 'a', business_session_id: 's' },
+    }), { ok: true });
+    // An empty chat is a legal question ("is anything open?"), a non-string is not.
+    assert.deepEqual(hostBridge.checkBridgeCall({ method: 'localContext', params: {} }), { ok: true });
+    for (const params of [
+        { agent_id: 42 },
+        { business_session_id: { id: 'x' } },
+        { agent_id: 'a'.repeat(201) },
+    ]) {
+        const verdict = hostBridge.checkBridgeCall({ method: 'localContext', params });
+        assert.equal(verdict.ok, false, JSON.stringify(params));
+        assert.equal(verdict.code, 'invalid_request');
+    }
+});
+
+test('the live local context is offered only while local files are open', () => {
+    const localFiles = require(path.join(dist, 'remote', 'local-files-bridge.js'));
+    const payload = () => localFiles.bridgeCapabilitiesPayload({
+        bridge: '1.0', generation: 1, saveAsApproval: null,
+    });
+    assert.equal(payload().methods.includes('localContext'), false,
+        'a closed deployment does not offer the method');
+    assert.equal(payload().allMethods.includes('localContext'), true,
+        'the page learns the method exists without being able to use it');
+    localFiles.setRemoteLocalFilesEnabled(true);
+    try {
+        assert.equal(payload().methods.includes('localContext'), true);
+    } finally {
+        localFiles.setRemoteLocalFilesEnabled(false);
+    }
 });

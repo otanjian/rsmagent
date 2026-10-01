@@ -1,0 +1,27 @@
+{
+  "type": "execute_tool",
+  "protocol_major": 2,
+  "command_id": "cmd_example",
+  "run_id": "run_example",
+  "tool_call_id": "call_example",
+  "session_id": "sess_example",
+  "agent_id": "agent_example",
+  "binding_id": "bind_example",
+  "workspace_id": "ws_example",
+  "device_id": "dev_example",
+  "grant_version": 3,
+  "selection_generation": 8,
+  "connection_epoch": "epoch_example",
+  "tool": "bash",
+  "tool_schema_version": 1,
+  "arguments": {
+    "command": "python \"$COW_SKILL_DIR/scripts/report.py\" --input \"资料/明细.xlsx\" --output \"output/开票清单.xlsx\"",
+    "timeout": 120
+  },
+  "skill_resources": [
+    {"skill_id": "example-xlsx", "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}
+  ],
+  "params_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "deadline_seconds": 120,
+  "expires_at": "2026-10-01T00:10:00Z"
+}

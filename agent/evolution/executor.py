@@ -410,6 +410,21 @@ def run_evolution_for_session(
         if not agent:
             return False
 
+        # A cached Agent keeps the last interactive turn's local project on it
+        # (the directory on its tools, the target on ``execution_target``). This
+        # pass is a background wake, not an interactive authorization, so the
+        # local project is taken off the instance before any of it runs
+        # (change task 3.7): reusing the history's authorization is exactly what
+        # the requirement forbids.
+        try:
+            from agent.desktop_local.run_authorization import (
+                REFUSAL_BACKGROUND_CACHED, detach_local_execution,
+            )
+
+            detach_local_execution(agent, REFUSAL_BACKGROUND_CACHED)
+        except Exception as e:  # noqa: BLE001 - never disrupt the scan
+            logger.debug(f"[Evolution] local project detach failed: {e}")
+
         # Consume the trigger only after this pass has secured a concurrency
         # slot and resolved its session. Sessions rejected by the gate keep
         # their accumulated turns and remain eligible for the next scan.

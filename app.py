@@ -6,6 +6,23 @@ import signal
 import sys
 import time
 
+# --- desktop local worker dispatch ----------------------------------------
+# This must stay *before* the channel/plugin imports below. A packaged install
+# ships a single frozen executable, so the execution end cannot be started with
+# `python -m agent.desktop_local.worker` the way a source checkout is: the
+# sandboxed worker process IS this binary, run with a flag. Dispatching here --
+# as the very first thing `__main__` does -- means that process loads only the
+# worker, instead of the whole channel/plugin tree, and that a missing plugin
+# directory cannot turn "run a script in the project" into an import error.
+#
+# Guarded by `__name__ == "__main__"`: an importer of `app` (tests, tooling) must
+# keep getting the module it asked for rather than a worker that exits.
+if __name__ == "__main__" and "--desktop-local-worker" in sys.argv:
+    from agent.desktop_local.worker import main as _desktop_worker_main
+
+    raise SystemExit(_desktop_worker_main(
+        [arg for arg in sys.argv[1:] if arg != "--desktop-local-worker"]))
+
 from channel import channel_factory
 from common import const
 from common import process_watch

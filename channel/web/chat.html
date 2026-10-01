@@ -146,6 +146,20 @@
                         登录
                     </button>
                 </form>
+                <!-- Desktop re-login entry (change fix-desktop-relogin-session-sync, task 2.4).
+                     Shown *instead of* the password form inside a desktop container. A
+                     password login here would create a Web-only session the native host
+                     knows nothing about -- the page would look signed in while the next
+                     local directory bind answers "not signed in". Ending both halves and
+                     returning to the shell's own login is the only honest recovery. -->
+                <div id="login-recovery" class="login-form hidden">
+                    <p id="login-recovery-note" class="login-recovery-note"
+                       data-i18n="account_desktop_relogin_note"></p>
+                    <p id="login-recovery-error" class="login-error hidden"></p>
+                    <button id="login-recovery-btn" type="button" class="login-btn"
+                            onclick="desktopRelogin()"
+                            data-i18n="account_desktop_relogin_action">返回登录</button>
+                </div>
             </div>
         </div>
     </div>
@@ -922,6 +936,10 @@
                                     <button id="ws-btn-copy" class="workspace-icon-btn hidden" onclick="copyPreviewPath()"
                                             data-i18n-title="ws_copy_path" title="复制路径">
                                         <i class="fas fa-link"></i>
+                                    </button>
+                                    <button id="ws-btn-reveal" class="workspace-icon-btn hidden" onclick="revealPreviewFile()"
+                                            data-i18n-title="ws_reveal_file" title="打开所在文件夹">
+                                        <i class="fas fa-folder-open"></i>
                                     </button>
                                     <button class="workspace-icon-btn" onclick="closeWorkspacePanel(true)"
                                             data-i18n-title="ws_close" title="关闭">
@@ -3227,8 +3245,20 @@
          so they keep one code path for both the browser and the desktop
          container. It attaches one namespace and mounts nothing. -->
     <script defer src="assets/js/fork/desktop-host.js"></script>
+    <!-- Desktop account adapter (change fix-desktop-relogin-session-sync, task 2.3).
+         The serial sign-out -- confirm the Web session, then let the host finish --
+         in one place, so console.js never has to remember the order. Loaded before
+         console.js, which asks window.CowDesktopAccount for both the desktop
+         question and the account end. -->
+    <script defer src="assets/js/fork/desktop-account.js"></script>
     <script defer src="assets/js/console.js"></script>
     <script defer src="assets/js/scenes/index.js"></script>
+    <!-- The file panel's local source (change
+         align-desktop-project-execution-with-master, task 9.2). Loaded after
+         console.js, whose desktop context and classifiers it is configured with,
+         and before workspace.js, which asks it where the panel's files come
+         from. It attaches one namespace and mounts nothing. -->
+    <script defer src="assets/js/fork/project-source.js"></script>
     <script defer src="assets/js/workspace.js"></script>
     <script defer src="assets/js/identity-admin.js"></script>
     <!-- 审计日志 / Token 消耗 (change add-audit-and-token-console): the view

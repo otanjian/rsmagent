@@ -622,6 +622,8 @@ function resumeFixture(transport) {
         _wsSelUpdateLabel() {}, updateEditButtonsState() {}, refreshWorkspaceSelector() {},
         refreshSessionSettings: async () => { ctx._sessCfg = { team: [] }; },
         wsOnSessionSwitch() {}, wsGuardUnsaved: () => true, startPolling() {},
+        _desktopContextClear() {}, _desktopRestoreContext: async () => {},
+        _desktopContextForRequest: () => null,
         setSendBtnCancelMode() {}, _reattachStream() {}, renderComposerIdentity() {},
         resetSendBtnSendMode() { ctx.sendBtn.disabled = false; },
         navigateTo(view) { ctx.currentView = view; },

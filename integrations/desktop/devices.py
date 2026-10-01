@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional
 from integrations.desktop.access import AccessService
 from integrations.desktop.errors import DesktopAccessError
 
+from common.log import logger
+
 #: Platforms the server accepts. Anything else is refused rather than stored
 #: as free text -- a forged platform string is not useful information.
 _PLATFORMS = frozenset({"macos", "windows", "linux"})
@@ -97,6 +99,10 @@ def _public_workspace(row: Dict[str, Any]) -> Dict[str, Any]:
         "tenant_id": row["tenant_id"],
         "label": row["label"],
         "grant_version": row["grant_version"],
+        # The purpose is part of what the grant means, so the client needs it to
+        # render "read-only reference" vs "open as project" honestly. It is a
+        # mode name, not a path.
+        "project_mode": row.get("project_mode") or "readonly-input",
         "created_at": row["created_at"],
     }
 
@@ -214,6 +220,7 @@ class DeviceService:
                 },
                 result="success", con=con)
             con.commit()
+        self._invalidate_local(ctx.user["id"], device_id=device_id)
         return {"id": device_id, "disabled": True}
 
     # -- bindings (8.3 / 8.6) ------------------------------------------------
@@ -307,18 +314,26 @@ class DeviceService:
                 redacted_changes={"reason": reason},
                 result="success", con=con)
             con.commit()
+        self._invalidate_local(ctx.user["id"], binding_id=binding_id)
         return {"id": binding_id, "revoked": True}
 
     # -- workspaces (8.4) ----------------------------------------------------
 
     def register_workspace(
             self, *, token: str, tenant_id: str, device_id: Any,
-            label: Any, grant_version: Any) -> Dict[str, Any]:
+            label: Any, grant_version: Any, project_mode: Any = None) -> Dict[str, Any]:
         """Register a workspace after the native picker authorised a root.
 
-        The absolute path never leaves the client; only ``label`` and
-        ``grant_version`` arrive here.
+        The absolute path never leaves the client; only ``label``,
+        ``grant_version`` and the *purpose* arrive here. The purpose is recorded
+        because it is the difference between a read-only file reference
+        (``readonly-input``) and an explicit "open my project here" grant
+        (``project-execution``) that lets project tools run against the root.
         """
+        from agent.workspace.execution_target import (
+            MODE_PROJECT_EXECUTION, MODE_READONLY_INPUT,
+        )
+
         ctx = self._access.authenticate(token, require="native")
         self._access.require_tenant(ctx, tenant_id)
         self._access.load_own_device(ctx, str(device_id or ""))
@@ -331,6 +346,16 @@ class DeviceService:
         if version < 1:
             raise DesktopAccessError(
                 "grant_version must be a positive integer", "invalid_request", 400)
+        if project_mode is None or project_mode == "":
+            mode = MODE_READONLY_INPUT
+        else:
+            mode = str(project_mode).strip()
+            if mode not in (MODE_READONLY_INPUT, MODE_PROJECT_EXECUTION):
+                # Never normalise an unknown purpose: a typo would otherwise be
+                # recorded as the weak mode and could mask a client that meant
+                # to ask for execution.
+                raise DesktopAccessError(
+                    "unknown project mode", "invalid_request", 400)
 
         now = _now()
         workspace_id = _new_id("ws")
@@ -339,16 +364,17 @@ class DeviceService:
             con.execute(
                 "INSERT INTO desktop_workspaces"
                 " (id, user_id, tenant_id, device_id, label, grant_version,"
-                "  created_at)"
-                " VALUES (?,?,?,?,?,?,?)",
+                "  project_mode, created_at)"
+                " VALUES (?,?,?,?,?,?,?,?)",
                 (workspace_id, ctx.user["id"], tenant_id, device_id,
-                 text, version, now))
+                 text, version, mode, now))
             self._svc._audit.record(
                 actor_user_id=ctx.user["id"],
                 actor_username=ctx.user["username"],
                 action=AUDIT_WORKSPACE_REGISTER,
                 target="desktop.workspace:%s" % workspace_id,
-                redacted_changes={"grant_version": version, "device_id": device_id},
+                redacted_changes={"grant_version": version, "device_id": device_id,
+                                  "project_mode": mode},
                 result="success", con=con)
             con.commit()
         return self.get_workspace(ctx.user["id"], workspace_id)
@@ -459,9 +485,35 @@ class DeviceService:
                 redacted_changes={"reason": reason},
                 result="success", con=con)
             con.commit()
+        self._invalidate_local(ctx.user["id"], workspace_id=workspace_id)
         return {"id": workspace_id, "revoked": True}
 
     # -- revoke helpers used by Membership / logout wiring (8.7) ------------
+
+    def _invalidate_local(self, user_id: str, **ids) -> Dict[str, int]:
+        """Drop the same-machine roots and runs a revoke just invalidated.
+
+        The records above are the *authorization*; this is the effect it had on
+        a desktop that happens to be this same process (``agent.desktop_local``).
+        Both are needed and neither implies the other: a forgotten grant whose
+        run keeps streaming would be refused at its next tool call but would keep
+        the model working in a directory the user just closed, and a stopped run
+        whose root stayed registered could be walked into again by a later turn.
+
+        ``user_id`` always narrows the effect to the caller's own directories.
+        """
+        from agent.desktop_local.run_context import revoke_local_scope
+        from integrations.desktop.process_handles import service_for as handles_for
+
+        # The same fact for a machine this process *cannot* reach (task 6.6): the
+        # background handles the revoke invalidates must stop routing too, or a
+        # later poll would aim a job at a device the user has just unbound.
+        try:
+            handles_for(self._svc).close_for_scope(user_id=user_id, **ids)
+        except Exception:
+            logger.warning("[Desktop] retiring background handles failed",
+                           exc_info=True)
+        return revoke_local_scope(user_id, **ids)
 
     def revoke_for_user(self, user_id: str, *, reason: str) -> int:
         """Revoke every live binding and workspace of a user (logout / disable)."""
@@ -490,6 +542,7 @@ class DeviceService:
                     (now, reason, row["id"]))
                 revoked += 1
             con.commit()
+        self._invalidate_local(user_id)
         return revoked
 
     def revoke_for_membership(self, user_id: str, tenant_id: str,
@@ -520,6 +573,7 @@ class DeviceService:
                     (now, reason, row["id"]))
                 revoked += 1
             con.commit()
+        self._invalidate_local(user_id, tenant_id=tenant_id)
         return revoked
 
     # -- lookups -------------------------------------------------------------

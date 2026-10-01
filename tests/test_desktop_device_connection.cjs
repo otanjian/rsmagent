@@ -67,3 +67,23 @@ test('nativeConnectHeaders carry Bearer only', () => {
   assert.equal(headers.Authorization, 'Bearer tok_abc');
   assert.equal(headers.Cookie, undefined);
 });
+
+test('bundled gateway discovery accepts only a port from loopback metadata', async () => {
+  let request;
+  const port = await mod.localGatewayPort('http://localhost:9899', async (url, init) => {
+    request = { url, init };
+    return { ok: true, json: async () => ({ data: { local_gateway_port: 23456 } }) };
+  });
+  assert.equal(port, 23456);
+  assert.equal(request.url, 'http://localhost:9899/api/desktop/meta');
+  assert.equal(request.init.redirect, 'error');
+  assert.equal(request.init.headers, undefined, 'metadata discovery sends no bearer');
+  for (const origin of ['https://remote.example', 'http://evil.example', 'http://localhost:9899/evil']) {
+    await assert.rejects(mod.localGatewayPort(origin, () => assert.fail('must not fetch')));
+  }
+  for (const value of [undefined, '1234', 0, 65536, 'https://evil.example']) {
+    await assert.rejects(mod.localGatewayPort('http://localhost:9899', async () => ({
+      ok: true, json: async () => ({ data: { local_gateway_port: value } }),
+    })));
+  }
+});

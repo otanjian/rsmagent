@@ -23,9 +23,14 @@ let clientMod;
 
 function needsBuild() {
   const srcDir = path.join(desktop, 'src', 'main', 'remote');
-  const newest = Math.max(
-    ...[path.join(srcDir, 'device-client.ts')].map((file) => fs.statSync(file).mtimeMs),
-  );
+  const contractDir = path.join(desktop, 'src', 'main', 'project-execution');
+  // ``device-client.ts`` now imports the v2 contract, so a change there has to
+  // rebuild this file's output too -- otherwise the test would silently run the
+  // previous frame constants.
+  const sources = [path.join(srcDir, 'device-client.ts')]
+    .concat(fs.readdirSync(contractDir).filter((n) => n.endsWith('.ts'))
+      .map((n) => path.join(contractDir, n)));
+  const newest = Math.max(...sources.map((file) => fs.statSync(file).mtimeMs));
   const out = path.join(dist, 'remote', 'device-client.js');
   return !fs.existsSync(out) || fs.statSync(out).mtimeMs < newest;
 }
@@ -173,6 +178,34 @@ test('a command runs and its result carries the live epoch', async () => {
   assert.equal(result.state, 'succeeded');
   assert.deepEqual(result.result, { op: 'list', ok: true });
   client.stop();
+});
+
+test('bundled backend uses its discovered gateway while remote stays on the configured origin', async () => {
+  const local = makeClient({ options: {
+    origin: 'http://localhost:9899', allowInsecureLoopback: true,
+    localGatewayPort: async () => 23456,
+  } });
+  local.client.start();
+  await sleep(10);
+  assert.equal(local.sockets[0].url, 'ws://127.0.0.1:23456/api/desktop/connect');
+  assert.equal(local.sockets[0].headers.Authorization, 'Bearer native-token');
+  const remote = makeClient({ options: {
+    localGatewayPort: async () => assert.fail('remote must not discover loopback'),
+  } });
+  remote.client.start();
+  await sleep(10);
+  assert.equal(remote.sockets[0].url, 'wss://console.example.com/api/desktop/connect');
+});
+
+test('unavailable local metadata retries without sending a bearer elsewhere', async () => {
+  const { client, sockets } = makeClient({ options: {
+    origin: 'http://localhost:9899', allowInsecureLoopback: true,
+    localGatewayPort: async () => { throw new Error('backend restarting'); },
+  } });
+  client.start();
+  await sleep(10);
+  assert.equal(client.currentState, 'reconnecting');
+  assert.equal(sockets.length, 0);
 });
 
 test('a command under a stale epoch is dropped, not executed', async () => {
@@ -357,5 +390,161 @@ test('silence past the idle bound reconnects instead of hanging half-open', asyn
   assert.equal(sockets[0].closed, true, 'the silent socket is closed');
   assert.equal(client.currentState, 'reconnecting');
   assert.ok(states.some(([state, detail]) => state === 'reconnecting' && detail === 'idle_timeout'));
+  client.stop();
+});
+
+// -- v2 execution frames (change ``align-...``, tasks 7.1 - 7.7) -----------
+
+/**
+ * A v2 ``execute_tool`` frame.
+ *
+ * Recognised by ``protocol_major`` rather than by ``v``: a v1-only reader must
+ * refuse it, so the two channels cannot be confused by a missing field.
+ */
+function v2Frame(overrides = {}) {
+  return {
+    type: 'execute_tool',
+    protocol_major: 2,
+    command_id: 'cmd_v2',
+    run_id: 'run_v2',
+    tool_call_id: 'call_v2',
+    binding_id: 'bind_1',
+    workspace_id: 'ws_1',
+    device_id: 'dev_1',
+    grant_version: 3,
+    selection_generation: 1,
+    connection_epoch: 'ce_1',
+    tool: 'read',
+    tool_schema_version: 1,
+    arguments: { path: 'a.txt' },
+    params_digest: `sha256:${'a'.repeat(64)}`,
+    expires_at: '2099-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+test('a v2 execute_tool frame is routed to the execution handler, not the read path', async () => {
+  const seen = [];
+  const { client, sockets, runs } = makeClient({
+    options: {
+      runExecution: async (frame) => {
+        seen.push(frame);
+        return {
+          type: 'execution_result', protocol_major: 2,
+          command_id: frame.command_id, run_id: frame.run_id,
+          tool_call_id: frame.tool_call_id,
+          state: 'succeeded', execution_phase: 'succeeded', effects: 'completed',
+          started_at: 1, finished_at: 2,
+        };
+      },
+    },
+  });
+  client.start();
+  await sleep(10);
+  sockets[0].deliver({ v: 1, type: 'hello', epoch: 'ce_1' });
+  sockets[0].deliver(v2Frame());
+  await sleep(10);
+
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].command_id, 'cmd_v2');
+  assert.equal(runs.length, 0, 'a v2 frame is never handed to the v1 reader');
+  const reply = sockets[0].sent.at(-1);
+  assert.equal(reply.type, 'execution_result');
+  assert.equal(reply.protocol_major, 2);
+  assert.equal(reply.state, 'succeeded');
+  assert.equal(reply.effects, 'completed');
+  client.stop();
+});
+
+test('a v2 frame under a stale epoch is dropped, not run', async () => {
+  const seen = [];
+  const { client, sockets } = makeClient({
+    options: { runExecution: async (frame) => { seen.push(frame); return {}; } },
+  });
+  client.start();
+  await sleep(10);
+  sockets[0].deliver({ v: 1, type: 'hello', epoch: 'ce_live' });
+  sockets[0].deliver(v2Frame({ connection_epoch: 'ce_stale' }));
+  await sleep(10);
+
+  assert.equal(seen.length, 0);
+  client.stop();
+});
+
+test('a v2 command already running here is not started a second time', async () => {
+  let calls = 0;
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const { client, sockets } = makeClient({
+    options: {
+      runExecution: async () => { calls += 1; await gate; return { type: 'execution_result' }; },
+    },
+  });
+  client.start();
+  await sleep(10);
+  sockets[0].deliver({ v: 1, type: 'hello', epoch: 'ce_1' });
+  sockets[0].deliver(v2Frame());
+  sockets[0].deliver(v2Frame());
+  await sleep(10);
+
+  assert.equal(calls, 1, 'the second delivery is a redelivery, not a second run');
+  release();
+  await sleep(10);
+  client.stop();
+});
+
+test('a v2 execution_status frame is answered from the device journal', async () => {
+  const asked = [];
+  const { client, sockets } = makeClient({
+    options: {
+      runExecutionStatus: (frame) => {
+        asked.push(frame.command_id);
+        return { type: 'execution_status', state: 'running' };
+      },
+    },
+  });
+  client.start();
+  await sleep(10);
+  sockets[0].deliver({ v: 1, type: 'hello', epoch: 'ce_1' });
+  sockets[0].deliver({
+    type: 'execution_status', protocol_major: 2, command_id: 'cmd_v2',
+    connection_epoch: 'ce_1',
+  });
+  await sleep(10);
+
+  assert.deepEqual(asked, ['cmd_v2']);
+  assert.deepEqual(sockets[0].sent.at(-1), { type: 'execution_status', state: 'running' });
+  client.stop();
+});
+
+test('without an execution handler a v2 frame is ignored, never faked', async () => {
+  const { client, sockets } = makeClient();
+  client.start();
+  await sleep(10);
+  sockets[0].deliver({ v: 1, type: 'hello', epoch: 'ce_1' });
+  const before = sockets[0].sent.length;
+  sockets[0].deliver(v2Frame());
+  await sleep(10);
+
+  assert.equal(sockets[0].sent.length, before, 'no answer is invented');
+  client.stop();
+});
+
+test('a v2 handler that throws still answers, and claims no effect', async () => {
+  const { client, sockets } = makeClient({
+    options: { runExecution: async () => { throw new Error('worker died'); } },
+  });
+  client.start();
+  await sleep(10);
+  sockets[0].deliver({ v: 1, type: 'hello', epoch: 'ce_1' });
+  sockets[0].deliver(v2Frame());
+  await sleep(10);
+
+  const reply = sockets[0].sent.at(-1);
+  assert.equal(reply.type, 'execution_result');
+  assert.equal(reply.state, 'failed');
+  assert.equal(reply.effects, 'none', 'a transport failure is not an effect on the project');
+  assert.equal(reply.error_code, 'device_error');
+  assert.match(reply.error_message, /worker died/);
   client.stop();
 });

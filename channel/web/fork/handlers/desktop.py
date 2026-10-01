@@ -68,15 +68,44 @@ def _switch_configured(settings, key: str) -> bool:
     return _as_bool(raw)
 
 
+def _execution_platform() -> str:
+    """The platform *this* deployment's launcher can execute on.
+
+    Windows is reported as ``win32`` even though the launcher is not accepted
+    yet: an honest "this platform, no supported tools" is what lets a client
+    show the real reason (``platform_unsupported``) instead of a generic
+    "disabled". The contract, not this function, decides which tools a platform
+    may offer.
+    """
+    import sys
+
+    return "win32" if sys.platform.startswith("win") else "posix"
+
+
+def _execution_runtime() -> str:
+    """The interpreter the execution end would use, as a bounded string.
+
+    Reported so a client can tell the user *what is missing* (a Python runtime,
+    an interpreter version) instead of "the feature is off". No path and no
+    environment detail travels in the meta payload.
+    """
+    import platform as _platform
+
+    return "cpython-%s" % _platform.python_version()
+
+
 class DesktopMetaHandler:
     """``GET /api/desktop/meta`` — public connection metadata."""
 
     def GET(self):
         from auth import capability_matrix
+        from auth import desktop_contracts_v2
         from channel.web.web_channel import conf
         from channel.web import route_registry
+        from integrations.desktop import execution_capability
 
         settings = conf()
+        from integrations.desktop.local_gateway import local_gateway
         data = {
             # ``remote_web`` is the phase-1 gate itself: the container is only
             # offered when the declaration is implemented *and* accepted *and*
@@ -96,6 +125,23 @@ class DesktopMetaHandler:
                 for public, slice_id, key in _FEATURE_SLICES
             },
         }
+        if local_gateway.port is not None:
+            data["local_gateway_port"] = local_gateway.port
+        # v2 project execution (change align-desktop-project-execution-with-master,
+        # task 6.1). Optional on purpose: a v1-only client ignores it, and a v2
+        # client that does not see it must treat the entry point as unavailable
+        # rather than downgrade to v1's read-only ops. The build always declares
+        # the protocol so `negotiate()` can answer `protocol_incompatible`
+        # instead of "no idea what you mean".
+        data["protocols"].setdefault(
+            "project_execution",
+            {"major": desktop_contracts_v2.PROTOCOL_MAJOR,
+             "minor": desktop_contracts_v2.PROTOCOL["minor"], "required": False})
+        data["project_execution"] = execution_capability.execution_state(
+            settings=settings,
+            platform=_execution_platform(),
+            runtime=_execution_runtime(),
+        )
         web.header("Content-Type", "application/json; charset=utf-8")
         # The switch state can change on a restart; never let a proxy or the
         # client's own cache decide availability from a stale copy.
@@ -316,6 +362,7 @@ class DesktopWorkspacesHandler:
                 device_id=body.get("device_id"),
                 label=body.get("label"),
                 grant_version=body.get("grant_version"),
+                project_mode=body.get("project_mode"),
             )
         except Exception as e:
             return _desktop_files_error(e)
@@ -324,7 +371,6 @@ class DesktopWorkspacesHandler:
 
 class DesktopWorkspaceHandler:
     """``/api/desktop/workspaces/{id}`` — revoke a workspace grant."""
-
     def DELETE(self, workspace_id: str):
         _files_enabled()
         _csrf_for_cookie_write()
@@ -535,6 +581,276 @@ class DesktopTransferCommitHandler:
                 sha256=body.get("sha256"),
                 source_version_after=body.get("source_version_after"),
             )
+        except Exception as e:
+            return _desktop_files_error(e)
+        return _ok(data)
+
+
+# ---------------------------------------------------------------------------
+# Local project execution: register the resolved root with this same-machine
+# backend (tasks 3.2 / 3.3)
+# ---------------------------------------------------------------------------
+
+
+def _local_root_service():
+    from channel.web.auth_handlers import _get_service
+    from integrations.desktop.local_root import service_for
+
+    return service_for(_get_service())
+
+
+class DesktopLocalRootsHandler:
+    """``/api/desktop/local-roots`` — register, or forget, a resolved local root.
+
+    Loopback + per-launch-token + native-bearer only. The request carries the
+    absolute path the picker returned (it never leaves this machine) plus the
+    workspace/binding it belongs to; the response carries no path back. See
+    ``integrations.desktop.local_root`` for why each gate exists.
+
+    ``POST`` and ``DELETE`` are one handler because they are one path in the
+    contract the desktop client calls (``root-registration.ts``): closing the
+    local project has to stop the backend from serving the directory, so the
+    delete is a server-side revocation rather than a client-side state change.
+    """
+
+    def POST(self):
+        _files_enabled()
+        token = _session_token()
+        body = _request_json()
+        try:
+            data = _local_root_service().register_root(
+                token=token,
+                binding_id=body.get("binding_id"),
+                device_id=body.get("device_id"),
+                workspace_id=body.get("workspace_id"),
+                absolute_path=body.get("absolute_path") or body.get("path"),
+                project_mode=body.get("project_mode"),
+                tenant_id=body.get("tenant_id"),
+                agent_id=body.get("agent_id"),
+                business_session_id=body.get("business_session_id"),
+            )
+        except Exception as e:
+            return _desktop_files_error(e)
+        return _ok(data)
+
+    def DELETE(self):
+        _files_enabled()
+        token = _session_token()
+        body = _request_json()
+        # ``DELETE`` from a Cookie-authenticated console would additionally need
+        # CSRF; the native shell uses the bearer, and the transport guard in the
+        # service already requires loopback + the launch token.
+        try:
+            data = _local_root_service().revoke_root(
+                token=token,
+                device_id=body.get("device_id"),
+                workspace_id=body.get("workspace_id"),
+                revoke_all=bool(body.get("all")),
+            )
+        except Exception as e:
+            return _desktop_files_error(e)
+        return _ok(data)
+
+
+class DesktopSessionTargetHandler:
+    """``/api/desktop/sessions/{session_id}/execution-target``.
+
+    Binds (or clears) the local project a chat runs in. The body names the
+    device / workspace / binding; the server reads the grant version from the
+    workspace row itself, so a client cannot re-declare a stale root as current.
+    The absolute path is never part of this contract -- only the local backend's
+    own registry holds it.
+    """
+
+    def POST(self, session_id: str):
+        _files_enabled()
+        token = _session_token()
+        body = _request_json()
+        try:
+            data = _local_root_service().bind_session_target(
+                token=token,
+                agent_id=body.get("agent_id"),
+                session_id=session_id,
+                binding_id=body.get("binding_id"),
+                device_id=body.get("device_id"),
+                workspace_id=body.get("workspace_id"),
+                project_mode=body.get("project_mode"),
+                tenant_id=web.ctx.env.get("HTTP_X_TENANT_ID") or None,
+            )
+        except Exception as e:
+            return _desktop_files_error(e)
+        return _ok(data)
+
+    def DELETE(self, session_id: str):
+        _files_enabled()
+        token = _session_token()
+        body = _request_json()
+        try:
+            data = _local_root_service().clear_session_target(
+                token=token,
+                agent_id=body.get("agent_id"),
+                session_id=session_id,
+                tenant_id=web.ctx.env.get("HTTP_X_TENANT_ID") or None,
+            )
+        except Exception as e:
+            return _desktop_files_error(e)
+        return _ok(data)
+
+
+# ---------------------------------------------------------------------------
+# v2 project execution: the narrowed broker (tasks 6.4 / 6.5)
+# ---------------------------------------------------------------------------
+
+
+def _execution_enabled():
+    """Refuse while v2 project execution is not available on this deployment.
+
+    Gated on the *composed* state the meta endpoint reports (declaration ×
+    deployment switch × platform), not on a bare switch: an endpoint that
+    answered while meta said ``not_accepted`` would be advertising an
+    enforcement this build has not accepted, and the client's own gate would
+    already have refused.
+    """
+    from channel.web.auth_handlers import _error
+    from channel.web.web_channel import conf
+    from integrations.desktop import execution_capability
+
+    state = execution_capability.execution_state(
+        settings=conf(), platform=_execution_platform(),
+        runtime=_execution_runtime())
+    if not state.get("available"):
+        return _error(
+            "project execution is not available (%s)" % state.get("reason"),
+            503, "feature_unavailable")
+
+
+def _broker_service():
+    from channel.web.auth_handlers import _get_service
+    from integrations.desktop.execution_broker import service_for
+
+    return service_for(_get_service())
+
+
+class DesktopExecutionPrepareHandler:
+    """``POST /api/desktop/execution/prepare`` — may this frame still run?
+
+    Native-only (a page never holds that credential), bound to the command's own
+    device / binding / workspace / grant / digest, and it changes no state: the
+    device asks again before every execution, and the answer is the server's
+    current authorization, not the one from enqueue time.
+    """
+
+    def POST(self):
+        _execution_enabled()
+        token = _session_token()
+        tenant = _tenant_id()
+        body = _request_json()
+        try:
+            data = _broker_service().prepare(
+                token=token, tenant_id=tenant, body=body)
+        except Exception as e:
+            return _desktop_files_error(e)
+        return _ok(data)
+
+
+class DesktopExecutionStartHandler:
+    """``POST /api/desktop/execution/start`` — the single-use start permit.
+
+    The second re-validation (task 6.5). The permit it returns is short lived
+    and single use, so a device that prepared while authorized cannot start
+    after the authorization was pulled.
+    """
+
+    def POST(self):
+        _execution_enabled()
+        token = _session_token()
+        tenant = _tenant_id()
+        body = _request_json()
+        try:
+            data = _broker_service().start(
+                token=token, tenant_id=tenant, body=body)
+        except Exception as e:
+            return _desktop_files_error(e)
+        return _ok(data)
+
+
+class DesktopExecutionHeartbeatHandler:
+    """``POST /api/desktop/execution/heartbeat`` — the start, then liveness.
+
+    The first beat carries the durable local journal id and the consumed permit
+    id and is what records the start; later beats only advance the clock. One
+    endpoint, because a start without a journal is the sequence the contract
+    forbids.
+    """
+
+    def POST(self):
+        _execution_enabled()
+        token = _session_token()
+        tenant = _tenant_id()
+        body = _request_json()
+        try:
+            data = _broker_service().heartbeat(
+                token=token, tenant_id=tenant, body=body)
+        except Exception as e:
+            return _desktop_files_error(e)
+        return _ok(data)
+
+
+class DesktopExecutionStatusHandler:
+    """``GET /api/desktop/execution/status`` — the real state of one command.
+
+    What a reconnecting device asks before re-running anything. A started
+    command with no terminal result reads as running, never as "did not run".
+    It binds the same identity as the other three endpoints -- the query string
+    carries the device / binding / workspace / grant / digest the caller holds,
+    so one device cannot read a run it is not allowed to continue.
+    """
+
+    def GET(self):
+        _execution_enabled()
+        token = _session_token()
+        tenant = _tenant_id()
+        body: Dict[str, Any] = {}
+        try:
+            query = web.input()
+            body = {str(key): value for key, value in dict(query).items()}
+        except Exception:
+            body = {}
+        try:
+            data = _broker_service().status(
+                token=token, tenant_id=tenant, body=body)
+        except Exception as e:
+            return _desktop_files_error(e)
+        return _ok(data)
+
+
+class DesktopExecutionSkillPackageHandler:
+    """``GET /api/desktop/execution/skill-package`` — the pinned skill bytes.
+
+    The one broker read that returns bytes (task 8.9). A device that was told to
+    run a pinned skill version and does not hold it asks for exactly that
+    version, naming the *command* it was told to run and the digest it was
+    given; the server answers only when the pair is in the set that command was
+    authorized with, and it re-derives that set from the recorded row rather
+    than trusting anything in the query.
+
+    It is native-only like the other four: the renderer never holds that
+    credential, so a page cannot pull a skill package either.
+    """
+
+    def GET(self):
+        _execution_enabled()
+        token = _session_token()
+        tenant = _tenant_id()
+        body: Dict[str, Any] = {}
+        try:
+            query = web.input()
+            body = {str(key): value for key, value in dict(query).items()}
+        except Exception:
+            body = {}
+        try:
+            data = _broker_service().skill_package(
+                token=token, tenant_id=tenant, body=body)
         except Exception as e:
             return _desktop_files_error(e)
         return _ok(data)

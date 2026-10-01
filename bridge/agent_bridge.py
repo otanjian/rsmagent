@@ -625,10 +625,14 @@ def _attach_desktop_context_to_tools(agent, context) -> None:
     and it is reset to ``None`` on every turn so a stale reference from a
     previous session/agent/device never leaks into a later run.
     """
+    reference = (context or {}).get("desktop_context") or None
+    # The model needs the same per-turn source fact as the tool. Keep it even
+    # when client_files is unavailable, so that case is not mistaken for an
+    # empty server workspace. Never derive a server cwd from this reference.
+    agent.desktop_context = reference
     tools = getattr(agent, "tools", None)
     if not tools:
         return
-    reference = (context or {}).get("desktop_context") or None
     for tool in tools:
         if getattr(tool, "name", "") != "client_files":
             continue
@@ -1067,6 +1071,51 @@ class AgentBridge:
             if token is not None:
                 clear_agent_run_id(token)
 
+    def _session_has_local_project(self, session_id: Optional[str],
+                                   agent_id: Optional[str] = None) -> bool:
+        """Whether this session actually points at a local project right now.
+
+        The lookahead the non-interactive refusal needs (task 3.7): a scheduler
+        trigger or a background wake is only refused when there is a local
+        project it would otherwise have acted in. Refusing every background turn
+        would break the scheduler for every ordinary session, and refusing none
+        is what the requirement forbids. The ambient identity is consulted as
+        well, because a run can carry a target the store no longer holds.
+        """
+        from common.runtime_identity import current_identity
+
+        target = getattr(current_identity(), "execution_target", None)
+        if getattr(target, "is_desktop", False):
+            return True
+        if not session_id:
+            return False
+        try:
+            from agent.workspace import project_store
+
+            target = project_store.get_execution_target(session_id, agent_id)
+        except Exception:
+            return False
+        return bool(getattr(target, "is_desktop", False))
+
+    def _detach_cached_local_project(self, session_id: Optional[str],
+                                    agent_id: Optional[str], reason: str) -> None:
+        """Take the local project off the live Agent for this session.
+
+        A cached instance keeps the previous interactive turn's directory on its
+        tools; leaving it there would let the very next instrumented call (a
+        status surface, or the scheduled delivery that follows) act on it even
+        though the turn itself was refused (task 3.7).
+        """
+        from agent.desktop_local.run_authorization import detach_local_execution
+
+        try:
+            agent = self.get_cached_agent(session_id, agent_id=agent_id)
+        except Exception:
+            agent = None
+        if agent is None:
+            return
+        detach_local_execution(agent, reason)
+
     def peek_agent(self, session_id: str, agent_id: str = None) -> Optional[Agent]:
         """Return the session's live agent, or None if it has not been built.
 
@@ -1148,8 +1197,11 @@ class AgentBridge:
             # default — takes effect on the next message without rebuilding the
             # agent. Memory/skills stay anchored to the workspace regardless.
             # Project and per-session settings belong to the conversation, so a
-            # guest follows the host's, not its own unrelated ones.
-            self._apply_session_project(agent, session_id, host_id)
+            # guest follows the host's, not its own unrelated ones — except that
+            # a *local* project is only handed to an eligible executor, which is
+            # why the speaking Agent is named as well (task 3.7).
+            self._apply_session_project(agent, session_id, host_id,
+                                        actual_agent_id=resolved_agent_id)
             # Same idea for the session's permission mode, a per-conversation
             # override that falls back to the global config. The model is not
             # shared with a guest — see apply_session_prefs.
@@ -1198,7 +1250,8 @@ class AgentBridge:
         """
         self._apply_session_project(agent, session_id, agent_id)
 
-    def _apply_session_project(self, agent, session_id: str, agent_id: str) -> None:
+    def _apply_session_project(self, agent, session_id: str, agent_id: str,
+                               actual_agent_id: str = None) -> None:
         """Retarget the agent's working directory to the session's project dir.
 
         With a project selected that is the working directory. Without one, a
@@ -1213,8 +1266,70 @@ class AgentBridge:
         the chat, it just falls back to the default. Preparing the personal
         directory is not: an unusable directory is reported, because silently
         continuing would write this user's work into the shared root.
+
+        ``agent_id`` is whose *conversation* this is; ``actual_agent_id`` is the
+        Agent that will execute the turn, when they differ (a teammate answering
+        in the host's transcript — task 3.7). A local project is only handed to
+        an eligible executor: the teammate may be disabled, or its tool/skill
+        selection may not cover project work, and in either case pointing its
+        tools at the host's directory would be the automatic grant the
+        requirement forbids. The refusal is recorded on the Agent so the local
+        tools refuse by name instead of acting on the server directory.
         """
         from agent.workspace import project_store
+
+        # A local project outranks the server-side project setting: it is the
+        # session's explicit "run here" authorization, and the two cannot both
+        # be in force (opening a local project clears the server-side one).
+        try:
+            target = project_store.get_execution_target(session_id, agent_id)
+        except Exception as e:
+            logger.debug(f"[AgentBridge] execution target lookup failed: {e}")
+            target = None
+        if target is not None:
+            executor = str(actual_agent_id or "").strip()
+            if executor and executor != str(agent_id or ""):
+                from agent.desktop_local.run_authorization import (
+                    agent_local_eligibility,
+                )
+
+                eligible, refusal = agent_local_eligibility(executor)
+                if not eligible:
+                    logger.info(
+                        f"[AgentBridge] local project refused for executor "
+                        f"'{executor}' in conversation '{agent_id}': {refusal}"
+                    )
+                    marker = getattr(agent, "mark_local_context_unavailable", None)
+                    if marker:
+                        marker(refusal)
+                    return
+            resolved = self._resolve_local_project(target)
+            if resolved is not None:
+                applier = getattr(agent, "apply_execution_target", None)
+                if applier:
+                    applier(target, resolved)
+                return
+            # The target is real but this backend cannot resolve it (the grant
+            # was revoked, or the directory is gone). Clear the override and
+            # record why, so local tools refuse instead of silently acting on a
+            # server directory the session never authorized.
+            marker = getattr(agent, "mark_local_context_unavailable", None)
+            if marker:
+                marker("local_context_unavailable")
+            else:  # pragma: no cover - a non-standard agent stub
+                agent.apply_project_dir(None)
+            return
+
+        # No local target (never opened, or just closed): the Agent must not keep
+        # a previous turn's local authorization as a half-stated fact. Clearing
+        # is idempotent, and a stale target would otherwise read (in the prompt
+        # or a status surface) as "this session still runs locally".
+        clear = getattr(agent, "clear_execution_target", None)
+        if callable(clear):
+            try:
+                clear()
+            except Exception as e:
+                logger.debug(f"[AgentBridge] clearing the local target failed: {e}")
 
         try:
             project_dir = project_store.get_project_dir(session_id, agent_id)
@@ -1233,6 +1348,37 @@ class AgentBridge:
 
         if getattr(agent, "apply_project_dir", None):
             agent.apply_project_dir(project_dir, scope=scope)
+
+    @staticmethod
+    def _resolve_local_project(target) -> Optional[str]:
+        """The real directory for a desktop target on *this* backend, or None.
+
+        Only the trusted same-machine registry can answer this (see
+        ``agent.desktop_local``); there is deliberately no fallback that reads
+        the target's identifiers as a path. The directory is also re-checked on
+        disk, because the registry entry outlives a directory the user deleted.
+        """
+        from agent.desktop_local import registry
+        from common.runtime_identity import current_identity
+
+        ident = current_identity()
+        entry = registry().lookup(
+            user_id=ident.user_id or "",
+            tenant_id=ident.tenant_id or "",
+            device_id=target.device_id,
+            workspace_id=target.workspace_id,
+            binding_id=target.binding_id,
+            grant_version=target.grant_version,
+            require_mode=target.project_mode,
+        )
+        if entry is None:
+            return None
+        if not os.path.isdir(entry.absolute_path):
+            logger.info(
+                "[AgentBridge] local root for workspace %s is gone; "
+                "refusing local work", target.workspace_id)
+            return None
+        return entry.absolute_path
 
     def _apply_scene_context(self, agent, session_id: str) -> None:
         """Apply an activated scene's context to the session Agent.
@@ -1578,6 +1724,7 @@ class AgentBridge:
         run_store = None
         run_status = "done"
         run_error = ""
+        local_identity_token = None
         try:
             # Extract session_id from context for user isolation
             if context:
@@ -1641,6 +1788,48 @@ class AgentBridge:
                 else query
             )
 
+            # Re-verify the local project for the run that is actually about to
+            # happen (change task 3.7). Two things are decided here and nowhere
+            # else, because only this point knows both: **which Agent executes**
+            # (the speaker, not the transcript owner) and **what kind of turn
+            # this is** (a user message, or a scheduler/background/machine
+            # trigger). A non-interactive trigger that references a local project
+            # is refused outright -- no device is woken, no historical
+            # authorization is reused -- while an ineligible *executor* only
+            # narrows the run, so a teammate still answers with the tools it has.
+            try:
+                from agent.desktop_local.run_authorization import (
+                    authorize_local_run, narrow_local_execution,
+                    refusal_needs_interactive,
+                )
+                allowed, local_refusal = authorize_local_run(
+                    host_agent_id=resolved_agent_id,
+                    speaker_agent_id=speaker_agent_id,
+                    task_source=(context.get("task_source") if context else ""),
+                    scheduled=bool(context and context.get("is_scheduled_task")),
+                    background=bool(context and context.get("is_background_task")),
+                )
+                if not allowed and local_refusal:
+                    if refusal_needs_interactive(local_refusal):
+                        if self._session_has_local_project(session_id, resolved_agent_id):
+                            logger.info(
+                                f"[AgentBridge] local project refused for a "
+                                f"non-interactive turn: session={session_id} "
+                                f"source={context.get('task_source') if context else ''}"
+                            )
+                            self._detach_cached_local_project(
+                                session_id, resolved_agent_id, local_refusal)
+                            return Reply(ReplyType.ERROR, local_refusal)
+                    else:
+                        logger.info(
+                            f"[AgentBridge] local project narrowed for executor "
+                            f"'{speaker_agent_id}': {local_refusal}"
+                        )
+                        local_identity_token = narrow_local_execution(local_refusal)
+            except Exception as e:  # noqa: BLE001 - never break a reply on this seam
+                logger.warning(
+                    f"[AgentBridge] local run authorization failed: {e}")
+
             # Register a cancel token. Prefer per-turn request_id (web),
             # fall back to session_id (IM channels). The Event is polled by
             # AgentStreamExecutor at safe checkpoints.
@@ -1657,8 +1846,21 @@ class AgentBridge:
                     session_id,
                     self.agent_registry.default_agent_id,
                 )
+                # Tag the run with the local project it is about to act on
+                # (change task 3.5). Identifiers only, read from the frozen
+                # identity rather than from the live Agent, so a revocation can
+                # later cancel exactly the runs it invalidates instead of
+                # everything or nothing.
+                scope = None
+                try:
+                    from agent.desktop_local.run_context import local_run_scope
+                    from common.runtime_identity import current_identity
+
+                    scope = local_run_scope(current_identity())
+                except Exception as e:
+                    logger.debug(f"[AgentBridge] local run scope failed: {e}")
                 cancel_event = registry.register(
-                    token_key, session_id=scoped_session_id
+                    token_key, session_id=scoped_session_id, scope=scope
                 )
 
             # Get agent for this session (will auto-initialize if needed)
@@ -1917,6 +2119,13 @@ class AgentBridge:
             return Reply(ReplyType.ERROR, f"Agent error: {str(e)}")
 
         finally:
+            if local_identity_token is not None:
+                try:
+                    from common.runtime_identity import restore_identity
+
+                    restore_identity(local_identity_token)
+                except Exception:
+                    pass
             self._end_run(run_store, run_id, run_token, run_status, run_error)
     
     def _schedule_mcp_hot_reload(self, agent):

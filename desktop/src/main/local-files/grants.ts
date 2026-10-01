@@ -18,6 +18,21 @@ export interface GrantScope {
   deviceId: string
 }
 
+/**
+ * What the picked directory may be used for.
+ *
+ * ``readonly-input`` is the phase-2 local file reference: the device serves
+ * reads for the session, nothing else. ``project-execution`` is the explicit
+ * "open my project here" authorization (change
+ * ``align-desktop-project-execution-with-master``): project file tools and
+ * authorized Skill scripts may run in the directory.
+ *
+ * The two are **not** interchangeable: a read-only grant must never be widened
+ * into execution by an upgrade, a refresh or a re-login, and a project-execution
+ * grant does not make every local directory executable.
+ */
+export type GrantPurpose = 'readonly-input' | 'project-execution'
+
 export interface ActiveGrant extends GrantScope {
   /** Local opaque id; never a path. */
   id: string
@@ -29,6 +44,8 @@ export interface ActiveGrant extends GrantScope {
   grantVersion: number
   /** Wall-clock when the grant became active (ms). */
   activatedAt: number
+  /** What the user authorized the directory for. */
+  purpose: GrantPurpose
 }
 
 export interface GrantPublic {
@@ -40,6 +57,7 @@ export interface GrantPublic {
   tenantId: string
   deviceId: string
   activatedAt: number
+  purpose: GrantPurpose
 }
 
 function scopeKey(scope: GrantScope): string {
@@ -62,7 +80,13 @@ function publicOf(grant: ActiveGrant): GrantPublic {
     tenantId: grant.tenantId,
     deviceId: grant.deviceId,
     activatedAt: grant.activatedAt,
+    purpose: grant.purpose,
   }
+}
+
+/** Whether a grant may run project tools and scripts, not just reads. */
+export function allowsProjectExecution(grant: { purpose?: GrantPurpose } | null): boolean {
+  return !!grant && grant.purpose === 'project-execution'
 }
 
 /**
@@ -74,7 +98,15 @@ export class GrantRegistry {
   private nextVersion = 1
 
   /** Activate a freshly picked root. Replaces any prior grant in the same scope. */
-  activate(scope: GrantScope, absolutePath: string, label: string): GrantPublic {
+  activate(
+    scope: GrantScope,
+    absolutePath: string,
+    label: string,
+    purpose: GrantPurpose = 'readonly-input',
+  ): GrantPublic {
+    if (purpose !== 'readonly-input' && purpose !== 'project-execution') {
+      throw new Error('invalid grant purpose')
+    }
     if (!absolutePath || absolutePath.includes('\0')) {
       throw new Error('invalid absolute path')
     }
@@ -94,6 +126,7 @@ export class GrantRegistry {
       absolutePath,
       grantVersion: this.nextVersion++,
       activatedAt: Date.now(),
+      purpose,
     }
     this.grants.set(key, grant)
     return publicOf(grant)
@@ -155,6 +188,23 @@ export class GrantRegistry {
 /** The picker message the native dialog must show (task 8.5). */
 export const PICKER_MESSAGE =
   '选择一个目录供容大AI只读访问。文件按需传输，不会在授权时上传全部内容。'
+
+/**
+ * The picker message for "open my project here" (change
+ * ``align-desktop-project-execution-with-master``).
+ *
+ * This is a different authorization, not a widened read reference: project file
+ * tools and authorized Skill scripts run in the directory. It says so plainly
+ * instead of reusing the read-only wording.
+ */
+export const PROJECT_EXECUTION_PICKER_MESSAGE =
+  '选择本机项目目录：项目文件读写与已授权技能脚本将在该目录中原地执行。'
+  + '技能与记忆维护仍按原权限，不会自动上传整个目录或产出。'
+
+/** The dialog message for a purpose. */
+export function pickerMessageFor(purpose: GrantPurpose): string {
+  return purpose === 'project-execution' ? PROJECT_EXECUTION_PICKER_MESSAGE : PICKER_MESSAGE
+}
 
 /**
  * Normalize a dialog result: cancel / empty → null (no grant), otherwise the

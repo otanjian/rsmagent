@@ -91,7 +91,8 @@ function setup(fetchImpl) {
     const body = element('body');
     const ctx = vm.createContext({
         console, Date, Intl, URLSearchParams, AbortController,
-        activeAgentId: 'agent-a', sessionId: 'current',
+        activeAgentId: 'agent-a', sessionId: 'current', _authEpoch: 1,
+        sessionStorage: { getItem: () => 'tenant-one' },
         location: { pathname: '/chat' },
         _navAreaFromPath: () => 'workbench',
         window: { innerWidth: 1440 },

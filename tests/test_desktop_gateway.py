@@ -272,6 +272,44 @@ class GatewayCommandTests(unittest.TestCase):
 class GatewayWssSmokeTests(GatewayCommandTests):
     """Real aiohttp WSS smoke: hello + heartbeat + reject query token (F07 half)."""
 
+    def test_bundled_gateway_lifecycle_and_real_command(self):
+        import asyncio
+        import aiohttp
+        from integrations.desktop.local_gateway import LocalGateway
+
+        native, web_token, device, binding, workspace = self._binding()
+        gateway = LocalGateway()
+        gateway.start(self.app.service)
+        port = gateway.port
+        gateway.start(self.app.service)
+        self.assertEqual(port, gateway.port)
+
+        async def run():
+            async with aiohttp.ClientSession() as client:
+                url = "http://127.0.0.1:%s/api/desktop/connect" % port
+                denied = await client.get(url)
+                self.assertEqual(denied.status, 401)
+                async with client.ws_connect(url, headers={"Authorization": "Bearer " + native}) as ws:
+                    await ws.send_json({"v": 1, "type": "hello", "device_id": device["id"],
+                                        "protocol_major": 1, "capabilities": {"files": True}})
+                    hello = await ws.receive_json(timeout=5)
+                    self.assertEqual(hello["type"], "hello")
+                    created = self.commands().create_command(
+                        token=web_token, tenant_id=self.app.tenant_id,
+                        binding_id=binding["id"], workspace_id=workspace["id"],
+                        grant_version=1, op="list", params={}, request_id="req_local_root")
+                    frame = await ws.receive_json(timeout=5)
+                    self.assertEqual(frame["type"], "command")
+                    self.assertEqual(frame["request_id"], created["id"])
+                    self.assertEqual(frame["op"], "list")
+                    self.assertEqual(frame["params"], {})
+        try:
+            asyncio.run(run())
+        finally:
+            gateway.stop()
+        self.assertIsNone(gateway.port)
+        self.assertFalse(gateway._thread.is_alive())
+
     def test_wss_hello_and_heartbeat(self):
         from aiohttp import web
         from aiohttp.test_utils import TestClient, TestServer

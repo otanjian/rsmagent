@@ -87,6 +87,18 @@ const desktopHost = {
   openExternal: (url: string) => call('openExternal', { url }),
 
   /**
+   * End this container's account session through the trusted host.
+   *
+   * The host revokes the native session, tears the container down and tells the
+   * local shell to resume its own login/connection entry. It takes no
+   * parameters on purpose: the page cannot name an account, carry a token or
+   * aim the sign-out anywhere. This document is usually destroyed by the host
+   * before the promise settles, so the caller must treat the local shell -- not
+   * this reply -- as the authority on the final state.
+   */
+  signOut: () => call('signOut'),
+
+  /**
    * Confirm a picked local directory into a usable, server-verified binding.
    *
    * Picking a directory only creates a local grant; the binding and the
@@ -101,14 +113,102 @@ const desktopHost = {
    * Open the trusted native directory picker and activate a grant.
    *
    * ``scope`` is the grant key (server/user/tenant/device); the absolute path
-   * never returns to the page.
+   * never returns to the page. ``purpose`` selects the authorization being
+   * asked for: omitted / ``readonly-input`` is the phase-2 read reference,
+   * ``project-execution`` is "open my project here" (change
+   * ``align-desktop-project-execution-with-master``).
    */
-  chooseWorkspace: (scope?: Record<string, unknown>) =>
-    call('chooseWorkspace', { scope: scope || {} }),
+  chooseWorkspace: (scope?: Record<string, unknown>, purpose?: string) =>
+    call('chooseWorkspace', purpose
+      ? { scope: scope || {}, purpose }
+      : { scope: scope || {} }),
 
   /** Drop the active grant for the given scope (or all). */
   disconnectWorkspace: (scope?: Record<string, unknown>) =>
     call('disconnectWorkspace', { scope: scope || {} }),
+
+  /**
+   * The local project this container already has open for one chat (task 9.3).
+   *
+   * Asked by a page that has just been (re)loaded: its own variables are gone,
+   * but the confirmation the host holds is not, and the host re-verifies it --
+   * grant, device connection, chat -- before answering. ``state`` is ``live``
+   * with the identifiers to resume, or ``stale``/``none``, and a directory is
+   * never part of either answer.
+   */
+  localContext: (params?: Record<string, unknown>) => call('localContext', params || {}),
+
+  /**
+   * The local project **source** behind the file panel (task 9.2).
+   *
+   * These are how the console reads the project the session is bound to on
+   * *this* machine. The backend cannot answer for it -- the path exists here, not
+   * there -- so the panel asks the shell instead, and the shell resolves the
+   * workspace, the grant and the containment. No method accepts or returns a
+   * directory: a reply carries the workspace id, a display label and
+   * project-relative paths, and nothing else.
+   */
+  projectSource: (workspaceId: string) => call('projectSource', { workspace_id: workspaceId }),
+
+  /** One page of the project's directory list, relative to its root. */
+  projectTree: (params?: Record<string, unknown>) => call('projectTree', params || {}),
+
+  /** Name or text search inside the project. */
+  projectSearch: (params?: Record<string, unknown>) => call('projectSearch', params || {}),
+
+  /** Metadata for one project-relative path. */
+  projectResolve: (params?: Record<string, unknown>) => call('projectResolve', params || {}),
+
+  /**
+   * One *page* of a file's text. Paged on purpose: a preview must never pull a
+   * whole large file through the bridge, and the page size is clamped by the
+   * shell rather than trusted from the page.
+   */
+  projectRead: (params?: Record<string, unknown>) => call('projectRead', params || {}),
+
+  /**
+   * Save one file the user edited. Travels as a v2 ``write`` frame -- the same
+   * authorization, serialisation and journal as the model's own write -- so a
+   * read-only project is refused here rather than written around.
+   */
+  projectWrite: (params?: Record<string, unknown>) => call('projectWrite', params || {}),
+
+  /**
+   * The four things only the system can do with a project file (task 9.4).
+   *
+   * All four take the same `{ workspace_id, path }` and answer with the file's
+   * *name* -- never its path, and never a directory. What the page gets back is
+   * whether the system acted, or why it could not: a file that is gone, a
+   * project whose grant was revoked, and a machine with no application for this
+   * kind of file are three different answers, and the panel says so.
+   */
+  projectOpenFile: (params?: Record<string, unknown>) => call('projectOpenFile', params || {}),
+
+  /** Show the file in the OS file manager. */
+  projectRevealFile: (params?: Record<string, unknown>) => call('projectRevealFile', params || {}),
+
+  /** Put the file's real path on this machine's clipboard. */
+  projectCopyPath: (params?: Record<string, unknown>) => call('projectCopyPath', params || {}),
+
+  /**
+   * Write a copy where the user chooses.
+   *
+   * `expected_mtime` is the version the panel read; when the file has changed
+   * since, the host refuses rather than copying something the user has not
+   * seen, and `accept_current` is how the user says "copy what is there now".
+   */
+  projectSaveFileAs: (params?: Record<string, unknown>) => call('projectSaveFileAs', params || {}),
+
+  /**
+   * The isolated preview of a project file (task 9.5).
+   *
+   * The answer is a refusal, or a **short-lived** URL to embed (`url`,
+   * `expires_at`) plus the file's name and kind. The URL is single-file and
+   * script-inert: the frame it is loaded into is sandboxed by the response's own
+   * CSP, and the page cannot read the bytes back. A local file's *path* is never
+   * part of the answer, and neither is a permanent URL of any kind.
+   */
+  projectPreviewFile: (params?: Record<string, unknown>) => call('projectPreviewFile', params || {}),
 
   /** Subscribe to shell events (theme, suspend, host notices). */
   onHostEvent: (listener: (payload: unknown) => void) => {

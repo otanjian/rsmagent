@@ -1,0 +1,36 @@
+{
+  "type": "execution_result",
+  "protocol_major": 2,
+  "command_id": "cmd_example",
+  "run_id": "run_example",
+  "tool_call_id": "call_example",
+  "workspace_id": "ws_example",
+  "device_id": "dev_example",
+  "state": "succeeded",
+  "execution_phase": "succeeded",
+  "effects": "completed",
+  "exit_code": 0,
+  "stdout": "已生成 output/开票清单.xlsx\n",
+  "stderr": "",
+  "truncated": false,
+  "started_at": 1780000000,
+  "finished_at": 1780000012,
+  "heartbeat_at": 1780000010,
+  "cancel_requested": false,
+  "journal_id": "journal_example",
+  "artifacts": [
+    {
+      "source": "desktop",
+      "artifact_id": "artifact_example",
+      "device_id": "dev_example",
+      "workspace_id": "ws_example",
+      "run_id": "run_example",
+      "tool_call_id": "call_example",
+      "relative_path": "output/开票清单.xlsx",
+      "file_name": "开票清单.xlsx",
+      "kind": "office",
+      "size": 20480,
+      "source_version": "opaque-version-example"
+    }
+  ]
+}

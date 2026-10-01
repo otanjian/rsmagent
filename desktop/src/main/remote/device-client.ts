@@ -30,6 +30,7 @@ import {
   nextReconnectDelayMs,
 } from './device-connection'
 import { resultFrame, type DeviceCommand, type DeviceResult } from './device-ops'
+import { PROJECT_EXECUTION_PROTOCOL } from '../project-execution/contract'
 import { openWebSocket, type OpenSocketOptions, type WebSocketLike } from './ws-client'
 
 /** Heartbeat cadence (contracts ``limits.heartbeat_seconds``). */
@@ -74,8 +75,25 @@ export interface DeviceClientOptions {
   deviceId: () => Promise<string | null>
   /** Permit ``ws://`` for the registered loopback backend only. */
   allowInsecureLoopback?: boolean
+  /** Trusted bundled-backend discovery only; never supplied by the Web page. */
+  localGatewayPort?: () => Promise<number>
   /** Run one command against the local root. Injected for tests. */
   runCommand: (command: DeviceCommand) => Promise<DeviceResult>
+  /**
+   * Run one v2 ``execute_tool`` frame and return the ``execution_result`` frame
+   * (task 7.1 - 7.7). Optional: a device without project execution simply does
+   * not offer the capability, and the server's negotiation decides that -- this
+   * client never fabricates an answer for a frame it cannot run.
+   */
+  runExecution?: (frame: Record<string, unknown>) => Promise<Record<string, unknown>>
+  /**
+   * Answer a v2 ``execution_status`` query from the durable journal (task 7.2).
+   *
+   * Optional for the same reason: without a journal there is no honest answer,
+   * and "queued" is the only safe default -- the server re-drives a queued
+   * command and the journal refuses a double effect on the device.
+   */
+  runExecutionStatus?: (frame: Record<string, unknown>) => Record<string, unknown>
   capabilities?: DeviceCapabilities
   heartbeatSeconds?: number
   idleTimeoutSeconds?: number
@@ -163,8 +181,18 @@ export class DeviceClient {
     try {
       url = deviceConnectUrl(this.options.origin)
     } catch (err) {
-      // A bad origin is a configuration problem, not a transient one.
       this.failPermanently(err instanceof Error ? err.message : 'invalid origin')
+      return
+    }
+    try {
+      if (this.options.allowInsecureLoopback && this.options.localGatewayPort) {
+        const port = await this.options.localGatewayPort()
+        if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('invalid local gateway port')
+        url = deviceConnectUrl(`http://127.0.0.1:${port}`)
+      }
+    } catch (err) {
+      // Local metadata may briefly disappear while the bundled backend restarts.
+      this.scheduleReconnect(reasonOf(err, 'gateway_unavailable'))
       return
     }
     let token: string | null = null
@@ -279,6 +307,13 @@ export class DeviceClient {
     } catch {
       return
     }
+    if (frame.protocol_major === PROJECT_EXECUTION_PROTOCOL.major) {
+      // The v2 execution channel. Recognised by its own major version rather
+      // than by the frame type, so a v2 frame this build does not know is
+      // ignored instead of being mistaken for a v1 ``command``.
+      void this.handleExecutionFrame(frame)
+      return
+    }
     if (frame.v !== 1) return
     const type = frame.type
     if (type === 'hello') {
@@ -342,6 +377,75 @@ export class DeviceClient {
       }
     } finally {
       this.inFlight.delete(requestId)
+    }
+  }
+
+  /**
+   * Answer one v2 execution frame (task 7.1 - 7.7).
+   *
+   * Same fencing rules as the v1 path, for the same reason: a frame under a
+   * stale epoch is dropped rather than answered (the server would treat the
+   * answer as a device fault), and a command id already being run here is not
+   * started twice. What differs is that the reply *is* the result frame the
+   * device executor built -- this method never invents a phase or an effect.
+   */
+  private async handleExecutionFrame(frame: Record<string, unknown>): Promise<void> {
+    const socket = this.socket
+    if (!socket) return
+    const type = String(frame.type || '')
+    const epoch = String(frame.connection_epoch || '')
+    if (epoch && epoch !== this.epoch) return
+
+    if (type === 'execution_status') {
+      const answer = this.options.runExecutionStatus
+      if (!answer) return
+      const commandId = String(frame.command_id || '')
+      if (!commandId || this.inFlight.has(`status:${commandId}`)) return
+      this.inFlight.add(`status:${commandId}`)
+      try {
+        socket.send(JSON.stringify(answer(frame)))
+      } catch {
+        /* the reconnect path owns recovery */
+      } finally {
+        this.inFlight.delete(`status:${commandId}`)
+      }
+      return
+    }
+
+    if (type !== 'execute_tool') return
+    const run = this.options.runExecution
+    const commandId = String(frame.command_id || '')
+    if (!run || !commandId || this.inFlight.has(`exec:${commandId}`)) return
+    this.inFlight.add(`exec:${commandId}`)
+    try {
+      const reply = await run(frame)
+      if (!this.running || this.socket !== socket) return
+      socket.send(JSON.stringify(reply))
+    } catch (err) {
+      if (!this.running || this.socket !== socket) return
+      try {
+        socket.send(JSON.stringify({
+          type: 'execution_result',
+          protocol_major: PROJECT_EXECUTION_PROTOCOL.major,
+          command_id: commandId,
+          run_id: String(frame.run_id || ''),
+          tool_call_id: String(frame.tool_call_id || ''),
+          // A transport failure before the journal was reached: nothing about
+          // the project changed here, and claiming otherwise would fabricate an
+          // effect the device never had.
+          state: 'failed',
+          execution_phase: 'failed',
+          effects: 'none',
+          started_at: 0,
+          finished_at: 0,
+          error_code: 'device_error',
+          error_message: err instanceof Error ? err.message : 'the local execution failed',
+        }))
+      } catch {
+        /* the reconnect path owns recovery */
+      }
+    } finally {
+      this.inFlight.delete(`exec:${commandId}`)
     }
   }
 

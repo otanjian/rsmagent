@@ -77,6 +77,18 @@ desktop/build/*
 !desktop/build/cowagent-backend.spec
 !desktop/build/requirements-desktop.txt
 !desktop/build/build-backend.sh
+# The packaging guard the release workflows run before PyInstaller. Allow-listed
+# for the same reason as the script above, and it matters more than most: a guard
+# that never reaches the runner is a guard that never ran, and the workflows would
+# fail on a missing file rather than on the dependency it exists to catch.
+!desktop/build/check-skill-dependencies.py
+# The other two build steps the workflows and build-backend.sh call. Same reason
+# as above — and these two guard the class of failure that builds cleanly and
+# ships broken: `check-python-syntax.py` (the bundle ships Python 3.11 while a
+# developer's venv is newer) and `verify-backend-bundle.py` (starts the frozen
+# executable the way an installed app does and runs a real tool through it).
+!desktop/build/check-python-syntax.py
+!desktop/build/verify-backend-bundle.py
 !desktop/build/build-feishu-vendor.py
 !desktop/build/entitlements.mac.plist
 !desktop/build/installer.nsh
@@ -158,3 +170,13 @@ README*.md
 # nothing but build output. Committing it here would record a gitlink with no
 # remote to fetch, so a fresh clone could not materialise it; it stays local.
 /marketing-demo/
+
+# Codex CLI's scratch tree for that same deck (node_modules, the .pptx and its
+# rendered slide PNGs). Machine-local build output, never source.
+/.codex-build/
+
+# Created as a side effect of tests/test_skill_dependencies_lock.py, which passes
+# a repo-root-relative path ("does-not-exist") to exercise the missing-directory
+# branch; the code under test then writes skills_config.json into it. A stray
+# test artifact, not source, and it must not be committed.
+/does-not-exist/

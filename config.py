@@ -467,6 +467,13 @@ available_setting = {
     "desktop_local_files_enabled": True,       # phase 2: read-only local directory access
     "desktop_native_notifications_enabled": True,  # phase 3A: system notifications
     "desktop_local_processing_enabled": False,     # phase 3B: fixed CSV/XLSX parsers (not yet)
+    # v2 project execution (change align-desktop-project-execution-with-master,
+    # tasks 6.1 / 11.2). Default OFF: the surfaces write into the user's own
+    # project directory, so an install that never opted in must not reach them,
+    # and the capability slices stay ``accepted=False`` until the evidence in
+    # ``openspec/changes/.../evidence/`` has been reproduced.
+    "desktop_project_execution_enabled": False,    # v2 file tools (read/write/edit/ls/search)
+    "desktop_project_scripts_enabled": False,      # v2 bash frames on the execution end
 }
 
 
@@ -669,12 +676,15 @@ def load_config():
     # Desktop phase switches: fill missing keys from available_setting so an
     # existing config.json that predates this change inherits the declaration
     # defaults (currently open for remote web / local files / notifications;
-    # closed for local processing). Never overwrite a key the operator set.
+    # closed for local processing and the v2 project execution surfaces).
+    # Never overwrite a key the operator set.
     for _desktop_key in (
         "desktop_remote_web_enabled",
         "desktop_local_files_enabled",
         "desktop_native_notifications_enabled",
         "desktop_local_processing_enabled",
+        "desktop_project_execution_enabled",
+        "desktop_project_scripts_enabled",
     ):
         if _desktop_key not in config:
             config[_desktop_key] = available_setting[_desktop_key]

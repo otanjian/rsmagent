@@ -13,6 +13,15 @@ level to outlive them.
 Processes are deliberately NOT killed when the agent finishes: a background
 command is usually a server the user asked to have running. Use kill() to stop
 one on purpose.
+
+That last rule is the *serial* path's, and it is inherited here as-is for the
+server. A confined local run is the exception, and deliberately so: its whole
+`process_group_hook` exists so the run's owner can end everything the run
+started, because the acceptance criteria for a local run require the tree to be
+gone once the run is (A17/A18/A19) -- a server left behind on the user's machine
+after the project closed is a leak, not a feature. The hook is only ever
+installed by that caller; without it this module behaves exactly as documented
+above.
 """
 
 import os
@@ -21,11 +30,24 @@ import sys
 import threading
 import time
 import uuid
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from agent.tools.bash.decode import decode_output
 
 _IS_WIN = sys.platform == "win32"
+
+#: Called with the process-group id of every job started here.
+#:
+#: Mirrors `Bash.process_group_hook` (see that attribute for the full reasoning);
+#: a job is started in its own session too, so its group id is the only handle to
+#: the tree and the caller that owns the run needs it.
+_process_group_hook: Optional[Callable[[int], None]] = None
+
+
+def set_process_group_hook(hook: Optional[Callable[[int], None]]) -> None:
+    """Install (or clear) the hook that receives each job's process-group id."""
+    global _process_group_hook
+    _process_group_hook = hook
 
 # Per-job output cap. A chatty server would otherwise grow without bound; the
 # oldest output is dropped first since the tail is what matters when checking
@@ -122,6 +144,13 @@ def start(command: str, cwd: str, env: dict, temp_script: Optional[str] = None) 
         env=env,
         start_new_session=not _IS_WIN,
     )
+    # A new session means the group id is the pid: reported before anything waits,
+    # so the run's owner can end the job even after this job outlives its shell.
+    if _process_group_hook is not None and not _IS_WIN:
+        try:
+            _process_group_hook(process.pid)
+        except Exception:
+            pass
     job = _Job(f"bash_{uuid.uuid4().hex[:8]}", command, process, temp_script)
     reader = threading.Thread(target=_drain, args=(job, process.stdout), daemon=True)
     job.readers.append(reader)

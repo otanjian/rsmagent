@@ -33,6 +33,11 @@
 //     broker itself is untouched: it still generates the PKCE verifier, opens
 //     the loopback listener, waits for the code and exchanges it.
 //
+//  4. **The native directory dialog.** See the block below: a native sheet
+//     cannot be clicked by a test, so its two OS-owned decisions (whether a
+//     result comes back, and how long the user takes) are scripted. The
+//     product's own selection handler, service and grant registry still run.
+//
 // Everything else -- mode selection, the config file, probing, the container,
 // the narrow bridge, downloads -- is the product's own code.
 
@@ -72,6 +77,80 @@ const openedPath = path.join(profileDir, 'opened-external.jsonl')
 shell.openExternal = async (url) => {
   fs.appendFileSync(openedPath, `${JSON.stringify({ url: String(url), at: Date.now() })}\n`)
   return ''
+}
+
+// ---------------------------------------------------------------------------
+// The native directory dialog, scripted and recorded.
+//
+// A real ``showOpenDialog`` is a native sheet: nothing in a test can click the
+// filesystem browser it puts on screen, and it blocks the window it is attached
+// to. The two decisions the OS makes on the user's behalf -- *whether* a result
+// comes back at all, and *how long* the user takes to make it -- are therefore
+// scripted here. Everything downstream is the product's own code: the same
+// ``chooseWorkspace`` handler, the same selection service, the same grant
+// registry, the same console entry point. What is substituted is only the part
+// that is not ours.
+//
+// ``dialog-script.json`` is a JSON array read fresh on every call:
+//   { "result": { "filePaths": ["/tmp/x"] } }   what the user picked
+//   { "result": { "canceled": true } }          the user closed the dialog
+//   { "hold": "a" }                             wait until "a" is released
+//   { "delayMs": 300 }                          answer after a pause
+// The missing step is a cancel, so a script that runs out of steps closes the
+// remaining dialogs rather than leaving them unanswered forever.
+//
+// Releases are polled from ``dialog-releases.json`` (an array of hold ids) and
+// calls are appended to ``dialog-calls.jsonl`` -- one ``call`` record when the
+// product asks, one ``return`` record when this override answers -- so the spec
+// can prove the order the app asked and the order it was answered in, which is
+// what the stale-callback cases turn on.
+const dialogScriptPath = path.join(profileDir, 'dialog-script.json')
+const dialogReleasesPath = path.join(profileDir, 'dialog-releases.json')
+const dialogCallsPath = path.join(profileDir, 'dialog-calls.jsonl')
+const dialog = require('electron').dialog
+let dialogIndex = 0
+
+function readJsonFile(file, fallback) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch {
+    return fallback
+  }
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+dialog.showOpenDialog = async (...args) => {
+  // The product calls this two ways: ``(parent, options)`` in the bridge
+  // handler and ``(options)`` from the local ``select-directory`` handler.
+  const options = (args.length > 1 ? args[1] : args[0]) || {}
+  // The script file *is* the queue: each step is consumed by being removed, so a
+  // spec that writes a fresh array starts a fresh sequence. A counter would have
+  // to be reset alongside the file and the two could disagree.
+  const steps = readJsonFile(dialogScriptPath, [])
+  const step = steps.shift() || { result: { canceled: true } }
+  fs.writeFileSync(dialogScriptPath, JSON.stringify(steps))
+  const { index } = { index: ++dialogIndex }
+  fs.appendFileSync(
+    dialogCallsPath,
+    `${JSON.stringify({
+      kind: 'call',
+      index,
+      message: options.message || '',
+      properties: options.properties || [],
+      at: Date.now(),
+    })}\n`,
+  )
+  if (step.hold) {
+    while (!readJsonFile(dialogReleasesPath, []).includes(step.hold)) await sleep(20)
+  }
+  if (step.delayMs) await sleep(step.delayMs)
+  const result = step.result || { canceled: true }
+  fs.appendFileSync(
+    dialogCallsPath,
+    `${JSON.stringify({ kind: 'return', index, canceled: !!result.canceled, at: Date.now() })}\n`,
+  )
+  return { canceled: !!result.canceled, filePaths: result.filePaths || [] }
 }
 
 // One test-only hook, for reading the state Playwright cannot see: a
@@ -150,6 +229,59 @@ globalThis.__cowE2E = {
     const target = webContents.fromId(id)
     if (!target) return Promise.reject(new Error('the remote container is gone'))
     return target.executeJavaScript(code, true)
+  },
+  /**
+   * The live local-directory grants, read from the authority.
+   *
+   * The grant registry is the thing that decides whether a local root may be
+   * read, and a page is deliberately unable to enumerate it. Reading it here --
+   * from the main process, through the same module instance the app loaded --
+   * is what lets the spec state "cancelling created no authorization" as a fact
+   * about the authorization table rather than an inference from the UI. Paths
+   * are returned separately, keyed by grant id, because the public projection
+   * does not carry them (that is a property the release relies on).
+   */
+  grantRegistry() {
+    const bridge = require(path.join(__dirname, '..', 'dist', 'main', 'remote', 'local-files-bridge.js'))
+    return bridge.remoteGrantRegistry.list().map((grant) => ({
+      id: grant.id,
+      label: grant.label,
+      purpose: grant.purpose,
+      grantVersion: grant.grantVersion,
+      tenantId: grant.tenantId,
+      deviceId: grant.deviceId,
+      absolutePath: bridge.remoteGrantRegistry.absolutePathFor(grant.id),
+    }))
+  },
+  /**
+   * Where the installation identity lives, and what it currently holds.
+   *
+   * Asked of the app rather than hard-coded: ``index.ts`` composes its profile
+   * directory as ``appData/<profileName>``, so the path a test would guess
+   * (``userData``) is not the one the app uses -- guessing it made an "identity
+   * missing" assertion pass for the wrong reason.
+   */
+  installationIdentity() {
+    const mod = require(path.join(__dirname, '..', 'dist', 'main', 'installation-identity.js'))
+    const file = mod.installationIdentityPath(require('electron').app.getPath('userData'))
+    let raw = null
+    try {
+      raw = fs.readFileSync(file, 'utf8')
+    } catch {
+      raw = null
+    }
+    return { file, raw }
+  },
+  /**
+   * Clear the identity the way an uninstall or a support reset would: the file
+   * goes and the memoised value goes with it, so the next read is a real first run.
+   */
+  resetInstallationIdentity() {
+    const mod = require(path.join(__dirname, '..', 'dist', 'main', 'installation-identity.js'))
+    const file = mod.installationIdentityPath(require('electron').app.getPath('userData'))
+    mod.forgetInstallationIdentity()
+    fs.rmSync(file, { force: true })
+    return file
   },
 }
 

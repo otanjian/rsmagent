@@ -149,15 +149,42 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r desktop/build/requirements-desktop.txt
           pip install pyinstaller
+          # Refuse a bundle that cannot satisfy its skills' declared dependencies,
+          # before spending a PyInstaller run on it. `--verify-imports` is the real
+          # check: the lock is installed here, so an import is the last word.
+          python desktop/build/check-skill-dependencies.py --verify-imports
+          # The bundle ships this interpreter, so anything that only parses on a
+          # newer one must fail here rather than ship as a module PyInstaller
+          # silently drops.
+          python desktop/build/check-python-syntax.py --floor 3.11
           # Run from repo root so the spec's relative datas resolve correctly.
           pyinstaller desktop/build/cowagent-backend.spec \
             --noconfirm \
             --distpath desktop/build/dist \
             --workpath desktop/build/build-work
+          # Start the frozen executable the way the app does and run a tool.
+          python desktop/build/verify-backend-bundle.py
 
       - name: Install desktop deps
         working-directory: desktop
         run: npm ci
+
+      # The installed-shape boundary (task 4.9's "随包 Python" leg). Runs the
+      # isolation acceptance against the *frozen* backend built above rather than
+      # against a source checkout -- the two are not interchangeable, because a
+      # frozen bundle has no virtualenv and `interpreter.ts` deliberately narrows
+      # the read set to `bundleRoot` (see the core release workflow for why).
+      # The suite compiles the main-process TS itself if it is stale, so `npm ci`
+      # is enough to run it here.
+      #
+      # macOS only: the probe needs `sandbox-exec`, and Windows refuses local
+      # script execution outright (task 4.5), so there is nothing to confine there.
+      - name: Verify the installed-shape sandbox boundary
+        if: matrix.platform == 'mac'
+        shell: bash
+        env:
+          COW_A26_BACKEND: ${{ github.workspace }}/desktop/build/dist
+        run: node --test tests/test_desktop_local_execution.cjs
 
       # Bundle ripgrep on Windows so the grep tool has a fast backend out of the
       # box instead of falling back to PowerShell (slow, and prone to encoding /

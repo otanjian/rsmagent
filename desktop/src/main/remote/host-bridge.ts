@@ -27,6 +27,10 @@ export const PHASE1_METHODS = [
   'suspendLocalContext',
   'saveArtifact',
   'openExternal',
+  // The one account action a container needs: end the native session and let
+  // the local shell resume its login/connection entry. It lives in phase 1
+  // (always offered) because signing out must work with local files closed.
+  'signOut',
   'onHostEvent',
 ] as const
 
@@ -35,15 +39,83 @@ export const PHASE2_METHODS = [
   'bindContext',
   'chooseWorkspace',
   'disconnectWorkspace',
+  // Task 9.3: the *live* local context for a chat, so a document that was
+  // replaced by a reload can re-verify and resume the project it was showing
+  // instead of starting over from a name it cached.
+  'localContext',
+] as const
+
+/**
+ * Phase-3 additions: the local project as a *source* for the file panel.
+ *
+ * Change ``align-desktop-project-execution-with-master``, task 9.2. The console's
+ * panel is server-backed by default, which is correct for server files and
+ * impossible for a project on the user's own machine. These methods let the page
+ * ask the machine instead, through the same authorized read path and the same
+ * ``write`` frame the model's tools use -- never through the backend's path
+ * rules, which would answer about a same-named *server* file.
+ */
+export const PHASE3_METHODS = [
+  'projectSource',
+  'projectTree',
+  'projectSearch',
+  'projectResolve',
+  'projectRead',
+  'projectWrite',
+  // Task 9.4: the four things only the *system* can do with a project file --
+  // open it in the user's own application, show it in the file manager, put its
+  // real path on the clipboard, and write a copy elsewhere. Each one re-verifies
+  // the file and the grant; none of them returns a directory to the page.
+  'projectOpenFile',
+  'projectRevealFile',
+  'projectCopyPath',
+  'projectSaveFileAs',
+  // Task 9.5: the *preview* of a project file the page may not read for itself.
+  // The page names the file and gets back either a refusal or a short-lived
+  // protected URL to embed -- never a path, and never the file's bytes.
+  'projectPreviewFile',
 ] as const
 
 /** Every method this build may expose once local-files is open. */
-export const ALL_BRIDGE_METHODS = [...PHASE1_METHODS, ...PHASE2_METHODS] as const
+export const ALL_BRIDGE_METHODS = [
+  ...PHASE1_METHODS,
+  ...PHASE2_METHODS,
+  ...PHASE3_METHODS,
+] as const
 
 //: An `openExternal` bridge call may carry at most this many bytes of inline
 //: content once decoded. Larger files are fetched by the host through the
 //: download policy (`downloads.ts`), never pushed through IPC.
 export const SAVE_ARTIFACT_MAX_BYTES = 16777216
+
+/**
+ * Server codes that mean "this session is gone", not "your request was wrong".
+ *
+ * Change ``fix-desktop-relogin-session-sync``, task 2.4. They are the only ones
+ * a directory operation may re-interpret as a *sign-in* problem; a tool
+ * permission refusal (``permission_denied``), a tenant problem
+ * (``invalid_tenant``), a network failure or an offline device each keep their
+ * own answer, because none of them is fixed by signing in again.
+ */
+const SESSION_INVALID_CODES = ['auth_required', 'session_revoked', 'unauthorized', 'invalid_session']
+
+/** True when a server failure is a lost session rather than a refused request. */
+export function isSessionInvalidCode(code: unknown): boolean {
+  return typeof code === 'string' && SESSION_INVALID_CODES.includes(code)
+}
+
+//: A panel save may carry at most this many bytes of edited text.
+//:
+//: Not a contract value: the v2 contract bounds a *frame*, and this bounds the
+//: panel's own editor. A panel is for reading a report and fixing a line, not
+//: for authoring a multi-megabyte file, and an unbounded inline string would be
+//: copied through IPC twice (page -> main -> worker) before it ever reached
+//: disk. Anything larger is refused with the bound in the message, so the user
+//: learns the limit rather than watching a save time out.
+export const PROJECT_WRITE_MAX_BYTES = 1048576
+
+//: The longest relative path the panel may name.
+export const PROJECT_PATH_MAX = 4096
 
 export type BridgeMethod = (typeof ALL_BRIDGE_METHODS)[number]
 
@@ -247,6 +319,12 @@ export function checkBridgeCall(call: BridgeCall): Verdict {
       if (!url) return refuse('invalid_request', 'openExternal requires a URL')
       return checkExternalUrl(url)
     }
+    case 'signOut':
+      // No parameters at all: the account to end is the one this document is
+      // already running under, and which native session that is, is the main
+      // process's own state. A page cannot name a target, carry a token or ask
+      // for another account -- so there is nothing here to validate.
+      return { ok: true }
     case 'onHostEvent':
       return { ok: true }
     case 'chooseWorkspace':
@@ -255,9 +333,29 @@ export function checkBridgeCall(call: BridgeCall): Verdict {
       if (params.scope !== undefined && !isPlainObject(params.scope)) {
         return refuse('invalid_request', 'chooseWorkspace.scope must be an object')
       }
+      // An unknown purpose is refused rather than defaulted: quietly treating a
+      // typo as read-only would hide a caller that meant to ask for execution.
+      if (params.purpose !== undefined
+        && params.purpose !== 'readonly-input'
+        && params.purpose !== 'project-execution') {
+        return refuse('invalid_request', 'chooseWorkspace.purpose is not a known purpose')
+      }
       return { ok: true }
     case 'disconnectWorkspace':
       return { ok: true }
+    case 'localContext': {
+      // The page names the Agent and the chat it is asking about and nothing
+      // else: which directory, which grant and which workspace are the host's
+      // own record, re-read live from the registry and the connection. The ids
+      // are compared, never resolved into anything.
+      for (const key of ['agent_id', 'business_session_id'] as const) {
+        const value = params[key]
+        if (value !== undefined && (typeof value !== 'string' || value.length > 200)) {
+          return refuse('invalid_request', `localContext.${key} must be a string`)
+        }
+      }
+      return { ok: true }
+    }
     case 'bindContext': {
       // The page proposes *what* to bind to; the main process decides *whether*
       // it may (document generation, scope, live grant) and resolves the server
@@ -271,7 +369,10 @@ export function checkBridgeCall(call: BridgeCall): Verdict {
           return refuse('invalid_request', `bindContext.scope.${key} is required`)
         }
       }
-      for (const key of ['installationId', 'label', 'agentId',
+      // The installation id is deliberately **not** required from the page: the
+      // main process owns it (task 2.2). A page that still sends one has it
+      // considered only as a legacy migration candidate, never as truth.
+      for (const key of ['label', 'agentId',
         'businessSessionId', 'contextNonce'] as const) {
         if (typeof params[key] !== 'string' || !params[key]) {
           return refuse('invalid_request', `bindContext.${key} is required`)
@@ -279,9 +380,161 @@ export function checkBridgeCall(call: BridgeCall): Verdict {
       }
       return { ok: true }
     }
+    case 'projectSource': {
+      if (!requireWorkspace(params)) {
+        return refuse('invalid_request', 'projectSource requires a workspace_id')
+      }
+      return { ok: true }
+    }
+    case 'projectTree': {
+      if (!requireWorkspace(params)) {
+        return refuse('invalid_request', 'projectTree requires a workspace_id')
+      }
+      if (!checkProjectPath(params.path, true)) {
+        return refuse('invalid_path', 'projectTree.path must be a project-relative path')
+      }
+      if (params.cursor !== undefined && typeof params.cursor !== 'string') {
+        return refuse('invalid_request', 'projectTree.cursor must be a string')
+      }
+      if (!checkCount(params.limit, 'projectTree.limit')) return countRefusal('projectTree.limit')
+      return { ok: true }
+    }
+    case 'projectSearch': {
+      if (!requireWorkspace(params)) {
+        return refuse('invalid_request', 'projectSearch requires a workspace_id')
+      }
+      const query = requireString(params, 'query', 1024)
+      if (!query) return refuse('invalid_request', 'projectSearch requires a query')
+      if (params.mode !== undefined && params.mode !== 'name' && params.mode !== 'text') {
+        return refuse('invalid_request', 'projectSearch.mode must be name or text')
+      }
+      if (!checkProjectPath(params.path, true)) {
+        return refuse('invalid_path', 'projectSearch.path must be a project-relative path')
+      }
+      return { ok: true }
+    }
+    case 'projectResolve': {
+      if (!requireWorkspace(params)) {
+        return refuse('invalid_request', 'projectResolve requires a workspace_id')
+      }
+      if (!checkProjectPath(params.path, false)) {
+        return refuse('invalid_path', 'projectResolve.path must be a project-relative path')
+      }
+      return { ok: true }
+    }
+    case 'projectRead': {
+      if (!requireWorkspace(params)) {
+        return refuse('invalid_request', 'projectRead requires a workspace_id')
+      }
+      if (!checkProjectPath(params.path, false)) {
+        return refuse('invalid_path', 'projectRead.path must be a project-relative path')
+      }
+      // An offset is a byte position in the file: negative is not "from the
+      // end" here, it is a caller that guessed.
+      if (!checkCount(params.offset, 'projectRead.offset')) {
+        return refuse('invalid_request', 'projectRead.offset must be a non-negative integer')
+      }
+      if (!checkCount(params.bytes, 'projectRead.bytes')) return countRefusal('projectRead.bytes')
+      if (params.encoding !== undefined && typeof params.encoding !== 'string') {
+        return refuse('invalid_request', 'projectRead.encoding must be a string')
+      }
+      return { ok: true }
+    }
+    case 'projectWrite': {
+      if (!requireWorkspace(params)) {
+        return refuse('invalid_request', 'projectWrite requires a workspace_id')
+      }
+      if (!checkProjectPath(params.path, false)) {
+        return refuse('invalid_path', 'projectWrite.path must be a project-relative path')
+      }
+      if (typeof params.content !== 'string') {
+        return refuse('invalid_request', 'projectWrite requires inline content')
+      }
+      // Measured in bytes, not characters: a page must not slip a larger write
+      // past the bound by using multi-byte text.
+      const bytes = Buffer.byteLength(params.content, 'utf8')
+      if (bytes > PROJECT_WRITE_MAX_BYTES) {
+        return refuse('limit_exceeded', `the edited text exceeds ${PROJECT_WRITE_MAX_BYTES} bytes`)
+      }
+      return { ok: true }
+    }
+    case 'projectOpenFile':
+    case 'projectRevealFile':
+    case 'projectCopyPath':
+    case 'projectSaveFileAs': {
+      // One shape for all four: the file to act on, and for a save the version
+      // the page last read. The *action* is the method name, never a parameter,
+      // so a page cannot ask for something this build did not publish.
+      if (!requireWorkspace(params)) {
+        return refuse('invalid_request', `${method} requires a workspace_id`)
+      }
+      if (!checkProjectPath(params.path, false)) {
+        return refuse('invalid_path', `${method}.path must be a project-relative path`)
+      }
+      if (method !== 'projectSaveFileAs') return { ok: true }
+      // The version the panel read before it offered "save a copy": a whole
+      // number of seconds, like every other version on this bridge. Sent so the
+      // host can refuse a copy of a file the user has not seen.
+      if (params.expected_mtime !== undefined) {
+        if (typeof params.expected_mtime !== 'number' || !Number.isFinite(params.expected_mtime)
+          || params.expected_mtime < 0) {
+          return refuse('invalid_request', 'projectSaveFileAs.expected_mtime must be a non-negative number')
+        }
+      }
+      if (params.accept_current !== undefined && typeof params.accept_current !== 'boolean') {
+        return refuse('invalid_request', 'projectSaveFileAs.accept_current must be a boolean')
+      }
+      return { ok: true }
+    }
+    case 'projectPreviewFile': {
+      // Shape only, exactly like the four actions above: whether *this* machine
+      // may preview *this* file, and as what, is decided where the grant and the
+      // disk are (`planLocalPreview`), not from a page's parameters.
+      if (!requireWorkspace(params)) {
+        return refuse('invalid_request', 'projectPreviewFile requires a workspace_id')
+      }
+      if (!checkProjectPath(params.path, false)) {
+        return refuse('invalid_path', 'projectPreviewFile.path must be a project-relative path')
+      }
+      return { ok: true }
+    }
     default:
       return refuse('feature_unavailable', 'the bridge method is not part of this bridge version')
   }
+}
+
+/** The workspace the call names: the only identifier a project call carries. */
+function requireWorkspace(params: Record<string, unknown>): boolean {
+  const value = params.workspace_id
+  return typeof value === 'string' && value !== '' && value.length <= 200
+}
+
+function countRefusal(field: string): Verdict {
+  return refuse('invalid_request', `${field} must be a non-negative integer`)
+}
+
+/** A non-negative integer, or `undefined`/`null` (the device's own default). */
+function checkCount(value: unknown, _field: string): boolean {
+  if (value === undefined || value === null) return true
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
+/**
+ * Whether a panel path is *shaped* like a project-relative one.
+ *
+ * Absolute paths, drive letters, NUL and `..` are refused here so they never
+ * reach a file API at all; the containment itself is the helper's job, which
+ * resolves every component against the root it re-opened. `allowEmpty` is for
+ * the listing/search calls, where `''` means the project root.
+ */
+function checkProjectPath(value: unknown, allowEmpty: boolean): boolean {
+  if (value === undefined || value === null) return allowEmpty
+  if (typeof value !== 'string') return false
+  if (value === '') return allowEmpty
+  if (value.length > PROJECT_PATH_MAX) return false
+  if (value.includes('\u0000')) return false
+  if (value.startsWith('/') || /^[a-zA-Z]:/.test(value)) return false
+  return !value.split(/[\\/]+/).some((part) => part === '..')
 }
 
 /** Only a plain ``http(s)`` URL may leave the application. */

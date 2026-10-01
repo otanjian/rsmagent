@@ -52,6 +52,31 @@ export interface RemoteContainer {
 const TOP_INSET = 0
 
 /**
+ * The rectangle the container covers, in coordinates relative to its parent
+ * (the window's ``contentView``).
+ *
+ * ``getContentBounds()`` reports the content area in *screen* coordinates, so
+ * its x/y are the window's position on the desktop rather than an origin a
+ * child view can use. Passing the value straight to ``setBounds()`` shifts the
+ * view by that offset: the page moves right by the window's x, and its bottom
+ * row -- starting with the sidebar's account footer -- is pushed off the
+ * window. Only width/height are meaningful here; the origin is always the
+ * parent's top-left.
+ *
+ * Both the initial attach and the resize path go through this one function so
+ * the first paint and a later resize cannot land on different rectangles.
+ */
+function coverBounds(window: BaseWindow): Electron.Rectangle {
+  const bounds = window.getContentBounds()
+  return {
+    x: 0,
+    y: TOP_INSET,
+    width: bounds.width,
+    height: Math.max(0, bounds.height - TOP_INSET),
+  }
+}
+
+/**
  * Create the container view and wire its navigation and permission policy.
  *
  * ``sandbox: true`` + ``contextIsolation: true`` + ``nodeIntegration: false``
@@ -100,7 +125,7 @@ export function createRemoteContainer(options: ContainerOptions): RemoteContaine
   }
 
   options.window.contentView.addChildView(view)
-  view.setBounds(options.window.getContentBounds())
+  view.setBounds(coverBounds(options.window))
 
   // -- document registration and generation ------------------------------
   //
@@ -182,8 +207,7 @@ export function createRemoteContainer(options: ContainerOptions): RemoteContaine
   // -- size synchronisation -------------------------------------------------
   const resize = () => {
     if (view.webContents.isDestroyed()) return
-    const bounds = options.window.getContentBounds()
-    view.setBounds({ x: 0, y: TOP_INSET, width: bounds.width, height: Math.max(0, bounds.height - TOP_INSET) })
+    view.setBounds(coverBounds(options.window))
   }
   options.window.on('resize', resize)
   view.webContents.once('destroyed', () => {

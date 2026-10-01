@@ -198,6 +198,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
   desktopRemoteDisconnect: () => ipcRenderer.invoke('remote-container-stop') as Promise<{
     ok: boolean; revoked: boolean; message: string
   }>,
+  /**
+   * The host's sign-out feed (change ``fix-desktop-relogin-session-sync``,
+   * task 2.2). The container asked to end the account; the local shell has to
+   * refresh its login/connection entry even though the document that asked is
+   * already gone. The payload is a phase and an outcome -- no account, no token.
+   */
+  onDesktopLogoutState: (callback: (notice: {
+    phase: 'started' | 'finished'
+    ok: boolean
+    revoked: boolean
+    code: string
+    message: string
+  }) => void) => {
+    const handler = (_event: unknown, notice: {
+      phase: 'started' | 'finished'
+      ok: boolean
+      revoked: boolean
+      code: string
+      message: string
+    }) => callback(notice)
+    ipcRenderer.on('desktop:logout-state', handler)
+    return () => ipcRenderer.removeListener('desktop:logout-state', handler)
+  },
 
   platform: process.platform,
   // OS UI language (e.g. "zh-CN"), read synchronously so the renderer can pick

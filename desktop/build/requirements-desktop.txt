@@ -48,6 +48,20 @@ python-docx
 openpyxl
 python-pptx
 
+# ---- skill script libraries ----
+# Skills run their scripts inside the sandboxed local worker and import these at
+# call time, so they must be in the bundle rather than assumed present.
+# `xlsxwriter` was missing until now: skills/rfq-quote/scripts/quote.py writes
+# every deliverable through it (imported lazily inside `Report.__init__`), and
+# the same library backs the workbuddy preset's
+# agent/presets/workbuddy/shared/scenario_io.py. Without it the failure appeared
+# only at output time, inside a subprocess, as an opaque ModuleNotFoundError after
+# the model had already reported success.
+# The check that keeps this list honest: `agent/skills/dependencies.py`, driven by
+# the skills' own frontmatter (`requires.python` / `install: pip`) via
+# desktop/build/check-skill-dependencies.py, which build-backend.sh runs.
+xlsxwriter
+
 # ---- browser tool ----
 # Only the pure-Python package + Node driver are bundled by PyInstaller (~10-15MB).
 # The Chromium binary is NOT bundled: the browser tool drives the user's system

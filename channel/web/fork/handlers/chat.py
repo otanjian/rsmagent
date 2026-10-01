@@ -8,6 +8,7 @@ reference each other without import cycles.
 
 from __future__ import annotations
 from auth.runtime import authorized_target, authorized_target_scope
+from channel.web.fork.execution_scope import execution_target_scope
 from bridge.context import *
 from contextlib import contextmanager
 import json
@@ -220,8 +221,26 @@ def _stream_identity_scope(channel, request_id):
         _chat_error(str(e), f"{e.status} {HTTPStatus(e.status).phrase}", e.code)
     if ctx.must_change_password:
         _chat_error("password change required", code="password_change_required")
-    with use_identity(to_runtime_identity(ctx)):
+    with use_identity(_stream_execution_identity(ctx, owner)) as _ident:
         yield ctx
+
+
+def _stream_execution_identity(ctx, owner):
+    """The stream's identity, carrying the session's execution target.
+
+    The SSE attach runs in its own request but must describe the *same* run as
+    the POST that started it, so the target is re-resolved from the session
+    rather than read back from the live Agent (which a later turn may have
+    re-pointed).
+    """
+    from auth.runtime import to_runtime_identity
+    from channel.web.fork.execution_scope import (
+        bind_execution_target, resolve_execution_target,
+    )
+
+    identity = to_runtime_identity(ctx)
+    return bind_execution_target(
+        identity, resolve_execution_target(owner[2], owner[3]))
 
 
 class MessageHandler:
@@ -253,7 +272,7 @@ class MessageHandler:
             )
             with authorized_target_scope(
                 auth_context=ctx, session=(agent_id, session_id),
-            ):
+            ), execution_target_scope(agent_id, session_id):
                 return WebChannel().post_message()
 
 
@@ -270,9 +289,10 @@ class PollHandler:
             body = _chat_body()
             session_id = body.get("session_id")
             agent_id = _authorize_chat_session(ctx, session_id, _request_agent_id(body))
-            with authorized_target_scope(session=(agent_id, session_id)):
+            with authorized_target_scope(
+                session=(agent_id, session_id),
+            ), execution_target_scope(agent_id, session_id):
                 return WebChannel().poll_response()
-
 
 class CancelHandler:
     def POST(self):
@@ -294,7 +314,9 @@ class CancelHandler:
             else:
                 session_id = body.get("session_id")
                 agent_id = _authorize_chat_session(ctx, session_id, _request_agent_id(body))
-            with authorized_target_scope(session=(agent_id, session_id)):
+            with authorized_target_scope(
+                session=(agent_id, session_id),
+            ), execution_target_scope(agent_id, session_id):
                 return channel.cancel_request()
 
 

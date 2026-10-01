@@ -19,7 +19,7 @@ import tempfile
 import threading
 import unittest
 
-from tests._helpers import WebAppHarness
+from tests._helpers import WebAppHarness, cookie_value
 
 CLIENT_ID = "cowagent-desktop"
 REDIRECT_URI = "http://127.0.0.1:52345/callback"
@@ -445,6 +445,63 @@ class DesktopWebSessionWireTests(_DesktopIdentityBase):
         self.assertTrue(rows, "the bootstrap must have stored a link")
         self.assertIsNotNone(rows[0]["revoked_at"],
                              "the native logout must revoke its paired Web child")
+
+    def test_a_paired_sign_out_leaves_the_host_reading_the_session_not_the_status(self):
+        """The two ends of a container sign-out, in the order the console runs them.
+
+        ``handleLogout``/``desktopRelogin`` end the page's (child) session first,
+        then call the host's ``signOut``, whose last step is ``auth-broker.logout``:
+        ``POST /auth/logout`` with the *native* Bearer. In the paired state the
+        page's own call has already revoked the native parent (that is what
+        revoking a pair means), so this second call arrives with a Bearer the
+        identity store no longer knows.
+
+        ``DbAuthLogoutHandler`` gates every write through ``_csrf_ok()``, and for a
+        Bearer source it asks whether that credential authenticates. A revoked
+        Bearer therefore fails the *CSRF* check rather than the *session* check,
+        and the route answers ``403 cross_origin``. A client that reads only the
+        status cannot tell that apart from "the server refused to revoke a live
+        session", and ``auth-broker.logout`` treated anything but 200/401 as
+        unconfirmed: it set ``blockedReason='logout_incomplete'`` and froze
+        business traffic. That was the real Electron journey -- the shell showed
+        "退出未完成 ... 请重试退出" after a sign-out the server had in fact completed.
+
+        What the host therefore needs from the wire, and what this pins: after the
+        page's sign-out, the session is *provably* gone through a read that takes
+        the credential alone. That read is the recovery the broker performs when
+        the status is not a confirmation, so it must answer "not signed in" for a
+        session that has already ended.
+        """
+        native = self._native_bearer_over_the_wire()
+        boot = self._bootstrap(native)
+        child = cookie_value(boot, "cow_session")
+        self.assertTrue(child, "the bootstrap must deliver the child secret as a Cookie")
+
+        # 1. The page ends its own session (console.js: endWebSession).
+        page = self.app.post("/auth/logout", None, token=child)
+        self.assertEqual(page.status.split()[0], "200", page.status)
+
+        # 2. The host ends the native session (auth-broker.logout).
+        host = self.app.post(
+            "/auth/logout", None, token=None,
+            headers={"Authorization": "Bearer " + native})
+        host_status = host.status.split()[0]
+        if host_status not in ("200", "401"):
+            # Not a confirmation: the only legitimate answer here is the CSRF gate
+            # reporting the dead credential as an origin problem. A different
+            # refusal means the sign-out failed for a reason the host may not
+            # treat as "already ended".
+            self.assertEqual(
+                (host_status, self.app.json(host)["code"]), ("403", "cross_origin"),
+                f"the host's sign-out was refused for an unexpected reason: "
+                f"{host.status} {host.data!r}")
+
+        # 3. The read the host falls back on, and the fact that makes the fallback
+        #    sound: the session it was asked to end is gone.
+        me = self.app.get("/auth/me", token=None,
+                          headers={"Authorization": "Bearer " + native})
+        self.assertEqual(me.status.split()[0], "401",
+                         f"a revoked native session must not read as live: {me.status} {me.data!r}")
 
     def test_bootstrap_body_carries_the_link_deadline_the_client_requires(self):
         """Task 3.7: the child secret is delivered *only* by Cookie -- but the

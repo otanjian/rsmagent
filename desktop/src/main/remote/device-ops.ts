@@ -6,9 +6,11 @@
  * queue and nothing on the machine ever ran it. The mapping is therefore
  * narrow and total:
  *
- * * only the ops this fix claims (``list`` / ``stat`` / ``search`` /
- *   ``read_text``) are executed; ``materialize`` and ``inspect`` answer
- *   ``feature_unavailable`` rather than a fabricated success;
+ * * the ops this build claims (``list`` / ``stat`` / ``search`` /
+ *   ``read_text``, plus ``materialize`` when the app supplied an upload port)
+ *   are executed; anything else -- including ``materialize`` in a build with no
+ *   transport, and ``inspect`` -- answers ``feature_unavailable`` rather than a
+ *   fabricated success;
  * * every parameter is re-clamped to the contract bound here, because the
  *   device must not trust the server (or a page upstream of it) for its own
  *   resource limits;
@@ -47,8 +49,39 @@ export interface DeviceResult {
   errorMessage?: string
 }
 
-/** The ops this fix executes against a picked directory. */
-export const SUPPORTED_OPS = ['list', 'stat', 'search', 'read_text'] as const
+/**
+ * The ops this build executes against a picked directory.
+ *
+ * ``materialize`` (task 9.7) is the only one that *writes* anything, and it
+ * writes to the server rather than to the machine: it publishes a copy of one
+ * granted local file. It is listed here because the op is claimed whenever the
+ * app is handed an upload port (see {@link MaterializePort}); without one the
+ * same op is answered as unavailable, which is what a build that cannot reach a
+ * server should say.
+ */
+export const SUPPORTED_OPS = ['list', 'stat', 'search', 'read_text', 'materialize'] as const
+
+/**
+ * The explicit upload path, injected.
+ *
+ * The orchestrator lives in ``local-files/materialize.ts`` and needs both the
+ * helper (which the caller owns) and a transfer transport (which production
+ * builds from the configured origin). Keeping it a port is what lets the op be
+ * exercised in a plain Node test -- and, more importantly, what makes "this
+ * build has no way to publish" a shape the router can answer honestly.
+ */
+export interface MaterializeRequest {
+  /** The server command id: the transfer is keyed on it, so a replay is a no-op. */
+  commandId: string
+  workspaceId: string
+  relativePath: string
+  /** Empty when the caller approved no particular version. */
+  expectedVersion: string
+}
+
+export interface MaterializePort {
+  (request: MaterializeRequest): Promise<Record<string, unknown>>
+}
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : ''
@@ -101,6 +134,7 @@ export async function runDeviceCommand(
   guard: FsGuard,
   fsGrant: string,
   command: DeviceCommand,
+  options?: { materialize?: MaterializePort },
 ): Promise<DeviceResult> {
   const params = command.params || {}
   const relativePath = asString(params.relative_path)
@@ -200,6 +234,32 @@ export async function runDeviceCommand(
             encoding,
             text: decodeText(bytes, encoding),
           },
+        }
+      }
+      case 'materialize': {
+        // The one op that publishes bytes. Refuse early and specifically: a
+        // missing path is a caller mistake, while a missing port means this
+        // build has no way to reach a server at all.
+        if (!relativePath) {
+          return { state: 'failed', errorCode: 'invalid_request', errorMessage: 'materialize needs a relative path' }
+        }
+        const deliver = options?.materialize
+        if (!deliver) {
+          return {
+            state: 'failed',
+            errorCode: 'feature_unavailable',
+            errorMessage: 'this build cannot deliver a local file to the server',
+          }
+        }
+        const uploaded = await deliver({
+          commandId: command.request_id,
+          workspaceId: command.workspace_id,
+          relativePath,
+          expectedVersion: asString(params.expected_version),
+        })
+        return {
+          state: 'succeeded',
+          result: { op: 'materialize', path: relativePath, ...uploaded },
         }
       }
       default:

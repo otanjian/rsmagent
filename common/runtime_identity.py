@@ -21,7 +21,8 @@ from dataclasses import dataclass, replace
 from typing import Any, Callable, Iterator, Optional
 
 _FIELDS = ("agent_id", "user_id", "tenant_id", "session_id", "run_id",
-           "web_auth_session_id")
+           "web_auth_session_id", "execution_target", "execution_cwd",
+           "local_execution_refusal")
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,40 @@ class RuntimeIdentity:
     # database session row id, never the bearer/cookie token. Tools revalidate
     # its current owner, expiry and revocation when they act for the user.
     web_auth_session_id: Optional[str] = None
+
+    # Where this run's tools may act, resolved once at message entry (change
+    # ``align-desktop-project-execution-with-master``). It is a *value*, not a
+    # reference to live session state, so a concurrent turn that re-points the
+    # Agent cannot move this run's boundary. None means the pre-existing
+    # server-side behaviour; readers must treat None and ``BACKEND_TARGET``
+    # identically.
+    execution_target: Optional[Any] = None
+
+    # The directory that target resolved to *on this machine*, frozen with the
+    # target at message entry (task 3.5). Also a value: a concurrent turn that
+    # re-points the shared Agent's tools cannot move this run's working
+    # directory, which is what "目录切换只作用于下一轮" means. None means either
+    # "no desktop target" or "the target could not be resolved here" -- the two
+    # are told apart by ``execution_target``, and only the second is a refusal.
+    execution_cwd: Optional[str] = None
+
+    # Why this run may *not* act in the project, when the target itself is
+    # fine (change task 3.7). The re-authorization the run boundary performs
+    # (``agent.desktop_local.run_context``) answers "is the grant still live";
+    # this answers the other half -- "is the Agent that will execute eligible,
+    # and is this an interactive turn at all". Kept separate from
+    # ``execution_cwd`` so the reason survives: a caller that only saw a missing
+    # cwd would report "the project is unavailable" for a teammate that simply
+    # may not use it.
+    local_execution_refusal: Optional[str] = None
+
+    def execution_location(self) -> str:
+        """``"backend"`` or ``"desktop"``; the safe default is the backend."""
+        target = self.execution_target
+        return getattr(target, "location", "backend") or "backend"
+
+    def allows_project_execution(self) -> bool:
+        return bool(getattr(self.execution_target, "allows_project_execution", False))
 
     def derive(self, **overrides: Any) -> "RuntimeIdentity":
         unknown = set(overrides) - set(_FIELDS)
@@ -103,6 +138,26 @@ def use_identity(identity: RuntimeIdentity) -> Iterator[RuntimeIdentity]:
     try:
         yield identity
     finally:
+        _current.reset(token)
+
+
+def override_identity(identity: RuntimeIdentity):
+    """Install ``identity`` as the ambient one, returning a restore token.
+
+    For the one shape ``use_identity`` cannot express: a run that learns *part*
+    of its authorization later than the entry scope did. A turn is scoped at
+    message entry, but the Agent that will actually execute is only known once
+    routing has picked the speaker (change task 3.7) -- and by then the scope
+    context manager is already open around the whole turn, so the narrowed
+    identity has to be installed in place and restored by the run's own cleanup
+    (``restore_identity``).
+    """
+    return _current.set(identity)
+
+
+def restore_identity(token) -> None:
+    """Undo :func:`override_identity`. A ``None`` token is a no-op."""
+    if token is not None:
         _current.reset(token)
 
 

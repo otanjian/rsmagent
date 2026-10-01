@@ -327,6 +327,30 @@ class PublishAndClientFilesTests(unittest.TestCase):
         phases = [e[1]["phase"] for e in events if e[0] == "client_files_progress"]
         self.assertIn("ready", phases)
 
+        # A successful device upload must finish the SAME server-path step in
+        # one tool call. A transfer receipt alone leaves the model guessing paths.
+        with patch("channel.web.auth_handlers._get_service", return_value=self.app.service), \
+             patch("common.state_dir.agent_user_work_dir", side_effect=fake_work), \
+             use_identity(ident.derive(run_id="online_run")):
+            online = tool._terminal_result({
+                "id": created["command_id"], "state": "succeeded",
+                "result": {"transfer_id": created["id"], "path": "report.pdf"},
+            }, "materialize")
+            self.assertEqual(online.status, "success", online.result)
+            self.assertEqual(Path(online.result["path"]).read_bytes(), body)
+            self.assertIn("/online_run/", online.result["path"])
+            mismatched = tool._terminal_result({
+                "id": "another_command", "state": "succeeded",
+                "result": {"transfer_id": created["id"]},
+            }, "materialize")
+            self.assertEqual(mismatched.status, "error")
+            for wrong in ({"tenant_id": "another_tenant"}, {"agent_id": "another_agent"}):
+                with use_identity(ident.derive(**wrong)):
+                    refused = tool.execute({"op": "materialize", "transfer_id": created["id"]})
+                    self.assertEqual(refused.status, "error")
+            self.assertEqual(tool.execute({"op": "materialize", "transfer_id": created["id"],
+                                           "run_id": "../outside"}).status, "error")
+
     def test_delete_run_input_releases_stock(self):
         native, binding, workspace = self._binding()
         body = b"retain-me"

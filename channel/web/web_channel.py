@@ -205,10 +205,17 @@ from channel.web.fork.handlers.desktop import (
     DesktopCommandsHandler,
     DesktopCommandHandler,
     DesktopCommandCancelHandler,
+    DesktopLocalRootsHandler,
+    DesktopSessionTargetHandler,
     DesktopTransfersHandler,
     DesktopTransferHandler,
     DesktopTransferChunkHandler,
     DesktopTransferCommitHandler,
+    DesktopExecutionPrepareHandler,
+    DesktopExecutionStartHandler,
+    DesktopExecutionHeartbeatHandler,
+    DesktopExecutionStatusHandler,
+    DesktopExecutionSkillPackageHandler,
 )
 from channel.web.fork.handlers.files import (
     FileServeHandler,

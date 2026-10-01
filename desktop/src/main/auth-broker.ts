@@ -805,10 +805,40 @@ async function clearSession(): Promise<void> {
 }
 
 /**
+ * Whether the server has already forgotten ``token``.
+ *
+ * ``/auth/me`` resolves the caller from the credential alone and is a read, so
+ * its only credential answer is the truth about the session: 200 while it is
+ * live, 401 once it is gone, 403 for a disabled account (unusable either way).
+ * Written as a positive test rather than "not 200", so a server error is never
+ * mistaken for proof that a session ended.
+ */
+async function sessionIsGone(token: string): Promise<boolean> {
+  try {
+    const reply = await fetchWithToken('/auth/me', token)
+    return reply.status === 401 || reply.status === 403
+  } catch {
+    return false
+  }
+}
+
+/**
  * Sign out: revoke the server session first, then clear local state.
  *
  * Revocation failing is reported as a failure. The UI must not claim the
  * session is gone while the server still honours it.
+ *
+ * A sign-out that is not *confirmed* is not automatically a failure, though.
+ * In the paired state the container's own page-level logout has already revoked
+ * the native parent -- that is what revoking a pair means -- so this second call
+ * arrives holding a credential the identity store no longer knows. The route
+ * gates every write through its CSRF rule, and a request whose only credential
+ * is a Bearer that fails to authenticate is refused as `cross_origin` (403), a
+ * *session* fact reported as an *origin* one. Status alone cannot tell that
+ * apart from a live session the server declined to revoke, so the session itself
+ * is asked (`/auth/me`): proof that it is gone means the sign-out the caller
+ * asked for has already happened, and blocking on it would freeze the account
+ * for a state the user is already in.
  */
 export async function logout(): Promise<{ ok: boolean; revoked: boolean; message: string }> {
   const session = state.session
@@ -820,6 +850,7 @@ export async function logout(): Promise<{ ok: boolean; revoked: boolean; message
   try {
     const reply = await fetchWithToken('/auth/logout', session.token, undefined, 'POST')
     revoked = reply.status === 200 || reply.status === 401
+    if (!revoked) revoked = await sessionIsGone(session.token)
   } catch {
     revoked = false
   }

@@ -662,6 +662,42 @@ SLICES: Tuple[Slice, ...] = (
         reason="",
         policy=DEFAULT_PERSONAL_POLICY,
     ),
+    # ------------------------------------------------------------------ #
+    # Desktop project execution, v2 protocol (change
+    # align-desktop-project-execution-with-master)
+    # ------------------------------------------------------------------ #
+    # Two slices, deliberately closed while the capability is
+    # ``accepted=False``: the v2 entry point writes into the user's own project
+    # directory, so "implemented" must not be reported as "available" before the
+    # acceptance suites in ``evidence/`` have run. The deployment switches
+    # (``desktop_project_execution_enabled`` / ``desktop_project_scripts_enabled``)
+    # default off as well, so a fresh install cannot reach either surface by
+    # accident. Handlers re-authorize every request; this is a report, not a
+    # grant.
+    Slice(
+        "desktop_project_execution",
+        capability="desktop-project-execution",
+        consumer="desktop_project_execution",
+        page=None,
+        scope=frozenset({"personal"}),
+        open={},
+        implemented=True,
+        accepted=False,
+        reason="",
+        policy=DEFAULT_PERSONAL_POLICY,
+    ),
+    Slice(
+        "desktop_project_scripts",
+        capability="desktop-skill-runtime",
+        consumer="desktop_project_scripts",
+        page=None,
+        scope=frozenset({"personal"}),
+        open={},
+        implemented=True,
+        accepted=False,
+        reason="",
+        policy=DEFAULT_PERSONAL_POLICY,
+    ),
 )
 
 #: The per-action features projected through ``/auth/context.feature_actions``.

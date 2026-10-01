@@ -25,11 +25,15 @@ class AgentCancelledError(Exception):
 
 
 class _CancelEntry:
-    __slots__ = ("event", "session_id")
+    __slots__ = ("event", "session_id", "scope")
 
-    def __init__(self, session_id: Optional[str]):
+    def __init__(self, session_id: Optional[str], scope: Optional[Dict[str, str]] = None):
         self.event = threading.Event()
         self.session_id = session_id
+        # What this run is allowed to act on, as identifiers (never a path).
+        # ``None`` for a run with no local project: such a run is not in any
+        # desktop scope, and a revocation must not cancel it.
+        self.scope = dict(scope) if scope else None
 
 
 class CancelTokenRegistry:
@@ -44,8 +48,14 @@ class CancelTokenRegistry:
         # session_id -> set of request_ids currently in flight (usually 1).
         self._by_session: Dict[str, set] = {}
 
-    def register(self, request_id: str, session_id: Optional[str] = None) -> threading.Event:
+    def register(self, request_id: str, session_id: Optional[str] = None,
+                 scope: Optional[Dict[str, str]] = None) -> threading.Event:
         """Create (or return existing) cancel event for a request.
+
+        ``scope`` are the identifiers of the local project this run acts on (see
+        ``agent.desktop_local.run_context.local_run_scope``), so a revocation
+        can later find exactly the runs it invalidates. Identifiers only; a path
+        never belongs here.
 
         Returns the threading.Event the caller should poll via ``is_set()``.
         """
@@ -54,7 +64,7 @@ class CancelTokenRegistry:
         with self._lock:
             entry = self._by_request.get(request_id)
             if entry is None:
-                entry = _CancelEntry(session_id)
+                entry = _CancelEntry(session_id, scope)
                 self._by_request[request_id] = entry
                 if session_id:
                     self._by_session.setdefault(session_id, set()).add(request_id)
@@ -91,6 +101,42 @@ class CancelTokenRegistry:
         for entry in entries:
             entry.event.set()
         return len(entries)
+
+    def cancel_scope(self, **criteria) -> int:
+        """Cancel the in-flight runs whose local project matches ``criteria``.
+
+        Used when the authorization behind a running task goes away -- a revoked
+        grant, a device disconnect, an account/tenant/origin switch -- where the
+        session ids are not the ones held by the cancelling code, and cancelling
+        *everything* would stop work the revocation did not affect.
+
+        A run is cancelled only when it carries a scope at all and every given
+        criterion matches it. "Cannot be proven to be in scope" therefore means
+        "leave it alone": a run with no local project, or one whose binding is a
+        different workspace, is not made collateral damage of a revoke. Empty
+        criteria match nothing for the same reason.
+        """
+        wanted = {key: str(value) for key, value in criteria.items()
+                  if value not in (None, "")}
+        if not wanted:
+            return 0
+        with self._lock:
+            entries = [
+                entry for entry in self._by_request.values()
+                if entry.scope
+                and all(entry.scope.get(key) == value for key, value in wanted.items())
+            ]
+        for entry in entries:
+            entry.event.set()
+        return len(entries)
+
+    def entry_scope(self, request_id: str) -> Optional[Dict[str, str]]:
+        """The scope recorded for a request, or None. For tests and diagnostics."""
+        if not request_id:
+            return None
+        with self._lock:
+            entry = self._by_request.get(request_id)
+            return dict(entry.scope) if entry and entry.scope else None
 
     def unregister(self, request_id: str) -> None:
         """Remove an entry once the agent run is done. Safe to call twice."""

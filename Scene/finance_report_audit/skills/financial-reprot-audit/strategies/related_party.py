@@ -292,7 +292,7 @@ class RelatedPartyTransactionStrategy(BaseStrategy):
                     finding_type='大额关联方资金占用',
                     description=f'关联方{counterparty}占用资金{amount:,.2f}元，'
                                f'账龄{duration_months}个月，'
-                               f'{'已' if is_charging_interest else '未'}收取利息',
+                               f"{'已' if is_charging_interest else '未'}收取利息",
                     severity='high',
                     tax_type='企业所得税',
                     regulation='税收征收管理法第三十六条'

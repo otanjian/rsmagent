@@ -1,0 +1,15 @@
+{
+  "journal_id": "journal_example",
+  "command_id": "cmd_example",
+  "params_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "origin": "https://example.invalid",
+  "device_id": "dev_example",
+  "workspace_id": "ws_example",
+  "run_id": "run_example",
+  "tool_call_id": "call_example",
+  "tool": "bash",
+  "grant_version": 3,
+  "started_at": 1780000000,
+  "connection_epoch": "epoch_example",
+  "permit_id": "permit_example"
+}

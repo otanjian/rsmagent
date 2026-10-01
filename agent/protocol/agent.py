@@ -154,10 +154,27 @@ class Agent:
         # Which kind of override `project_dir` is: ``"project"`` when the user
         # picked the directory, ``"personal"`` when it is the caller's own
         # folder inside a tenant-shared Agent (change
-        # ``use-personal-workspace-for-shared-agents``). None alongside a
+        # ``use-personal-workspace-for-shared-agents``), ``"local"`` when the
+        # directory lives on the user's own machine and this session was
+        # authorized to run project work there (change
+        # ``align-desktop-project-execution-with-master``). None alongside a
         # ``project_dir`` keeps the historical "the user opened a project"
         # wording; None alongside no ``project_dir`` means no override at all.
         self.workspace_scope = None
+        # Server-verified input selection, refreshed by the bridge each turn.
+        # This is independent of a project execution/cwd grant.
+        self.desktop_context = None
+        # Where this session's tools are allowed to run. ``BACKEND_TARGET`` is
+        # the pre-existing behaviour (the server's own filesystem); a desktop
+        # target means the working directory is a directory on the client, and
+        # only ``project-execution`` permits project tools and Skill scripts
+        # there. Resolved once per run and never inferred from a path.
+        from agent.workspace.execution_target import BACKEND_TARGET
+        self.execution_target = BACKEND_TARGET
+        # Set when a desktop target could not be resolved on this backend (the
+        # shipped directory is gone, or the grant was revoked). Local work is
+        # refused while it is set rather than quietly running somewhere else.
+        self.local_context_error = None
         # How much this session may change (see agent.permission). None means
         # "follow the global setting", resolved at check time so a change to the
         # global default reaches sessions that never picked a mode themselves.
@@ -254,6 +271,94 @@ class Agent:
                 pass
         return self.project_dir
 
+    def apply_execution_target(self, target, project_dir=None, scope=None):
+        """Set where this session runs, and the directory it runs in.
+
+        ``target`` is the authorization (see
+        :mod:`agent.workspace.execution_target`); ``project_dir`` is the
+        directory it resolves to. Both are applied together because a desktop
+        target without its resolved root, or a local directory without its
+        target, would each be a half-stated fact the tools could misread.
+
+        Passing a backend target (or None) is exactly the pre-existing
+        behaviour: the working directory follows ``project_dir`` as before and
+        no local authorization exists.
+        """
+        from agent.workspace.execution_target import (
+            BACKEND_TARGET, ExecutionTarget,
+        )
+
+        if target is None:
+            target = BACKEND_TARGET
+        if not isinstance(target, ExecutionTarget):
+            raise TypeError("target must be an ExecutionTarget")
+        if target.is_desktop and not project_dir:
+            # A desktop target that did not resolve to a directory must not
+            # leave the previous run's local directory in force.
+            raise ValueError("a desktop target needs its resolved project directory")
+
+        resolved_scope = scope
+        if resolved_scope is None and target.is_desktop:
+            resolved_scope = "local"
+        self.execution_target = target
+        self.local_context_error = None
+        return self.apply_project_dir(project_dir, scope=resolved_scope)
+
+    def client_platform(self) -> str:
+        """The platform this session's commands run on, or ``""`` when unknown.
+
+        A server-side session has no client, so the answer is ``""`` -- and that
+        is deliberate: the *server's* ``sys.platform`` is not evidence about a
+        command that runs on a machine the user is holding, and substituting it
+        is the mistake task 8.7 exists to prevent. Callers render ``""`` as
+        "unknown" rather than filling it in.
+
+        Local and remote desktop modes learn it from different places, because
+        they are different facts: a local run's launcher is this process's own
+        desktop shell, while a remote run's platform is whatever the device
+        declared in its hello.
+        """
+        target = getattr(self, "execution_target", None)
+        if not getattr(target, "is_desktop", False):
+            return ""
+        try:
+            from agent.desktop_remote.mode import remote_mode_for
+
+            if remote_mode_for():
+                from agent.desktop_remote.device import device_state
+
+                return str(getattr(device_state(), "platform", "") or "").strip()
+            from agent.desktop_local.script_executor import (
+                script_platform, script_scope,
+            )
+            from common.runtime_identity import current_identity
+
+            return script_platform(script_scope(current_identity(), target)).strip()
+        except Exception as e:  # noqa: BLE001 - an unknown platform stays unknown
+            logger.debug(f"Client platform unavailable: {e}")
+            return ""
+
+    def mark_local_context_unavailable(self, reason: str):
+        """Refuse local work: the target exists but cannot be resolved here.
+
+        The working directory is cleared too, because leaving the last run's
+        local directory in force would let a tool act on a directory the
+        session is no longer authorized for.
+        """
+        from agent.workspace.execution_target import BACKEND_TARGET
+
+        self.execution_target = BACKEND_TARGET
+        self.local_context_error = reason or "local_context_unavailable"
+        self.apply_project_dir(None)
+        return self.local_context_error
+
+    def clear_execution_target(self):
+        """Drop any local authorization (the session reverts to the backend)."""
+        from agent.workspace.execution_target import BACKEND_TARGET
+
+        self.execution_target = BACKEND_TARGET
+        self.local_context_error = None
+
     def effective_permission_mode(self) -> str:
         """The permission mode in force: this session's, else the global default."""
         from agent.permission import global_mode, normalize_mode
@@ -310,6 +415,7 @@ class Agent:
         tools, and runtime info so any change takes effect immediately.
         Falls back to the cached self.system_prompt on error.
         """
+        lang = "zh"
         try:
             from agent.prompt import load_context_files, PromptBuilder
 
@@ -336,7 +442,9 @@ class Agent:
                 memory_manager=self.memory_manager,
                 runtime_info=self.runtime_info,
                 project_dir=self.project_dir,
-                workspace_scope=self.workspace_scope,
+                workspace_scope=getattr(self, "workspace_scope", None),
+                desktop_context=getattr(self, "desktop_context", None),
+                client_platform=self.client_platform(),
                 permission_mode=self.effective_permission_mode(),
             )
             if self.extra_system_suffix:
@@ -349,6 +457,17 @@ class Agent:
             # content instruction is re-appended here rather than trusted from
             # the cache (change ``guard-shared-knowledge-skill-writes``).
             base = self._cached_prompt_with_conservative_scope()
+            # Rebuilding unrelated workspace/skill files may fail. The cached
+            # base must still describe this turn's selected input accurately.
+            from agent.prompt.builder import build_desktop_directory_guidance
+            source = build_desktop_directory_guidance(
+                getattr(self, "desktop_context", None),
+                [tool for tool in self.tools if is_tool_available(tool)],
+                lang,
+                getattr(self, "workspace_scope", None),
+            )
+            if source:
+                base = f"{base}\n\n" + "\n".join(source)
             if self.extra_system_suffix:
                 return f"{base}\n\n{self.extra_system_suffix}"
             return base

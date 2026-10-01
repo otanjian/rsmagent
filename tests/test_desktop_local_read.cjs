@@ -321,10 +321,88 @@ test('search requires a mode and a query', async () => {
 
 test('an op this build does not implement fails as unavailable, not as empty', async () => {
   const guard = stubGuard();
-  const result = await opsMod.runDeviceCommand(guard, 'g1', command('materialize', {}));
+  const result = await opsMod.runDeviceCommand(guard, 'g1', command('inspect', {}));
   assert.equal(result.state, 'failed');
   assert.equal(result.errorCode, 'feature_unavailable');
   assert.equal(guard.calls.length, 0, 'nothing is run for an op we do not implement');
+});
+
+// -- explicit upload (task 9.7) ---------------------------------------------
+
+test('materialize without a relative path is a caller mistake, not a build gap', async () => {
+  const guard = stubGuard();
+  let asked = 0;
+  const result = await opsMod.runDeviceCommand(guard, 'g1', command('materialize', {}), {
+    materialize: async () => {
+      asked += 1;
+      return {};
+    },
+  });
+  assert.equal(result.state, 'failed');
+  assert.equal(result.errorCode, 'invalid_request');
+  assert.equal(asked, 0, 'the port is not asked to publish nothing');
+});
+
+test('materialize without an upload port says the build cannot deliver, not that it delivered', async () => {
+  const guard = stubGuard();
+  const result = await opsMod.runDeviceCommand(
+    guard, 'g1', command('materialize', { relative_path: 'a.txt' }),
+  );
+  assert.equal(result.state, 'failed');
+  assert.equal(result.errorCode, 'feature_unavailable');
+  assert.match(result.errorMessage, /cannot deliver/);
+  assert.equal(guard.calls.length, 0, 'nothing is read for a delivery this build cannot make');
+});
+
+test('materialize hands the command id and the bound workspace to the uploader', async () => {
+  const guard = stubGuard();
+  const seen = [];
+  const result = await opsMod.runDeviceCommand(
+    guard,
+    'g1',
+    command('materialize', { relative_path: 'reports/q1.xlsx', expected_version: '12:100' }),
+    {
+      materialize: async (request) => {
+        seen.push(request);
+        return {
+          transfer_id: 'xfer_1',
+          artifact_ref: 'desktop-inputs/xfer_1/q1.xlsx',
+          sha256: 'a'.repeat(64),
+          filename: 'q1.xlsx',
+          total_bytes: 12,
+          source_ref: 'desktop-file:ws_1:reports/q1.xlsx',
+          source_version: '12:100',
+        };
+      },
+    },
+  );
+  assert.deepEqual(seen, [{
+    commandId: 'dcmd_1',
+    workspaceId: 'wsrv_1',
+    relativePath: 'reports/q1.xlsx',
+    expectedVersion: '12:100',
+  }]);
+  assert.equal(result.state, 'succeeded');
+  assert.equal(result.result.op, 'materialize');
+  assert.equal(result.result.transfer_id, 'xfer_1');
+  assert.equal(result.result.artifact_ref, 'desktop-inputs/xfer_1/q1.xlsx');
+});
+
+test('a refusal from the uploader keeps its own code', async () => {
+  const guard = stubGuard();
+  const result = await opsMod.runDeviceCommand(
+    guard, 'g1', command('materialize', { relative_path: 'big.iso' }),
+    {
+      materialize: async () => {
+        const err = new Error('the file exceeds the limit');
+        err.code = 'limit_exceeded';
+        throw err;
+      },
+    },
+  );
+  assert.equal(result.state, 'failed');
+  assert.equal(result.errorCode, 'limit_exceeded');
+  assert.equal(result.errorMessage, 'the file exceeds the limit');
 });
 
 test('a helper refusal becomes a failed command with the helper code', async () => {

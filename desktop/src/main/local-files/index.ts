@@ -1,10 +1,13 @@
 export {
   GrantRegistry,
   PICKER_MESSAGE,
+  PROJECT_EXECUTION_PICKER_MESSAGE,
+  pickerMessageFor,
+  allowsProjectExecution,
   pathFromDialogResult,
   labelFromAbsolutePath,
 } from './grants'
-export type { GrantScope, ActiveGrant, GrantPublic } from './grants'
+export type { GrantScope, GrantPurpose, ActiveGrant, GrantPublic } from './grants'
 
 export {
   CANDIDATES_VERSION,
@@ -38,3 +41,19 @@ export type {
   TransferCreate,
   TransferCommit,
 } from './transfer'
+
+export {
+  GUARD_READ_CHUNK,
+  MATERIALIZE_CHUNK_BYTES,
+  MATERIALIZE_MAX_BYTES,
+  localVersionOf,
+  sourceRefFor,
+  safeLocalName,
+  guardSourceHandle,
+  materializeLocalFile,
+} from './materialize'
+export type {
+  MaterializeInput,
+  MaterializeOutcome,
+  MaterializeTransport,
+} from './materialize'

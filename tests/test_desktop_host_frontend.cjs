@@ -277,7 +277,8 @@ test('no desktop branch is scattered through the console', () => {
     assert.equal(/window\.electronApi/.test(consoleJs), false);
     const calls = [...consoleJs.matchAll(/CowDesktopHost\.(\w+)/g)].map((m) => m[1]);
     assert.deepEqual([...new Set(calls)].sort(),
-        ['bindContext', 'canChooseWorkspace', 'chooseWorkspace', 'suspendLocalContext']);
+        ['bindContext', 'canChooseWorkspace', 'chooseWorkspace', 'localContext',
+            'suspendLocalContext']);
 });
 
 // ---------------------------------------------------------------------------

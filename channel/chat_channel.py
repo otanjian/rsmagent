@@ -200,7 +200,19 @@ class ChatChannel(Channel):
         # The single point where an inbound message is bound to an identity.
         # Everything below reads it from the ambient context instead of being
         # handed a workspace path.
-        with use_identity(self._identity_for(context)):
+        #
+        # The session's execution target is resolved here too (change task
+        # 3.4/3.5). This worker thread was handed a *snapshot* of the request's
+        # identity, so it carries no target of its own; resolving once at run
+        # entry is what turns "where does this turn run" into a frozen value the
+        # tool layer can read and re-check instead of a directory it infers. A
+        # session with no local project pays nothing -- the scope is a no-op.
+        identity = self._identity_for(context)
+        from channel.web.fork.execution_scope import execution_target_scope
+
+        with use_identity(identity), execution_target_scope(
+            identity.agent_id, identity.session_id,
+        ):
             logger.debug("[chat_channel] handling context: {}".format(context))
             # reply的构建步骤
             reply = self._generate_reply(context)

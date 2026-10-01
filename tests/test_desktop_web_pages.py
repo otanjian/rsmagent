@@ -246,7 +246,21 @@ def test_both_navigation_modes_serve_the_adapter(web):
 def test_the_console_asks_the_adapter_and_nothing_else():
     text = open(os.path.join(STATIC, "js", "console.js"), encoding="utf-8").read()
     used = sorted(set(re.findall(r"CowDesktopHost\.(\w+)", text)))
-    assert used == ["canChooseWorkspace", "chooseWorkspace", "suspendLocalContext"], used
+    # ``bindContext`` joined the surface with
+    # fix-desktop-local-context-and-tool-calls (a picked directory is only
+    # published once the server confirmed the binding); ``localContext`` with
+    # align-desktop-project-execution-with-master (task 9.3: a reloaded page
+    # asks the host what local project is actually open instead of trusting a
+    # name it cached). This list is the console's whole native contract: nothing
+    # here may reach for the raw ``window.desktopHost`` bridge, and no other
+    # adapter method may appear without this test being updated on purpose.
+    assert used == [
+        "bindContext",
+        "canChooseWorkspace",
+        "chooseWorkspace",
+        "localContext",
+        "suspendLocalContext",
+    ], used
 
 
 # ---------------------------------------------------------------------------
@@ -604,3 +618,105 @@ def test_w19_a_download_keeps_the_session_cookie_and_never_a_query_secret():
     host = open(os.path.join(STATIC, "js", "fork", "desktop-host.js"), encoding="utf-8").read()
     assert "'/api/file'" not in host  # the adapter names no server endpoint of its own
     assert "artifact_ref" not in host or "saveArtifact" in host
+
+
+def test_w25_the_local_file_actions_are_reachable_and_speak_the_hosts_language():
+    """A25: open / reveal / copy path / save as, each with a way to be reached.
+
+    A button with no function does nothing, and a function with no button cannot
+    be reached, so both halves are checked against the *assembled* page. The
+    reveal button is additionally checked to start hidden: it only means
+    something for a file on this machine, and offering it for a server file
+    would offer an action that cannot work.
+    """
+    html = template.render("chat.html")
+    assert '<!--#include' not in html, "the served page must be assembled"
+    workspace = open(os.path.join(STATIC, "js", "workspace.js"), encoding="utf-8").read()
+    host = open(os.path.join(STATIC, "js", "fork", "desktop-host.js"), encoding="utf-8").read()
+    source = open(os.path.join(STATIC, "js", "fork", "project-source.js"), encoding="utf-8").read()
+
+    for button, handler in [("ws-btn-external", "openPreviewExternally"),
+                            ("ws-btn-download", "downloadPreviewFile"),
+                            ("ws-btn-copy", "copyPreviewPath"),
+                            ("ws-btn-reveal", "revealPreviewFile")]:
+        assert f'id="{button}"' in html, button
+        assert f'onclick="{handler}()"' in html, handler
+        assert f"function {handler}(" in workspace, handler
+    reveal = re.search(r'<button id="ws-btn-reveal"[^>]*>', html).group(0)
+    assert 'class="workspace-icon-btn hidden"' in reveal, reveal
+
+    # Every action goes through the one adapter call, which adds the live
+    # workspace and answers with the host's own refusal code.
+    assert "CowProjectSource.act(" in workspace
+    for method in ["projectOpenFile", "projectRevealFile", "projectCopyPath",
+                   "projectSaveFileAs"]:
+        assert f"'{method}'" in host, method   # published by the page's adapter
+        assert f'case "{method}"' not in host  # ...as data, not as a second switch
+    assert "PROJECT_ACTION_METHODS" in host and "projectAction" in host
+    # The adapter refuses an action with no project rather than inventing one.
+    assert "actionRefusal" in source and "no_host" in source
+
+    # The four tooltips and toasts exist in both dictionaries, in every
+    # language: the console falls back to the key itself when a string is
+    # missing, which would show the user `ws_open_system`.
+    for path in [os.path.join(STATIC, "js", "i18n", "core.js"),
+                 os.path.join(STATIC, "js", "core", "i18n.js")]:
+        text = open(path, encoding="utf-8").read()
+        for key in ["ws_open_system", "ws_reveal_file", "ws_save_as", "ws_local_copy_path",
+                    "ws_local_opened", "ws_local_revealed", "ws_local_copied",
+                    "ws_local_saved_as", "ws_local_no_application",
+                    "ws_local_save_as_changed", "ws_local_action_failed",
+                    "ws_local_action_unavailable"]:
+            assert text.count(key) >= 3, (os.path.basename(path), key, text.count(key))
+
+
+def test_w25_the_two_ends_agree_on_the_four_action_names():
+    """A25: the word the button says and the word the shell acts on are one word.
+
+    The page names an action (``open``) and the shell executes a bridge method
+    (``projectOpenFile``); the translation happens in the page's adapter, in a
+    table that has to agree with the shell's own. When the two disagreed, both
+    ends were individually correct -- the adapter asked, the bridge answered --
+    and every click was still refused by name before it reached the shell, which
+    is invisible to a test that stubs either side. So the table is compared with
+    the main process's, and every method it names is checked to be one the
+    bridge actually publishes.
+    """
+    host = open(os.path.join(STATIC, "js", "fork", "desktop-host.js"),
+                encoding="utf-8").read()
+    native = open(os.path.join(ROOT, "desktop", "src", "main", "project-browser",
+                               "native-actions.ts"), encoding="utf-8").read()
+    bridge = open(os.path.join(ROOT, "desktop", "src", "main", "remote",
+                               "host-bridge.ts"), encoding="utf-8").read()
+
+    def pairs(source, name):
+        """`{ open: 'projectOpenFile', … }` -> {'open': 'projectOpenFile'}."""
+        block = re.search(rf"{name}[^=]*=\s*\{{(.*?)\}}", source, re.S)
+        assert block, f"{name} is declared in {source[:60]}..."
+        found = re.findall(r"([A-Za-z]+)\s*:\s*'([A-Za-z]+)'", block.group(1))
+        assert found, f"{name} is a table of pairs"
+        return dict(found)
+
+    page_table = pairs(host, "PROJECT_ACTIONS")
+    shell_table = pairs(native, "NATIVE_METHOD_BY_ACTION")
+    assert page_table == shell_table, (
+        "the page's action names and the shell's must be one table: "
+        f"page={page_table} shell={shell_table}")
+
+    # Same four, in the order the panel draws them.
+    assert list(page_table) == ["open", "reveal", "copyPath", "saveAs"]
+
+    # ...and every method named is one the bridge publishes when local files are
+    # open. A method that is not published is refused as `feature_unavailable`,
+    # however well the two tables agree with each other.
+    phase3 = re.search(r"PHASE3_METHODS = \[(.*?)\]", bridge, re.S)
+    assert phase3, "the published method list is declared"
+    published = set(re.findall(r"'([A-Za-z]+)'", phase3.group(1)))
+    for action, method in page_table.items():
+        assert method in published, (action, method, sorted(published))
+
+    # The page's table is data, not a second switch: a switch would let one
+    # action mean different things in the two halves of the same file. It is
+    # read through `hasOwnProperty`, so a prototype key is not an action name.
+    assert host.count("hasOwnProperty.call(PROJECT_ACTIONS, action)") == 1
+    assert 'case "projectOpenFile"' not in host

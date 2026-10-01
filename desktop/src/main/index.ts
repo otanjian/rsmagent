@@ -4,6 +4,7 @@ import fs from 'fs'
 import os from 'os'
 import http from 'http'
 import { PythonBackend, BackendError } from './python-manager'
+import { resolveBackendPath } from './backend-path'
 import { buildAppMenu } from './menu'
 import { createTray, destroyTray, getTray } from './tray'
 import { initUpdater, checkForUpdates, startDownload, quitAndInstall, setUpdateLanguage } from './updater'
@@ -468,10 +469,11 @@ function createWindow() {
 }
 
 function getBackendPath(): string {
-  if (isDev) {
-    return path.resolve(__dirname, '../../..')
-  }
-  return path.join(process.resourcesPath, 'backend')
+  return resolveBackendPath({
+    dev: isDev,
+    resourcesPath: process.resourcesPath,
+    moduleDir: __dirname,
+  })
 }
 
 /**

@@ -63,6 +63,10 @@ DOWNLOADS: Dict[str, Any] = _CONTRACT["downloads"]
 #: The native->Web child bootstrap: endpoint, cookie name, cookie attributes and
 #: id minimums. The handler and the desktop client are both checked against it.
 WEB_SESSION: Dict[str, Any] = _CONTRACT["web_session"]
+#: The meta envelope (required/forbidden keys and the byte cap). Exposed because
+#: the v2 contract adds one optional block to the *same* payload and has to
+#: respect the same cap and the same forbidden keys.
+META_ENVELOPE: Dict[str, Any] = _CONTRACT["meta_envelope"]
 
 _KIND_BY_STATUS = {400: "request", 401: "auth", 403: "permission", 404: "not_found",
                    409: "conflict", 410: "gone", 413: "limit", 422: "content",

@@ -285,6 +285,30 @@ class SkillManager:
         # "unrestricted".
         return ids
 
+    def is_authorized(self, resource_id: str) -> bool:
+        """Whether the current identity may *use* ``resource_id`` right now.
+
+        The live, per-skill form of :meth:`_apply_skill_use_auth`, for callers
+        that must re-check one skill at a time -- deploying a skill package
+        (task 8.1/8.4) is a per-skill decision made after the prompt was built,
+        so a grant revoked in between has to be visible here. ``True`` when
+        runtime authorization is not in play (legacy mode or no identity), which
+        matches :meth:`_authorized_skill_ids` returning ``None`` for
+        "unrestricted".
+
+        Matching mirrors :meth:`_apply_skill_use_auth`: an exact id, or the same
+        trailing name under a different source namespace, so a grant does not
+        turn into a silent denial when the runtime directory and the catalog
+        disagree about the source.
+        """
+        allowed = self._authorized_skill_ids()
+        if allowed is None:
+            return True
+        if resource_id in allowed:
+            return True
+        name = resource_id.split(":", 1)[-1]
+        return any(rid.split(":", 1)[-1] == name for rid in allowed)
+
     def _apply_skill_use_auth(self, entries: List[SkillEntry]) -> List[SkillEntry]:
         """Narrow entries to those the current identity is allowed to use.
 

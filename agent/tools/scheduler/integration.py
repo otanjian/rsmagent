@@ -1050,6 +1050,10 @@ def _execute_agent_task(
         # Use Agent to execute the task
         # Mark this as a scheduled task execution to prevent recursive task creation
         context["is_scheduled_task"] = True
+        # Name the source as well: the run boundary refuses to inherit a local
+        # project authorization from a session, and it needs to know this turn
+        # was not sent by a user (change task 3.7).
+        context["task_source"] = "scheduler"
         
         try:
             # Don't clear history - scheduler tasks use isolated session_id so they won't pollute user conversations

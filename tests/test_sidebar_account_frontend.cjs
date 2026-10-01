@@ -172,6 +172,8 @@ function setup(transport = async () => response(database()), { agentWrapper = fa
         effectiveFaviconUrl: () => '/favicon.ico', brandWordmarkHTML: value => value,
         _brandArmFallback() {}, applyTheme() {}, applyI18n() {}, _applyInputTooltips() {},
         _resetHistorySearch() {}, bumpTenantGeneration() {},
+        _desktopContextClear() {}, _desktopRestoreContext: async () => {},
+        _desktopContextForRequest: () => null,
         loadAgentCatalog() {}, loadChatAgentCatalog: async () => [],
         readScopedPreference: () => null, writeScopedPreference() {}, renderComposerIdentity() {},
         loadOrCreateSessionId: () => ctx.sessionId, restoreChatState() {}, startPolling() {},
@@ -1063,7 +1065,7 @@ test('a late membership result cannot restore the tenant or app after session ex
 function setupSend(transport) {
     const rendered = [], requests = [], retries = [];
     const ctx = {
-        Date, console, currentLang: 'zh', sessionId: 'session',
+        Date, console, currentLang: 'zh', sessionId: 'session', activeAgentId: 'agent-a', _authEpoch: 1,
         _identityMode: () => 'legacy', sessionStorage: { getItem: () => null },
         chatInput: { value: 'hello' }, pendingAttachments: [], inputHistory: [],
         historyIdx: -1, historySavedDraft: '', sendBtn: { disabled: false },
