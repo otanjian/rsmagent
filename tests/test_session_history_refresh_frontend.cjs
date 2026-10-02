@@ -68,7 +68,7 @@ test('text and voice save acknowledgements refresh history before any model even
         assert.equal(h.refreshes.length, 0);
         pending.resolve(response({ status: 'success', stream: true, request_id: 'r1' }));
         await settle();
-        assert.deepEqual(h.refreshes, ['sidebar']);
+        assert.deepEqual(h.refreshes, []);
         assert.equal(h.ctx._historyDirty, true);
         assert.equal(h.streams.length, 1);
         assert.equal(h.rendered.length, 0);
@@ -105,18 +105,18 @@ test('preparing an unsent new chat does not write an empty record or prepend a s
 test('later replies refresh history without generating another first title', () => {
     const h = setup(); h.ctx.startSSE('r1', null, new Date(), null);
     h.streams[0].emit({ type: 'done', content: 'Next reply', seq: 1 });
-    assert.deepEqual(h.refreshes, ['sidebar']); assert.equal(h.calls.length, 0);
+    assert.deepEqual(h.refreshes, []); assert.equal(h.calls.length, 0);
 });
 
-test('foreground completion and title success refresh both visible histories', async () => {
+test('foreground completion and title success refresh the single visible history list', async () => {
     const title = deferred(), h = setup(url => url.includes('generate_title') ? title.promise : response({ status: 'success' }));
     h.ctx._historyVisible = true;
     h.ctx.startSSE('r1', null, new Date(), { sid: 's1', agentId: 'agent-a', userMsg: 'Question' });
     h.streams[0].emit({ type: 'done', content: 'Answer', seq: 1 });
-    assert.deepEqual(h.refreshes, ['full', 'sidebar']);
+    assert.deepEqual(h.refreshes, ['full']);
     assert.deepEqual(h.rendered, ['Answer']);
     title.resolve(response({ status: 'success' })); await settle();
-    assert.deepEqual(h.refreshes, ['full', 'sidebar', 'full', 'sidebar']);
+    assert.deepEqual(h.refreshes, ['full', 'full']);
 });
 
 test('background completion uses original owner and leaves the visible chat and draft alone', async () => {
@@ -130,7 +130,7 @@ test('background completion uses original owner and leaves the visible chat and 
     assert.ok(h.calls[0].url.startsWith('/api/sessions/s1/generate_title'));
     assert.deepEqual(h.rendered, []);
     assert.equal(h.ctx.sessionId, 's2'); assert.equal(h.ctx.chatInput.value, 'Keep draft');
-    assert.deepEqual(h.refreshes, ['sidebar', 'sidebar']);
+    assert.deepEqual(h.refreshes, []);
 });
 
 test('switch back rebuilds the real stream, retaining the first title and consuming it once', async () => {
@@ -186,11 +186,27 @@ test('old identity callbacks cannot refresh or submit titles under the new ident
 test('poll replies refresh persisted history, while empty and stale polls do not', async () => {
     const h = setup(() => response({ status: 'success', has_content: true, content: 'Pushed reply', timestamp: 1 }));
     h.ctx.startPolling(); await settle();
-    assert.deepEqual(h.refreshes, ['sidebar']); assert.deepEqual(h.rendered, ['Pushed reply']);
+    assert.deepEqual(h.refreshes, []); assert.deepEqual(h.rendered, ['Pushed reply']);
     const empty = setup(() => response({ status: 'success', has_content: false }));
     empty.ctx.startPolling(); await settle(); assert.deepEqual(empty.refreshes, []);
     const pending = deferred(), stale = setup(() => pending.promise);
     stale.ctx.startPolling(); stale.ctx._authEpoch++;
     pending.resolve(response({ status: 'success', has_content: true })); await settle();
     assert.deepEqual(stale.refreshes, []);
+});
+
+test('explicit new chat opens the shared panel and adds a temporary row; automatic fallback does not',()=>{
+    const h=setup(), added=[];
+    Object.assign(h.ctx,{
+        window:{}, currentView:'chat', _sessionLoading:false, generateSessionId:()=> 'unsent',
+        activeSessionStorageKey:()=> 'session-key', writeScopedPreference(){},
+        refreshWorkspaceSelector(){}, refreshSessionSettings(){}, startPolling(){}, renderWelcomeScreen(){},
+        openSessionPanel(){h.ctx._historyVisible=true;},
+        _addOptimisticSessionItem:sid=>added.push(sid),
+    });
+    vm.runInContext(section('function newChat(', '// =====================================================================\n// Session History'),h.ctx);
+    h.ctx.newChat();
+    assert.equal(h.ctx._historyVisible,true);assert.deepEqual(added,['unsent']);assert.equal(h.calls.length,0);
+    h.ctx.newChat(false);
+    assert.deepEqual(added,['unsent']);assert.equal(h.calls.length,0);
 });

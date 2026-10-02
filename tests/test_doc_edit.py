@@ -435,8 +435,10 @@ def _i18n_count(root, needle):
 
 def test_memory_and_skill_editor_wiring():
     root = Path(__file__).parents[1]
-    html = _web("chat.html")
-    console = _web("static/js/console.js")
+    from channel.web.core.template import render
+    from conftest import console_js
+    html = render('chat.html')
+    console = console_js()
     css = _web("static/css/console.css")
 
     for ident in ("memory-btn-edit", "memory-btn-save", "memory-btn-cancel",

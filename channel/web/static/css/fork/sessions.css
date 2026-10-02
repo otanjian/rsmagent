@@ -1,0 +1,87 @@
+/* Master compact rows, hosted by the workbench sidebar rather than a second rail. */
+#sidebar-nav > [data-nav-shell="workbench"]:has(.history-expanded) {
+    display: flex; flex-direction: column; height: 100%; min-height: 0;
+}
+#sidebar-nav > [data-nav-shell="workbench"] > .menu-group { flex-shrink: 0; }
+#sidebar-recent.history-expanded { display: flex; flex: 1; flex-direction: column; min-height: 180px; }
+#sidebar-recent-label { flex-shrink: 0; }
+.sidebar-history-caret { margin-left: auto; font-size: 10px; transition: transform .15s; }
+#sidebar-recent-label[aria-expanded="false"] .sidebar-history-caret { transform: rotate(-90deg); }
+#session-panel {
+    display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0;
+    --history-text: var(--web-sidebar-text, #a3a3a3);
+    --history-muted: var(--web-sidebar-muted, #a3a3a3);
+    --history-hover: var(--web-sidebar-hover, #202221);
+    --history-selected: var(--web-sidebar-active, #1e1e1e);
+    --history-border: var(--web-sidebar-border, #303332);
+    --history-green: var(--web-sidebar-accent, #8ae1a6);
+    --history-surface: transparent;
+}
+#session-panel.hidden { display: none; }
+.history-list-mount { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
+#session-panel .session-list { padding: 2px 4px 2px 0; border: 0; border-radius: 0; background: transparent; }
+#session-panel .session-item { display: flex; min-height: 0; gap: 4px; padding: 7px 6px; margin: 1px 0; font-size: 13px; }
+#session-panel .session-row-main { min-height: 0; gap: 6px; }
+#session-panel .session-copy { gap: 0; }
+#session-panel .session-meta, #session-panel .session-time, #session-panel .session-current-label { display: none; }
+#session-panel .session-title { padding-right: 0; font-weight: 400; }
+#session-panel .session-title-line { min-width: 0; flex-wrap: nowrap; }
+#session-panel .session-icon { width: 14px; height: auto; border: 0; border-radius: 0; background: none; font-size: 12px; flex-shrink: 0; }
+#session-panel .session-item.active { color: var(--web-sidebar-title, #f1f5f9); }
+#session-panel .session-group-label { padding: 10px 6px 4px; border: 0; margin-top: 0; color: var(--history-muted); }
+#session-panel .session-group-project { padding: 6px 4px; margin-top: 4px; }
+#session-panel .session-item-indent { margin-left: 8px; }
+/* The single menu button occupies its own column; it never overlays the title. */
+#session-panel .session-more-btn { position: static; transform: none; width: 22px; height: 22px; min-width: 22px; min-height: 22px; font-size: 12px; flex-shrink: 0; }
+.session-more-btn[hidden] { display: none; }
+#session-panel .session-title-input { width: 100%; min-width: 0; padding: 0 3px; font-size: 13px; }
+#session-panel .session-group-actions { position: static; transform: none; opacity: 1; display: none; flex-shrink: 0; }
+#session-panel .session-group-project:is(:hover, :focus-within) .session-group-actions:not(:empty) { display: inline-flex; }
+#session-panel .session-group-project:is(:hover, :focus-within):has(.session-group-action) .session-group-count { display: none; }
+#session-panel .session-group-project:not(:has(.session-group-action)) .session-group-count { visibility: visible; }
+#session-panel .history-status { margin: 0; padding: 10px 6px; font-size: 12px; }
+.session-panel-footer { display: flex; flex-shrink: 0; justify-content: space-between; gap: 8px; padding: 6px 4px; border-top: 1px solid var(--history-border); font-size: 12px; color: var(--history-muted); }
+.session-panel-footer button { padding: 6px 4px; }
+.session-panel-footer button:hover { color: var(--history-text); }
+#session-panel button:focus-visible, #session-panel .session-group-project:focus-visible { outline: 2px solid var(--history-green); outline-offset: -2px; }
+@media (min-width: 1024px) {
+    #app.sidebar-collapsed #session-panel, #app.sidebar-collapsed .sidebar-history-caret { display: none; }
+}
+@media (pointer: coarse) {
+    #session-panel .session-more-btn { min-width: 32px; min-height: 32px; }
+    #session-panel .session-group-actions:not(:empty) { display: inline-flex; }
+}
+
+/* Master sidebar w-52 / h-14 / px-3 py-2, and new-chat menu density.
+   Keep the existing collapsed rail's width and branding palette. */
+html[data-web-palette] #app:not(.sidebar-collapsed) #sidebar { width: 208px; }
+html[data-web-palette] #sidebar .sidebar-brand { height: 56px; padding: 0 20px; gap: 12px; }
+html[data-web-palette] #sidebar .sidebar-brand-mark { width: 32px; height: 32px; }
+html[data-web-palette] #sidebar .sidebar-brand .brand-wordmark { font-size: 16px; }
+html[data-web-palette] #sidebar .sidebar-new-chat-wrap { margin: 10px 12px; }
+html[data-web-palette] #sidebar .sidebar-new-chat { min-height: 0; padding: 8px 12px; font-size: 13px; gap: 8px; border-radius: 8px; }
+html[data-web-palette] #sidebar-nav { padding: 16px 12px; }
+html[data-web-palette] #sidebar-nav .sidebar-item { min-height: 0; margin: 0; padding: 8px 12px; gap: 12px; font-size: 14px; border-radius: 8px; }
+html[data-web-palette] #sidebar-nav .sidebar-item .item-icon { width: 20px; font-size: 12px; }
+html[data-web-palette] #sidebar-nav .menu-group + .menu-group { margin-top: 4px; }
+html[data-web-palette] #sidebar-nav .menu-group > button { min-height: 0; padding: 8px 12px; font-size: 12px; }
+html[data-web-palette] #sidebar-nav .menu-group-items { padding-left: 8px; }
+html[data-web-palette] #sidebar-nav > [data-nav-shell="workbench"] .menu-group-items { padding-left: 0; }
+html[data-web-palette] #sidebar-nav > [data-nav-shell="workbench"] .sidebar-item { justify-content: flex-start; text-align: left; }
+html[data-web-palette] #sidebar-nav .sidebar-section-label { margin: 12px 12px 4px; }
+#sidebar .new-chat-menu, #history-new-control .new-chat-menu { padding: 6px; }
+#sidebar .new-chat-item, #history-new-control .new-chat-item { font-size: 13px; padding: 7px 9px; gap: 9px; min-height: 0; }
+@media (min-width: 1024px) {
+    html[data-web-palette] #app.sidebar-collapsed #sidebar .sidebar-brand { padding: 0; }
+    html[data-web-palette] #app.sidebar-collapsed #sidebar-nav .menu-group-items { padding-left: 0; }
+    html[data-web-palette] #app.sidebar-collapsed #sidebar-nav > [data-nav-shell="workbench"] .sidebar-item { justify-content: center; }
+}
+/* Keep the chat header aligned with the sidebar brand. */
+html[data-web-palette] #main-content > .workbench-header { height: 56px; min-height: 56px; padding: 0 16px; gap: 12px; }
+html[data-web-palette] #chat-main.chat-home { --home-header-h: 56px; }
+@media (max-width: 768px) {
+    html[data-web-palette] #main-content > .workbench-header { padding: 0 8px; gap: 4px; }
+    .workbench-header > button { flex-shrink: 0; }
+    .workbench-header #tenant-selector-btn { padding: 6px; }
+    .workbench-header #tenant-selector-label { max-width: 56px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}

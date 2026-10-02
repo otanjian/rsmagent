@@ -41,7 +41,7 @@ const launchSource = section('function sidebarLaunchV2() {', '// Keep closed gro
 const launchControlSource = section('const NEW_CHAT_SURFACES = {', 'function startSoloChat(');
 // The sidebar preview: the type marker, the title writer, the limit and the
 // renderer that draws the rows.
-const sidebarSource = section('// === SIDEBAR_RECENT_BEGIN ===', '// Never run sidebar init inline');
+const sidebarSource = section('// === SIDEBAR_RECENT_BEGIN ===', '// === SIDEBAR_RECENT_END ===');
 
 /* --- a very small DOM -------------------------------------------------------
    Enough of the real thing for the shipped code: children with parent links,
@@ -408,104 +408,6 @@ test('a roster of one leaves neither launch control with a caret', () => {
 
 /* --- the recent preview -------------------------------------------------- */
 
-test('the preview holds five rows when on and ten when off', () => {
-    const many = Array.from({ length: 12 }, (_, i) => ({
-        session_id: 's' + i, title: 'S' + i, last_active: 1700000000 - i, pinned: 0,
-        agent: { id: 'owner', name: '经营助手' }, project: null,
-    }));
-    const on = setup({ flag: '1' });
-    assert.equal(on.run('sidebarRecentLimitCount()'), 5);
-    on.setItems(many);
-    on.render();
-    assert.equal(on.fixture.recentList.children.length, 5, 'only the first five of the ordering');
-
-    const off = setup({ flag: '0' });
-    assert.equal(off.run('sidebarRecentLimitCount()'), 10);
-    off.setItems(many);
-    off.render();
-    assert.equal(off.fixture.recentList.children.length, 10, 'the old limit is preserved');
-});
-
-test('查看全部 is always reachable in the refined preview, including short and empty lists', () => {
-    [0, 2].forEach(count => {
-        const h = setup({ flag: '1' });
-        h.setItems(Array.from({ length: count }, (_, i) => ({
-            session_id: 's' + i, title: 'S' + i, last_active: 1700000000, pinned: 0,
-            agent: { id: 'owner', name: '助手' }, project: null,
-        })));
-        h.render();
-        assert.equal(h.fixture.more.classList.contains('hidden'), false,
-            `view all must stay available with ${count} rows`);
-    });
-});
-
-test('the old layout keeps its original short-list behaviour', () => {
-    const h = setup({ flag: '0' });
-    h.setItems([]);
-    h.render();
-    assert.equal(h.fixture.more.classList.contains('hidden'), true,
-        'off is a real rollback: nothing to expand means no entry');
-});
-
-/* --- the type marker, on both surfaces ---------------------------------- */
-
-test('a recent row marks a team from the persisted roster, not from its title', () => {
-    const h = setup({ flag: '1' });
-    h.setItems([
-        teamSession(),
-        // A solo conversation whose title reads like a team: it must stay plain.
-        { session_id: 'solo-1', title: '月度经营分析 多人协作', last_active: 1, pinned: 0,
-            agent: { id: 'owner', name: '经营助手' }, project: null },
-    ]);
-    h.render();
-    const row = h.rowFor('group-1');
-    const marker = row.querySelectorAll('.sidebar-recent-type')[0];
-    assert.ok(marker, 'the team row carries a marker');
-    assert.match(marker.innerHTML, /session-faces/, 'a team reads as faces');
-    assert.equal(marker.title, '经营助手、运营助手、财务助手、法务助手');
-    const title = row.querySelectorAll('.sidebar-recent-item')[0];
-    assert.equal(title.textContent, '月度经营分析', 'the title text is untouched');
-    assert.equal(title.children[0], marker, 'the marker rides before the title');
-
-    const solo = h.rowFor('solo-1').querySelectorAll('.sidebar-recent-type')[0];
-    assert.match(solo.innerHTML, /fa-message/, 'a single-Agent conversation stays a plain chat row');
-    assert.doesNotMatch(solo.innerHTML, /session-faces/, 'the title never decides the type');
-    assert.equal(solo.title, undefined, 'a solo row has no member summary to announce');
-});
-
-test('a coding conversation keeps its own identity in the preview', () => {
-    const h = setup({ flag: '1' });
-    h.setItems([{ session_id: 'code-1', title: 'SAP 数据查询', last_active: 2, pinned: 0,
-        agent: { id: 'coder', name: '编码助手', agent_type: 'coding' }, project: null }]);
-    h.render();
-    const marker = h.rowFor('code-1').querySelectorAll('.sidebar-recent-type')[0];
-    assert.match(marker.innerHTML, /fa-code/, 'coding keeps its coding identity');
-});
-
-test('a pinned solo conversation keeps the pin marker', () => {
-    const h = setup({ flag: '1' });
-    h.setItems([{ session_id: 'pin-1', title: '置顶会话', last_active: 3, pinned: 1,
-        agent: { id: 'owner', name: '助手' }, project: null }]);
-    h.render();
-    const marker = h.rowFor('pin-1').querySelectorAll('.sidebar-recent-type')[0];
-    assert.match(marker.innerHTML, /fa-thumbtack/);
-});
-
-test('an in-place rename rewrites the title and keeps the marker', () => {
-    const h = setup({ flag: '1' });
-    h.setItems([teamSession()]);
-    h.render();
-    const button = h.rowFor('group-1').querySelectorAll('.sidebar-recent-item')[0];
-    h.run('setSidebarRowTitle(document.getElementById("sidebar-recent-list")'
-        + '.querySelectorAll(".sidebar-recent-item")[0], "新标题");');
-    assert.equal(button.textContent, '新标题');
-    assert.equal(button.title, '新标题', 'the tooltip follows the new title');
-    const marker = button.querySelectorAll('.sidebar-recent-type')[0];
-    assert.ok(marker, 'the marker survives the edit');
-    assert.match(marker.innerHTML, /session-faces/);
-    assert.equal(button.children[0], marker);
-});
-
 test('the marker helper states what a conversation is, from the roster', () => {
     const h = setup({ flag: '1' });
     const team = h.run('sessionTypeMarker(' + JSON.stringify(teamSession()) + ')');
@@ -533,9 +435,6 @@ test('both surfaces derive their marker from the one shared helper', () => {
     // The preview renders the helper into the row button, and the full history
     // row interpolates the same helper, so the two cannot disagree about what a
     // conversation is (spec: 会话类型标识与成员恢复一致).
-    const previewRow = source.slice(source.indexOf('function setSidebarRowType('),
-        source.indexOf('function setSidebarRowTitle('));
-    assert.match(previewRow, /sessionTypeMarker\(s\)/);
     const historyRow = source.slice(source.indexOf('function _sessionItemEl('),
         source.indexOf('function _sortSessionItems('));
     assert.match(historyRow, /sessionTypeMarker\(s\)\.html/);

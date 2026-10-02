@@ -376,7 +376,7 @@ class PersonalMemoryTestCase(unittest.TestCase):
 
         knowledge = Path(self.shared) / "knowledge"
         knowledge.mkdir(parents=True, exist_ok=True)
-        (knowledge / "log.md").write_text(
+        (knowledge / "note.md").write_text(
             "# Log\n\nKNOWLEDGEBEACON is a shared note\n", encoding="utf-8")
 
         with use_identity(self._ident(self.alice)):
@@ -393,7 +393,7 @@ class PersonalMemoryTestCase(unittest.TestCase):
             finally:
                 con.close()
 
-        self.assertIn("knowledge/log.md", labels,
+        self.assertIn("knowledge/note.md", labels,
                       f"shared knowledge was indexed under an unstable label: {labels}")
 
 

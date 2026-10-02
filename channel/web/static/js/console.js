@@ -142,7 +142,7 @@ function _rosterFromTeam(team) {
 }
 
 function setSessionParticipants(sid, team) {
-    const entry = _sessionItems.find(s => s.session_id === sid);
+    const entry = _sessionItems.find(s => s.session_id === sid && (!s.agent?.id || s.agent.id === activeAgentId));
     if (!entry) return;
     const roster = _rosterFromTeam(team);
     if (roster.length) entry.participants = roster;
@@ -1145,6 +1145,7 @@ function _clearTenantPicker() {
 
 function _invalidateAccountIdentity(phase) {
     ++_authEpoch;
+    if (typeof resetMemoryView === 'function') resetMemoryView();
     resumedRequests.clear();
     if (typeof resetTimeline === "function") resetTimeline();
     if (typeof resetAgentWorkbenchFilters === 'function') resetAgentWorkbenchFilters(true);
@@ -1195,7 +1196,10 @@ function _normalizeAccountCheck(data) {
 function _acceptAccountIdentity(next, newLogin = false) {
     const previous = _accountIdentityKey;
     if (!previous || newLogin || previous.mode !== next.mode || previous.authRequired !== next.authRequired
-            || (previous.username && next.username && previous.username !== next.username)) ++_authEpoch;
+            || (previous.username && next.username && previous.username !== next.username)) {
+        ++_authEpoch;
+        if (typeof resetMemoryView === 'function') resetMemoryView();
+    }
     // A missing profile is not a new session: in-flight current-session 401s
     // must still take effect after a profile-only retry.
     _accountIdentityKey = { mode: next.mode, authRequired: next.authRequired,
@@ -1298,7 +1302,7 @@ function _enterAccountApp() {
                         renderKnowledgeWriteAffordances();
                     }
                     if (typeof _bootAreaDefaultView === 'function') _bootAreaDefaultView();
-                    if (typeof loadSidebarRecentSessions === 'function') loadSidebarRecentSessions();
+                    if (typeof syncSessionHistorySurface === 'function') syncSessionHistorySurface();
                     // The projection is known now: mount the context entry with
                     // the authoritative per-action availability (a no-op without
                     // the module, and hidden when both actions are closed).
@@ -1829,9 +1833,13 @@ function updateLangControls() {
 // Refresh JS-rendered views after a language switch. Each branch uses the
 // lightweight in-memory re-render path (no extra network round-trips).
 function rerenderDynamicViews() {
-    if (currentView === 'history') {
+    if (typeof _historyVisible !== 'undefined' && _historyVisible) {
         _closeSessionActionMenu();
-        _renderSessionList();
+        if (document.getElementById('session-list')?.querySelector('.session-title-input') || _dragSpaceKey !== null) {
+            _historyDirty = true;
+        } else {
+            _renderSessionList();
+        }
         _updateHistorySearchControls();
         _renderHistoryStatus();
     }
@@ -2560,6 +2568,7 @@ function showUnavailableView(viewId, reason) {
     // explanation and only offer a way back.
     const denied = reason === 'denied';
     currentView = viewId;
+    if (typeof syncSessionHistorySurface === 'function') syncSessionHistorySurface();
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     const target = document.getElementById('view-unavailable');
     if (target) target.classList.add('active');
@@ -2632,7 +2641,7 @@ function _normalizeViewId(viewId) {
     return viewId === 'external-connections' ? 'external_connections' : viewId;
 }
 
-function navigateTo(viewId) {
+function navigateTo(viewId, onArrive) {
     // 旧「场景应用」占位 id 重定向到真实 scenes 视图（收藏/直链不失效）。
     if (viewId === 'scenarios') viewId = 'scenes';
     viewId = _normalizeViewId(viewId);
@@ -2677,7 +2686,7 @@ function navigateTo(viewId) {
     // cancel. The single check runs once per navigation, and the nested
     // ``navigateTo`` that the area switch performs reuses the approval instead of
     // asking twice.
-    if (!_viewLeaveApproved(viewId) && !_viewLeaveCheck(viewId)) return;
+    if (!_viewLeaveApproved(viewId) && !_viewLeaveCheck(viewId, onArrive)) return;
     // Cross-area: switch to the other area in the SAME window (no reload).
     const here = _navAreaFromPath(location.pathname);
     const want = _viewTargetArea(viewId);
@@ -2689,6 +2698,7 @@ function navigateTo(viewId) {
         _navApprovedTarget = viewId;
         _openNavArea(want);
         _navApprovedTarget = null;
+        if (currentView === viewId && typeof onArrive === 'function') onArrive();
         return;
     }
     if (viewId !== currentView) {
@@ -2742,18 +2752,7 @@ function navigateTo(viewId) {
     // whatever view you navigate to. It only belongs to the Agent Config page.
     if (viewId !== 'agents') closeAgentDetail();
 
-    // Entering the history page: it is now the active consumer, so (re)load its
-    // list. Re-reading only happens when dirty or the list is empty, so a plain
-    // in-page refresh is not spuriously overwritten by a stale read.
-    if (viewId === 'history') {
-        _historyVisible = true;
-        if (_historyDirty || !_sessionItems.length) {
-            _historyDirty = false;
-            loadSessionList();
-        }
-    } else {
-        _historyVisible = false;
-    }
+    if (typeof syncSessionHistorySurface === 'function') syncSessionHistorySurface();
 
     if (viewId === 'agents') {
         loadAgentCatalog();
@@ -2768,9 +2767,10 @@ function navigateTo(viewId) {
         el.classList.add('opacity-0');
     });
 
-    if (viewId === 'history') _renderHistoryStatus();
+    if (_historyVisible) _renderHistoryStatus();
 
     if (window.innerWidth < 1024) closeSidebar();
+    if (typeof onArrive === 'function') onArrive();
 }
 
 // The leave check has already run for this target (the cross-area path commits
@@ -2783,13 +2783,13 @@ function _viewLeaveApproved(viewId) {
 // Ask the current view whether it may be left. Returns true when the caller may
 // commit the target, false when the current view asked to stay (a cancelled
 // discard) or will re-enter navigation itself after the confirmation.
-function _viewLeaveCheck(viewId) {
+function _viewLeaveCheck(viewId, onArrive) {
     if (viewId === currentView) return true;
     const adminViews = ['tenant', 'system_user', 'roles', 'org', 'platform', 'audit'];
     if (currentView === 'branding' && brandingDirty) {
         brandingConfirmDiscard(() => {
             _brandingResetDraftToBaseline();
-            navigateTo(viewId);
+            navigateTo(viewId, onArrive);
         });
         return false;
     }
@@ -2830,6 +2830,7 @@ function toggleSidebar() {
         closeAccountMenu();
         const collapsed = document.getElementById('app').classList.toggle('sidebar-collapsed');
         document.getElementById('menu-toggle')?.setAttribute('aria-expanded', String(!collapsed));
+        if (typeof syncSessionHistorySurface === 'function') syncSessionHistorySurface();
         return;
     }
     const sidebar = document.getElementById('sidebar');
@@ -2841,6 +2842,7 @@ function toggleSidebar() {
         sidebar.classList.remove('-translate-x-full');
         overlay.classList.remove('hidden');
         document.getElementById('menu-toggle')?.setAttribute('aria-expanded', 'true');
+        if (typeof syncSessionHistorySurface === 'function') syncSessionHistorySurface();
     }
 }
 
@@ -2849,6 +2851,7 @@ function closeSidebar() {
     document.getElementById('sidebar').classList.add('-translate-x-full');
     document.getElementById('sidebar-overlay').classList.add('hidden');
     if (window.innerWidth < 1024) document.getElementById('menu-toggle')?.setAttribute('aria-expanded', 'false');
+    if (typeof syncSessionHistorySurface === 'function') syncSessionHistorySurface();
 }
 
 /* The sidebar's launch control body: start a chat the way the session panel
@@ -2871,7 +2874,7 @@ function startSidebarNewChat() {
    Refined workbench sidebar (temporary presentation switch)
    =====================================================================
    `workbench_sidebar_launch_v2` gates *layout only*: the launch control's caret
-   and picker, the navigation order and the five-row recent preview. It never
+   and picker, the navigation order. History shares the same panel in both layouts. It never
    gates a team rule — the candidate projection that keeps coding Agents out, the
    server-side roster rejection and the save-then-commit start all apply with
    the switch on or off (spec: 呈现回退不撤销团队类型边界). Turning it off
@@ -3316,7 +3319,7 @@ function loadAgentCatalog() {
             if (selectedAdminAgentId) renderAgentDetail();
             else closeAgentDetail();
             renderComposerIdentity();
-            renderMemoryAgentSelect();
+            renderMemoryOwner();
             // A launch control only sprouts a menu (and its caret) once there is
             // more than one Agent to choose between.
             syncNewChatControls();
@@ -6142,64 +6145,6 @@ function channelBoundAgentId(channelType) {
     return inst ? (inst.agent_id || '') : '';
 }
 
-// The target the memory page is addressing. `MEMORY_PERSONAL` is a *chosen*
-// target (my own user memory), distinct from `''` which means "nothing chosen
-// yet" — collapsing the two would make the personal domain unreachable, because
-// `''` falls back to the Agent the console is working with (task 5.1).
-const MEMORY_PERSONAL = 'personal';
-
-let memoryAgentId = readScopedPreference('cow_memory_agent') || '';
-
-// The legal target set, served with the list (task 5.1). Empty on an older
-// backend, in which case the local catalogue is used as before.
-let memoryTargets = [];
-
-function viewingMemoryTarget() {
-    return memoryAgentId || activeAgentId || defaultAgentId || '';
-}
-
-function memoryTargetQuery() {
-    // Naming the personal domain explicitly rather than "no agent_id" keeps the
-    // two meanings apart: an absent target is a refusal, the personal domain is
-    // a choice.
-    return viewingMemoryTarget() === MEMORY_PERSONAL
-        ? 'scope=personal'
-        : `agent_id=${encodeURIComponent(viewingMemoryTarget() || '')}`;
-}
-
-function memoryTargetOptions() {
-    // The server's set is authoritative when present: it is derived from the
-    // same predicate the read and the write are authorised by, so it cannot
-    // offer the tenant's shared memory to a member the request would refuse.
-    const fromServer = Array.isArray(memoryTargets) && memoryTargets.length > 0;
-    if (fromServer) {
-        return memoryTargets.map(row => ({
-            value: row.value,
-            label: row.kind === 'personal'
-                ? t('memory_target_personal')
-                : (row.name || row.agent_id),
-            agent: row.kind === 'personal' ? null : { id: row.agent_id, name: row.name },
-        }));
-    }
-    // Older backend: keep the previous behaviour rather than emptying the picker.
-    const list = agentCatalog.length ? agentCatalog : enabledAgents();
-    return [{ value: MEMORY_PERSONAL, label: t('memory_target_personal'), agent: null }]
-        .concat(list.map(a => ({ value: a.id, label: a.name || a.id, agent: a })));
-}
-
-function renderMemoryAgentSelect() {
-    const el = document.getElementById('memory-agent-select');
-    if (!el) return;
-    initDropdown(el, memoryTargetOptions(), viewingMemoryTarget(), (value) => selectMemoryAgent(value), { withAvatar: true });
-}
-
-function selectMemoryAgent(agentId) {
-    memoryAgentId = agentId;
-    writeScopedPreference('cow_memory_agent', agentId);
-    closeMemoryViewer();
-    loadMemoryView(1);
-}
-
 // =====================================================================
 // Markdown Renderer
 // =====================================================================
@@ -6575,7 +6520,11 @@ function tenantSelectionHeader(url) {
 
 window.fetch = function(input, init) {
     init = init ? { ...init } : {};
-    let url = typeof input === 'string' ? input : input.url;
+    let url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+    const requestUrl = new URL(url, window.location.href);
+    const sameOrigin = requestUrl.origin === window.location.origin;
+    if (sameOrigin) url = requestUrl.pathname + requestUrl.search + requestUrl.hash;
+    const accountMemory = sameOrigin && /^\/api\/memory(?:\/|$)/.test(requestUrl.pathname);
     // In database identity mode the request context is tenant-scoped. The
     // selected tenant lives in sessionStorage (cow_tenant_id) but the core
     // console requests (agents / sessions / history / knowledge) do not
@@ -6587,16 +6536,16 @@ window.fetch = function(input, init) {
     if (tenantId) {
         const headers = init.headers instanceof Headers
             ? new Headers(init.headers)
-            : new Headers(init.headers || {});
+            : new Headers(init.headers || (input instanceof Request ? input.headers : {}));
         if (!headers.has('X-Tenant-ID')) headers.set('X-Tenant-ID', tenantId);
         init.headers = headers;
     }
-    if (activeAgentId && typeof url === 'string' && url.startsWith('/')) {
+    if (!accountMemory && activeAgentId && sameOrigin && url.startsWith('/')) {
         if (!/[?&]agent_id=/.test(url)) {
             const joiner = url.includes('?') ? '&' : '?';
             url = `${url}${joiner}agent_id=${encodeURIComponent(activeAgentId)}`;
         }
-        if (typeof input !== 'string') input = new Request(url, input);
+        if (input instanceof Request) input = new Request(new URL(url, window.location.href), input);
         else input = url;
 
         // JSON bodies read agent_id from the payload, so inject it there too.
@@ -11045,7 +10994,7 @@ function addLoadingIndicator() {
 /* =====================================================================
    New-chat launch controls (change refine-sidebar-team-chat-launch)
    =====================================================================
-   The session panel's 「新对话」 and the workbench sidebar's 「新建对话」 are the
+   The full history page's 「新对话」 and the workbench sidebar's 「新建对话」 are the
    same control in two places, so they are declared once here: the body starts a
    chat immediately (never gated on a choice) and the caret opens the one picker
    that offers a solo chat per Agent plus the team entry. Sharing the surface
@@ -11054,10 +11003,10 @@ function addLoadingIndicator() {
 
    ``available`` is the only difference between them: the sidebar's caret is part
    of the refined layout, so it appears with the presentation switch, while the
-   panel's caret has always been part of the session header. */
+   history page's caret remains available in its header. */
 const NEW_CHAT_SURFACES = {
     panel: {
-        // The session panel's own button. It is *not* ``new-chat-btn``: that id
+        // The full history page's button (legacy surface key: panel). It is *not* ``new-chat-btn``: that id
         // belongs to the composer's plus control, and pointing focus restore at
         // a duplicate id would park focus on the composer instead of the header.
         control: 'history-new-chat-btn',
@@ -11088,7 +11037,7 @@ function _newChatSurfaceOfMenu(node) {
         node.closest('#' + NEW_CHAT_SURFACES[name].menu)) || '';
 }
 
-/* The session-panel and sidebar launch buttons. Starting a chat is never a
+/* The full history page and sidebar launch buttons. Starting a chat is never a
    decision: the button opens one with the default-anchored Agent straight away,
    so a tenant that owns several Agents does not gate the primary action on a
    picker. The caret is the *optional* "switch Agent / start a team chat" entry,
@@ -11566,7 +11515,10 @@ function commitTeamChatSession(draft, prepared, data) {
         // Moving onto a prepared session is the same render path an ordinary new
         // chat takes; only the id is decided elsewhere.
         if (!commitPreparedSession(prepared.sessionId, { optimistic: true, inherit: true })) return;
-        if (data) _sessCfg = { model: data.model, team: data.team };
+        if (data) {
+            _sessCfg = { model: data.model, team: data.team };
+            setSessionParticipants(prepared.sessionId, data.team);
+        }
         renderComposerIdentity();
         if (typeof _renderModelChip === 'function') _renderModelChip();
         if (typeof resetWorkspaceToAgentRoot === 'function') resetWorkspaceToAgentRoot();
@@ -11645,17 +11597,13 @@ function commitPreparedSession(preparedSessionId, { optimistic = true, inherit =
     // the current session it is skipped: the fresh session has no row yet, and
     // inserting one would leave an empty, undeletable item behind (deleting it
     // would just spawn another).
-    const newSid = sessionId;
+    _historyDirty = true;
+    if (optimistic && typeof openSessionPanel === 'function') openSessionPanel();
     if (_historyVisible) {
-        if (optimistic) {
-            loadSessionList(() => _addOptimisticSessionItem(newSid));
-        } else {
-            loadSessionList();
-        }
-    } else {
-        // The list is hidden; mark it dirty so the next visit re-reads it.
-        _historyDirty = true;
+        if (!_sessionLoading) loadSessionList();
+        if (optimistic) _addOptimisticSessionItem(sessionId);
     }
+    if (typeof finishSessionPanelSelection === 'function') finishSessionPanelSelection();
     // A fresh session has no server-side context row yet: keep the usage entry
     // quiet until the first turn persists it.
     if (typeof _contextAfterSessionChange === 'function') _contextAfterSessionChange(false);
@@ -11666,10 +11614,7 @@ function commitPreparedSession(preparedSessionId, { optimistic = true, inherit =
 // Session History (workbench page)
 // =====================================================================
 
-// The history page is the sole consumer of the session list now that the old
-// collapsible panel is gone. `_historyVisible` tracks whether the page is the
-// active view; `_historyDirty` marks a pending reload (a session changed while
-// the page was hidden, or the page was left and needs a fresh read).
+// One active list is shared by the full history page and the chat panel.
 let _historyVisible = false;
 let _historyDirty = false;
 
@@ -11717,10 +11662,11 @@ function _applyInputTooltips() {
 // pressed "new chat" and has not sent the first message. Rendered from the same
 // path as real sessions so it lands in the right group.
 function _addOptimisticSessionItem(sid) {
-    if (_historyQuery) return;
+    if (_historyQuery || sid !== sessionId) return;
     const container = document.getElementById('session-list');
     if (!container) return;
-    if (_sessionItems.some(s => s.session_id === sid)) return;
+    _sessionItems = _sessionItems.filter(s => !s.optimistic);
+    if (_sessionItems.some(s => s.session_id === sid && s.agent?.id === activeAgentId)) return;
 
     // This runs from a callback, so a chat opened as a group may already have its
     // members by now: seed the faces from them rather than waiting for a change
@@ -11729,6 +11675,8 @@ function _addOptimisticSessionItem(sid) {
 
     _sessionItems.unshift({
         session_id: sid,
+        agent: { id: activeAgentId },
+        optimistic: true,
         title: t('new_chat'),
         last_active: Math.floor(Date.now() / 1000),
         pinned: 0,
@@ -11861,6 +11809,7 @@ function _cancelHistoryRequest() {
 function _resetHistorySearch() {
     _cancelHistoryRequest();
     _historyAuthGeneration++;
+    if (typeof resetSessionPanelIdentity === 'function') resetSessionPanelIdentity();
     _historySearchComposing = false;
     _historyQuery = '';
     _historyTotal = null;
@@ -11887,6 +11836,7 @@ function onHistorySearchCompositionEnd(event) {
 }
 
 function _readHistorySearchQuery() {
+    if (typeof sessionHistorySurface === 'function' && sessionHistorySurface() === 'panel') return '';
     const input = document.getElementById('history-search-input');
     return input ? input.value.trim() : _historyQuery;
 }
@@ -11976,6 +11926,7 @@ function clearHistorySearch() {
 }
 
 function loadSessionList(onDone) {
+    if (_sidebarRecentDenied()) return;
     const container = document.getElementById('session-list');
     if (!container || _historySearchComposing) return;
     if (container.querySelector('.session-title-input') || _dragSpaceKey !== null) {
@@ -12009,14 +11960,14 @@ function loadSessionList(onDone) {
 function _refreshHistoryList() {
     if (_historyVisible) loadSessionList();
     else _historyDirty = true;
-    if (typeof loadSidebarRecentSessions === 'function') loadSidebarRecentSessions();
+
 }
 
 // === SIDEBAR_RECENT_BEGIN ===
 /* What a conversation announces itself as, derived from the persisted owner
    badge and roster the list already carries — never guessed from the title
-   (spec: 会话类型标识与成员恢复一致). Both the history rows and the sidebar
-   preview read this one helper, so the two surfaces cannot disagree about what
+   (spec: 会话类型标识与成员恢复一致). Both the history page and the chat
+   panel read this one helper, so the two surfaces cannot disagree about what
    a conversation is.
 
    - Several Agents: overlapping faces plus the remaining member summary,
@@ -12051,390 +12002,37 @@ function sessionTypeMarker(s) {
     };
 }
 
-const SIDEBAR_RECENT_LIMIT = 10;
-function _sidebarRecentLimit(items) {
-    return Array.isArray(items) ? items.slice(0, sidebarRecentLimitCount()) : [];
-}
-// The refined sidebar shows a tighter preview. The limit is a presentation
-// value only: the rows come from the same authorized, pinned-first, most-recent
-// ordering either way, and 查看全部 reaches everything past it.
-const SIDEBAR_RECENT_LIMIT_V2 = 5;
-function sidebarRecentLimitCount() {
-    return (typeof sidebarLaunchV2 === 'function' && sidebarLaunchV2())
-        ? SIDEBAR_RECENT_LIMIT_V2 : SIDEBAR_RECENT_LIMIT;
-}
-// The 会话历史 block is the `history` workbench menu entry. It is denied when the
-// authoritative projection withholds its menu grant; an unknown projection (or
-// legacy mode) never denies.
 function _sidebarRecentDenied() {
-    if (typeof _viewNavDenied !== 'function') return false;
-    return !!_viewNavDenied('history');
+    return typeof _viewNavDenied === 'function' && !!_viewNavDenied('history');
 }
 // === SIDEBAR_RECENT_END ===
 
-let _sidebarRecentItems = [];
-let _sidebarRecentSeq = 0;
-let _sidebarRecentDirty = false;
-function _sidebarRecentEditing() {
-    return !!document.getElementById('sidebar-recent-list')?.querySelector('.sidebar-recent-rename-input');
-}
-// Declared before sidebar/history init so mid-script DOMContentLoaded or
-// deferred callbacks cannot hit temporal-dead-zone on these lets.
 let _dragSpaceKey = null;
 let _sessionActionMenu = null;
 let _sessionMenuCleanup = null;
 
-/* The type marker drawn before a sidebar row's title. It is a child of the
-   open button rather than a sibling so a click anywhere on the row's face still
-   opens the conversation, and so the label and its marker stay on one line. */
-function setSidebarRowType(btn, s) {
-    const marker = sessionTypeMarker(s);
-    const glyph = document.createElement('span');
-    glyph.className = 'sidebar-recent-type';
-    glyph.innerHTML = marker.html;
-    if (marker.summary) glyph.title = marker.summary;
-    btn.insertBefore(glyph, btn.children[0] || null);
+function _isOptimisticSession(sid, owner) {
+    return _sessionItems.some(s => s.optimistic && s.session_id === sid
+        && (!owner || s.agent?.id === owner));
 }
 
-/* Give a sidebar row its title. Assigning textContent drops every child, so the
-   title and the marker beside it are always written through here — at build
-   time and on an in-place rename alike. The tooltip is the bare conversation
-   title; the marker keeps its own member summary. */
-function setSidebarRowTitle(btn, title) {
-    const marker = btn.querySelector('.sidebar-recent-type');
-    btn.textContent = title;
-    btn.title = title;
-    if (marker) btn.insertBefore(marker, btn.children[0] || null);
-}
-
-function renderSidebarRecentSessions() {
-    const list = document.getElementById('sidebar-recent-list');
-    const more = document.getElementById('sidebar-recent-more');
-    if (!list) return;
-    if (_sidebarRecentEditing()) { _sidebarRecentDirty = true; return; }
-    list.innerHTML = '';
-    const items = _sidebarRecentLimit(_sidebarRecentItems);
-    if (!items.length) {
-        const empty = document.createElement('div');
-        empty.className = 'sidebar-recent-empty';
-        empty.textContent = t('sidebar_history_empty');
-        list.appendChild(empty);
-        if (more) more.classList.toggle('hidden', !_sidebarRecentViewAllAlways());
-        return;
-    }
-    items.forEach(s => {
-        const ownerId = (s.agent && s.agent.id) || '';
-        const title = s.title || t('untitled_session');
-        const isActive = s.session_id === sessionId && (!ownerId || ownerId === activeAgentId);
-
-        // The row is a container, not a single button: the archive control is a
-        // sibling so it can be reached by keyboard and never triggers the open
-        // click that the main button owns.
-        const row = document.createElement('div');
-        row.className = 'sidebar-recent-row' + (isActive ? ' active' : '');
-        row.setAttribute('role', 'listitem');
-        row.dataset.sessionId = s.session_id || '';
-        if (ownerId) row.dataset.agentId = ownerId;
-
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'sidebar-recent-item' + (isActive ? ' active' : '');
-        // The title stays the button's own text so in-place renaming keeps
-        // working by text alone; the type marker rides in front of it and is
-        // re-attached by `setSidebarRowTitle` when the title changes.
-        setSidebarRowTitle(btn, title);
-        setSidebarRowType(btn, s);
-        btn.dataset.sessionId = s.session_id || '';
-        if (ownerId) btn.dataset.agentId = ownerId;
-        btn.addEventListener('click', () => {
-            switchSession(s.session_id, ownerId || undefined);
-        });
-        // Double-click (or F2 on the focused row) renames in place. A single
-        // click still opens the conversation, and `switchSession` never
-        // re-renders this list, so the dblclick lands on the same node.
-        btn.addEventListener('dblclick', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            renameSidebarSession(s.session_id, ownerId);
-        });
-        btn.addEventListener('keydown', (event) => {
-            if (event.key !== 'F2') return;
-            event.preventDefault();
-            event.stopPropagation();
-            renameSidebarSession(s.session_id, ownerId);
-        });
-
-        // A visible entry point for the same in-place rename that the
-        // double-click and F2 gestures trigger, sitting beside the archive
-        // control. Order is destructive-ness ascending: rename, then archive.
-        const rename = document.createElement('button');
-        rename.type = 'button';
-        rename.className = 'sidebar-recent-rename-btn';
-        rename.setAttribute('aria-label', t('rename_session') + ': ' + title);
-        rename.title = t('rename_session');
-        rename.innerHTML = '<i class="fas fa-pen" aria-hidden="true"></i>';
-        rename.addEventListener('click', (event) => {
-            event.stopPropagation();
-            renameSidebarSession(s.session_id, ownerId);
-        });
-
-        const archive = document.createElement('button');
-        archive.type = 'button';
-        archive.className = 'sidebar-recent-archive-btn';
-        archive.setAttribute('aria-label', t('archive_session') + ': ' + title);
-        archive.title = t('archive_session');
-        archive.innerHTML = '<i class="fas fa-box-archive" aria-hidden="true"></i>';
-        archive.addEventListener('click', (event) => {
-            event.stopPropagation();
-            archiveSidebarSession(s.session_id, ownerId);
-        });
-
-        row.appendChild(btn);
-        row.appendChild(rename);
-        row.appendChild(archive);
-        list.appendChild(row);
-    });
-    if (more) {
-        more.classList.toggle('hidden',
-            !_sidebarRecentViewAllAlways() && items.length < 1);
-    }
-}
-
-/* Whether 查看全部 stays available for a short (or empty) preview.
- *
- * It is the fixed entry to the full history page, so in the refined sidebar it
- * is offered whenever the section itself is offered — a member with two
- * conversations still needs a way into search, archiving and rename. The old
- * behaviour is kept for the old layout, where the row only appears once there
- * is something to expand.
- */
-function _sidebarRecentViewAllAlways() {
-    return typeof sidebarLaunchV2 === 'function' && sidebarLaunchV2();
-}
-
-function loadSidebarRecentSessions() {
-    const wrap = document.getElementById('sidebar-recent');
-    if (!wrap) return;
-    if (!_accountAppVisible) return;
-    if (typeof _navAreaFromPath === 'function' && _navAreaFromPath(location.pathname) !== 'workbench') return;
-    // A withheld menu grant hides the block and skips the request entirely: never
-    // fetch history the identity is not allowed to see in the navigation.
-    const denied = typeof _sidebarRecentDenied === 'function' && _sidebarRecentDenied();
-    if (wrap.classList.contains('hidden') || denied) {
-        wrap.classList.add('hidden');
-        return;
-    }
-    const seq = ++_sidebarRecentSeq;
-    if (_sidebarRecentEditing()) { _sidebarRecentDirty = true; return; }
-    _sidebarRecentDirty = false;
-    const authEpoch = _authEpoch;
-    const tenantId = sessionStorage.getItem('cow_tenant_id') || '';
-    const isCurrent = () => seq === _sidebarRecentSeq && authEpoch === _authEpoch
-        && tenantId === (sessionStorage.getItem('cow_tenant_id') || '');
-    return fetch(`/api/sessions?page=1&page_size=${sidebarRecentLimitCount()}&scope=all`)
-        .then(async r => {
-            const data = await r.json().catch(() => ({}));
-            return { ok: r.ok, data };
-        })
-        .then(({ ok, data }) => {
-            if (!isCurrent()) return;
-            if (_sidebarRecentEditing()) { _sidebarRecentDirty = true; return; }
-            if (!ok || !data || data.status !== 'success') {
-                _sidebarRecentItems = [];
-                const list = document.getElementById('sidebar-recent-list');
-                if (list) {
-                    list.innerHTML = '';
-                    const err = document.createElement('div');
-                    err.className = 'sidebar-recent-error';
-                    err.textContent = t('session_history_failed');
-                    list.appendChild(err);
-                }
-                return;
-            }
-            _sidebarRecentItems = _sidebarRecentLimit(data.sessions || []);
-            renderSidebarRecentSessions();
-        })
-        .catch(() => {
-            if (!isCurrent()) return;
-            if (_sidebarRecentEditing()) { _sidebarRecentDirty = true; return; }
-            _sidebarRecentItems = [];
-            const list = document.getElementById('sidebar-recent-list');
-            if (!list) return;
-            list.innerHTML = '';
-            const err = document.createElement('div');
-            err.className = 'sidebar-recent-error';
-            err.textContent = t('session_history_failed');
-            list.appendChild(err);
-        });
-}
-
-function _initSidebarRecent() {
-    const wrap = document.getElementById('sidebar-recent');
-    const toggle = document.getElementById('sidebar-recent-toggle');
-    const label = document.getElementById('sidebar-recent-label');
-    const more = document.getElementById('sidebar-recent-more');
-    if (!wrap || !toggle) return;
-    const setOpen = (open) => {
-        wrap.classList.toggle('open', open);
-        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    };
-    toggle.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        setOpen(!wrap.classList.contains('open'));
-        if (wrap.classList.contains('open')) loadSidebarRecentSessions();
-    });
-    // Double-click the label to open the full history page (search/filter),
-    // same as the previous top-level「历史对话」entry.
-    label?.addEventListener('dblclick', (event) => {
-        event.preventDefault();
-        navigateTo('history');
-    });
-    more?.addEventListener('click', () => navigateTo('history'));
-    // The archived view is a compact dialog rather than another workbench page:
-    // restoring is rare and should not compete with the history page entry.
-    const archivedBtn = document.getElementById('sidebar-recent-archived');
-    archivedBtn?.addEventListener('click', (event) => {
-        event.preventDefault();
-        openArchivedSessionsModal();
-    });
-    loadSidebarRecentSessions();
-}
-
-// Archive one conversation from the sidebar. It disappears from history but
-// keeps every message, its project binding and its pin until restored. The row
-// is removed optimistically; a failed write puts it back and explains why.
-function archiveSidebarSession(sessionId, agentId) {
-    if (!sessionId) return;
+// Keep the existing archive operation, using the same list and owner as all
+// other row actions. Failed writes leave the confirmed list in place.
+function archiveSidebarSession(sid, agentId) {
+    if (!sid || _isOptimisticSession(sid, agentId)) return;
     const owner = agentId || activeAgentId || '';
-    const index = _sidebarRecentItems.findIndex(
-        s => s.session_id === sessionId && (!owner || (s.agent && s.agent.id) === owner));
-    const removed = index >= 0 ? _sidebarRecentItems.splice(index, 1)[0] : null;
-    if (removed) renderSidebarRecentSessions();
-    const restoreRow = () => {
-        if (!removed) return;
-        _sidebarRecentItems.splice(Math.min(index, _sidebarRecentItems.length), 0, removed);
-        renderSidebarRecentSessions();
-    };
-    fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+    const context = _sessionListContext();
+    return fetch(`/api/sessions/${encodeURIComponent(sid)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ archived: true, agent_id: owner }),
-    })
-        .then(r => r.json())
-        .then(data => {
-            if (data.status === 'success') {
-                _wsToast(t('session_archived'));
-                loadSidebarRecentSessions();
-                return;
-            }
-            restoreRow();
-            _wsToast(data.message || t('session_archive_failed'));
-        })
-        .catch(() => {
-            restoreRow();
-            _wsToast(t('session_archive_failed'));
-        });
-}
-
-// Rename one sidebar conversation in place. Mirrors the history page's
-// `renameSession`: Enter saves, Escape cancels, blur saves; success is silent
-// and a failed write rolls the title back with a reason. Single-click still
-// opens the conversation, so this never has to steal the open click.
-function renameSidebarSession(sessionId, agentId) {
-    if (!sessionId) return;
-    const owner = agentId || activeAgentId || '';
-    const list = document.getElementById('sidebar-recent-list');
-    if (!list) return;
-    const row = [...list.querySelectorAll('.sidebar-recent-row')].find(el =>
-        el.dataset.sessionId === sessionId
-        && (!owner || el.dataset.agentId === owner));
-    if (!row) return;
-    const btn = row.querySelector('.sidebar-recent-item');
-    if (!btn || row.querySelector('.sidebar-recent-rename-input')) return;
-
-    const entry = _sidebarRecentItems.find(s => s.session_id === sessionId
-        && (!owner || (s.agent && s.agent.id) === owner));
-    // The tooltip holds the bare title; the button's text may carry the marker's
-    // "+N" too, so it is the fallback of last resort.
-    const oldTitle = (entry && entry.title) || btn.title || btn.textContent || '';
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'sidebar-recent-rename-input';
-    input.value = oldTitle;
-    input.maxLength = 100;
-    input.setAttribute('aria-label', t('rename_session'));
-
-    // The row's main button owns the open click; interacting with the editor
-    // must never bubble into it.
-    const stop = event => event.stopPropagation();
-    input.addEventListener('click', stop);
-    input.addEventListener('mousedown', stop);
-
-    // An input cannot legally nest inside a button, so hide the button and put
-    // the editor beside it in the row.
-    btn.classList.add('hidden');
-    row.insertBefore(input, btn);
-    input.focus();
-    input.select();
-
-    const authEpoch = _authEpoch;
-    const tenantId = sessionStorage.getItem('cow_tenant_id') || '';
-    const isCurrentIdentity = () => authEpoch === _authEpoch
-        && tenantId === (sessionStorage.getItem('cow_tenant_id') || '');
-    let done = false;
-    const restore = (title, refresh = true) => {
-        done = true;
-        if (title !== undefined) setSidebarRowTitle(btn, title);
-        input.remove();
-        btn.classList.remove('hidden');
-        if (refresh && _sidebarRecentDirty) loadSidebarRecentSessions();
-    };
-    const revert = (title) => {
-        if (entry) entry.title = title;
-        setSidebarRowTitle(btn, title);
-    };
-    const commit = () => {
-        if (done) return;
-        const newTitle = input.value.trim();
-        if (!newTitle || newTitle === oldTitle) { restore(oldTitle); return; }
-        // Optimistic: the row and the cached entry both move to the new title.
-        if (entry) entry.title = newTitle;
-        // Wait for the write before applying a refresh deferred during editing.
-        restore(newTitle, false);
-        fetch(`/api/sessions/${encodeURIComponent(sessionId)}?agent_id=${encodeURIComponent(owner)}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: newTitle, agent_id: owner }),
-        })
-            .then(r => r.json())
-            .then(data => {
-                if (!isCurrentIdentity()) return;
-                if (data.status === 'success') return;
-                revert(oldTitle);
-                _wsToast(data.message || t('session_settings_failed'));
-            })
-            .catch(() => {
-                if (!isCurrentIdentity()) return;
-                revert(oldTitle);
-                _wsToast(t('session_settings_failed'));
-            })
-            .finally(() => {
-                if (isCurrentIdentity() && _sidebarRecentDirty) loadSidebarRecentSessions();
-            });
-    };
-
-    input.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) {
-            event.preventDefault();
-            commit();
-        } else if (event.key === 'Escape') {
-            event.preventDefault();
-            restore(oldTitle);
-        }
+    }).then(r => r.json()).then(data => {
+        if (context !== _sessionListContext()) return;
+        _wsToast(data.status === 'success' ? t('session_archived') : data.message || t('session_archive_failed'));
+        if (data.status === 'success') _refreshHistoryList();
+    }).catch(() => {
+        if (context === _sessionListContext()) _wsToast(t('session_archive_failed'));
     });
-    input.addEventListener('blur', commit);
 }
 
 // === ARCHIVED_SESSIONS_BEGIN ===
@@ -12607,19 +12205,12 @@ function restoreArchivedSession(sessionId, agentId) {
                 return;
             }
             _wsToast(t('session_restored'));
-            loadSidebarRecentSessions();
+            _refreshHistoryList();
             _loadArchivedSessions(_archivedSessionsBody);
         })
         .catch(() => _wsToast(t('session_restore_failed')));
 }
 // === ARCHIVED_SESSIONS_END ===
-
-// Never run sidebar init inline during console.js evaluation: deferred scripts
-// can already be past `loading`, and sync init may call render paths that
-// reference lets declared later in this file.
-queueMicrotask(() => {
-    try { _initSidebarRecent(); } catch (err) { console.error('[sidebar-recent]', err); }
-});
 
 function _fetchSessionPage(page, clear, onDone, seq) {
     if (_sessionLoading) return;
@@ -12694,6 +12285,8 @@ function _fetchSessionPage(page, clear, onDone, seq) {
             _sessionLoading = false;
             _historyRequestController = null;
 
+            const pending = _sessionItems.find(s => s.optimistic && s.session_id === sessionId
+                && s.agent?.id === activeAgentId);
             if (clear) _sessionItems = [];
 
             const sessions = data.sessions || [];
@@ -12707,10 +12300,18 @@ function _fetchSessionPage(page, clear, onDone, seq) {
             const seen = new Set(_sessionItems.map(sessionKey));
             sessions.forEach(s => {
                 const key = sessionKey(s);
-                if (seen.has(key)) return;
+                if (seen.has(key)) {
+                    const index = _sessionItems.findIndex(item => item.optimistic && sessionKey(item) === key);
+                    if (index >= 0) _sessionItems[index] = s;
+                    return;
+                }
                 seen.add(key);
                 _sessionItems.push(s);
             });
+
+            if (pending && !query && !seen.has(sessionKey(pending))) _sessionItems.unshift(pending);
+            _sessionItems = _sessionItems.filter(s => !s.optimistic
+                || (s.session_id === sessionId && s.agent?.id === activeAgentId));
 
             // First-page (full) reloads paint the list state; subsequent-page
             // loads keep whatever is already confirmed on screen.
@@ -12826,8 +12427,16 @@ function _renderSessionList() {
                 <i class="fas fa-chevron-down session-group-caret ${collapsed ? 'collapsed' : ''}"></i>
                 <i class="fas ${group.icon} session-group-icon"></i>
                 <span class="session-group-name">${escapeHtml(group.label)}</span>
-                <span class="session-group-count">${group.items.length}</span>
+                <span class="session-group-count">${group.items.filter(s => !s.optimistic).length}</span>
                 <span class="session-group-actions">${actions}</span>`;
+            header.tabIndex = 0;
+            header.setAttribute('role', 'button');
+            header.setAttribute('aria-expanded', String(!collapsed));
+            header.addEventListener('keydown', event => {
+                if (event.target === header && (event.key === 'Enter' || event.key === ' ')) {
+                    event.preventDefault(); _toggleProjectCollapse(group.key);
+                }
+            });
             header.addEventListener('click', () => _toggleProjectCollapse(group.key));
             _wireGroupDrag(header, group.key);
         } else if (group.icon) {
@@ -12848,6 +12457,7 @@ function _toggleProjectCollapse(key) {
     else _collapsedProjects.add(key);
     _saveCollapsed(_collapsedProjects);
     _renderSessionList();
+    requestAnimationFrame(_onSessionListScroll);
 }
 
 // --- Project group drag-to-reorder -------------------------------------------
@@ -12960,6 +12570,7 @@ function _closeSessionActionMenu(restoreFocus = false) {
 
 function _openSessionActionMenu(event, session, trigger) {
     event.stopPropagation();
+    if (session.optimistic) return;
     const wasOpen = trigger.getAttribute('aria-expanded') === 'true';
     _closeSessionActionMenu();
     if (wasOpen) return;
@@ -12971,12 +12582,13 @@ function _openSessionActionMenu(event, session, trigger) {
     const actions = [
         [session.pinned ? 'unpin_session' : 'pin_session', 'fa-thumbtack', () => toggleSessionPin(session.session_id, owner)],
         ['rename_session', 'fa-pen', () => renameSession(session.session_id, owner)],
+        ['archive_session', 'fa-box-archive', () => archiveSidebarSession(session.session_id, owner)],
         ['agents_delete', 'fa-trash-can', () => deleteSession(session.session_id, owner)],
     ];
     actions.forEach(([label, icon, action], index) => {
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'session-action-menu-item' + (index === 2 ? ' danger' : '');
+        button.className = 'session-action-menu-item' + (label === 'agents_delete' ? ' danger' : '');
         button.setAttribute('role', 'menuitem');
         button.innerHTML = `<i class="fas ${icon}" aria-hidden="true"></i><span>${escapeHtml(t(label))}</span>`;
         button.addEventListener('click', e => {
@@ -13051,7 +12663,11 @@ function _sessionItemEl(s, indent) {
     `;
     item.querySelector('.session-row-main').addEventListener('click', () => switchSession(s.session_id, ownerId || undefined));
     const more = item.querySelector('.session-more-btn');
+    more.hidden = !!s.optimistic;
     more.addEventListener('click', e => _openSessionActionMenu(e, s, more));
+    item.querySelector('.session-row-main').addEventListener('keydown', e => {
+        if (e.key === 'F2' && !s.optimistic) { e.preventDefault(); renameSession(s.session_id, ownerId); }
+    });
     return item;
 }
 
@@ -13070,7 +12686,7 @@ function _sortSessionItems() {
 
 function toggleSessionPin(sid, agentId) {
     const entry = _sessionItems.find(s => s.session_id === sid && (!agentId || (s.agent && s.agent.id) === agentId));
-    if (!entry) return;
+    if (!entry || entry.optimistic) return;
     const pinned = !entry.pinned;
 
     // Move it optimistically: the reorder is the whole point of the click, and
@@ -13291,6 +12907,7 @@ function openCodingSession(agentId, sessionId, options) {
     if (currentView !== 'chat') navigateTo('chat');
     renderComposerIdentity();
 
+    const isNew = !sessionId;
     const mounted = sessionId
         ? module.open(targetAgent, sessionId)
         : module.launch(targetAgent, codingProjectDirOf(targetAgent));
@@ -13303,6 +12920,8 @@ function openCodingSession(agentId, sessionId, options) {
         writeScopedPreference(activeSessionStorageKey(), sessionId);
         _sessCfg = null;
         markActiveSessionRow();
+        if (isNew && typeof openSessionPanel === 'function') openSessionPanel();
+        if (typeof finishSessionPanelSelection === 'function') finishSessionPanelSelection();
         if (typeof _historyVisible !== 'undefined' && _historyVisible) loadSessionList();
         return true;
     });
@@ -13335,8 +12954,7 @@ function wireCodingModule() {
             : (proceed(), true)),
         notify: (message) => _wsToast(message),
         redrawList: () => {
-            if (typeof _historyVisible !== 'undefined' && _historyVisible) loadSessionList();
-            loadSidebarRecentSessions();
+            _refreshHistoryList();
         },
         onLinked: (described) => {
             // A session the user created inside Opencode is now a platform
@@ -13366,10 +12984,6 @@ function wireCodingModule() {
 /** The one row the sidebar/history marks as selected, in either surface. */
 function markActiveSessionRow() {
     document.querySelectorAll('.session-item').forEach(el => {
-        el.classList.toggle('active', el.dataset.sessionId === sessionId
-            && (!el.dataset.agentId || el.dataset.agentId === activeAgentId));
-    });
-    document.querySelectorAll('.sidebar-recent-item').forEach(el => {
         el.classList.toggle('active', el.dataset.sessionId === sessionId
             && (!el.dataset.agentId || el.dataset.agentId === activeAgentId));
     });
@@ -13407,6 +13021,7 @@ function switchSession(newSessionId, agentId) {
             // frame (a reload would drop whatever the user has open in there).
             if (currentView !== 'chat') navigateTo('chat');
             renderComposerIdentity();
+            if (typeof finishSessionPanelSelection === 'function') finishSessionPanelSelection();
             return;
         }
         seam.open(agentId || activeAgentId, newSessionId);
@@ -13423,6 +13038,7 @@ function switchSession(newSessionId, agentId) {
         // Re-open a conversation whose previous history request did not load.
         if (!historyLoading && historyPage === 0) loadHistory(1);
         renderComposerIdentity();
+        if (typeof finishSessionPanelSelection === 'function') finishSessionPanelSelection();
         focusChatComposer();
         return;
     }
@@ -13484,12 +13100,9 @@ function switchSession(newSessionId, agentId) {
         el.classList.toggle('active', el.dataset.sessionId === sessionId
             && (!el.dataset.agentId || el.dataset.agentId === activeAgentId));
     });
-    document.querySelectorAll('.sidebar-recent-item').forEach(el => {
-        el.classList.toggle('active', el.dataset.sessionId === sessionId
-            && (!el.dataset.agentId || el.dataset.agentId === activeAgentId));
-    });
 
     if (currentView !== 'chat') navigateTo('chat');
+    if (typeof finishSessionPanelSelection === 'function') finishSessionPanelSelection();
     renderComposerIdentity();
     focusChatComposer();
     // A session switch moves the context panel to a row the server has written,
@@ -13500,6 +13113,7 @@ function switchSession(newSessionId, agentId) {
 // In-place rename a session title: replace the title <span> with an <input>,
 // commit on Enter/blur, cancel on Escape. Persists via PUT /api/sessions/<id>.
 function renameSession(sid, agentId) {
+    if (_isOptimisticSession(sid, agentId)) return;
     const owner = agentId || activeAgentId;
     const same = s => s.session_id === sid && (!owner || (s.agent && s.agent.id) === owner);
     const item = [...document.querySelectorAll('.session-item')].find(el =>
@@ -13544,6 +13158,7 @@ function renameSession(sid, agentId) {
         span.title = title;
         span.textContent = title;
         input.replaceWith(span);
+        item.querySelector('.session-more-btn')?.setAttribute('aria-label', t('history_more') + ': ' + title);
         while (editWrap.firstChild) mainButton.appendChild(editWrap.firstChild);
         editWrap.replaceWith(mainButton);
         if (_historyDirty && refreshDeferred) { _historyDirty = false; _refreshHistoryList(); }
@@ -13581,7 +13196,7 @@ function renameSession(sid, agentId) {
             .then(r => r.json())
             .then(data => {
                 if (data.status !== 'success') { revert(); _wsToast(data.message || t('session_settings_failed')); }
-                else _refreshHistoryList();
+                else if (_historyQuery || _historyDirty) _refreshHistoryList();
             })
             .catch(revert);
     };
@@ -13594,6 +13209,7 @@ function renameSession(sid, agentId) {
 }
 
 function deleteSession(sid, agentId) {
+    if (_isOptimisticSession(sid, agentId)) return;
     showConfirmModal(t('delete_session_title'), t('delete_session_confirm'), () => {
         const owner = agentId || activeAgentId;
         const deletingCurrent = sid === sessionId && (!owner || owner === activeAgentId);
@@ -15776,134 +15392,6 @@ function resetSkillViewer() {
     document.getElementById('skills-panel-list')?.classList.remove('hidden');
 }
 
-// =====================================================================
-// Memory View
-// =====================================================================
-let memoryPage = 1;
-let memoryCategory = 'memory';   // 'memory' | 'evolution'
-const memoryPageSize = 10;
-
-function switchMemoryTab(tab) {
-    document.querySelectorAll('.memory-tab').forEach(el => el.classList.remove('active'));
-    document.getElementById('memory-tab-' + tab).classList.add('active');
-    // The "dreams" tab now surfaces self-evolution logs (merged with dream diaries).
-    memoryCategory = tab === 'dreams' ? 'evolution' : 'memory';
-    loadMemoryView(1);
-}
-
-/**
- * Render a refused memory read as a terminal state instead of an empty folder.
- *
- * Both memory reads used to `return` on `status !== 'success'`, which left the
- * previous rows (or the "loading" copy) on screen and swallowed the catch: a
- * 403, a 503 and "this Agent has no memory files yet" all ended up looking the
- * same, and the console could not say which one happened. The reason now comes
- * from the server payload and the stale rows are cleared, so what is displayed
- * is the answer to the request that was actually made.
- *
- * `keepList` is for one *file* failing to open: the list is still the correct
- * answer for the list request and must not be wiped over a single read.
- */
-function _memoryRefusal(data, opts) {
-    const keepList = !!(opts && opts.keepList);
-    const message = (data && typeof data.message === 'string' && data.message.trim())
-        ? data.message.trim()
-        : (currentLang === 'zh' ? '读取记忆失败' : 'Failed to read memory');
-    const emptyEl = document.getElementById('memory-empty');
-    const listEl = document.getElementById('memory-list');
-    const pagEl = document.getElementById('memory-pagination');
-    const tbody = document.getElementById('memory-table-body');
-    if (tbody) tbody.innerHTML = '';
-    if (pagEl) pagEl.innerHTML = '';
-    if (!keepList && listEl) listEl.classList.add('hidden');
-    if (emptyEl) {
-        const icon = emptyEl.querySelector('i');
-        const title = emptyEl.querySelector('p');
-        const hint = emptyEl.querySelectorAll('p')[1];
-        if (icon) icon.className = 'fas fa-triangle-exclamation text-amber-500 text-xl';
-        if (title) title.textContent = message;
-        if (hint) {
-            hint.textContent = currentLang === 'zh'
-                ? '这不是「暂无记忆」；原因来自服务端。' : 'This is not "no memory files"; the reason comes from the server.';
-        }
-        if (!keepList) emptyEl.classList.remove('hidden');
-    }
-    _wsToast(message);
-    return message;
-}
-
-function loadMemoryView(page) {
-    page = page || 1;
-    memoryPage = page;
-    fetch(`/api/memory?page=${page}&page_size=${memoryPageSize}&category=${memoryCategory}&${memoryTargetQuery()}`).then(r => r.json()).then(data => {
-        if (data.status !== 'success') return _memoryRefusal(data);
-        if (Array.isArray(data.targets)) memoryTargets = data.targets;
-        const emptyEl = document.getElementById('memory-empty');
-        const listEl = document.getElementById('memory-list');
-        const files = data.list || [];
-        const total = data.total || 0;
-
-        if (total === 0) {
-            const emptyIcon = emptyEl.querySelector('i');
-            const emptyTitle = emptyEl.querySelector('p');
-            if (memoryCategory === 'evolution') {
-                emptyIcon.className = 'fas fa-seedling text-emerald-400 text-xl';
-                emptyTitle.textContent = currentLang === 'zh' ? '暂无进化记录' : 'No evolution records yet';
-            } else {
-                emptyIcon.className = 'fas fa-brain text-purple-400 text-xl';
-                emptyTitle.textContent = currentLang === 'zh' ? '暂无记忆文件' : 'No memory files';
-            }
-            emptyEl.classList.remove('hidden');
-            listEl.classList.add('hidden');
-            return;
-        }
-        emptyEl.classList.add('hidden');
-        listEl.classList.remove('hidden');
-
-        const tbody = document.getElementById('memory-table-body');
-        tbody.innerHTML = '';
-        files.forEach(f => {
-            const tr = document.createElement('tr');
-            tr.className = 'border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer transition-colors';
-            // In the merged evolution tab, resolve each file by its own origin
-            // (evolution logs vs dream diaries live in different dirs).
-            const fileCategory = (f.type === 'dream' || f.type === 'evolution') ? f.type : memoryCategory;
-            tr.onclick = () => openMemoryFile(f.filename, fileCategory);
-            let typeLabel;
-            if (f.type === 'global') {
-                typeLabel = '<span class="px-2 py-0.5 rounded-full text-xs bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400">Global</span>';
-            } else if (f.type === 'evolution') {
-                typeLabel = '<span class="px-2 py-0.5 rounded-full text-xs bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400">Evolution</span>';
-            } else if (f.type === 'dream') {
-                typeLabel = '<span class="px-2 py-0.5 rounded-full text-xs bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400">Dream</span>';
-            } else {
-                typeLabel = '<span class="px-2 py-0.5 rounded-full text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">Daily</span>';
-            }
-            const sizeStr = f.size < 1024 ? f.size + ' B' : (f.size / 1024).toFixed(1) + ' KB';
-            tr.innerHTML = `
-                <td class="px-4 py-3 text-sm font-mono text-slate-700 dark:text-slate-200">${escapeHtml(f.filename)}</td>
-                <td class="px-4 py-3 text-sm">${typeLabel}</td>
-                <td class="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">${sizeStr}</td>
-                <td class="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">${escapeHtml(f.updated_at)}</td>`;
-            tbody.appendChild(tr);
-        });
-
-        // Pagination
-        const totalPages = Math.ceil(total / memoryPageSize);
-        const pagEl = document.getElementById('memory-pagination');
-        if (totalPages <= 1) { pagEl.innerHTML = ''; return; }
-        let pagHtml = `<span>${page} / ${totalPages}</span><div class="flex gap-2">`;
-        if (page > 1) pagHtml += `<button onclick="loadMemoryView(${page - 1})" class="px-3 py-1 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/10 text-xs">Prev</button>`;
-        if (page < totalPages) pagHtml += `<button onclick="loadMemoryView(${page + 1})" class="px-3 py-1 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/10 text-xs">Next</button>`;
-        pagHtml += '</div>';
-        pagEl.innerHTML = pagHtml;
-    }).catch(() => _memoryRefusal(null));
-}
-
-// =====================================================================
-// Document viewers (memory files, skill definitions)
-// =====================================================================
-
 /**
  * Read one file's text for an editor. Throws on an API error so the editor can
  * report it.
@@ -15955,258 +15443,6 @@ function docRenderTitle(id, name, state) {
  */
 function docGuardUnsaved(next) {
     return memoryEditor.guard(next) && skillEditor.guard(next);
-}
-
-const memoryEditor = createDocEditor({
-    body: () => document.getElementById('memory-viewer-content'),
-    buttons: () => ({
-        edit: document.getElementById('memory-btn-edit'),
-        save: document.getElementById('memory-btn-save'),
-        cancel: document.getElementById('memory-btn-cancel'),
-    }),
-    read: (doc) => memoryDocRead(doc),
-    write: (doc, content, expectedRevision) => memoryDocWrite(doc, content, expectedRevision),
-    // Read-only categories (the Agent's own dream/evolution diaries) report it in
-    // the payload; hiding the button beats letting the click fail server-side.
-    canEdit: (doc) => doc.canEdit === true,
-    render: (doc) => docRenderBody('memory-viewer-content', doc.content),
-    onState: (state) => {
-        docRenderTitle('memory-viewer-title', memoryEditor.current()?.filename, state);
-        memorySyncDocButtons(state);
-    },
-});
-
-/**
- * The memory API body naming the target this page is showing.
- *
- * Mirrors {@link memoryTargetQuery} for POST bodies: the personal domain is a
- * choice and is named as one, and the memory *writes* refuse it anyway (the
- * member's own memory has its own endpoint) — so a personal target simply never
- * gets an edit or delete button.
- */
-function memoryTargetBody() {
-    return viewingMemoryTarget() === MEMORY_PERSONAL
-        ? { scope: 'personal' }
-        : { agent_id: viewingMemoryTarget() || '' };
-}
-
-/**
- * Whether the server says this entry may be edited.
- *
- * Two independent reasons say no, and both arrive in the read payload: the
- * category (the Agent writes its own dream and evolution diaries, so a manual
- * edit is overwritten by the next consolidation) and the caller's range on the
- * memory *root* (in database mode an Agent's memory root is the tenant's shared
- * root, so a member may read their private Agent's memory but not rewrite what
- * the shared Agent also reads). Stated once here so the editor never offers a
- * verb the write would refuse.
- */
-function memoryEntryEditable(data) {
-    return !data.read_only && !data.readOnly &&
-        !(data.actions && data.actions.edit === false);
-}
-
-/**
- * Read one memory entry through the memory API rather than the workspace file
- * API this page used to use.
- *
- * Why it matters: a memory entry edited as a plain workspace file skipped the
- * version condition and the index publish, so a save could silently overwrite a
- * newer revision and a new body never reached retrieval. The memory surface
- * hands out the revision to send back and publishes the index in the same
- * operation. The editor treats the value opaquely and round-trips it, so the
- * content revision fills the slot an mtime filled for other pages.
- */
-async function memoryDocRead(doc) {
-    const url = `/api/memory/content?filename=${encodeURIComponent(doc.filename)}` +
-        `&category=${encodeURIComponent(doc.category || 'memory')}&${memoryTargetQuery()}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if (data.status !== 'success') throw new Error(data.message || 'load failed');
-    return {
-        content: data.content || '',
-        mtime: data.revision,
-        editable: memoryEntryEditable(data),
-    };
-}
-
-/** Save one memory entry, version-conditioned, through the memory API. */
-async function memoryDocWrite(doc, content, expectedRevision) {
-    let revision = expectedRevision;
-    if (revision == null) {
-        // The user chose "overwrite" over a newer revision, so the *current*
-        // revision is what we commit against: the server refuses a blind write
-        // of an existing entry by design (that refusal is what protects the
-        // other page's edit), so re-reading is how an intentional overwrite is
-        // expressed here.
-        revision = (await memoryDocRead(doc)).mtime;
-    }
-    const data = await memoryRequest('/api/memory/save', {
-        filename: doc.filename,
-        category: doc.category || 'memory',
-        content: content,
-        revision: revision,
-    });
-    if (!data) return { status: 'error', code: 'failed' };
-    // The editor knows one conflict code; the memory API names the same
-    // condition `stale_revision`. Translated here so the page's existing
-    // "someone else changed it — overwrite?" flow runs instead of a bare error.
-    if (data.code === 'stale_revision') {
-        return { ...data, code: 'conflict' };
-    }
-    // A `pending` index is reported to the user by `memoryRequest`, but the
-    // content operation did succeed — so the editor must see success, or it
-    // would throw "save failed" over a saved body. The spread comes first so
-    // the fields below, not the response's own `status`, decide.
-    if (!memorySucceeded(data)) return data;
-    return { ...data, status: 'success', mtime: (data.result || {}).revision };
-}
-
-/** True when a write response means the content operation is done.
- *
- * ``pending`` counts: the body is committed and only the index is behind, which
- * ``memoryRequest`` has already told the user about. Treating it as failure
- * would have the page claim a saved edit was lost.
- */
-function memorySucceeded(data) {
-    return !!data && (data.status === 'success' || data.status === 'pending');
-}
-
-/**
- * POST one memory write and hand the payload back to the caller.
- *
- * The response is returned for *every* parsed answer, including refusals: the
- * save path has to see the API's own code (``stale_revision``) to run the
- * editor's overwrite flow, so swallowing it here would silently turn a
- * resolvable conflict into a dead end. Only a transport failure yields ``null``.
- */
-async function memoryRequest(path, body) {
-    try {
-        const res = await fetch(path, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...body, ...memoryTargetBody() }),
-        });
-        const data = await res.json();
-        if (data.status === 'pending') {
-            // The content operation succeeded; the search index did not. Saying
-            // nothing would let the user believe retrieval is already updated.
-            _wsToast(t('memory_index_pending'));
-        }
-        return data;
-    } catch (e) {
-        _memoryRefusal(null);
-        return null;
-    }
-}
-
-/** Report a delete/clear outcome the way the page does; true when it applied. */
-function memoryReportMutation(data, okMessage) {
-    if (!memorySucceeded(data)) {
-        if (data) _memoryRefusal(data);
-        return false;
-    }
-    _wsToast(t(okMessage));
-    return true;
-}
-
-/** Show delete/clear only where the server says the verb is available. */
-function memorySyncDocButtons(state) {
-    const doc = memoryEditor.current();
-    const editing = !!(state && state.editing);
-    const onAgent = viewingMemoryTarget() !== MEMORY_PERSONAL;
-    const del = document.getElementById('memory-btn-delete');
-    const clear = document.getElementById('memory-btn-clear');
-    if (del) {
-        del.classList.toggle('hidden',
-            editing || !doc || !!doc.readOnly ||
-            !!(doc.actions && doc.actions.delete === false));
-    }
-    if (clear) {
-        // Clear is a delete-class verb on the same *root*, and the server
-        // reports ``delete: false`` whenever a write to that root is refused
-        // (read-only category, or a member on the tenant's shared memory root),
-        // so it follows that signal rather than keeping a second rule that
-        // could disagree with the one the write enforces.
-        clear.classList.toggle('hidden',
-            editing || !onAgent ||
-            !doc || !!(doc.actions && doc.actions.delete === false));
-    }
-}
-
-/** Delete the entry on screen, after confirming and after guarding edits. */
-function memoryDocDelete() {
-    if (!memoryEditor.guard(memoryDocDelete)) return;
-    const doc = memoryEditor.current();
-    if (!doc) return;
-    showConfirmDialog({
-        title: t('memory_delete_title'),
-        message: t('memory_delete_msg').replace('{name}', doc.filename || ''),
-        okText: t('memory_delete_ok'),
-        onConfirm: () => {
-            memoryRequest('/api/memory/delete',
-                { filename: doc.filename, category: doc.category || 'memory' })
-                .then((data) => {
-                    if (!memoryReportMutation(data, 'memory_deleted')) return;
-                    closeMemoryViewer();
-                });
-        },
-    });
-}
-
-/** Clear the current category of an Agent's memory, after confirming. */
-function memoryDocClear() {
-    if (!memoryEditor.guard(memoryDocClear)) return;
-    if (viewingMemoryTarget() === MEMORY_PERSONAL) return;
-    showConfirmDialog({
-        title: t('memory_clear_title'),
-        message: t('memory_clear_msg'),
-        okText: t('memory_clear_ok'),
-        onConfirm: () => {
-            memoryRequest('/api/memory/clear',
-                { category: memoryCategory || 'memory' }).then((data) => {
-                    if (!memoryReportMutation(data, 'memory_cleared')) return;
-                    closeMemoryViewer();
-                });
-        },
-    });
-}
-
-function openMemoryFile(filename, category) {
-    category = category || 'memory';
-    fetch(`/api/memory/content?filename=${encodeURIComponent(filename)}&category=${category}&${memoryTargetQuery()}`).then(r => r.json()).then(data => {
-        if (data.status !== 'success') return _memoryRefusal(data, { keepList: true });
-        document.getElementById('memory-panel-list').classList.add('hidden');
-        document.getElementById('memory-panel-viewer').classList.remove('hidden');
-        memoryEditor.open({
-            filename: filename,
-            category: category,
-            // The memory API reports where the file sits under the workspace
-            // root; kept for display and for the workspace-file fallbacks, but
-            // the editor now addresses the entry through the memory API so a
-            // save carries the revision and publishes the index.
-            relPath: data.rel_path || filename,
-            content: data.content || '',
-            // Whether this entry may be edited/deleted at all, and the version
-            // token a save has to carry back. Both come from the server so the
-            // page never offers a verb the write would refuse.
-            readOnly: !!data.read_only,
-            actions: data.actions || {},
-            // The editor asks the document, not the payload, so both reasons
-            // above are folded into one flag here and read from one place.
-            canEdit: memoryEntryEditable(data),
-            revision: data.revision,
-        });
-    }).catch(() => _memoryRefusal(null, { keepList: true }));
-}
-
-function closeMemoryViewer() {
-    if (!memoryEditor.guard(closeMemoryViewer)) return;
-    memoryEditor.forget();
-    document.getElementById('memory-panel-viewer').classList.add('hidden');
-    document.getElementById('memory-panel-list').classList.remove('hidden');
-    // A save changed the size and timestamp the list shows.
-    loadMemoryView(memoryPage);
 }
 
 // Reloading or closing the tab drops an unsaved edit. All the browser allows
@@ -20807,23 +20043,7 @@ navigateTo = function(viewId) {
     // Lazy-load view data
     if (viewId === 'config') { enterConfigView(); }
     else if (viewId === 'skills') { resetSkillViewer(); loadSkillsView(); }
-    else if (viewId === 'memory') {
-        withManagementCatalog('memory', () => {
-            memoryEditor.forget();
-            document.getElementById('memory-panel-viewer').classList.add('hidden');
-            document.getElementById('memory-panel-list').classList.remove('hidden');
-            // Keep the last viewed Agent across refreshes, but drop it if that
-            // Agent has since been deleted so we don't point at a ghost.
-            if (memoryAgentId && memoryAgentId !== MEMORY_PERSONAL
-                    && agentCatalog.length && !agentCatalog.some(a => a.id === memoryAgentId)) {
-                memoryAgentId = '';
-                removeScopedPreference('cow_memory_agent');
-            }
-            if (!memoryAgentId) memoryAgentId = activeAgentId || defaultAgentId;
-            renderMemoryAgentSelect();
-            switchMemoryTab('files');
-        });
-    }
+    else if (viewId === 'memory') { resetMemoryView(); switchMemoryTab('files'); }
     else if (viewId === 'knowledge') withManagementCatalog('knowledge', loadKnowledgeView);
     else if (viewId === 'channels') loadChannelsView();
     else if (viewId === 'tasks') loadTasksView();
@@ -22846,12 +22066,12 @@ function _openNavArea(area, path) {
     _applyNavAreaAttribute();
     if (typeof _bootAreaDefaultView === 'function') _bootAreaDefaultView();
     // The sidebar recent-sessions list is only fetched for the workbench area
-    // (see the guard inside loadSidebarRecentSessions). Because navigation now
+    // (see the guard inside syncSessionHistorySurface). Because navigation now
     // happens in-place via pushState (no full page load), the normal boot hook
     // that fills the list never runs, so the 会话历史 section would render empty
     // after switching workbench <-> admin. Trigger the fetch here like the
     // full-page-load path does.
-    if (typeof loadSidebarRecentSessions === 'function') loadSidebarRecentSessions();
+    if (typeof syncSessionHistorySurface === 'function') syncSessionHistorySurface();
 }
 // Whether the 控制台 (admin area) entry is offered to this identity.
 //
@@ -22921,7 +22141,7 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
         if (typeof _bootAreaDefaultView === 'function') _bootAreaDefaultView();
         // Refill the 会话历史 sidebar list after an in-place back/forward nav,
         // since no full page load runs the boot hook.
-        if (typeof loadSidebarRecentSessions === 'function') loadSidebarRecentSessions();
+        if (typeof syncSessionHistorySurface === 'function') syncSessionHistorySurface();
     });
 }
 
@@ -23284,6 +22504,7 @@ async function desktopRelogin() {
     // browser has nothing to end natively and must not be sent here.
     if (typeof CowDesktopAccount === 'undefined' || !CowDesktopAccount.isDesktop()) return;
     _accountWritePending = 'logout';
+    resetMemoryView();
     ++_authEpoch;   // late answers from the old session must not reopen the form
     _invalidateAccountIdentity('logout_pending');
     _resetHistorySearch();
@@ -23355,7 +22576,8 @@ function initApp() {
     if (_identityMode() === 'database') {
         activeAgentId = readScopedPreference('cow_active_agent') || '';
         defaultAgentId = readScopedPreference('cow_default_agent') || '';
-        memoryAgentId = readScopedPreference('cow_memory_agent') || '';
+        resetMemoryView();
+        removeScopedPreference('cow_memory_agent');
         knowledgeAgentId = readScopedPreference('cow_knowledge_agent') || '';
     }
     const chatReady = loadChatAgentCatalog().then(agents => {

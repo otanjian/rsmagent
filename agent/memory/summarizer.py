@@ -232,9 +232,12 @@ class MemoryFlushManager:
         today = datetime.now().strftime("%Y-%m-%d")
 
         if user_id:
-            from common import state_dir
-            user_dir = state_dir.memory_dir(ensure=ensure_exists)
-            today_file = user_dir / f"{today}.md"
+            from agent.memory.personal import personal_service_for
+            service = personal_service_for(user_id)
+            entry = f'memory/{today}.md'
+            if ensure_exists and service.read(entry)['revision'] is None:
+                service.save(entry, f'# Daily Memory: {today}\n\n', expected_revision=None)
+            return service.user_root() / entry
         else:
             today_file = self.memory_dir / f"{today}.md"
 
@@ -247,10 +250,8 @@ class MemoryFlushManager:
     def get_main_memory_file(self, user_id: Optional[str] = None) -> Path:
         """Get the main memory file: personal (user domain) or Agent root."""
         if user_id:
-            from common import state_dir
-            main_file = state_dir.memory_file()
-            main_file.parent.mkdir(parents=True, exist_ok=True)
-            return main_file
+            from agent.memory.personal import personal_service_for
+            return personal_service_for(user_id).user_root() / 'MEMORY.md'
         else:
             return Path(self.workspace_dir) / "MEMORY.md"
     
@@ -322,7 +323,8 @@ class MemoryFlushManager:
             # it writes, the member may have cleared their memory. Comparing the
             # captured value against the live one at write time is what stops a
             # queued task from restoring content the member deleted.
-            scope_generation = self._scope_generation_for(user_id)
+            from agent.memory.personal import personal_service_for
+            scope_generation = personal_service_for(user_id).scope_token() if user_id else None
             import contextvars
             _ctx = contextvars.copy_context()
             thread = threading.Thread(
@@ -455,6 +457,24 @@ class MemoryFlushManager:
         summary = (summary or "").strip()
         if not summary:
             return False
+        if user_id:
+            from agent.memory.personal import personal_service_for
+            try:
+                service = personal_service_for(user_id)
+                snapshot = service.scope_token()
+                if isinstance(scope_generation, dict):
+                    snapshot = scope_generation
+                elif scope_generation is not None and scope_generation != snapshot['generation']:
+                    return False
+                today = datetime.now().strftime('%Y-%m-%d')
+                heading = f"## {reason} ({datetime.now().strftime('%H:%M')})"
+                result = service.publish({f'memory/{today}.md': f'{heading}\n\n{summary}\n'},
+                    expected_scope=snapshot, append=True, deduplicate=True)
+                self.last_flush_timestamp = datetime.now()
+                return result.get('index_state') == 'ok'
+            except Exception as e:
+                logger.warning('[MemoryFlush] Personal publish refused: %s', e)
+                return False
         if user_id and scope_generation is not None:
             current = self._scope_generation_for(user_id)
             if current is not None and current != scope_generation:
@@ -555,6 +575,12 @@ class MemoryFlushManager:
 
         logger.info(f"[DeepDream] Starting memory distillation (lookback={lookback_days} days)")
 
+        personal = None
+        if user_id:
+            from agent.memory.personal import personal_service_for
+            personal = personal_service_for(user_id)
+            dream_token = personal.scope_token()
+
         # Collect materials
         memory_content = self._read_main_memory(user_id)
         daily_content, has_content = self._read_recent_dailies(user_id, lookback_days)
@@ -643,6 +669,21 @@ class MemoryFlushManager:
             logger.warning("[DeepDream] No [MEMORY] section in LLM output, skipping overwrite")
             return False
 
+        if personal:
+            today = datetime.now().strftime('%Y-%m-%d')
+            changes = {'MEMORY.md': new_memory + '\n'}
+            if dream_diary:
+                changes[f'memory/dreams/{today}.md'] = f'# Dream Diary: {today}\n\n{dream_diary}\n'
+            try:
+                result = personal.publish(changes, expected_scope=dream_token)
+                if result['index_state'] != 'ok':
+                    return False
+                self._last_dream_input_hash = dedup_key
+                return True
+            except Exception as e:
+                logger.warning('[DeepDream] Personal publish refused: %s', e)
+                return False
+
         # Overwrite MEMORY.md
         try:
             main_file = self.get_main_memory_file(user_id)
@@ -671,6 +712,9 @@ class MemoryFlushManager:
 
     def _read_main_memory(self, user_id: Optional[str] = None) -> str:
         """Read current MEMORY.md content."""
+        if user_id:
+            from agent.memory.personal import personal_service_for
+            return personal_service_for(user_id).read('MEMORY.md')['content'].strip()
         main_file = self.get_main_memory_file(user_id)
         if main_file.exists():
             return main_file.read_text(encoding="utf-8").strip()
@@ -695,9 +739,11 @@ class MemoryFlushManager:
             day = today - timedelta(days=offset)
             date_str = day.strftime("%Y-%m-%d")
             if user_id:
-                # Personal dailies live in the user domain, beside the Agents.
-                from common import state_dir
-                daily_file = state_dir.memory_dir(ensure=False) / f"{date_str}.md"
+                from agent.memory.personal import personal_service_for
+                content = personal_service_for(user_id).read(f'memory/{date_str}.md')['content'].strip()
+                parts.append(f"### {date_str}\n\n{content or '(no records)'}")
+                has_content = has_content or bool(content)
+                continue
             else:
                 daily_file = self.memory_dir / f"{date_str}.md"
 
@@ -731,12 +777,13 @@ class MemoryFlushManager:
 
     def _write_dream_diary(self, content: str, user_id: Optional[str] = None):
         """Write dream diary to the user's (or Agent's) dreams/YYYY-MM-DD.md."""
-        dreams_dir = self.memory_dir / "dreams"
         if user_id:
-            # A dream is derived from one user's private memory, so the diary
-            # belongs in that user's domain, not in the Agent's workspace.
-            from common import state_dir
-            dreams_dir = state_dir.memory_dir(ensure=True) / "dreams"
+            from agent.memory.personal import personal_service_for
+            service = personal_service_for(user_id)
+            today = datetime.now().strftime('%Y-%m-%d')
+            return service.publish({f'memory/dreams/{today}.md': f'# Dream Diary: {today}\n\n{content}\n'},
+                                   expected_scope=service.scope_token())
+        dreams_dir = self.memory_dir / "dreams"
         dreams_dir.mkdir(parents=True, exist_ok=True)
 
         today = datetime.now().strftime("%Y-%m-%d")
@@ -960,11 +1007,11 @@ def create_memory_files_if_needed(workspace_dir: Path, user_id: Optional[str] = 
         user_id: Optional user ID for user-specific files
     """
     if user_id:
-        # Personal main memory lives in the user domain, beside the Agents
-        # rather than inside one of them.
-        from common import state_dir
-        main_memory = state_dir.memory_file()
-        main_memory.parent.mkdir(parents=True, exist_ok=True)
+        from agent.memory.personal import personal_service_for
+        service = personal_service_for(user_id)
+        if service.read('MEMORY.md')['revision'] is None:
+            service.save('MEMORY.md', '', expected_revision=None)
+        return
     else:
         memory_dir = workspace_dir / "memory"
         memory_dir.mkdir(parents=True, exist_ok=True)
@@ -988,9 +1035,12 @@ def ensure_daily_memory_file(workspace_dir: Path, user_id: Optional[str] = None)
     """
     today = datetime.now().strftime("%Y-%m-%d")
     if user_id:
-        from common import state_dir
-        memory_dir = state_dir.memory_dir(ensure=True)
-        today_memory = memory_dir / f"{today}.md"
+        from agent.memory.personal import personal_service_for
+        service = personal_service_for(user_id)
+        entry = f'memory/{today}.md'
+        if service.read(entry)['revision'] is None:
+            service.save(entry, f'# Daily Memory: {today}\n\n', expected_revision=None)
+        return service.user_root() / entry
     else:
         memory_dir = workspace_dir / "memory"
         memory_dir.mkdir(parents=True, exist_ok=True)

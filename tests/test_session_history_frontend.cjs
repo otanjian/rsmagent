@@ -112,9 +112,9 @@ function setup(fetchImpl = async url => response([], new URL(url, 'http://test')
     const calls = [];
     const time = clock();
     const ctx = vm.createContext({
-        console, Date, Intl, URLSearchParams, AbortController,
+        console, Date, Intl, URL, Request, Headers, URLSearchParams, AbortController,
         activeAgentId: 'agent-a', sessionId: 'current', currentView: 'history',
-        window: { innerWidth: 1440 },
+        window: { innerWidth: 1440, location: { href: "http://test/chat", origin: "http://test" } },
         document: { getElementById: node, createElement: element,
             querySelector: () => null, querySelectorAll: () => [] },
         localStorage: { getItem: () => null, setItem() {} },
@@ -577,7 +577,31 @@ test('rename edits the owning Agent row, restores its original button and submit
     assert.equal(target.querySelector('.session-row-main'), originalButton);
     assert.equal(target.querySelector('.session-title').textContent, 'New owner title');
     assert.equal(target.querySelector('.session-title-input'), null);
-    assert.equal(h.refreshes(), 1);
+    assert.equal(h.refreshes(), 0, 'an ordinary rename updates the row without reloading page one');
+});
+
+test('renaming a later-page row retains loaded sessions and scroll position', async () => {
+    const h = renameFixture();
+    h.ctx.fixtures = Array.from({length:61}, (_,i)=>session('older-'+i)).concat(h.ctx.fixtures);
+    h.run('_sessionItems = fixtures; _sessionPage = 2;');
+    h.node('session-list').scrollTop = 1700;
+    h.ctx.renameSession('shared/id', 'agent-b');
+    const input = h.rows[1].querySelector('.session-title-input');
+    input.value = 'renamed on page two'; input.handlers.blur(); await settle();
+    assert.equal(h.refreshes(), 0);
+    assert.equal(h.run('_sessionItems.length'), 63);
+    assert.equal(h.run('_sessionPage'), 2);
+    assert.equal(h.node('session-list').scrollTop, 1700);
+});
+
+test('renaming search results still revalidates matches and deferred refreshes are not lost', async () => {
+    for (const state of ["_historyQuery = 'old title'", '_historyDirty = true']) {
+        const h = renameFixture(); h.run(state);
+        h.ctx.renameSession('shared/id', 'agent-b');
+        const input = h.rows[1].querySelector('.session-title-input');
+        input.value = 'changed'; input.handlers.blur(); await settle();
+        assert.equal(h.refreshes(), 1);
+    }
 });
 
 test('rename ignores IME Enter and Escape restores the title without a blur save', async () => {
@@ -821,4 +845,36 @@ test('history reconnect carries the same identity and Agent ownership as a live 
     assert.equal(calls[0][6].afterSeq, 7);
     await h.ctx.loadHistory(1);
     assert.equal(calls.length, 1, 'one active request is resumed only once');
+});
+
+test('panel drops the page search and stale response; returning restores text from page one', async () => {
+    const pending=deferred();
+    const h=setup(async url => url.includes('q=kept') ? pending.promise : response([session('normal')]));
+    let surface='page'; h.ctx.sessionHistorySurface=()=>surface;
+    h.node('history-search-input').value='kept';h.ctx.loadSessionList();
+    surface='panel';h.ctx._cancelHistoryRequest();await h.ctx.loadSessionList();
+    pending.resolve(response([session('late-search')],'kept'));await settle();
+    assert.equal(h.state().query,'');assert.deepEqual([...h.state().ids],['normal']);
+    assert.equal(h.node('history-search-input').value,'kept');
+    surface='page';h.ctx._cancelHistoryRequest();await h.ctx.loadSessionList();
+    assert.equal(h.state().query,'kept');assert.ok(h.calls.at(-1).url.includes('page=1'));
+});
+test('panel pagination reaches more than 50 rows with the same owner-aware list', async () => {
+    const h=setup(async url=>response(Array.from({length:url.includes('page=2')?13:50},(_,i)=>session('s'+(url.includes('page=2')?50+i:i))), '', {has_more:!url.includes('page=2')}));
+    h.ctx.sessionHistorySurface=()=> 'panel';await h.ctx.loadSessionList();
+    assert.equal(h.state().ids.length,50);
+    await h.run('_fetchSessionPage(2, false, undefined, _sessionReqSeq)');
+    assert.equal(h.state().ids.length,63);assert.equal(h.state().hasMore,false);
+});
+test('temporary row survives an empty refresh, saved same-owner row replaces it once, switch drops it',async()=>{
+    let saved=false;
+    const h=setup(async ()=>response(saved?[session('current',{agent:{id:'agent-a'},title:'Saved'})]:[]));
+    h.ctx._sessCfg=null;h.ctx.sessionHistorySurface=()=> 'panel';
+    h.ctx._addOptimisticSessionItem('current');
+    await h.ctx.loadSessionList();assert.equal(h.run('_sessionItems[0].optimistic'),true);
+    saved=true;await h.ctx.loadSessionList();
+    assert.equal(h.state().ids.length,1);assert.equal(h.run('_sessionItems[0].optimistic'),undefined);
+    h.ctx.sessionId='new';h.ctx._addOptimisticSessionItem('new');
+    h.ctx.sessionId='different';await h.ctx.loadSessionList();
+    assert.equal(h.run('_sessionItems.some(s=>s.optimistic)'),false);
 });

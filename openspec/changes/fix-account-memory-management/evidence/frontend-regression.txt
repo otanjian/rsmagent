@@ -1,0 +1,9 @@
+✔ viewer routes all reads and writes to memory APIs (1.313209ms)
+ℹ tests 75
+ℹ suites 0
+ℹ pass 75
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7274.221375

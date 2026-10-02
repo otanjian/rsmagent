@@ -148,6 +148,17 @@ class Read(BaseTool):
         
         # Resolve path
         absolute_path = self._resolve_path(path)
+        # Personal memory uses the same anchored owner access as the console;
+        # evolution sees its staged edits without exposing them before commit.
+        try:
+            from agent.memory.personal import personal_file, read_personal_file
+            personal = personal_file(absolute_path)
+            if personal:
+                content = read_personal_file(personal)
+                result, error = self._paginate(split_lines(content), offset, limit, path)
+                return ToolResult.fail(error) if error else ToolResult.success(result)
+        except Exception as error:
+            return ToolResult.fail(f'Error reading personal memory: {error}')
 
         # Reached only once the path already missed, so nothing that resolves
         # today changes: a "knowledge/..." miss is retried under the shared

@@ -141,7 +141,7 @@ class PathOwnershipTests(_Fixture):
         os.symlink(str(elsewhere), str(root / "memory"))
 
         svc = self._service(self.alice)
-        self.assertEqual(svc.list_entries(), [])
+        self._assert_refused(svc.list_entries)
         self._assert_refused(svc.read, "memory/notes.md")
         self._assert_refused(svc.delete, "memory/notes.md")
         self._assert_refused(svc.save, "memory/notes.md", "pwned")
@@ -348,14 +348,17 @@ class InterruptedPublishTests(_Fixture):
         with use_identity(self._ident(self.alice)):
             self.assertIn(label, pending_index_labels())
 
-    def test_a_corrupt_scope_marker_degrades_instead_of_hiding_memory(self):
+    def test_corrupt_scope_state_refuses_publication_without_resetting_generation(self):
+        from agent.memory.personal import PersonalMemoryError
         root = self._user_root(self.alice)
         root.mkdir(parents=True, exist_ok=True)
-        (root / ".memory-scope.json").write_text("{not json", encoding="utf-8")
-        svc = self._service(self.alice)
-        svc.save("memory/notes.md", "STILL-READABLE")
-        self.assertEqual(svc.read("memory/notes.md")["content"],
-                         "STILL-READABLE")
+        marker = root / '.memory-scope.json'
+        marker.write_text('{not json', encoding='utf-8')
+        with self.assertRaises(PersonalMemoryError) as raised:
+            self._service(self.alice).save('memory/notes.md', 'MUST-NOT-PUBLISH')
+        self.assertEqual(raised.exception.code, 'scope_unavailable')
+        self.assertEqual(marker.read_text(), '{not json')
+        self.assertFalse((root / 'memory/notes.md').exists())
 
 
 # --- index publish seam in MemoryManager.sync ------------------------------

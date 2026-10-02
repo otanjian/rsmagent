@@ -231,6 +231,9 @@ class MemoryManager:
             tombstoned = pending_index_labels()
         except Exception:
             tombstoned = set()
+            # A broken owner journal cannot prove private index rows current.
+            filtered = [r for r in filtered if getattr(r, 'scope', None) != 'user'
+                        and not getattr(r, 'path', '').startswith('memory/users/')]
         # The Agent's own deletions record their tombstones in this workspace's
         # scope file, because nothing else masks them: `sync` replaces a file's
         # chunks but never sweeps chunks whose file is gone, so a deleted entry
@@ -244,7 +247,9 @@ class MemoryManager:
         except Exception:
             pass
         if tombstoned:
-            filtered = [r for r in filtered if getattr(r, "path", None) not in tombstoned]
+            prefixes = [label[:-1] for label in tombstoned if label.endswith('/*')]
+            filtered = [r for r in filtered if getattr(r, "path", None) not in tombstoned
+                        and not any(getattr(r, 'path', '').startswith(prefix) for prefix in prefixes)]
         filtered = self._rerank(query, filtered)
         return filtered[:max_results]
     
@@ -270,6 +275,17 @@ class MemoryManager:
         """
         if not content.strip():
             return
+
+        if scope == 'user' and source == 'memory':
+            from common.runtime_identity import current_identity
+            from agent.memory.personal import PersonalMemoryError, PersonalMemoryService
+            ident = current_identity()
+            if not ident.user_id or not ident.tenant_id or user_id != ident.user_id:
+                raise PersonalMemoryError('个人记忆需要当前可信账号身份', code='no_identity', status=403)
+            service = PersonalMemoryService(identity=ident)
+            # Include this running Agent's index as well as all tenant bindings.
+            service._extra_index_dbs = [Path(self.config.get_db_path())]
+            return service.add(content, path)
         
         # Generate path if not provided
         if not path:
@@ -371,7 +387,7 @@ class MemoryManager:
                 # Dream; their factual content has already been distilled
                 # into MEMORY.md. Indexing them adds noisy near-duplicates
                 # that crowd out the authoritative entry in retrieval.
-                if "dreams" in rel_parts:
+                if any(p in rel_parts for p in ("dreams", "evolution", "users")):
                     continue
                 if "daily" in rel_parts:
                     if "users" in rel_parts or len(rel_parts) > 3:
@@ -391,7 +407,6 @@ class MemoryManager:
                 files_to_scan.append((file_path, "memory", scope, user_id, None))
 
         # The current user's personal memory lives in the user domain, beside
-        # The current user's personal memory lives in the user domain, beside
         # the Agents. Each Agent's index covers it too, which is what makes a
         # user's personal memory visible from every Agent they may use, while
         # retrieval stays filtered to `scope='shared' OR user_id = ?`.
@@ -407,22 +422,14 @@ class MemoryManager:
         # A user id becomes a path segment; refuse anything that could escape it.
         if _uid and re.fullmatch(r"[A-Za-z0-9._-]+", _uid):
             from common import state_dir
-            personal_main = state_dir.memory_file()
-            if personal_main.exists():
-                files_to_scan.append(
-                    (personal_main, "memory", "user", _uid,
-                     f"memory/users/{_uid}/MEMORY.md"))
-            personal_dir = state_dir.memory_dir(ensure=False)
-            if personal_dir.exists():
-                for file_path in personal_dir.rglob("*.md"):
-                    rel = file_path.relative_to(personal_dir)
-                    if any(part.startswith('.') for part in rel.parts):
-                        continue
-                    if "dreams" in rel.parts:
-                        continue
-                    files_to_scan.append(
-                        (file_path, "memory", "user", _uid,
-                         f"memory/users/{_uid}/{rel.as_posix()}"))
+            from agent.memory.personal import PersonalMemoryService, scope_transaction
+            personal_service = PersonalMemoryService(identity=_sync_identity)
+            with scope_transaction(personal_service.user_root()):
+                _scope_token = personal_service.scope_token()
+                for row in personal_service.list_entries():
+                    file_path = personal_service.user_root() / row['id']
+                    files_to_scan.append((file_path, 'memory', 'user', _uid,
+                                          personal_service.label_for(row['id'])))
 
         from common import state_dir
         from config import conf
@@ -496,7 +503,11 @@ class MemoryManager:
             # still counts as scanned and keeps the rows it already has.
             scanned.setdefault(source, set()).add(rel_path)
             try:
-                content = file_path.read_text(encoding='utf-8')
+                if scope == 'user':
+                    content = personal_service.read(file_path.relative_to(
+                        personal_service.user_root()).as_posix())['content']
+                else:
+                    content = file_path.read_text(encoding='utf-8')
             except Exception as e:
                 # Was silent, which made a half-indexed workspace look healthy.
                 logger.warning(f"[MemoryManager] Skipping {file_path}: cannot read it ({e})")
@@ -552,8 +563,15 @@ class MemoryManager:
                 ):
                     continue
                 try:
-                    self.storage.delete_by_path(stale_path)
-                    dropped += 1
+                    if stale_path.startswith('memory/users/'):
+                        from agent.memory.personal import scope_transaction, scope_publish_is_current
+                        with scope_transaction(personal_service.user_root()):
+                            if scope_publish_is_current(_sync_identity, _scope_token):
+                                self.storage.delete_by_path(stale_path)
+                                dropped += 1
+                    else:
+                        self.storage.delete_by_path(stale_path)
+                        dropped += 1
                 except Exception as e:
                     logger.warning(f"[MemoryManager] Cannot drop stale entry {stale_path}: {e}")
             if dropped:
@@ -602,53 +620,62 @@ class MemoryManager:
             cursor += n
 
             rel_path = entry["rel_path"]
-            if entry["scope"] == "user":
-                # Pass 1 read the file; by pass 3 the user may have cleared
-                # their memory. Persisting here would restore exactly what the
-                # clear removed, so the scope version captured before pass 1 is
-                # re-checked for every user-domain file: a stale publisher
-                # drops its work instead of reviving it.
-                from agent.memory.personal import scope_publish_is_current
-                if not scope_publish_is_current(_sync_identity, _scope_token):
-                    from common.log import logger
-                    logger.info(
-                        "[MemoryManager] dropping stale index publish for %s "
-                        "(scope changed during sync)", rel_path)
-                    continue
-            self.storage.delete_by_path(rel_path)
-            if os.sep != "/":
-                # Keys used to be spelled with the platform separator. Drop that
-                # row too, so a Windows index carried over from an older build
-                # does not keep a second copy of the same file under
-                # "knowledge\note.md" and return it twice.
-                self.storage.delete_by_path(rel_path.replace("/", os.sep))
-            memory_chunks = []
-            for chunk, embedding in zip(entry["chunks"], entry_embeddings):
-                chunk_id = self._generate_chunk_id(rel_path, chunk.start_line, chunk.end_line)
-                chunk_hash = MemoryStorage.compute_hash(chunk.text)
-                memory_chunks.append(MemoryChunk(
-                    id=chunk_id,
-                    user_id=entry["user_id"],
-                    scope=entry["scope"],
-                    source=entry["source"],
+            from contextlib import nullcontext
+            from agent.memory.personal import scope_transaction
+            commit_guard = (scope_transaction(personal_service.user_root())
+                            if entry['scope'] == 'user' else nullcontext())
+            with commit_guard:
+                if entry["scope"] == "user":
+                    # Pass 1 read the file; by pass 3 the user may have cleared
+                    # their memory. Persisting here would restore exactly what the
+                    # clear removed, so the scope version captured before pass 1 is
+                    # re-checked for every user-domain file: a stale publisher
+                    # drops its work instead of reviving it.
+                    from agent.memory.personal import scope_publish_is_current
+                    if not scope_publish_is_current(_sync_identity, _scope_token):
+                        from common.log import logger
+                        logger.info(
+                            "[MemoryManager] dropping stale index publish for %s "
+                            "(scope changed during sync)", rel_path)
+                        continue
+                self.storage.delete_by_path(rel_path)
+                if os.sep != "/":
+                    # Keys used to be spelled with the platform separator. Drop that
+                    # row too, so a Windows index carried over from an older build
+                    # does not keep a second copy of the same file under
+                    # "knowledge\note.md" and return it twice.
+                    self.storage.delete_by_path(rel_path.replace("/", os.sep))
+                memory_chunks = []
+                for chunk, embedding in zip(entry["chunks"], entry_embeddings):
+                    chunk_id = self._generate_chunk_id(rel_path, chunk.start_line, chunk.end_line)
+                    chunk_hash = MemoryStorage.compute_hash(chunk.text)
+                    memory_chunks.append(MemoryChunk(
+                        id=chunk_id,
+                        user_id=entry["user_id"],
+                        scope=entry["scope"],
+                        source=entry["source"],
+                        path=rel_path,
+                        start_line=chunk.start_line,
+                        end_line=chunk.end_line,
+                        text=chunk.text,
+                        embedding=embedding,
+                        hash=chunk_hash,
+                        metadata=None,
+                    ))
+                self.storage.save_chunks_batch(memory_chunks)
+                if entry['scope'] == 'user':
+                    from common import safe_fs
+                    root = personal_service.user_root()
+                    stat = safe_fs.stat(root, entry['file_path'].relative_to(root).as_posix())
+                else:
+                    stat = entry["file_path"].stat()
+                self.storage.update_file_metadata(
                     path=rel_path,
-                    start_line=chunk.start_line,
-                    end_line=chunk.end_line,
-                    text=chunk.text,
-                    embedding=embedding,
-                    hash=chunk_hash,
-                    metadata=None,
-                ))
-            self.storage.save_chunks_batch(memory_chunks)
-            stat = entry["file_path"].stat()
-            self.storage.update_file_metadata(
-                path=rel_path,
-                source=entry["source"],
-                file_hash=entry["file_hash"],
-                mtime=int(stat.st_mtime),
-                size=stat.st_size,
-            )
-
+                    source=entry["source"],
+                    file_hash=entry["file_hash"],
+                    mtime=int(stat.st_mtime),
+                    size=stat.st_size,
+                )
         # Stamp the chunker version only when we rebuilt from an empty index,
         # i.e. every chunk in it was produced by the current algorithm. An
         # index that already had files may still contain chunks from an older

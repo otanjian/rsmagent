@@ -237,7 +237,7 @@ test('a refusal is rendered from the server reason payload, never as a shipped f
     assert.match(show, /nav_unavailable/, 'the not-open copy must stay for the rest');
     // The gate hands its own reason to the surface (`deny.reason`), so the
     // dispatch cannot silently substitute a literal string.
-    const navigation = consoleJs.slice(consoleJs.indexOf('function navigateTo(viewId)'));
+    const navigation = consoleJs.slice(consoleJs.indexOf('function navigateTo(viewId,'));
     assert.match(navigation, /const deny = _viewNavDenied\(viewId\);/);
     assert.match(navigation, /showUnavailableView\(viewId, deny\.reason\);/);
 });

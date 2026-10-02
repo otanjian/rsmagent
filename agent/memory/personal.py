@@ -1,7 +1,7 @@
 # encoding:utf-8
 """成员「我的记忆」：可信作用域、版本条件与可恢复的索引一致性.
 
-（change ``enable-member-personal-console``，stage 5）
+（``enable-member-personal-console`` / ``fix-account-memory-management``）
 
 为什么单独一个模块
 ------------------
@@ -11,7 +11,7 @@
 ``shared_root()/users/<user_id>``），跨本人获准的任意智能体可见。两者共用归属校验，
 但存储根不同，所以入口和判决都必须分开，而不是给前者加一个 ``scope`` 参数。
 
-本模块固定三条规则：
+本模块遵守以下规则：
 
 1. **归属来自身份，不来自请求。** 入口只接受相对标识，没有 agent、没有 user_id、
    没有绝对路径；解析结果永远落在调用者自己的用户域内，因此「读取他人个人记忆」
@@ -41,13 +41,10 @@
     MEMORY.md          -> memory/users/<user_id>/MEMORY.md
     memory/notes.md    -> memory/users/<user_id>/notes.md
 
-单写者约束
+发布串行化
 ----------
-``_entry_lock`` 是进程内的串行点：正文提交与索引发布在同一个临界区内，因此
-「正文已保存 → 清空删除正文并清理索引 → 原保存重新写回旧索引」这一窗口不存在。
-跨进程没有文件锁，因此**同一用户的作用域不得由多个进程同时写入**；部署必须保证
-一个用户域只有一个写入进程，否则 :func:`read_scope_state` 记录的 ``op_version``
-只能做到"过期发布被拒绝"，不能做到原子性。
+``scope_transaction`` 同时持有进程内可重入锁和用户根的持久文件锁。
+正文、索引、清空与恢复共享该边界；控制文件损坏时拒绝发布，不重置版本。
 """
 
 from __future__ import annotations
@@ -57,6 +54,8 @@ import json
 import os
 import re
 import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set
@@ -67,10 +66,11 @@ from common.safe_fs import UnsafePathError
 
 MAIN_ENTRY_ID = "MEMORY.md"
 
-#: Only these two shapes are addressable. Deliberately narrow: every wider
+#: Only the four documented categories are addressable. Every wider
 #: grammar (nested dirs, other extensions, absolute paths) is a way for a
 #: caller to name something that is not a personal memory entry.
-_ENTRY_ID_RE = re.compile(r"^(?:MEMORY\.md|memory/[A-Za-z0-9._-]+\.md)$")
+_ENTRY_ID_RE = re.compile(
+    r"^(?:MEMORY\.md|memory/(?:evolution/|dreams/)?[A-Za-z0-9._-]+\.md)$")
 
 #: The per-scope marker file, beside the memory it governs. Holds the clear
 #: generation and the index labels awaiting a retried purge.
@@ -84,6 +84,86 @@ _scope_lock = threading.RLock()
 #: same revision" resolve to exactly one winner instead of both passing the
 #: check before either write lands.
 _entry_lock = threading.RLock()
+_held_roots = threading.local()
+_personal_stage = ContextVar('personal_memory_stage', default=None)
+
+
+def personal_file(path):
+    """Map an ordinary file tool's personal-memory target to the owner service."""
+    from common.runtime_identity import current_identity
+    from common import state_dir
+    ident = current_identity()
+    if not ident.user_id or not ident.tenant_id:
+        return None
+    service = PersonalMemoryService(identity=ident)
+    absolute = Path(os.path.abspath(path))
+    root = service.user_root()
+    resolved = Path(os.path.realpath(absolute))
+    users = Path(state_dir.shared_root(ident)) / 'users'
+    try:
+        relative = absolute.relative_to(root).as_posix()
+    except ValueError:
+        # Other members' private files must not become an alternative entry.
+        if absolute.is_relative_to(users) or resolved.is_relative_to(users.resolve()):
+            raise PersonalMemoryError('不可访问其他账号的个人文件', code='forbidden', status=403)
+        return None
+    if not _ENTRY_ID_RE.fullmatch(relative):
+        if relative.startswith('.memory') or relative.startswith('memory/'):
+            raise PersonalMemoryError('不可修改记忆控制文件', code='invalid_entry')
+        return None
+    return service, relative
+
+
+def read_personal_file(target):
+    service, entry = target
+    stage = _personal_stage.get()
+    if stage and stage['root'] == service.user_root() and entry in stage['changes']:
+        return stage['changes'][entry]
+    return service.read(entry)['content']
+
+
+def write_personal_file(target, content, previous):
+    service, entry = target
+    stage = _personal_stage.get()
+    if stage:
+        if stage['root'] != service.user_root():
+            raise PersonalMemoryError('后台任务身份不匹配', code='no_identity', status=403)
+        if stage['token'] != service.scope_token():
+            raise PersonalMemoryError('记忆任务版本过期', code='stale_revision', status=409)
+        service._require_write_capability()
+        stage['changes'][entry] = content
+        return {'index_state': 'staged'}
+    return service.save(entry, content, expected_revision=(
+        _revision_of(previous) if previous is not None else None))
+
+
+@contextmanager
+def scope_transaction(root):
+    """One reentrant commit boundary shared by files, indices and processes."""
+    with _entry_lock:
+        key = os.path.abspath(root)
+        held = getattr(_held_roots, 'roots', set())
+        if key in held:
+            yield
+            return
+        try:
+            with safe_fs.file_lock(root, '.memory.lock'):
+                _held_roots.roots = held | {key}
+                try:
+                    yield
+                finally:
+                    _held_roots.roots = held
+        except UnsafePathError as error:
+            raise PersonalMemoryError('个人记忆目录被替换', code='unsafe_path', status=403) from error
+
+
+def personal_service_for(user_id):
+    """Resolve a producer's user against its captured, trusted runtime identity."""
+    from common.runtime_identity import current_identity
+    ident = current_identity()
+    if not user_id or user_id != ident.user_id or not ident.tenant_id:
+        raise PersonalMemoryError('个人记忆任务身份不匹配', code='no_identity', status=403)
+    return PersonalMemoryService(identity=ident)
 
 
 class PersonalMemoryError(Exception):
@@ -122,7 +202,7 @@ def _now() -> str:
 
 def _default_scope_state() -> Dict[str, Any]:
     return {"generation": 0, "op_version": 0, "cleared_at": None,
-            "pending_index": [], "publishing": None}
+            "pending_index": [], "publishing": None, "deleted_labels": []}
 
 
 def _coerce_int(value, default: int = 0) -> int:
@@ -154,25 +234,28 @@ def _coerce_publishing(value) -> Optional[Dict[str, Any]]:
 
 
 def read_scope_state(root: Path) -> Dict[str, Any]:
-    """Read the scope marker, tolerating absence and corruption.
-
-    A corrupt marker must not make the user's memory unreadable; it degrades to
-    the default (no generation, nothing pending), and the next write repairs it.
-    """
+    """Absence is a new scope; unreadable recovery state must fail closed."""
     try:
         raw = safe_fs.read_text(Path(root), _SCOPE_FILE)
     except (UnsafePathError, OSError) as e:
         logger.warning("[PersonalMemory] unreadable scope marker: %s", e)
-        return _default_scope_state()
+        raise PersonalMemoryError("记忆恢复状态不可读取", code="scope_unavailable", status=503) from e
     if raw is None:
         return _default_scope_state()
     try:
         data = json.loads(raw)
     except Exception as e:
         logger.warning("[PersonalMemory] unreadable scope marker: %s", e)
-        return _default_scope_state()
+        raise PersonalMemoryError("记忆恢复状态已损坏", code="scope_unavailable", status=503) from e
     if not isinstance(data, dict):
-        return _default_scope_state()
+        raise PersonalMemoryError("记忆恢复状态已损坏", code="scope_unavailable", status=503)
+    if (any(not isinstance(data.get(k, 0), int) or data.get(k, 0) < 0
+            for k in ('generation', 'op_version'))
+            or not isinstance(data.get('pending_index', []), list)
+            or not isinstance(data.get('deleted_labels', []), list)
+            or (data.get('publishing') is not None
+                and _coerce_publishing(data['publishing']) is None)):
+        raise PersonalMemoryError("记忆恢复状态已损坏", code="scope_unavailable", status=503)
     state = _default_scope_state()
     state["generation"] = _coerce_int(data.get("generation"))
     state["op_version"] = _coerce_int(data.get("op_version"))
@@ -181,6 +264,7 @@ def read_scope_state(root: Path) -> Dict[str, Any]:
     state["pending_index"] = ([str(x) for x in pending]
                               if isinstance(pending, list) else [])
     state["publishing"] = _coerce_publishing(data.get("publishing"))
+    state['deleted_labels'] = [str(label) for label in data.get('deleted_labels', [])]
     return state
 
 
@@ -194,7 +278,7 @@ def _write_scope_state(root: Path, state: Dict[str, Any]) -> None:
 
 def _scope_update(root: Path, mutate: Callable[[Dict[str, Any]], Any]) -> Any:
     """Read-modify-write the scope marker under :data:`_scope_lock`."""
-    with _scope_lock:
+    with scope_transaction(root), _scope_lock:
         state = read_scope_state(root)
         result = mutate(state)
         _write_scope_state(root, state)
@@ -292,6 +376,24 @@ def scope_incomplete(identity=None) -> bool:
     return _stale_publish(read_scope_state(root)) is not None
 
 
+def _recover_file_publish(root: Path) -> None:
+    raw = safe_fs.read_text(root, '.memory-publish.json')
+    if raw is None:
+        return
+    try:
+        journal = json.loads(raw)
+        bodies = journal['bodies']
+        if not isinstance(bodies, dict) or not all(
+                _ENTRY_ID_RE.fullmatch(e) and isinstance(b, str) for e, b in bodies.items()):
+            raise ValueError('invalid publish journal')
+        if journal['token'] == read_scope_state(root)['op_version']:
+            for entry, body in bodies.items():
+                safe_fs.write_text_atomic(root, entry, body)
+        safe_fs.unlink(root, '.memory-publish.json')
+    except (KeyError, TypeError, ValueError) as e:
+        raise PersonalMemoryError('记忆发布记录不可恢复', code='scope_unavailable', status=503) from e
+
+
 def recover_incomplete_publish(root: Path) -> bool:
     """Promote an interrupted publish into the pending journal.
 
@@ -312,7 +414,9 @@ def recover_incomplete_publish(root: Path) -> bool:
         state["publishing"] = None
         return True
 
-    return bool(_scope_update(root, _mutate))
+    with scope_transaction(root):
+        _recover_file_publish(root)
+        return bool(_scope_update(root, _mutate))
 
 
 def _record_pending(root: Path, labels: Iterable[str]) -> None:
@@ -353,7 +457,15 @@ def _purge_label(db_path, label: str) -> None:
         return
     storage = MemoryStorage(Path(db_path))
     try:
-        storage.delete_by_path(label)
+        if label.endswith('/*'):
+            rows = storage.conn.execute("SELECT path FROM files WHERE source='memory' "
+                                        "UNION SELECT path FROM chunks WHERE source='memory'").fetchall()
+            for row in rows:
+                path = row['path']
+                if path.startswith(label[:-1]):
+                    storage.delete_by_path(path)
+        else:
+            storage.delete_by_path(label)
     finally:
         storage.close()
 
@@ -440,6 +552,7 @@ class PersonalMemoryService:
 
     def user_root(self) -> Path:
         from common import state_dir
+        self._require_scope()
         root = Path(state_dir.user_root(self._identity()))
         # A symlinked user root would make every containment promise in
         # ``safe_fs`` meaningless: the caller would be writing "inside" a
@@ -467,7 +580,7 @@ class PersonalMemoryService:
         name still resolves to a plain file inside the caller's own root.
         """
         self._require_scope()
-        if not isinstance(entry_id, str) or not self._entry_id_pattern().match(entry_id):
+        if not isinstance(entry_id, str) or not self._entry_id_pattern().fullmatch(entry_id):
             raise PersonalMemoryError(
                 "无效的记忆标识", code="invalid_entry", status=400)
         return entry_id if entry_id != MAIN_ENTRY_ID else MAIN_ENTRY_ID
@@ -508,28 +621,40 @@ class PersonalMemoryService:
     def label_for(self, entry_id: str) -> str:
         """The index label ``MemoryManager.sync`` uses for this entry."""
         ident = self._require_scope()
+        self._entry_relative(entry_id)
         if entry_id == MAIN_ENTRY_ID:
             return f"memory/users/{ident.user_id}/{MAIN_ENTRY_ID}"
         return f"memory/users/{ident.user_id}/{entry_id[len('memory/'):]}"
 
     # -- listing / reading ---------------------------------------------------
 
-    def list_entries(self) -> List[Dict[str, Any]]:
+    def list_entries(self, category="memory") -> List[Dict[str, Any]]:
+        with scope_transaction(self.user_root()):
+            try:
+                return self._list_entries_locked(category)
+            except UnsafePathError as e:
+                raise PersonalMemoryError('记忆目录被替换', code='unsafe_path', status=403) from e
+
+    def _list_entries_locked(self, category):
         self._require_scope()
         root = self.user_root()
         recover_incomplete_publish(root)
         entries: List[Dict[str, Any]] = []
-        if safe_fs.is_file(root, MAIN_ENTRY_ID):
+        if category not in ('memory', 'evolution', 'dream', 'all'):
+            raise PersonalMemoryError("未知记忆分类", code="unknown_category")
+        if category in ('memory', 'all') and safe_fs.is_file(root, MAIN_ENTRY_ID):
             entries.append(self._entry_info(MAIN_ENTRY_ID))
-        try:
-            names = safe_fs.list_names(root, "memory", suffix=".md",
-                                       skip_dotfiles=True)
-        except (UnsafePathError, OSError):
-            names = []
-        for name in sorted(names, reverse=True):
-            entry_id = f"memory/{name}"
-            if safe_fs.is_file(root, entry_id):
-                entries.append(self._entry_info(entry_id))
+        directories = {'memory': ['memory'], 'dream': ['memory/dreams'],
+                       'evolution': ['memory/evolution', 'memory/dreams'],
+                       'all': ['memory', 'memory/evolution', 'memory/dreams']}[category]
+        for directory in directories:
+            names = safe_fs.list_names(root, directory, suffix='.md', skip_dotfiles=True)
+            for name in sorted(names, reverse=True):
+                entry_id = f'{directory}/{name}'
+                if self._entry_id_pattern().fullmatch(entry_id) and safe_fs.is_file(root, entry_id):
+                    entries.append(self._entry_info(entry_id))
+        if category in ('evolution', 'dream'):
+            entries.sort(key=lambda e: (e['id'].rsplit('/', 1)[-1], e['id']), reverse=True)
         return entries
 
     def _entry_info(self, entry_id: str) -> Dict[str, Any]:
@@ -544,15 +669,37 @@ class PersonalMemoryService:
             "updated_at": datetime.fromtimestamp(
                 info.st_mtime).strftime("%Y-%m-%d %H:%M:%S") if info else "",
             "revision": _revision_of(text),
+            "type": self.entry_type(entry_id),
             # The verbs the console may offer for this row (task 8.1). Editing
             # and deleting are the same operation set the write paths enforce
             # with a revision check, so the page never invents a verb the API
             # would refuse; ``create`` is not a memory concept here (the entries
             # are files under the member's own root).
-            "actions": {"edit": True, "delete": True},
+            "actions": {"edit": self.write_enabled(), "delete": True},
         }
 
+    @staticmethod
+    def entry_type(entry_id):
+        if entry_id == MAIN_ENTRY_ID:
+            return 'global'
+        if entry_id.startswith('memory/evolution/'):
+            return 'evolution'
+        if entry_id.startswith('memory/dreams/'):
+            return 'dream'
+        return 'daily'
+
+    def write_enabled(self):
+        try:
+            self._require_write_capability()
+            return True
+        except PersonalMemoryError:
+            return False
+
     def read(self, entry_id: str) -> Dict[str, Any]:
+        with scope_transaction(self.user_root()):
+            return self._read_locked(entry_id)
+
+    def _read_locked(self, entry_id):
         self._require_scope()
         recover_incomplete_publish(self.user_root())
         text = self._read_entry(entry_id)
@@ -597,7 +744,7 @@ class PersonalMemoryService:
             # publish -- is one critical section. Releasing the lock between the
             # two is what allowed "body saved -> clear removed it and purged the
             # index -> the original save wrote the old index back".
-            with _entry_lock:
+            with scope_transaction(root):
                 recover_incomplete_publish(root)
                 current = self._read_entry(entry_id)
                 current_revision = (_revision_of(current)
@@ -646,7 +793,7 @@ class PersonalMemoryService:
         self._require_scope()
         root = self.user_root()
         label = self.label_for(entry_id)
-        with _entry_lock:
+        with scope_transaction(root):
             recover_incomplete_publish(root)
             current = self._read_entry(entry_id)
             if current is None:
@@ -666,14 +813,17 @@ class PersonalMemoryService:
             self._finish_mutation(token, [label], index_state)
         return {"id": entry_id, "index_state": index_state}
 
-    def clear(self, expected_revision: Optional[str] = None) -> Dict[str, Any]:
-        with _entry_lock:
-            return self._clear_locked(expected_revision)
+    def clear(self, expected_revision: Optional[str] = None,
+              clear_scope="memory") -> Dict[str, Any]:
+        if clear_scope not in ('memory', 'all_personal'):
+            raise PersonalMemoryError("无效的清空范围", code="invalid_scope")
+        with scope_transaction(self.user_root()):
+            return self._clear_locked(expected_revision, clear_scope)
 
-    def _clear_locked(self, expected_revision: Optional[str]) -> Dict[str, Any]:
+    def _clear_locked(self, expected_revision: Optional[str], clear_scope="memory") -> Dict[str, Any]:
         root = self.user_root()
         recover_incomplete_publish(root)
-        entries = self.list_entries()
+        entries = self.list_entries('all') if clear_scope == 'all_personal' else self.list_entries()
         if expected_revision is not None:
             combined = self._collection_revision(entries)
             if expected_revision != combined:
@@ -682,6 +832,9 @@ class PersonalMemoryService:
                     code="stale_revision", status=409)
 
         labels = [self.label_for(entry["id"]) for entry in entries]
+        if clear_scope == 'all_personal':
+            # Include index-only legacy rows, even when no file remains to list.
+            labels.append(f'memory/users/{self._require_scope().user_id}/*')
         # Order matters: the generation and the publish intent are recorded
         # *before* anything is removed. A queued consolidation task that reads
         # the version after this point sees a stale value and refuses; one that
@@ -698,8 +851,8 @@ class PersonalMemoryService:
                 self._abort_mutation(token, labels)
                 raise PersonalMemoryError(
                     "清空未完成，请重试", code="clear_incomplete", status=500)
-        # Anything left over in the personal dir (dream diaries, evolution logs)
-        # is not user-authored memory and is deliberately not touched here.
+        # Only the selected category is removed. The explicit all_personal
+        # scope includes diaries/logs; backups, persona and chat stay outside it.
 
         index_state = self._after_remove(labels, token)
         self._finish_mutation(token, labels, index_state)
@@ -712,6 +865,61 @@ class PersonalMemoryService:
         payload = "\n".join(f"{e['id']}:{e['revision']}" for e in sorted(
             entries, key=lambda x: x["id"]))
         return _revision_of(payload)
+
+    def publish(self, changes, *, expected_scope, append=False, deduplicate=False):
+        """Publish a generated batch against the scope captured before work.
+
+        A persisted body journal makes a main-memory + diary update recoverable.
+        The same lock/version protocol governs human edits and index publishing.
+        """
+        self._require_write_capability()
+        root = self.user_root()
+        with scope_transaction(root):
+            recover_incomplete_publish(root)
+            if expected_scope != self.scope_token():
+                raise PersonalMemoryError("记忆已更新，请基于最新内容重试",
+                                          code='stale_revision', status=409)
+            bodies = {}
+            for entry, content in changes.items():
+                self._entry_relative(entry)
+                if not isinstance(content, str):
+                    raise PersonalMemoryError('记忆内容必须是文本', code='invalid_content')
+                current = self._read_entry(entry)
+                if deduplicate and current is not None and (
+                        current == content or ('\n\n' + content.strip() + '\n\n')
+                        in ('\n\n' + current.strip() + '\n\n')):
+                    continue
+                bodies[entry] = ((current.rstrip() + '\n\n' + content.lstrip())
+                                 if append and current else content)
+            if not bodies:
+                return {'index_state': 'pending' if self.scope_status()['pending'] else 'ok',
+                        'ids': list(changes), 'unchanged': True}
+            labels = [self.label_for(entry) for entry in bodies]
+            token = self._begin_mutation('publish', labels)
+            try:
+                safe_fs.write_text_atomic(root, '.memory-publish.json', json.dumps(
+                    {'token': token, 'bodies': bodies}, ensure_ascii=False))
+                _recover_file_publish(root)
+            except Exception:
+                self._abort_mutation(token, labels)
+                raise
+            states = [self._after_write(entry, body, token) for entry, body in bodies.items()]
+            state = 'ok' if all(s == 'ok' for s in states) else 'pending'
+            self._finish_mutation(token, labels, state)
+            return {'index_state': state, 'ids': list(changes),
+                    'revisions': {e: _revision_of(b) for e, b in bodies.items()}}
+
+    def add(self, content, entry_id=None, *, expected_scope=None):
+        """Idempotent explicit remember, sharing the generated publish path."""
+        if not isinstance(content, str) or not content.strip():
+            raise PersonalMemoryError('记忆内容不能为空', code='invalid_content')
+        content = content.strip()
+        entry_id = entry_id or f'memory/note-{_revision_of(content)[:24]}.md'
+        with scope_transaction(self.user_root()):
+            result = self.publish({entry_id: content},
+                                  expected_scope=expected_scope or self.scope_token(),
+                                  append=True, deduplicate=True)
+            return {'id': entry_id, **result}
 
     # -- scope generation / operation version --------------------------------
 
@@ -738,6 +946,9 @@ class PersonalMemoryService:
 
         def _mutate(state: Dict[str, Any]) -> int:
             state["op_version"] = _coerce_int(state.get("op_version")) + 1
+            if kind in ('delete', 'clear'):
+                state['deleted_labels'] = list(dict.fromkeys(
+                    state.get('deleted_labels', []) + labels))
             if bump_generation:
                 state["generation"] = _coerce_int(state.get("generation")) + 1
                 state["cleared_at"] = _now()
@@ -777,6 +988,7 @@ class PersonalMemoryService:
     def _finish_mutation(self, token: int, labels: List[str],
                          index_state: str) -> None:
         root = self.user_root()
+        kind = (read_scope_state(root).get('publishing') or {}).get('kind', 'update')
 
         def _mutate(state: Dict[str, Any]) -> None:
             publishing = state.get("publishing")
@@ -792,6 +1004,20 @@ class PersonalMemoryService:
                     list(state.get("pending_index") or []) + list(labels)))
 
         _scope_update(root, _mutate)
+        if self._chunk_identity()[1] == 'user':
+            # Never include body text, source paths, or request payloads. Audit
+            # failure after a file commit must not invite a blind write retry.
+            try:
+                from auth.service import get_identity_service
+                ident = self._require_scope()
+                get_identity_service().record_business_audit(
+                    actor_user_id=ident.user_id, tenant_id=ident.tenant_id,
+                    action='personal_memory.' + kind, target='personal-memory',
+                    redacted_changes={'operation_version': token, 'entry_count': len(labels),
+                                      'index_state': index_state},
+                    result='success' if index_state == 'ok' else 'pending')
+            except Exception:
+                logger.warning('[PersonalMemory] committed operation audit unavailable')
 
     # -- index maintenance ---------------------------------------------------
 
@@ -802,6 +1028,7 @@ class PersonalMemoryService:
         visible from every Agent the user may use — and therefore what makes a
         purge in one Agent's database insufficient.
         """
+        self._index_discovery_failed = False
         if self._index_dbs_override is not None:
             return [Path(p) for p in self._index_dbs_override]
         db_paths: List[Path] = []
@@ -814,19 +1041,23 @@ class PersonalMemoryService:
                 db_paths.append(path)
 
         try:
-            from common import state_dir
-            _add(Path(state_dir.state_root(self._identity())))
-        except Exception as e:
-            logger.debug("[PersonalMemory] current agent index unresolved: %s", e)
-        try:
             provider = self._registry_provider
             if provider is None:
                 from agent.registry import get_agent_registry
                 provider = get_agent_registry()
+            from auth.service import get_identity_service
+            bindings = get_identity_service().list_agent_bindings(
+                self._require_scope().tenant_id)
+            allowed = {b['agent_id'] for b in bindings}
             for profile in provider.list(include_disabled=True):
-                _add(getattr(profile, "workspace", None))
+                if profile.id in allowed:
+                    _add(getattr(profile, "workspace", None))
         except Exception as e:
+            self._index_discovery_failed = True
             logger.debug("[PersonalMemory] agent index scan failed: %s", e)
+        for path in getattr(self, '_extra_index_dbs', []):
+            if path not in db_paths:
+                db_paths.append(path)
         return db_paths
 
     def _publish_is_current(self, token: int) -> bool:
@@ -854,15 +1085,17 @@ class PersonalMemoryService:
     def _after_write(self, entry_id: str, content: str, token: int) -> str:
         """Refresh the edited entry in every known index; report the outcome."""
         label = self.label_for(entry_id)
+        if self.entry_type(entry_id) in ('dream', 'evolution'):
+            return self._after_remove([label], token)
         user_id, scope = self._chunk_identity()
         failures = []
-        for db in self._index_dbs():
+        databases = self._index_dbs()
+        if getattr(self, '_index_discovery_failed', False):
+            failures.append(label)
+        for db in databases:
             if not self._publish_is_current(token):
-                # The operation is obsolete: something newer committed while
-                # this publish was in flight (only reachable in a
-                # multi-writer deployment, which this module refuses to
-                # pretend to support atomically). Leave the label masked so no
-                # stale row is served, and never claim success.
+                # Defensive token check in addition to the process lock: an
+                # obsolete operation cannot publish stale rows or claim success.
                 _record_pending(self.user_root(), [label])
                 return "obsolete"
             try:
@@ -882,7 +1115,10 @@ class PersonalMemoryService:
     def _after_remove(self, labels: List[str], token: int) -> str:
         """Purge labels from every known index; report the outcome."""
         failures: List[str] = []
-        for db in self._index_dbs():
+        databases = self._index_dbs()
+        if getattr(self, '_index_discovery_failed', False):
+            failures.extend(labels)
+        for db in databases:
             if not self._publish_is_current(token):
                 _record_pending(self.user_root(), labels)
                 return "obsolete"
@@ -916,7 +1152,11 @@ class PersonalMemoryService:
         }
 
     def retry_pending_index(self) -> Dict[str, Any]:
-        """Retry the recorded purges; only the target labels are touched."""
+        """Reconcile current files (or deletion), never just discard saved rows."""
+        with scope_transaction(self.user_root()):
+            return self._retry_pending_index_locked()
+
+    def _retry_pending_index_locked(self):
         self._require_scope()
         root = self.user_root()
         recover_incomplete_publish(root)
@@ -925,11 +1165,25 @@ class PersonalMemoryService:
             return {"pending": [], "index_state": "ok"}
         done: List[str] = []
         still: List[str] = []
+        entries = {self.label_for(e['id']): e['id'] for e in self.list_entries('all')}
+        user_id, scope = self._chunk_identity()
         for label in pending:
-            ok = True
-            for db in self._index_dbs():
+            databases = self._index_dbs()
+            ok = not getattr(self, '_index_discovery_failed', False)
+            for db in databases:
                 try:
-                    _purge_label(db, label)
+                    entry = entries.get(label)
+                    if label.endswith('/*'):
+                        _purge_label(db, label)
+                        # A pending clear may be followed by legitimate new
+                        # writes. Rebuild their current bodies in the same lock.
+                        for current_label, current_entry in entries.items():
+                            if self.entry_type(current_entry) not in ('dream', 'evolution'):
+                                _index_label(db, current_label, self._read_entry(current_entry), user_id, scope)
+                    elif entry and self.entry_type(entry) not in ('dream', 'evolution'):
+                        _index_label(db, label, self._read_entry(entry), user_id, scope)
+                    else:
+                        _purge_label(db, label)
                 except Exception as e:
                     logger.warning("[PersonalMemory] retry purge failed %s %s: %s",
                                    db, label, e)

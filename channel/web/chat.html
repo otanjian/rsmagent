@@ -48,6 +48,7 @@
     <link rel="stylesheet" href="assets/css/master-sync.css">
     <link rel="stylesheet" href="assets/css/appearance.css">
     <link rel="stylesheet" href="assets/css/coding.css">
+    <link rel="stylesheet" href="assets/css/fork/sessions.css">
     <script src="assets/js/appearance.js"></script>
     <!-- Apply theme/lang before first paint to avoid flash of unstyled content.
          This runs synchronously in <head> so the correct class is on <html>
@@ -84,8 +85,8 @@
         // changes authorization, identity mode or consumer state.
         window.__COW_NAVIGATION_MODE__ = '{{COW_NAVIGATION_MODE}}';
         // Temporary workbench-sidebar presentation switch: '1' renders the
-        // four-zone sidebar with dual launch buttons and a five-row recent
-        // preview. Layout only -- the team candidate rules and the server-side
+        // four-zone sidebar with dual launch buttons. History uses the shared
+        // panel in both layouts. Layout only -- the team candidate rules and the server-side
         // roster rejection apply either way, so turning this back off restores
         // the old sidebar without weakening any team boundary.
         window.__COW_WORKBENCH_SIDEBAR_LAUNCH_V2__ = '{{COW_WORKBENCH_SIDEBAR_LAUNCH_V2}}';
@@ -278,25 +279,14 @@
                      them out of both, or a duplicate group and a stale current-item
                      marker come back. -->
 
-                <div id="sidebar-recent" class="sidebar-recent open">
-                    <div class="sidebar-recent-header">
-                        <button type="button" id="sidebar-recent-label"
-                                class="sidebar-item sidebar-recent-label flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
-                                data-i18n-title="sidebar_history_records">
-                            <i class="fas fa-clock-rotate-left item-icon text-xs w-5 text-center" aria-hidden="true"></i>
-                            <span data-i18n="sidebar_history_records">会话历史</span>
-                        </button>
-                        <button type="button" id="sidebar-recent-toggle" class="sidebar-recent-chevron-btn"
-                                aria-expanded="true" aria-controls="sidebar-recent-list"
-                                data-i18n-aria-label="sidebar_history_records">
-                            <i class="fas fa-chevron-down sidebar-recent-chevron" aria-hidden="true"></i>
-                        </button>
-                    </div>
-                    <div id="sidebar-recent-list" class="sidebar-recent-list" role="list"></div>
-                    <button type="button" id="sidebar-recent-archived" class="sidebar-recent-archived"
-                            data-i18n="sidebar_history_archived">已归档</button>
-                    <button type="button" id="sidebar-recent-more" class="sidebar-recent-more hidden"
-                            data-i18n="sidebar_history_view_all">查看全部</button>
+                <div id="sidebar-recent">
+                    <button type="button" id="sidebar-recent-label" class="sidebar-item flex items-center w-full"
+                            onclick="toggleSessionPanel()" aria-controls="session-panel" aria-expanded="false">
+                        <i class="fas fa-clock-rotate-left item-icon text-xs w-5 text-center" aria-hidden="true"></i>
+                        <span data-i18n="sidebar_history_records">历史会话</span>
+                        <i class="fas fa-chevron-down sidebar-history-caret" aria-hidden="true"></i>
+                    </button>
+                    <!--#include templates/fork/layout/session-panel.html-->
                 </div>
                 </div>
 
@@ -323,7 +313,7 @@
                         <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
                            data-view="skills">
                             <i class="fas fa-bolt item-icon text-xs w-5 text-center"></i>
-                            <span data-i18n="menu_skills">工具与技能</span>
+                            <span data-i18n="menu_skills">能力中心</span>
                         </a>
                         <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
                            data-view="memory">
@@ -691,6 +681,11 @@
                     </div>
                 </div>
 
+                <button id="session-panel-toggle-btn" type="button" class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10"
+                        onclick="toggleSessionPanel()" aria-controls="session-panel" aria-expanded="false"
+                        data-i18n-title="session_history" data-i18n-aria-label="session_history">
+                    <i class="fas fa-clock-rotate-left text-slate-500 dark:text-slate-400" aria-hidden="true"></i>
+                </button>
                 <button id="timeline-toggle-btn" class="timeline-empty p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10"
                         data-tooltip="消息导航" data-tooltip-pos="bottom">
                     <i class="fas fa-list-ul text-slate-500 dark:text-slate-400"></i>
@@ -987,7 +982,7 @@
                     <div class="history-content">
                         <div class="history-head">
                             <div class="history-heading">
-                                <h2 data-i18n="session_history">历史对话</h2>
+                                <h2 data-i18n="session_history">历史会话</h2>
                                 <p data-i18n="history_desc">查看和恢复所有智能体的历史会话</p>
                             </div>
                             <div class="history-search">
@@ -1003,12 +998,12 @@
                                     <i class="fas fa-xmark" aria-hidden="true"></i>
                                 </button>
                             </div>
-                            <div class="history-actions">
+                            <div id="history-page-new-mount" class="history-actions">
                                 <button id="history-refresh-btn" type="button" onclick="loadSessionList()" class="history-refresh-btn"
                                         data-i18n-title="history_refresh" title="刷新历史会话" aria-label="刷新历史会话">
                                     <i class="fas fa-rotate" aria-hidden="true"></i>
                                 </button>
-                                <div class="session-panel-new-wrap">
+                                <div id="history-new-control" class="session-panel-new-wrap">
                                     <button id="history-new-chat-btn" type="button" class="history-new-btn" onclick="onNewChatButton(event)">
                                         <i class="fas fa-plus" aria-hidden="true"></i>
                                         <span data-i18n="new_chat">新对话</span>
@@ -1019,8 +1014,10 @@
                             </div>
                         </div>
                         <div id="history-search-summary" class="history-search-summary" role="status" aria-live="polite" aria-atomic="true"></div>
+                        <div id="history-page-list-mount" class="history-list-mount">
                         <div id="history-status" class="history-status history-status-hidden" role="status" aria-live="polite"></div>
                         <div id="session-list" class="session-list"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -1573,7 +1570,7 @@
                             <div id="skills-panel-list">
                                 <div class="flex items-center justify-between mb-6">
                                     <div>
-                                        <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="skills_title">技能管理</h2>
+                                        <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="skills_title">能力中心</h2>
                                         <p class="text-sm text-slate-500 dark:text-slate-400 mt-1" data-i18n="skills_desc">查看、启用或禁用 Agent 技能</p>
                                     </div>
                                     <a href="https://www.rsm.global/china/zh-hans" target="_blank"
@@ -1664,116 +1661,10 @@
                 </div>
 
                 <!-- ====================================================== -->
-                <!-- VIEW: Memory                                            -->
-                <!-- ====================================================== -->
-                <div id="view-memory" class="view">
-                    <div class="flex-1 overflow-y-auto p-6">
-                        <div class="max-w-4xl mx-auto">
+                <!-- VIEW: Memory -->
+            <!--#include templates/fork/views/memory.html-->
 
-                            <!-- Panel: list -->
-                            <div id="memory-panel-list">
-                                <div class="flex items-center justify-between mb-6">
-                                    <div>
-                                        <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="memory_title">记忆管理</h2>
-                                        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1" data-i18n="memory_desc">查看 Agent 记忆文件和内容</p>
-                                    </div>
-                                    <div class="flex items-center gap-3">
-                                        <div id="memory-agent-select" class="cfg-dropdown cfg-dropdown-avatar cfg-dropdown-sm" tabindex="0" style="width: 160px;">
-                                            <div class="cfg-dropdown-selected">
-                                                <span class="cfg-dropdown-face"></span>
-                                                <span class="cfg-dropdown-text">--</span>
-                                                <i class="fas fa-chevron-down cfg-dropdown-arrow"></i>
-                                            </div>
-                                            <div class="cfg-dropdown-menu"></div>
-                                        </div>
-                                        <div class="flex items-center bg-slate-100 dark:bg-white/10 rounded-lg p-0.5">
-                                            <button id="memory-tab-files" onclick="switchMemoryTab('files')"
-                                                    class="memory-tab px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer transition-colors duration-150 active">
-                                                <i class="fas fa-file-lines mr-1.5"></i><span data-i18n="memory_tab_files">记忆文件</span>
-                                            </button>
-                                            <button id="memory-tab-dreams" onclick="switchMemoryTab('dreams')"
-                                                    class="memory-tab px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer transition-colors duration-150">
-                                                <i class="fas fa-seedling mr-1.5"></i><span data-i18n="memory_tab_dreams">自主进化</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div id="memory-empty" class="flex flex-col items-center justify-center py-20">
-                                    <div class="w-16 h-16 rounded-2xl bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center mb-4">
-                                        <i class="fas fa-brain text-purple-400 text-xl"></i>
-                                    </div>
-                                    <p class="text-slate-500 dark:text-slate-400 font-medium" data-i18n="memory_loading">加载记忆文件中...</p>
-                                    <p class="text-sm text-slate-400 dark:text-slate-500 mt-1" data-i18n="memory_loading_desc">记忆文件将显示在此处</p>
-                                </div>
-                                <div id="memory-list" class="hidden">
-                                    <div class="bg-white dark:bg-[#1A1A1A] rounded-xl border border-slate-200 dark:border-white/10 overflow-hidden">
-                                        <table class="w-full">
-                                            <thead>
-                                                <tr class="border-b border-slate-200 dark:border-white/10">
-                                                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400" data-i18n="memory_col_name">文件名</th>
-                                                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400" data-i18n="memory_col_type">类型</th>
-                                                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400" data-i18n="memory_col_size">大小</th>
-                                                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400" data-i18n="memory_col_updated">更新时间</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="memory-table-body"></tbody>
-                                        </table>
-                                    </div>
-                                    <div id="memory-pagination" class="flex items-center justify-between mt-4 text-sm text-slate-500 dark:text-slate-400"></div>
-                                </div>
-                            </div>
-
-                            <!-- Panel: file viewer / editor (replaces list) -->
-                            <div id="memory-panel-viewer" class="hidden">
-                                <div class="flex items-center gap-3 mb-6">
-                                    <button onclick="closeMemoryViewer()"
-                                            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm
-                                                   text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10
-                                                   border border-slate-200 dark:border-white/10 transition-colors cursor-pointer">
-                                        <i class="fas fa-arrow-left text-xs"></i>
-                                        <span data-i18n="memory_back">返回列表</span>
-                                    </button>
-                                    <h2 id="memory-viewer-title"
-                                        class="flex-1 min-w-0 text-base font-semibold text-slate-800 dark:text-slate-100 font-mono truncate"></h2>
-                                    <button id="memory-btn-edit" onclick="memoryEditor.start()"
-                                            class="doc-action-btn hidden">
-                                        <i class="fas fa-pen text-xs"></i>
-                                        <span data-i18n="ws_edit">编辑</span>
-                                    </button>
-                                    <button id="memory-btn-save" onclick="memoryEditor.save()"
-                                            class="doc-action-btn doc-action-btn-primary hidden">
-                                        <i class="fas fa-check text-xs"></i>
-                                        <span data-i18n="ws_edit_save">保存 (Ctrl+S)</span>
-                                    </button>
-                                    <button id="memory-btn-cancel" onclick="memoryEditor.cancel()"
-                                            class="doc-action-btn hidden">
-                                        <i class="fas fa-xmark text-xs"></i>
-                                        <span data-i18n="ws_edit_cancel">退出编辑</span>
-                                    </button>
-                                    <button id="memory-btn-delete" onclick="memoryDocDelete()"
-                                            class="doc-action-btn hidden">
-                                        <i class="fas fa-trash-can text-xs"></i>
-                                        <span data-i18n="memory_delete">删除</span>
-                                    </button>
-                                    <button id="memory-btn-clear" onclick="memoryDocClear()"
-                                            class="doc-action-btn hidden">
-                                        <i class="fas fa-eraser text-xs"></i>
-                                        <span data-i18n="memory_clear">清空</span>
-                                    </button>
-                                </div>
-                                <div class="bg-white dark:bg-[#1A1A1A] rounded-xl border border-slate-200 dark:border-white/10 overflow-hidden">
-                                    <div id="memory-viewer-content"
-                                         class="p-5 overflow-y-auto text-sm msg-content text-slate-700 dark:text-slate-200"
-                                         style="max-height: calc(100vh - 220px)"></div>
-                                </div>
-                            </div>
-
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ====================================================== -->
-                <!-- VIEW: Knowledge                                         -->
+            <!-- VIEW: Knowledge                                         -->
                 <!-- ====================================================== -->
                 <div id="view-knowledge" class="view">
                     <div class="flex-1 min-h-0 overflow-y-auto md:overflow-hidden p-4 md:p-8 lg:p-10 md:flex md:flex-col">
@@ -3211,6 +3102,7 @@
     <script defer src="assets/js/i18n/audit-console.js"></script>
     <script defer src="assets/js/i18n/branding.js"></script>
     <script defer src="assets/js/i18n/core.js"></script>
+    <script defer src="assets/js/i18n/memory-account.js"></script>
     <script defer src="assets/js/i18n/external-connections.js"></script>
     <script defer src="assets/js/i18n/external-identity.js"></script>
     <script defer src="assets/js/i18n/home-scenes.js"></script>
@@ -3270,7 +3162,9 @@
          question and the account end. -->
     <script defer src="assets/js/fork/desktop-account.js"></script>
     <script defer src="assets/js/i18n/master-sync.js"></script>
+    <script defer src="assets/js/fork/views/memory.js"></script>
     <script defer src="assets/js/console.js"></script>
+    <script defer src="assets/js/fork/views/sessions.js"></script>
     <script defer src="assets/js/chat/timeline.js"></script>
     <script defer src="assets/js/scenes/index.js"></script>
     <!-- The file panel's local source (change

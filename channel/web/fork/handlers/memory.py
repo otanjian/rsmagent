@@ -69,13 +69,13 @@ class MemoryContentHandler:
 
 
 class _MemoryWriteHandler:
-    """Shared shape of the Agent-domain memory writes (task 5.1, second half).
+    """Shared shape of personal and explicit Agent-domain memory writes.
 
     Each verb is its own route so the gate can serve them independently; they
     differ only in the verb they pass down. Every one of them delegates to
     ``memory_console.write_response``, which resolves and authorizes the target
     before mutating and then runs the delivered personal-memory write flow
-    against the Agent's workspace root.
+    against the authorized personal or Agent root.
     """
 
     #: Overridden by each verb.
@@ -135,7 +135,7 @@ class MemoryDeleteHandler(_MemoryWriteHandler):
 
 
 class MemoryClearHandler(_MemoryWriteHandler):
-    """``POST /api/memory/clear``: remove the whole ``memory`` category."""
+    """Clear memory; explicit personal all_personal includes histories."""
 
     ACTION = "clear"
 
@@ -143,10 +143,8 @@ class MemoryClearHandler(_MemoryWriteHandler):
 class PersonalMemoryHandler:
     """「我的记忆」：当前租户 + 当前用户的个人长期记忆（stage 5）.
 
-    Distinct from ``MemoryHandler`` above, which lists **该私有 Agent 记忆**
-    from an Agent workspace. The two share the owner check but not the storage
-    root: this handler never accepts an ``agent_id``, and its entries are
-    resolved inside the caller's own user domain.
+    Legacy personal-only adapter to the same service used by MemoryHandler.
+    Entries always resolve inside the caller's own user domain.
     """
 
     def GET(self):
@@ -186,7 +184,11 @@ class PersonalMemoryHandler:
                         body.get("id"),
                         expected_revision=body.get("revision"))
                 elif action == "clear":
-                    result = service.clear(expected_revision=body.get("revision"))
+                    if body.get('clear_scope') == 'all_personal' and not body.get('revision'):
+                        from agent.memory.personal import PersonalMemoryError
+                        raise PersonalMemoryError('清空需要当前集合版本', code='revision_required', status=409)
+                    result = service.clear(expected_revision=body.get("revision"),
+                                           clear_scope=body.get('clear_scope', 'memory'))
                 elif action == "retry_index":
                     result = service.retry_pending_index()
                 else:
@@ -268,5 +270,3 @@ def _personal_memory_error(exc):
         return json.dumps({"status": "error", "code": exc.code,
                            "message": str(exc)}, ensure_ascii=False)
     return json.dumps({"status": "error", "message": str(exc)}, ensure_ascii=False)
-
-

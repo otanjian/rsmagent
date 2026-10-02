@@ -10,7 +10,7 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../channel/web/static/js/console.js'), 'utf8');
 const start = source.indexOf('// === SIDEBAR_RECENT_BEGIN ===');
-const end = source.indexOf('// Never run sidebar init inline', start);
+const end = source.indexOf('function _fetchSessionPage', start);
 assert.ok(start >= 0 && end > start, 'Missing sidebar recent section in console.js');
 const sidebarSource = source.slice(start, end);
 
@@ -113,61 +113,47 @@ function setup(fetchImpl) {
         },
     });
     const run = code => vm.runInContext(code, ctx);
+    run('let _sessionItems = [];');
+    ctx._sessionListContext = () => String(ctx._authEpoch);
+    ctx._refreshHistoryList = () => { ctx.refreshed = true; };
     run(sidebarSource);
-    const state = () => run('_sidebarRecentItems.map(s => s.session_id)');
-    // ``_sidebarRecentItems`` is a script-level ``let``, so assigning the global
+    const state = () => run('_sessionItems.map(s => s.session_id)');
+    // ``_sessionItems`` is a script-level ``let``, so assigning the global
     // object property from Node would not be visible to the shipped code.
-    const setItems = items => run(`_sidebarRecentItems = ${JSON.stringify(items)};`);
+    const setItems = items => run(`_sessionItems = ${JSON.stringify(items)};`);
     return { ctx, run, node, calls, toasts, switched, state, setItems };
 }
 
-test('sidebar history waits until the account and tenant are ready', () => {
-    const h = setup();
-    h.ctx._accountAppVisible = false;
-    h.ctx.loadSidebarRecentSessions();
-    assert.equal(h.calls.length, 0);
-});
-
-test('each sidebar row exposes an archive control that hides the session without opening it', async () => {
-    const h = setup((url, options) => options && options.method === 'PUT'
-        ? payload([])
-        : payload([session('s2')]));
-    h.setItems([session('s1'), session('s2')]);
-    h.ctx.renderSidebarRecentSessions();
-
-    const list = h.node('sidebar-recent-list');
-    assert.equal(list.children.length, 2);
-    const archiveBtn = list.children[0].querySelectorAll('.sidebar-recent-archive-btn')[0];
-    assert.ok(archiveBtn, 'row has an archive control');
-
-    archiveBtn.handlers.click({ stopPropagation() {} });
-    await settle();
-
-    assert.deepEqual([...h.state()], ['s2']);
-    assert.deepEqual(h.switched, [], 'archiving must not open the session');
-    const put = h.calls.find(c => c.options && c.options.method === 'PUT');
-    assert.ok(put, 'archive writes through PUT');
-    assert.equal(put.url, '/api/sessions/s1');
-    assert.match(put.options.body, /"archived":true/);
-    assert.ok(h.toasts.includes('session_archived'));
-});
-
-test('a failed archive restores the row and reports the reason', async () => {
-    const h = setup(() => ({
-        ok: false, status: 500,
-        json: async () => ({ status: 'error', message: 'archive boom' }),
-    }));
-    h.setItems([session('s1'), session('s2')]);
-    h.ctx.renderSidebarRecentSessions();
-
-    const archiveBtn = h.node('sidebar-recent-list').children[0]
-        .querySelectorAll('.sidebar-recent-archive-btn')[0];
-    archiveBtn.handlers.click({ stopPropagation() {} });
-    await settle();
-
-    assert.deepEqual([...h.state()], ['s1', 's2'], 'failed archive leaves the list intact');
-    assert.ok(h.toasts.includes('archive boom'));
+test('archive writes the original owner and refreshes the shared list without opening it', async () => {
+    const h = setup(() => payload([]));
+    h.setItems([session('s1')]);
+    await h.ctx.archiveSidebarSession('s1', 'agent-a');
+    assert.equal(h.calls[0].url, '/api/sessions/s1');
+    assert.deepEqual(JSON.parse(h.calls[0].options.body), {archived: true, agent_id: 'agent-a'});
+    assert.equal(h.ctx.refreshed, true);
     assert.deepEqual(h.switched, []);
+});
+
+test('a failed archive leaves confirmed rows and reports the reason', async () => {
+    const h = setup(() => ({json: async () => ({status:'error', message:'archive boom'})}));
+    h.setItems([session('s1')]);
+    await h.ctx.archiveSidebarSession('s1', 'agent-a');
+    assert.deepEqual([...h.state()], ['s1']);
+    assert.ok(h.toasts.includes('archive boom'));
+    assert.equal(h.ctx.refreshed, undefined);
+});
+
+test('an unsent temporary row cannot be archived and stale archive callbacks cannot refresh', async () => {
+    let resolve;
+    const h = setup(() => new Promise(r => {resolve = r;}));
+    h.setItems([session('unsent', {optimistic:true})]);
+    h.ctx.archiveSidebarSession('unsent', 'agent-a');
+    assert.equal(h.calls.length, 0);
+    const pending = h.ctx.archiveSidebarSession('saved', 'agent-a');
+    h.ctx._authEpoch++;
+    resolve(payload([])); await pending;
+    assert.equal(h.ctx.refreshed, undefined);
+    assert.deepEqual(h.toasts, []);
 });
 
 test('the archived dialog lists archived sessions and restore writes archived=false', async () => {

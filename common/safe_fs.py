@@ -53,6 +53,8 @@ import errno
 import os
 import stat as _stat
 import tempfile
+import sys
+from contextlib import contextmanager
 from typing import List, Optional, Tuple
 
 __all__ = [
@@ -72,6 +74,7 @@ __all__ = [
     "write_bytes_atomic",
     "unlink",
     "mkdir",
+    "file_lock",
 ]
 
 
@@ -83,6 +86,38 @@ class UnsafePathError(Exception):
     message names the offending component, never the resolved host path, so a
     refusal cannot be used to probe the filesystem.
     """
+
+
+@contextmanager
+def file_lock(root, relative):
+    """Exclusive process lock on a persistent, anchored control file.
+
+    The caller supplies thread/reentrancy coordination. Never remove or replace
+    the lock file: all processes must lock the same inode.
+    """
+    parts = split_relative(relative)
+    with _DirChain(_root_path(root), parts[:-1], create=True) as chain:
+        if chain.fd != -1:
+            fd = os.open(parts[-1], os.O_RDWR | os.O_CREAT | _O_NOFOLLOW,
+                         0o600, dir_fd=chain.fd)
+        else:
+            path = _resolve_chain(_root_path(root), parts, allow_missing_tail=True)[0]
+            fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            if not _stat.S_ISREG(os.fstat(fd).st_mode):
+                raise UnsafePathError("lock is not a regular file")
+            if os.name == 'nt':
+                import msvcrt
+                if os.fstat(fd).st_size == 0:
+                    os.write(fd, b'0')
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(fd, fcntl.LOCK_EX)
+            yield
+        finally:
+            os.close(fd)
 
 
 _O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
@@ -188,6 +223,42 @@ def resolve_within(root, relative) -> str:
 
 # --- descriptor helpers -----------------------------------------------------
 
+def _open_root_fd(root: str, *, create: bool) -> int:
+    """Anchor the root itself, including its users/<owner> parent chain."""
+    # macOS exposes these system directories as fixed aliases. Resolve only
+    # that OS prefix, never an application-controlled ancestor of the root.
+    if sys.platform == 'darwin':
+        for prefix in ('/var', '/tmp', '/etc'):
+            if root == prefix or root.startswith(prefix + '/'):
+                root = os.path.realpath(prefix) + root[len(prefix):]
+                break
+    fd = os.open(os.path.sep, os.O_RDONLY | _O_DIRECTORY)
+    try:
+        for part in root.strip(os.path.sep).split(os.path.sep):
+            if not part:
+                continue
+            try:
+                child = os.open(part, os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW, dir_fd=fd)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                try:
+                    os.mkdir(part, dir_fd=fd)
+                except FileExistsError:
+                    pass
+                child = os.open(part, os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW, dir_fd=fd)
+            except OSError as error:
+                if error.errno in (errno.ELOOP, errno.EMLINK, errno.ENOTDIR):
+                    raise UnsafePathError('unsafe root ancestor') from None
+                raise
+            os.close(fd)
+            fd = child
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
 def _open_dir_chain(root: str, parts: List[str], *, create: bool = False
                     ) -> Tuple[int, Optional[int]]:
     """Open ``root``/``parts`` as a directory; return ``(fd, parent_fd)``.
@@ -198,15 +269,15 @@ def _open_dir_chain(root: str, parts: List[str], *, create: bool = False
     ``create`` is set.
     """
     _assert_root_is_not_link(root)
-    if create and not os.path.isdir(root):
-        os.makedirs(root, exist_ok=True)
-        _assert_root_is_not_link(root)
     if not _DIR_FD_OK:
+        if create and not os.path.isdir(root):
+            os.makedirs(root, exist_ok=True)
+            _assert_root_is_not_link(root)
         _resolve_chain(root, parts, create=create)
         return -1, None
 
     _assert_root_is_not_link(root)
-    fd = os.open(root, os.O_RDONLY | _O_DIRECTORY)
+    fd = _open_root_fd(root, create=create)
     parent: Optional[int] = None
     try:
         for part in parts:

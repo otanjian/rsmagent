@@ -1,0 +1,62 @@
+{
+  "date": "2026-10-02",
+  "master_commit": "48c0d79c36146950667f8d1884ab823deae62305",
+  "python": {
+    "passed": 405,
+    "skipped": 2,
+    "subtests_passed": 8,
+    "duration_seconds": 270.3,
+    "skip_reason": "Windows-only backslash path behavior; current runner is macOS"
+  },
+  "frontend": {
+    "passed": 75,
+    "failed": 0
+  },
+  "route_gate": {
+    "status": "passed",
+    "routes": 230,
+    "method_entries": 281
+  },
+  "module_seam_gate": {
+    "status": "passed",
+    "upstream_modules": 22,
+    "fork_symbols": 364,
+    "findings": 0
+  },
+  "javascript_syntax": "passed",
+  "master_source_fingerprints_verified": 8,
+  "openspec_strict": "passed",
+  "git_diff_check": "passed",
+  "deployment_preview": {
+    "mode": "read_only",
+    "existing_files": 1,
+    "candidates": 0,
+    "excluded": 0,
+    "scope_generation": 0,
+    "operation_version": 0,
+    "real_user_writes": false
+  },
+  "acceptance": {
+    "web_browser": "partial: view, edit, shortcut, conflict, unsaved reminder and clear scope confirmed",
+    "desktop_new_runtime": "not_verified",
+    "automatic_producers": "real persistence with controlled model output",
+    "production_backend_restarted": true,
+    "remaining_task": "7.2",
+    "browser_blocker": null
+  },
+  "test_server": "isolated 9901 server stopped; production 9899 unchanged",
+  "runtime_followup": {
+    "date": "2026-10-02",
+    "cause": "New static frontend served by old Python backend with no edit action metadata",
+    "old_pid": 1069,
+    "new_pid": 24755,
+    "health_http_status": 200,
+    "verified": [
+      "personal file list",
+      "clear action visible",
+      "file detail edit action visible",
+      "file detail delete action visible"
+    ],
+    "memory_body_modified_by_check": false
+  }
+}

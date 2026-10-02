@@ -67,6 +67,13 @@ class Write(BaseTool):
         try:
             # Resolve path (may raise PermissionError for protected locations)
             absolute_path = self._resolve_path(path)
+            from agent.memory.personal import personal_file, write_personal_file
+            personal = personal_file(absolute_path)
+            if personal:
+                before = personal[0].read(personal[1])
+                result = write_personal_file(personal, content,
+                                             before['content'] if before['revision'] else None)
+                return ToolResult.success({'path': path, 'bytes': len(content.encode('utf-8')), **result})
 
             # Create parent directory (if needed)
             parent_dir = os.path.dirname(absolute_path)

@@ -78,6 +78,11 @@ class Edit(BaseTool):
         
         # Resolve path
         absolute_path = self._resolve_path(path)
+        from agent.memory.personal import personal_file, read_personal_file, write_personal_file
+        try:
+            personal = personal_file(absolute_path)
+        except Exception as error:
+            return ToolResult.fail(str(error))
 
         # Same guard the read tool applies. Editing is also a read: the success
         # result carries a diff whose context lines would expose the secrets.
@@ -85,11 +90,11 @@ class Edit(BaseTool):
             return ToolResult.fail(DENIED_MESSAGE)
 
         # Check if file exists
-        if not os.path.exists(absolute_path):
+        if not personal and not os.path.exists(absolute_path):
             return ToolResult.fail(f"Error: File not found: {path}")
         
         # Check if readable/writable
-        if not os.access(absolute_path, os.R_OK | os.W_OK):
+        if not personal and not os.access(absolute_path, os.R_OK | os.W_OK):
             return ToolResult.fail(f"Error: File is not readable/writable: {path}")
         
         try:
@@ -98,8 +103,11 @@ class Edit(BaseTool):
             # it, so the detect_line_ending() call below could only ever answer
             # '\n' and restore_line_endings() was guaranteed to be a no-op.
             # Decoding the bytes leaves the real ending intact for it to find.
-            with open(absolute_path, 'rb') as f:
-                raw_content = f.read().decode('utf-8')
+            if personal:
+                raw_content = read_personal_file(personal)
+            else:
+                with open(absolute_path, 'rb') as f:
+                    raw_content = f.read().decode('utf-8')
             
             # Remove BOM (LLM won't include invisible BOM in oldText)
             bom, content = strip_bom(raw_content)
@@ -199,7 +207,10 @@ class Edit(BaseTool):
 
             # newline='' writes final_content verbatim; text mode would turn
             # every '\n' into os.linesep and undo the ending restored above.
-            write_text_atomic(absolute_path, final_content, newline='')
+            if personal:
+                write_personal_file(personal, final_content, raw_content)
+            else:
+                write_text_atomic(absolute_path, final_content, newline='')
             note_write(absolute_path)
             
             # Generate diff

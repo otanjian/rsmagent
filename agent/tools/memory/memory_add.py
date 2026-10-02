@@ -76,7 +76,7 @@ class MemoryAddTool(BaseTool):
         user_id = self.user_id if scope == "user" else None
 
         try:
-            asyncio.run(self.memory_manager.add_memory(
+            result = asyncio.run(self.memory_manager.add_memory(
                 content=content,
                 user_id=user_id,
                 scope=scope,
@@ -88,9 +88,15 @@ class MemoryAddTool(BaseTool):
             if scope == "user" and user_id:
                 scope_note += f", user={user_id}"
 
+            if isinstance(result, dict) and result.get('index_state') != 'ok':
+                return ToolResult.success(
+                    f"内容已保存，索引待恢复 ({scope_note}, id={result.get('id')}). "
+                    "Do not claim it is searchable yet; retry indexing from memory management.",
+                    result)
             return ToolResult.success(
                 f"Memory saved successfully ({scope_note}). "
-                f"It will be searchable via memory_search after indexing."
+                f"It is available via memory_search. id={result.get('id')}" if isinstance(result, dict)
+                else f"Memory saved successfully ({scope_note}); searchable after indexing."
             )
 
         except Exception as e:

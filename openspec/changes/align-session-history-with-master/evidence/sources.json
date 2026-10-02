@@ -1,0 +1,32 @@
+[
+  {
+    "upstream_path": "channel/web/templates/layout/session-panel.html",
+    "upstream_commit": "48c0d79c36146950667f8d1884ab823deae62305",
+    "upstream_sha256": "be06de864815d0fc465c2d671f489b7ab1582c58fd6fcf4ca8140eea97fcdf1e"
+  },
+  {
+    "upstream_path": "channel/web/templates/layout/sidebar.html",
+    "upstream_commit": "48c0d79c36146950667f8d1884ab823deae62305",
+    "upstream_sha256": "fa9d204bff9985384b562ef3e86b3dd8b510d8afc37c3d8e72a0343d6d469602"
+  },
+  {
+    "upstream_path": "channel/web/static/css/sessions.css",
+    "upstream_commit": "48c0d79c36146950667f8d1884ab823deae62305",
+    "upstream_sha256": "dc1b1599fd71d7ce117c77604fd8fbf36b2afefbc4e4b04145479cc729e2d8ec"
+  },
+  {
+    "upstream_path": "channel/web/static/js/views/sessions.js",
+    "upstream_commit": "48c0d79c36146950667f8d1884ab823deae62305",
+    "upstream_sha256": "8a54b38ba7a8d81c3d88181249071fd5649a47514a2300e9071f670a342ac2ad"
+  },
+  {
+    "upstream_path": "channel/web/static/js/core/nav.js",
+    "upstream_commit": "48c0d79c36146950667f8d1884ab823deae62305",
+    "upstream_sha256": "3fbe24fb31340b3eda924f595f5252a357107be554029cddac2ef0fa587717dc"
+  },
+  {
+    "upstream_path": "channel/web/static/js/chat/new-chat.js",
+    "upstream_commit": "48c0d79c36146950667f8d1884ab823deae62305",
+    "upstream_sha256": "22ea2b914aa30c60ed621a5162c9883c1e606463d74909e69dcdcb1da3c4b0d0"
+  }
+]
