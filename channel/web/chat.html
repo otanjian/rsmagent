@@ -45,6 +45,7 @@
     }
     </script>
     <link rel="stylesheet" href="assets/css/console.css">
+    <link rel="stylesheet" href="assets/css/master-sync.css">
     <link rel="stylesheet" href="assets/css/appearance.css">
     <link rel="stylesheet" href="assets/css/coding.css">
     <script src="assets/js/appearance.js"></script>
@@ -689,6 +690,11 @@
                         <span id="chat-agent-name" class="chat-agent-name"></span>
                     </div>
                 </div>
+
+                <button id="timeline-toggle-btn" class="timeline-empty p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10"
+                        data-tooltip="消息导航" data-tooltip-pos="bottom">
+                    <i class="fas fa-list-ul text-slate-500 dark:text-slate-400"></i>
+                </button>
 
                 <div class="flex-1"></div>
 
@@ -1583,6 +1589,10 @@
                                         <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500" data-i18n="tools_section_title">内置工具</span>
                                         <span id="tools-count-badge" class="hidden px-2 py-0.5 rounded-full text-xs bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400"></span>
                                     </div>
+                                    <button type="button" id="tools-toggle-btn" class="cap-link-btn mb-3 hidden">
+                                        <span id="tools-toggle-label" data-i18n="tools_show_all">展开全部</span>
+                                        <i id="tools-toggle-icon" class="fas fa-chevron-down text-[10px]"></i>
+                                    </button>
                                     <div id="tools-empty" class="flex items-center gap-2 py-4 text-slate-400 dark:text-slate-500 text-sm">
                                         <i class="fas fa-spinner fa-spin text-xs"></i>
                                         <span data-i18n="tools_loading">加载工具中...</span>
@@ -1596,6 +1606,10 @@
                                         <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500" data-i18n="skills_section_title">技能</span>
                                         <span id="skills-count-badge" class="hidden px-2 py-0.5 rounded-full text-xs bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400"></span>
                                     </div>
+                                    <button type="button" id="skill-add-btn" hidden class="cap-action-btn mb-3">
+                                        <i class="fas fa-plus text-[10px]"></i><span data-i18n="skill_add">添加技能</span>
+                                    </button>
+                                    <button type="button" onclick="navigateTo('external_connections')" class="cap-link-btn mb-3" data-i18n="mcp_manage_connections">在系统接入中管理 MCP</button>
                                     <div id="skills-empty" class="flex flex-col items-center justify-center py-12">
                                         <div class="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center mb-3">
                                             <i class="fas fa-bolt text-amber-400 text-lg"></i>
@@ -2834,6 +2848,10 @@
         </div>
     </div>
 
+
+
+<!--#include templates/modals/skill-add.html-->
+
     <!-- Todo Edit Modal -->
     <div id="todo-edit-overlay" class="fixed inset-0 bg-black/50 z-[200] hidden flex items-center justify-center">
         <div class="bg-white dark:bg-[#1A1A1A] rounded-2xl border border-slate-200 dark:border-white/10 shadow-xl
@@ -3251,7 +3269,9 @@
          console.js, which asks window.CowDesktopAccount for both the desktop
          question and the account end. -->
     <script defer src="assets/js/fork/desktop-account.js"></script>
+    <script defer src="assets/js/i18n/master-sync.js"></script>
     <script defer src="assets/js/console.js"></script>
+    <script defer src="assets/js/chat/timeline.js"></script>
     <script defer src="assets/js/scenes/index.js"></script>
     <!-- The file panel's local source (change
          align-desktop-project-execution-with-master, task 9.2). Loaded after

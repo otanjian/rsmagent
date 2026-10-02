@@ -3,9 +3,16 @@ import { execFile } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
+import { loadAppConfig } from './themes'
 
 // Let the web layer override the window icon/title at runtime and remember it,
 // so it also applies on the next launch before the page loads.
+
+// The cache lives under ~/.cow, which every desktop build on the machine
+// shares, so a build with a fixed name and icon must neither read nor write it.
+function runtimeIconTitleEnabled(): boolean {
+  return loadAppConfig()?.runtimeIconTitle !== false
+}
 
 const CACHE_DIRNAME = 'app-icon'
 const ICON_FILE = 'icon.png'
@@ -13,6 +20,11 @@ const ICO_FILE = 'icon.ico'
 const META_FILE = 'meta.json'
 const MAX_ICON_BYTES = 4 * 1024 * 1024
 const DOWNLOAD_TIMEOUT_MS = 10 * 1000
+// Present while a shortcut sweep is running. Finding it at the start of a sweep
+// means the previous one took the process down, so sweeping stays off for good.
+const SWEEP_MARKER_FILE = 'shortcut-sweep.pending'
+// Real .lnk files are a few KB; anything far larger isn't worth reading.
+const MAX_LNK_BYTES = 1024 * 1024
 
 interface CachedMeta {
   title?: string
@@ -47,6 +59,10 @@ function metaCachePath(): string {
 
 function icoCachePath(): string {
   return path.join(cacheDir(), ICO_FILE)
+}
+
+function sweepMarkerPath(): string {
+  return path.join(cacheDir(), SWEEP_MARKER_FILE)
 }
 
 // Download in the main process so the bytes aren't mangled by a text transport.
@@ -178,6 +194,7 @@ function cacheMeta(meta: CachedMeta): void {
 // app.setName changes where that path points: calling it later would strand the
 // data written under the previous name.
 export function applyCachedAppName(): void {
+  if (!runtimeIconTitleEnabled()) return
   try {
     const meta = JSON.parse(fs.readFileSync(metaCachePath(), 'utf8')) as CachedMeta
     const trimmed = meta.title?.trim()
@@ -190,6 +207,7 @@ export function applyCachedAppName(): void {
 // Apply the cached icon/title before the page loads, so a custom mark shows
 // from the first paint instead of flashing the default.
 export function applyCachedAppIcon(): void {
+  if (!runtimeIconTitleEnabled()) return
   let icon: NativeImage | null = null
   try {
     const buf = fs.readFileSync(iconCachePath())
@@ -215,6 +233,7 @@ export function applyCachedAppIcon(): void {
 // current window/Dock icon. Returns null when no custom icon has been applied,
 // so callers can fall back to the bundle icon.
 export function getRuntimeAppIcon(): NativeImage | null {
+  if (!runtimeIconTitleEnabled()) return null
   try {
     const buf = fs.readFileSync(iconCachePath())
     if (!buf.length || buf.length > MAX_ICON_BYTES) return null
@@ -315,12 +334,28 @@ function classifyShortcut(target: string | undefined): ShortcutKind {
   return 'foreign'
 }
 
-// On Windows, existing shortcuts (Desktop + Start Menu) keep the icon and name
-// they were created with at install time. Bring every shortcut belonging to this
-// app in line with the runtime icon/label, re-pointing any that a previous
-// update left dangling and restoring the desktop one if it went missing
-// entirely. No-op elsewhere.
-function syncWindowsShortcuts(opts: {
+// shell.readShortcutLink aborts the whole process (a native crash, not a JS
+// exception) on a .lnk whose AppUserModel properties carry an unexpected type,
+// which some third-party installers produce. Only links that name our
+// executable somewhere in their bytes (ANSI path or UTF-16 shell item) are
+// worth parsing; everything else is someone else's shortcut.
+function mentionsOwnExecutable(linkPath: string): boolean {
+  let buf: Buffer
+  try {
+    if (fs.statSync(linkPath).size > MAX_LNK_BYTES) return false
+    buf = fs.readFileSync(linkPath)
+  } catch {
+    return false
+  }
+  const exe = path.basename(process.execPath).toLowerCase()
+  return (
+    buf.toString('latin1').toLowerCase().includes(exe) ||
+    buf.toString('utf16le').toLowerCase().includes(exe) ||
+    buf.subarray(1).toString('utf16le').toLowerCase().includes(exe)
+  )
+}
+
+type ShortcutSyncOptions = {
   icoPath?: string | null
   title?: string
   // Rewrite every shortcut even when nothing visibly changed. Used on the first
@@ -328,8 +363,40 @@ function syncWindowsShortcuts(opts: {
   // shell link-tracking data already points into the staging dir, and the only
   // way to clear that is to write the link again.
   force?: boolean
-}): void {
+}
+
+// On Windows, existing shortcuts (Desktop + Start Menu) keep the icon and name
+// they were created with at install time. Bring every shortcut belonging to this
+// app in line with the runtime icon/label, re-pointing any that a previous
+// update left dangling and restoring the desktop one if it went missing
+// entirely. No-op elsewhere. Best-effort: a sweep that crashed once is never
+// retried, so a shortcut we can't handle can't keep the app from starting.
+function syncWindowsShortcuts(opts: ShortcutSyncOptions): void {
   if (process.platform !== 'win32') return
+  const marker = sweepMarkerPath()
+  if (fs.existsSync(marker)) {
+    console.warn(`[app-icon] previous shortcut sweep never finished; shortcut sync disabled (${marker})`)
+    return
+  }
+  try {
+    fs.mkdirSync(cacheDir(), { recursive: true })
+    fs.writeFileSync(marker, app.getVersion())
+  } catch {
+    // Without the marker a crash here would repeat on every launch.
+    return
+  }
+  try {
+    sweepWindowsShortcuts(opts)
+  } finally {
+    try {
+      fs.rmSync(marker, { force: true })
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function sweepWindowsShortcuts(opts: ShortcutSyncOptions): void {
   const icoPath = opts.icoPath
   const title = opts.title ? sanitizeShortcutName(opts.title) : ''
   const desktops = new Set(
@@ -348,6 +415,7 @@ function syncWindowsShortcuts(opts: {
     }
     for (const name of entries) {
       let linkPath = path.join(dir, name)
+      if (!mentionsOwnExecutable(linkPath)) continue
       let details: Electron.ShortcutDetails
       try {
         details = shell.readShortcutLink(linkPath)
@@ -495,13 +563,13 @@ async function recordShortcutName(name: string): Promise<void> {
   }
 }
 
-// Repair pass for shortcuts left dangling by a previous update. Runs on every
-// Windows launch whether or not the icon/title were ever overridden: the
-// staging-dir problem comes from the NSIS update flow, so any install can hit
-// it — and an unusable desktop shortcut is not something the user can be
-// expected to fix by hand.
+// Startup pass that re-applies a runtime icon/title to the shortcuts (an update
+// re-creates them with the bundled ones) and repairs any a previous update left
+// dangling. Only runs once the icon or title has been overridden: for a stock
+// install the NSIS hooks in build/installer.nsh already repair and re-create the
+// shortcuts during the update, so a launch never needs to touch them.
 export function repairWindowsShortcuts(): void {
-  if (process.platform !== 'win32') return
+  if (process.platform !== 'win32' || !runtimeIconTitleEnabled()) return
   let title = ''
   let checkedFor = ''
   try {
@@ -512,6 +580,7 @@ export function repairWindowsShortcuts(): void {
     /* first run */
   }
   const ico = fs.existsSync(icoCachePath()) ? icoCachePath() : null
+  if (!title && !ico) return
   syncWindowsShortcuts({ title, icoPath: ico, force: checkedFor !== app.getVersion() })
   cacheMeta({ shortcutsCheckedFor: app.getVersion() })
 }
@@ -524,7 +593,7 @@ export function setupAppIconIPC(deps: {
   getTrayIcon = deps.getTray
 
   ipcMain.handle('set-app-icon', async (_event, iconUrl: unknown, icoUrl: unknown) => {
-    if (typeof iconUrl !== 'string' || !iconUrl) return false
+    if (!runtimeIconTitleEnabled() || typeof iconUrl !== 'string' || !iconUrl) return false
     const icon = await downloadImage(iconUrl)
     if (!icon) return false
     applyIcon(icon)
@@ -539,7 +608,7 @@ export function setupAppIconIPC(deps: {
   })
 
   ipcMain.handle('set-app-title', (_event, title: unknown) => {
-    if (typeof title !== 'string' || !title.trim()) return false
+    if (!runtimeIconTitleEnabled() || typeof title !== 'string' || !title.trim()) return false
     const displayTitle = displayAppTitle(title)
     applyTitle(displayTitle)
     cacheMeta({ title: displayTitle })

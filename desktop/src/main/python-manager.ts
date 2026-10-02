@@ -177,18 +177,22 @@ export class PythonBackend extends EventEmitter {
     return this.packaged ? COW_DATA_DIR : this.backendPath
   }
 
-  // Optional runtime-origin tag from the bundled app-config, forwarded to the
-  // backend so it can be attached to outbound requests for stats.
-  private clientSource(): string {
+  // Optional fields of the bundled app-config forwarded to the backend:
+  // clientSource tags outbound requests for stats and appName is the name
+  // shown in command output.
+  private appConfigEnv(): Record<string, string> {
     try {
       const cfgPath = this.packaged
         ? path.join(process.resourcesPath, 'app-config.json')
         : path.resolve(__dirname, '../../resources', 'app-config.json')
-      const raw = fs.readFileSync(cfgPath, 'utf8')
-      const val = JSON.parse(raw)?.clientSource
-      return typeof val === 'string' ? val.trim() : ''
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8')) || {}
+      const env: Record<string, string> = {}
+      if (typeof cfg.clientSource === 'string' && cfg.clientSource.trim()) env.COW_CLIENT_SOURCE = cfg.clientSource.trim()
+      if (typeof cfg.appName === 'string' && cfg.appName.trim()) env.COW_APP_NAME = cfg.appName.trim()
+      if (typeof cfg.agentName === 'string' && cfg.agentName.trim()) env.DEFAULT_AGENT_NAME = cfg.agentName.trim()
+      return env
     } catch {
-      return ''
+      return {}
     }
   }
 
@@ -797,7 +801,7 @@ export class PythonBackend extends EventEmitter {
         // two sides can never disagree (and we avoid the 9899 web-console clash).
         COW_WEB_PORT: String(this.port),
         ...(bundled ? { COW_DATA_DIR } : {}),
-        ...(this.clientSource() ? { COW_CLIENT_SOURCE: this.clientSource() } : {}),
+        ...this.appConfigEnv(),
         COW_CLIENT_VERSION: app.getVersion(),
       },
       stdio: ['pipe', 'pipe', 'pipe'],

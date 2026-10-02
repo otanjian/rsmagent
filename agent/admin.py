@@ -191,13 +191,17 @@ class AgentAdminService:
             return team.resolve(self._settings)
         if not self.config_path.exists():
             return {}
-        # utf-8-sig tolerates a UTF-8 BOM (e.g. config.json edited with Windows
-        # Notepad / PowerShell). Plain utf-8 raises "Unexpected UTF-8 BOM" here,
-        # which surfaces as a failed /api/agents snapshot and an empty team page.
         with self.config_path.open("r", encoding="utf-8-sig") as handle:
             data = json.load(handle)
         if not isinstance(data, dict):
             raise AgentAdminError("config root must be an object")
+        # Values injected via environment at startup never reach config.json.
+        from config import conf
+
+        live = conf()
+        for key in ("default_agent_name", "default_agent_description"):
+            if not data.get(key) and live.get(key):
+                data[key] = live[key]
         return team.resolve(data)
 
     def _write(self, settings: Dict) -> None:
@@ -1202,6 +1206,18 @@ class AgentAdminService:
             except Exception as e:
                 logger.warning(f"[AgentAdmin] session prefs cleanup after delete failed: {e}")
 
+            # The project store keys its bindings the same way and needs the same
+            # sweep: an Agent's own sessions go away with its workspace, so their
+            # ``{id}::*`` entries would linger forever and a new Agent reusing the
+            # id would inherit them. Best-effort too, and separate so one store
+            # failing cannot swallow the other's cleanup.
+            try:
+                from agent.workspace import project_store
+
+                project_store.forget_agent(agent_id)
+            except Exception as e:
+                logger.warning(f"[AgentAdmin] project store cleanup after delete failed: {e}")
+
             return {"id": agent_id, "deleted": True}
 
     def knowledge_mode(self, agent_id: str) -> str:
@@ -1498,7 +1514,13 @@ class AgentAdminService:
     def read_core_file(self, agent_id: str, filename: str) -> Dict:
         with self._lock:
             path = self._core_path(agent_id, filename)
-            raw = path.read_bytes() if path.exists() else b""
+            if path.exists():
+                with path.open("rb") as handle:
+                    raw = handle.read(MAX_CORE_FILE_BYTES + 1)
+                if len(raw) > MAX_CORE_FILE_BYTES:
+                    raise AgentAdminError("core file exceeds 1 MiB")
+            else:
+                raw = b""
             return {
                 "filename": filename,
                 "content": raw.decode("utf-8"),

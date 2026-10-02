@@ -45,8 +45,9 @@ _MODEL_SPECS = {
                  "fallback_window": 64000, "full_cap_names": ("deepseek-flash",)},
     # gemini: 1M context, 64K max output.
     "gemini": {"window": 1000000, "max_output": 64000},
-    # claude: 200K context, 64K max output.
-    "claude": {"window": 200000, "max_output": 64000},
+    # claude 5+: 1M context, 128K max output; claude 4 and earlier: 200K / 64K.
+    "claude": {"version_min": 5.0, "window": 1000000, "max_output": 128000,
+               "fallback_window": 200000, "fallback_max_output": 64000},
     # GLM: only 5.3-flash ships a 1M window; older glm-5.x stays at 200K.
     "glm": {"prefix": "glm-5.3-flash", "window": 1000000, "max_output": None,
             "fallback_window": 200000},
@@ -85,12 +86,12 @@ def resolve_family_spec(model_name: str):
         if version_min is not None and (version is None or version < version_min):
             # Older release of a family that only bumped at version_min
             # (e.g. deepseek < v4): use its conservative fallback window.
-            return spec.get("fallback_window", 128000), None
+            return spec.get("fallback_window", 128000), spec.get("fallback_max_output")
         return spec["window"], spec.get("max_output")
     return None, None
-from agent.protocol.models import LLMRequest, LLMModel
+from agent.protocol.models import LLMModel
 from agent.protocol.agent_stream import AgentStreamExecutor
-from agent.protocol.result import AgentAction, AgentActionType, ToolResult, AgentResult
+from agent.protocol.result import AgentAction, AgentActionType, ToolResult
 from agent.tools.base_tool import BaseTool, ToolStage, is_tool_available
 from common.runtime_identity import current_user_id
 
@@ -420,7 +421,7 @@ class Agent:
             from agent.prompt import load_context_files, PromptBuilder
 
             if self.skill_manager:
-                self.skill_manager.refresh_skills()
+                self.skill_manager.refresh_skills(use_cache=True)
 
             context_files = None
             if self.workspace_dir and not self.skip_context_files:
@@ -904,7 +905,7 @@ class Agent:
 
     def run_stream(self, user_message: str, on_event=None, clear_history: bool = False,
                    skill_filter=None, cancel_event=None, steer_inbox=None,
-                   allow_empty_response: bool = False, attachments=None) -> str:
+                   allow_empty_response: bool = False, attachments=None, on_executor=None) -> str:
         """
         Execute single agent task with streaming (based on tool-call)
 
@@ -935,6 +936,8 @@ class Agent:
             attachments: Optional inbound attachments (images) for this turn.
                 Channels only report where each image lives; this layer decides
                 whether it can be delivered to the turn's model.
+            on_executor: Optional callback(executor), called once before the
+                run starts, for callers that follow its messages as it goes.
 
         Returns:
             Final response text
@@ -983,6 +986,8 @@ class Agent:
             steer_inbox=steer_inbox,
             allow_empty_response=allow_empty_response,
         )
+        if on_executor is not None:
+            on_executor(executor)
 
         # Execute
         try:
@@ -1006,8 +1011,11 @@ class Agent:
             # so slicing at original_length yields an empty list and the assistant reply
             # would never be persisted. Instead, locate this run's user query (always the
             # first message of the last turn) by scanning from the tail.
+            run_start = executor.run_start_index()
             trimmed = len(executor.messages) < original_length
-            if trimmed:
+            if run_start is not None:
+                self._last_run_new_messages = list(executor.messages[run_start:])
+            elif trimmed:
                 new_start = original_length  # fallback
                 for idx in range(len(executor.messages) - 1, -1, -1):
                     msg = executor.messages[idx]

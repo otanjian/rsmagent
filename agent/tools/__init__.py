@@ -12,6 +12,8 @@ from agent.tools.send.send import Send
 from agent.tools.search_files.search_files import SearchFiles
 from agent.tools.client_files.client_files import ClientFiles
 
+from agent.tools.current_time.current_time import TimeTool
+
 # Import memory tools
 from agent.tools.memory.memory_search import MemorySearchTool
 from agent.tools.memory.memory_get import MemoryGetTool
@@ -26,6 +28,22 @@ from agent.tools.requirements_delivery import RequirementsDeliveryTool
 from agent.tools.subagent.subagent import SubagentTool
 
 # Import tools with optional dependencies
+_PIP_PACKAGES = {
+    "dotenv": "python-dotenv>=1.0.0",
+    "croniter": "croniter>=2.0.0",
+}
+
+
+def _install_hint(e: ImportError) -> str:
+    """Build a pip command for the module that actually failed to import."""
+    module = (getattr(e, "name", None) or "").split(".")[0]
+    package = _PIP_PACKAGES.get(module)
+    if package:
+        # Quoted so the shell does not treat ">=" as a redirect.
+        return f'pip install "{package}"'
+    return "pip install -r requirements.txt"
+
+
 def _import_optional_tools():
     """Import tools that have optional dependencies"""
     from common.log import logger
@@ -39,7 +57,7 @@ def _import_optional_tools():
         logger.error(
             f"[Tools] EnvConfig tool not loaded - missing dependency: {e}\n"
             f"  To enable environment variable management, run:\n"
-            f"    pip install python-dotenv>=1.0.0"
+            f"    {_install_hint(e)}"
         )
     except Exception as e:
         logger.error(f"[Tools] EnvConfig tool failed to load: {e}")
@@ -52,7 +70,7 @@ def _import_optional_tools():
         logger.error(
             f"[Tools] Scheduler tool not loaded - missing dependency: {e}\n"
             f"  To enable scheduled tasks, run:\n"
-            f"    pip install croniter>=2.0.0"
+            f"    {_install_hint(e)}"
         )
     except Exception as e:
         logger.error(f"[Tools] Scheduler tool failed to load: {e}")
@@ -179,6 +197,7 @@ __all__ = [
     'ExternalConnectionTool',
     'external_tools_for',
     'reconcile_external_tools',
+    'TimeTool',
 ]
 
 """

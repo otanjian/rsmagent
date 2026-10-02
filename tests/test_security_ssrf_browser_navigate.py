@@ -72,16 +72,12 @@ class TestBrowserNavigateSSRF(unittest.TestCase):
         patcher = patch.object(BrowserTool, "_get_service", return_value=self.stub)
         patcher.start()
         self.addCleanup(patcher.stop)
-        # Neutralise the engine-onboarding preflight as well. It refuses before
-        # any action handler runs when no Playwright/Chromium is installed, which
-        # would mask the guard under test: a link-local target would be reported
-        # as "Browser tool not ready" instead of "blocked for security". This
-        # module is documented as hermetic (no real browser, no Playwright), and
-        # the SSRF verdict must not depend on whether an optional engine happens
-        # to be installed. Engine onboarding has its own tests.
-        preflight = patch.object(BrowserTool, "_check_engine_ready", return_value=None)
-        preflight.start()
-        self.addCleanup(preflight.stop)
+        # These tests cover the SSRF guard, which runs after the engine
+        # readiness probe; on CI no browser engine is installed, so stub the
+        # probe out to keep the navigation path reachable.
+        ready_patcher = patch.object(BrowserTool, "_check_engine_ready", return_value=None)
+        ready_patcher.start()
+        self.addCleanup(ready_patcher.stop)
 
     # --- Link-local / cloud-metadata: rejected before any service call ---
 

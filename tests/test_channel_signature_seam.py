@@ -138,7 +138,7 @@ class ConsumptionTests(unittest.TestCase):
             return "/tmp/nonexistent-uploads"
 
         with mock.patch.object(web_channel, "_get_upload_dir", fake_upload_dir), \
-                mock.patch.object(web_channel, "_raw_web_input", lambda: {
+                mock.patch("channel.web.core._common._raw_web_input", lambda: {
                     "session_id": "", "file": None, "files": None,
                     "relative_path": "", "relative_paths": None,
                     "agent_id": "form-field-agent", "upload_id": "",

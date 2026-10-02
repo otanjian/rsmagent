@@ -26,6 +26,7 @@ from channel.web.core._common import (
     _is_path_allowed,
     _get_preview_secret,
     _get_upload_dir,
+    _is_within_directory,
     _raw_web_input,
     _request_agent_id,
     _require_auth,
@@ -33,6 +34,7 @@ from channel.web.core._common import (
 )
 from channel.web.core.channel import WebChannel
 from common.log import logger
+from common.utils import constant_time_equals
 
 
 def _decode_dir_token(token: str) -> str:
@@ -46,7 +48,7 @@ def _decode_dir_token(token: str) -> str:
     except Exception:
         raise ValueError("Malformed preview token")
     expected = hmac.new(_get_preview_secret(), real.encode("utf-8"), hashlib.sha256).hexdigest()[:16]
-    if not hmac.compare_digest(sig, expected):
+    if not constant_time_equals(sig, expected):
         raise ValueError("Bad preview token signature")
     return real
 
@@ -166,8 +168,8 @@ class UploadsHandler:
         try:
             params = web.input(agent_id='')
             upload_dir = _get_upload_dir(_request_agent_id(params))
-            full_path = os.path.normpath(os.path.join(upload_dir, file_name))
-            if not os.path.abspath(full_path).startswith(os.path.abspath(upload_dir)):
+            full_path = os.path.realpath(os.path.join(upload_dir, file_name))
+            if not _is_within_directory(os.path.realpath(upload_dir), full_path):
                 raise web.notfound()
             if not os.path.isfile(full_path):
                 raise web.notfound()

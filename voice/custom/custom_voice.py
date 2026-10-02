@@ -21,9 +21,18 @@ import requests
 
 from bridge.reply import Reply, ReplyType
 from common.log import logger
+from common.media_download import MAX_FILE_BYTES, MediaTooLargeError, save_response
+from common.tmp_dir import TmpDir
 from config import conf
 from models.custom_provider import _find_provider_by_id, get_custom_providers, parse_custom_bot_type
 from voice.voice import Voice
+
+# Bound every outbound call. A vendor that stalls would otherwise leave the
+# request waiting forever: nothing is raised, nothing is logged, the turn never
+# finishes and the user never gets a reply. ASR uploads a file and TTS
+# synthesises a clip, so this uses the longer read timeout that mimo and linkai
+# also apply to the same two endpoints.
+REQUEST_TIMEOUT = (5, 120)
 
 
 class CustomVoice(Voice):
@@ -63,6 +72,7 @@ class CustomVoice(Voice):
                     headers={"Authorization": "Bearer " + api_key},
                     files={"file": f},
                     data={"model": model},
+                    timeout=REQUEST_TIMEOUT,
                 )
             try:
                 data = response.json()
@@ -101,16 +111,24 @@ class CustomVoice(Voice):
                     "input": text,
                     "voice": conf().get("tts_voice_id") or "alloy",
                 },
+                timeout=REQUEST_TIMEOUT,
+                stream=True,
             )
             if response.status_code != 200:
                 logger.error(
                     f"[Custom] textToVoice failed: status={response.status_code}, "
                     f"resp={response.text[:200]}"
                 )
+                response.close()
                 return Reply(ReplyType.ERROR, "遇到了一点小问题，请稍后再问我吧")
-            file_name = "tmp/" + datetime.datetime.now().strftime("%Y%m%d%H%M%S") + str(random.randint(0, 1000)) + ".mp3"
-            with open(file_name, "wb") as f:
-                f.write(response.content)
+            file_name = TmpDir().path() + datetime.datetime.now().strftime("%Y%m%d%H%M%S") + str(random.randint(0, 1000)) + ".mp3"
+            try:
+                save_response(response, file_name, MAX_FILE_BYTES)
+            except MediaTooLargeError:
+                logger.error(
+                    f"[Custom] textToVoice audio too large: over {MAX_FILE_BYTES} bytes"
+                )
+                return Reply(ReplyType.ERROR, "遇到了一点小问题，请稍后再问我吧")
             logger.info("[Custom] textToVoice success")
             return Reply(ReplyType.VOICE, file_name)
         except Exception as e:

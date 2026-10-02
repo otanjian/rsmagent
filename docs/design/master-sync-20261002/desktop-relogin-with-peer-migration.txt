@@ -1,0 +1,20 @@
+[e2e] fixture ready: https://127.0.0.1:59381
+[e2e] profile: /var/folders/lq/nkc1bb_s0f7b_3krh4_r3k_c0000gn/T/cow-e2e-profile-adi4Yj
+[e2e] local data dir: /var/folders/lq/nkc1bb_s0f7b_3krh4_r3k_c0000gn/T/cow-e2e-profile-adi4Yj/cow
+[e2e] fs-guard helper: $MERGE_RUN_DIR/repo/desktop/native/fs-guard/target/release/fs-guard
+[e2e] spec: ./relogin-session-sync.spec.mjs
+[e2e] console page: http://localhost:9876/chat
+✔ R01: a container that just signed in can pick a directory and really read it (17904.483ms)
+✔ R02: the account menu ends both ends, and leaves no page that looks signed in (266.020167ms)
+✔ R03: signing in again picks a new directory, and the old authorization does not return (928.869667ms)
+✔ R04: the recovery entry ends the account, and a password submit there cannot mint a Web-only session (265.734917ms)
+✔ R05: after two sign-outs and two sign-ins the workbench is still usable (15179.387833ms)
+✔ R06: changing accounts does not carry the previous authorization over (15731.418625ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 50484.790166

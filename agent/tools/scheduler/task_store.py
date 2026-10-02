@@ -7,7 +7,7 @@ import os
 import threading
 from datetime import datetime
 from typing import Dict, List, Optional
-from pathlib import Path
+from common.atomic_write import write_text_atomic
 from common.utils import expand_path
 
 
@@ -109,6 +109,15 @@ class TaskWriteLease:
                 os.unlink(self.path)
         except OSError:
             pass
+def _read_tasks(path: str):
+    """Return ``(raw_text, tasks)`` from a store file, raising if it is unusable."""
+    with open(path, 'r', encoding='utf-8') as f:
+        text = f.read()
+    data = json.loads(text)
+    tasks = data.get("tasks") if isinstance(data, dict) else None
+    if not isinstance(tasks, dict) or any(not isinstance(task, dict) for task in tasks.values()):
+        raise ValueError(f"invalid task store payload: {path}")
+    return text, tasks
 
 
 class _DescStr:
@@ -180,12 +189,23 @@ class TaskStore:
                 return {}
             
             try:
-                with open(self.store_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    return data.get("tasks", {})
+                return _read_tasks(self.store_path)[1]
             except Exception as e:
                 print(f"Error loading tasks: {e}")
+
+            try:
+                backup_text, tasks = _read_tasks(f"{self.store_path}.bak")
+            except Exception as e:
+                print(f"Error loading task backup: {e}")
                 return {}
+
+            # Repair the primary before a later save copies it into .bak.
+            # Otherwise a new task would overwrite the only good backup.
+            try:
+                write_text_atomic(self.store_path, backup_text)
+            except Exception as e:
+                print(f"Error restoring task store from backup: {e}")
+            return tasks
     
     def save_tasks(self, tasks: Dict[str, dict]):
         """
@@ -196,25 +216,32 @@ class TaskStore:
         """
         with self.lock:
             try:
-                # Create backup
+                # Create backup. The store is written as UTF-8 below and read
+                # back as UTF-8 in load_tasks(), so the copy has to go through
+                # the same codec: with the platform default it is decoded
+                # through the wrong one on Windows (cp936 on a zh-CN box), and
+                # the backup ends up either mojibake or -- since the open() for
+                # writing already truncated it -- an empty file where a usable
+                # one used to be.
                 if os.path.exists(self.store_path):
                     backup_path = f"{self.store_path}.bak"
                     try:
-                        with open(self.store_path, 'r') as src:
-                            with open(backup_path, 'w') as dst:
-                                dst.write(src.read())
+                        with open(self.store_path, 'r', encoding='utf-8') as src:
+                            previous = src.read()
+                        write_text_atomic(backup_path, previous)
                     except Exception:
                         pass
-                
+
                 # Save tasks
                 data = {
                     "version": 1,
                     "updated_at": datetime.now().isoformat(),
                     "tasks": tasks
                 }
-                
-                with open(self.store_path, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
+
+                write_text_atomic(
+                    self.store_path, json.dumps(data, ensure_ascii=False, indent=2)
+                )
             except Exception as e:
                 print(f"Error saving tasks: {e}")
                 raise

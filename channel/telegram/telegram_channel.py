@@ -24,6 +24,7 @@ import threading
 from bridge.context import Context, ContextType
 from bridge.reply import Reply, ReplyType
 from channel.chat_channel import ChatChannel, check_prefix
+from channel.chat_message import safe_filename
 from channel.telegram.telegram_markdown import CAPTION_LIMIT, to_telegram_html
 from channel.telegram.telegram_message import TelegramMessage
 from common.expired_dict import ExpiredDict
@@ -442,6 +443,13 @@ class TelegramChannel(ChatChannel):
         try:
             f = await self._bot.get_file(file_id)
             tmp_dir = TelegramMessage.get_tmp_dir()
+            # The sender picks the document name, so it can carry a path
+            # separator ("sub/dir/x.pdf") and stop being one path component;
+            # reduce it first, like slack, discord and weixin do.
+            original_name = safe_filename(original_name)
+            # The suffix is cut from the same sender-controlled name.
+            ext = safe_filename((suffix or "").lstrip("."))
+            suffix = f".{ext}" if ext else ""
             base = original_name or f"{file_id}{suffix or ''}"
             # Prefix with file_id to avoid name collisions / weird chars
             safe_name = f"{file_id}_{base}" if original_name else base
@@ -701,14 +709,14 @@ class TelegramChannel(ChatChannel):
                         )
                 await self._send_with_retry(_send_voice, label="send_voice")
 
-            elif rtype == ReplyType.FILE:
+            elif rtype in (ReplyType.FILE, ReplyType.VIDEO):
                 # Videos go through send_video, everything else through send_document
                 local = content[7:] if isinstance(content, str) and content.startswith("file://") else content
                 # File replies may carry an accompanying text caption
                 caption = getattr(reply, "text_content", None) or None
-                is_video = isinstance(local, str) and local.lower().endswith(
+                is_video = rtype == ReplyType.VIDEO or (isinstance(local, str) and local.lower().endswith(
                     (".mp4", ".mov", ".avi", ".mkv", ".webm")
-                )
+                ))
 
                 # Captions are capped far below a message, and an oversized one
                 # fails the upload itself. Anything too long follows separately.

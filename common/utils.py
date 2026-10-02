@@ -1,3 +1,4 @@
+import hmac
 import io
 import os
 import re
@@ -121,6 +122,19 @@ def expand_path(path: str) -> str:
                 expanded = os.path.join(home, path[2:])
     
     return expanded
+
+
+def constant_time_equals(left: str, right: str) -> bool:
+    """Timing-safe string comparison that answers False instead of raising.
+
+    ``hmac.compare_digest`` raises on non-ASCII ``str``, so request-supplied
+    values are compared as UTF-8 bytes; ``surrogatepass`` also covers the lone
+    surrogates JSON and query strings can carry.
+    """
+    return hmac.compare_digest(
+        left.encode("utf-8", "surrogatepass"),
+        right.encode("utf-8", "surrogatepass"),
+    )
 
 
 def is_cloud_deployment() -> bool:
@@ -324,3 +338,32 @@ def get_cloud_headers(api_key: str) -> dict:
         pass
     apply_client_source(headers)
     return apply_cloud_user(headers)
+
+
+_TAIL_CHUNK_BYTES = 8192
+
+
+def tail_lines(path, limit):
+    """Return the last *limit* lines of *path*, without reading the whole file.
+
+    Lines keep their trailing newline (the last one may have none).
+    """
+    if limit <= 0:
+        return []
+    with open(path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        remaining = f.tell()
+        blocks = []
+        newlines = 0
+        while remaining > 0 and newlines <= limit:
+            read_size = min(_TAIL_CHUNK_BYTES, remaining)
+            remaining -= read_size
+            f.seek(remaining)
+            block = f.read(read_size)
+            newlines += block.count(b"\n")
+            blocks.append(block)
+        data = b"".join(reversed(blocks))
+    return [
+        line.decode("utf-8", errors="replace")
+        for line in data.splitlines(keepends=True)[-limit:]
+    ]

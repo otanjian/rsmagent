@@ -1,0 +1,513 @@
+status	path	area	runtime_mapping	candidate_relation
+M	.github/workflows/release-overlay.yml	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	.github/workflows/release.yml	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+A	.github/workflows/test.yml	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	.gitignore	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	composed with rdai
+M	README.md	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	absent (see deletion decisions)
+M	agent/admin.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	agent/chat/service.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/chat/session_service.py	会话/任务	master service/store + rdai 授权与租约	same as source
+M	agent/evolution/backup.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/evolution/executor.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	agent/knowledge/service.py	知识/记忆	共享实现 + owner/tenant 存储接缝	composed with rdai
+M	agent/memory/__init__.py	知识/记忆	共享实现 + owner/tenant 存储接缝	same as source
+M	agent/memory/chunker.py	知识/记忆	共享实现 + owner/tenant 存储接缝	same as source
+M	agent/memory/conversation_store.py	知识/记忆	共享实现 + owner/tenant 存储接缝	composed with rdai
+M	agent/memory/embedding/rebuild.py	知识/记忆	共享实现 + owner/tenant 存储接缝	same as source
+M	agent/memory/manager.py	知识/记忆	共享实现 + owner/tenant 存储接缝	composed with rdai
+A	agent/memory/reranker.py	知识/记忆	共享实现 + owner/tenant 存储接缝	same as source
+M	agent/memory/storage.py	知识/记忆	共享实现 + owner/tenant 存储接缝	composed with rdai
+M	agent/memory/summarizer.py	知识/记忆	共享实现 + owner/tenant 存储接缝	composed with rdai
+A	agent/multiagent/__init__.py	跨部署团队	master PeerTransport/serve_invoke + auth.peer_identity	same as source
+A	agent/multiagent/inbound.py	跨部署团队	master PeerTransport/serve_invoke + auth.peer_identity	composed with rdai
+A	agent/multiagent/transport.py	跨部署团队	master PeerTransport/serve_invoke + auth.peer_identity	same as source
+M	agent/permission/policy.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/prompt/builder.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	agent/prompt/workspace.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	agent/protocol/agent.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	agent/protocol/agent_stream.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	agent/protocol/steer.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+A	agent/protocol/step_writer.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/registry.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	agent/skills/loader.py	技能	master staging/service；database skill_lifecycle 限定目的目录	composed with rdai
+M	agent/skills/manager.py	技能	master staging/service；database skill_lifecycle 限定目的目录	composed with rdai
+M	agent/skills/service.py	技能	master staging/service；database skill_lifecycle 限定目的目录	composed with rdai
+M	agent/subagent/templates.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/team.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/team_addressing.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/tools/__init__.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	agent/tools/agent_delegate/agent_delegate.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/tools/base_tool.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	agent/tools/bash/bash.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	agent/tools/browser/browser_service.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+A	agent/tools/current_time/__init__.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+A	agent/tools/current_time/current_time.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/tools/edit/edit.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	agent/tools/env_config/env_config.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/tools/mcp/mcp_client.py	MCP	master transport；rdai external connections 与 strict authorization	composed with rdai
+A	agent/tools/mcp/service.py	MCP	master transport；rdai external connections 与 strict authorization	same as source
+M	agent/tools/memory/memory_get.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	agent/tools/memory/memory_search.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/tools/read/read.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/tools/scheduler/integration.py	会话/任务	master service/store + rdai 授权与租约	composed with rdai
+M	agent/tools/scheduler/scheduler_service.py	会话/任务	master service/store + rdai 授权与租约	same as source
+M	agent/tools/scheduler/scheduler_tool.py	会话/任务	master service/store + rdai 授权与租约	composed with rdai
+M	agent/tools/scheduler/task_store.py	会话/任务	master service/store + rdai 授权与租约	composed with rdai
+A	agent/tools/scheduler/time_utils.py	会话/任务	master service/store + rdai 授权与租约	same as source
+M	agent/tools/search_files/search_files.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/tools/tool_manager.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+A	agent/tools/utils/memory_path.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/tools/utils/url_safety.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/tools/vision/vision.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/tools/web_fetch/web_fetch.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	agent/tools/web_search/web_search.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	agent/tools/write/write.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	agent/workspace/project_store.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	app.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	composed with rdai
+M	bridge/agent_bridge.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	bridge/agent_initializer.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	composed with rdai
+M	bridge/context.py	Agent/工具/工作区	AgentBridge/AgentInitializer → master executor/tools + rdai 执行身份	same as source
+M	channel/channel.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	composed with rdai
+M	channel/channel_factory.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	composed with rdai
+M	channel/channel_instances.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	composed with rdai
+M	channel/chat_channel.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	composed with rdai
+M	channel/chat_message.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/dingtalk/dingtalk_channel.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	composed with rdai
+M	channel/dingtalk/dingtalk_message.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+A	channel/dingtalk/dingtalk_stream_card.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/discord/discord_channel.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/feishu/feishu_channel.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	composed with rdai
+M	channel/feishu/feishu_message.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	composed with rdai
+M	channel/feishu/feishu_static_card.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	composed with rdai
+M	channel/file_cache.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/qq/qq_channel.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/qq/qq_message.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/slack/slack_channel.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/telegram/telegram_channel.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/telegram/telegram_markdown.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/terminal/terminal_channel.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	composed with rdai
+M	channel/web/README.md	Web 传输/装配	web_channel.build_web_app → route_registry → fork handlers/runtime	absent (see deletion decisions)
+M	channel/web/api/agents.py	Web 后端	database 主要命中 fork 同名 handler；增量已移植/等价核对，见 capability-map.md	composed with rdai
+M	channel/web/api/auth.py	Web 后端	database 主要命中 fork 同名 handler；增量已移植/等价核对，见 capability-map.md	same as source
+M	channel/web/api/channels.py	Web 后端	database 主要命中 fork 同名 handler；增量已移植/等价核对，见 capability-map.md	same as source
+M	channel/web/api/config.py	Web 后端	database 主要命中 fork 同名 handler；增量已移植/等价核对，见 capability-map.md	same as source
+M	channel/web/api/files.py	Web 后端	database 主要命中 fork 同名 handler；增量已移植/等价核对，见 capability-map.md	same as source
+M	channel/web/api/knowledge.py	Web 后端	database 主要命中 fork 同名 handler；增量已移植/等价核对，见 capability-map.md	same as source
+M	channel/web/api/logs.py	Web 后端	database 主要命中 fork 同名 handler；增量已移植/等价核对，见 capability-map.md	same as source
+M	channel/web/api/models.py	Web 后端	database 主要命中 fork 同名 handler；增量已移植/等价核对，见 capability-map.md	same as source
+M	channel/web/api/openai_compat.py	Web 后端	database 主要命中 fork 同名 handler；增量已移植/等价核对，见 capability-map.md	same as source
+M	channel/web/api/pages.py	Web 后端	database 主要命中 fork 同名 handler；增量已移植/等价核对，见 capability-map.md	same as source
+M	channel/web/api/scheduler.py	Web 后端	database 主要命中 fork 同名 handler；增量已移植/等价核对，见 capability-map.md	same as source
+M	channel/web/api/sessions.py	Web 后端	database 主要命中 fork 同名 handler；增量已移植/等价核对，见 capability-map.md	same as source
+M	channel/web/api/skills.py	Web 后端	database 主要命中 fork 同名 handler；增量已移植/等价核对，见 capability-map.md	same as source
+M	channel/web/api/workspace.py	Web 后端	database 主要命中 fork 同名 handler；增量已移植/等价核对，见 capability-map.md	same as source
+M	channel/web/chat.html	Web 传输/装配	web_channel.build_web_app → route_registry → fork handlers/runtime	composed with rdai
+M	channel/web/core/_common.py	Web 传输/装配	web_channel.build_web_app → route_registry → fork handlers/runtime	same as source
+M	channel/web/core/channel.py	Web 传输/装配	web_channel.build_web_app → route_registry → fork handlers/runtime	same as source
+M	channel/web/core/providers.py	Web 传输/装配	web_channel.build_web_app → route_registry → fork handlers/runtime	same as source
+M	channel/web/static/css/chat.css	Web 传输/装配	web_channel.build_web_app → route_registry → fork handlers/runtime	same as source
+M	channel/web/static/css/components.css	Web 传输/装配	web_channel.build_web_app → route_registry → fork handlers/runtime	same as source
+M	channel/web/static/css/markdown.css	Web 传输/装配	web_channel.build_web_app → route_registry → fork handlers/runtime	same as source
+M	channel/web/static/js/boot.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	same as source
+M	channel/web/static/js/chat/context-usage.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	same as source
+M	channel/web/static/js/chat/new-chat.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	same as source
+M	channel/web/static/js/chat/render.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	same as source
+M	channel/web/static/js/chat/send.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	same as source
+M	channel/web/static/js/chat/state.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	same as source
+A	channel/web/static/js/chat/timeline.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	composed with rdai
+M	channel/web/static/js/core/i18n.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	composed with rdai
+M	channel/web/static/js/core/nav.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	same as source
+M	channel/web/static/js/core/utils.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	same as source
+M	channel/web/static/js/core/version.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	same as source
+M	channel/web/static/js/views/agents.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	same as source
+M	channel/web/static/js/views/channels-weixin.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	same as source
+M	channel/web/static/js/views/channels.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	same as source
+M	channel/web/static/js/views/sessions.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	same as source
+M	channel/web/static/js/views/skills.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	same as source
+M	channel/web/static/js/views/tasks-modal.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	same as source
+M	channel/web/static/js/workspace.js	Web 前端	chat.html 实际脚本/rdai console；master split 源码不直接等于正在装载	composed with rdai
+M	channel/web/templates/layout/header.html	Web 传输/装配	web_channel.build_web_app → route_registry → fork handlers/runtime	same as source
+M	channel/web/templates/layout/sidebar.html	Web 传输/装配	web_channel.build_web_app → route_registry → fork handlers/runtime	same as source
+A	channel/web/templates/modals/mcp-editor.html	Web 传输/装配	web_channel.build_web_app → route_registry → fork handlers/runtime	same as source
+A	channel/web/templates/modals/skill-add.html	Web 传输/装配	web_channel.build_web_app → route_registry → fork handlers/runtime	same as source
+M	channel/web/templates/views/skills.html	Web 传输/装配	web_channel.build_web_app → route_registry → fork handlers/runtime	same as source
+M	channel/web/tools/check-load-order.mjs	Web 传输/装配	web_channel.build_web_app → route_registry → fork handlers/runtime	same as source
+M	channel/web/web_channel.py	Web 传输/装配	web_channel.build_web_app → route_registry → fork handlers/runtime	composed with rdai
+M	channel/wechat_kf/wechat_kf_channel.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/wechat_kf/wechat_kf_message.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/wechatcom/wechatcomapp_channel.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/wechatcom/wechatcomapp_client.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/wechatcom/wechatcomapp_message.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/wechatmp/passive_reply.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/wechatmp/wechatmp_channel.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/wechatmp/wechatmp_message.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/wecom_bot/wecom_bot_channel.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	composed with rdai
+M	channel/wecom_bot/wecom_bot_message.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/weixin/weixin_api.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	channel/weixin/weixin_channel.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	composed with rdai
+M	channel/weixin/weixin_message.py	渠道	实例构造 → external_identity → AgentBridge；真实提供方未全测	same as source
+M	cli/VERSION	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	cli/commands/backup.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	composed with rdai
+M	cli/commands/process.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	composed with rdai
+M	cli/commands/skill.py	技能	master staging/service；database skill_lifecycle 限定目的目录	composed with rdai
+M	cli/update_service.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	cli/utils.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	composed with rdai
+A	common/atomic_write.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	common/cloud_client.py	跨部署团队	master PeerTransport/serve_invoke + auth.peer_identity	composed with rdai
+M	common/const.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	common/expired_dict.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	common/i18n.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+A	common/markdown_fence.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+A	common/media_download.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+A	common/office_text.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	common/state_dir.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	composed with rdai
+M	common/token_bucket.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	common/utils.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	config.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	composed with rdai
+M	desktop/build/build-backend.sh	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/build/requirements-desktop.txt	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/package-lock.json	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+M	desktop/package.json	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/src/main/app-icon.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/src/main/index.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/src/main/menu.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/src/main/preload.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/src/main/python-manager.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/src/main/themes.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+M	desktop/src/main/tray.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+M	desktop/src/main/updater.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/src/renderer/src/api/client.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/src/renderer/src/components/AgentAvatar.tsx	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+M	desktop/src/renderer/src/components/ChatInput.tsx	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+A	desktop/src/renderer/src/components/ChatTimeline.tsx	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+M	desktop/src/renderer/src/components/ContextUsagePopover.tsx	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/src/renderer/src/components/MessageBubble.tsx	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/src/renderer/src/components/MessageSteps.tsx	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/src/renderer/src/components/QrScanPanel.tsx	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+M	desktop/src/renderer/src/i18n.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/src/renderer/src/index.css	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/src/renderer/src/layout/NavRail.tsx	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+A	desktop/src/renderer/src/lib/handoff.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+M	desktop/src/renderer/src/pages/AgentsPage.tsx	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+M	desktop/src/renderer/src/pages/ChannelsPage.tsx	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+M	desktop/src/renderer/src/pages/ChatPage.tsx	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/src/renderer/src/pages/SkillsPage.tsx	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+A	desktop/src/renderer/src/pages/skills/McpEditorModal.tsx	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+A	desktop/src/renderer/src/pages/skills/SegTabs.tsx	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+A	desktop/src/renderer/src/pages/skills/SkillAddModal.tsx	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+A	desktop/src/renderer/src/pages/skills/frontmatter.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+A	desktop/src/renderer/src/pages/skills/mcpConfig.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+M	desktop/src/renderer/src/product/types.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+M	desktop/src/renderer/src/store/chatStore.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/src/renderer/src/store/sessionSettingsStore.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+M	desktop/src/renderer/src/store/sessionStore.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+A	desktop/src/renderer/src/store/timelineStore.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	same as source
+M	desktop/src/renderer/src/types.ts	Desktop	原生主进程 + 本地/远程 Web 容器；React 为保留客户端实现	composed with rdai
+A	docker/agent-mail/entrypoint.sh	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+A	docker/docker-compose.agent-mail.yml	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/channels/dingtalk.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	docs/channels/index.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	docs/docs.json	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+A	docs/extensions/agent-mail.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/ja/README.md	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	absent (see deletion decisions)
+M	docs/ja/channels/dingtalk.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	docs/ja/channels/index.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+A	docs/ja/extensions/agent-mail.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/ja/memory/index.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	docs/ja/models/claude.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/ja/models/index.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	docs/ja/models/minimax.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/ja/models/openai.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/ja/releases/overview.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+A	docs/ja/releases/v2.2.0.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/ja/skills/install.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	docs/ja/tools/mcp.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	docs/ja/tools/vision.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/ja/tools/web-search.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/memory/index.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	docs/models/claude.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/models/index.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	docs/models/minimax.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/models/openai.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/releases/overview.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+A	docs/releases/v2.2.0.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/skills/install.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	docs/tools/mcp.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	docs/tools/vision.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/tools/web-search.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/zh/README-Hant.md	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	absent (see deletion decisions)
+M	docs/zh/README.md	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	absent (see deletion decisions)
+M	docs/zh/channels/dingtalk.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	docs/zh/channels/index.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+A	docs/zh/extensions/agent-mail.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/zh/memory/index.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	docs/zh/models/claude.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/zh/models/index.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	docs/zh/models/minimax.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/zh/models/openai.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/zh/releases/overview.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+A	docs/zh/releases/v2.2.0.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/zh/skills/install.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	docs/zh/tools/mcp.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	composed with rdai
+M	docs/zh/tools/vision.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	docs/zh/tools/web-search.mdx	文档/构建/运维	构建/文档；工作流存在不代表交付门禁已启用	same as source
+M	models/baidu/baidu_unit_bot.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	models/baidu/baidu_wenxin.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	models/chatgpt/chat_gpt_bot.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	models/claudeapi/claude_api_bot.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	models/dashscope/dashscope_session.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	models/doubao/doubao_bot.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	models/linkai/link_ai_bot.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	composed with rdai
+M	models/minimax/minimax_bot.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	models/model_catalog.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	models/moonshot/moonshot_bot.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	models/openai/open_ai_bot.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	models/openai/responses_adapter.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	models/openai_compatible_bot.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	models/xunfei/xunfei_spark_bot.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	plugins/banwords/banwords.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	plugins/cow_cli/cow_cli.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	composed with rdai
+M	plugins/dungeon/dungeon.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	plugins/godcmd/godcmd.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	plugins/keyword/keyword.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	plugins/linkai/midjourney.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	plugins/linkai/summary.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	plugins/plugin.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	plugins/plugin_manager.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	plugins/role/role.py	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	plugins/source.json	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	pyproject.toml	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	composed with rdai
+M	requirements-optional.txt	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	requirements.txt	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	same as source
+M	run.sh	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	composed with rdai
+M	scripts/run.ps1	通用/配置/插件	共享启动/CLI/原子写/插件；按调用范围回归	composed with rdai
+M	skills/image-generation/scripts/generate.py	技能	master staging/service；database skill_lifecycle 限定目的目录	same as source
+M	tests/conftest.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+M	tests/test_agent_admin.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+M	tests/test_agent_delegation.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_agent_mail_compose.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_agent_model_agent_id.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_agent_steering.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_agent_stream_max_turns.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_agent_trim_budget.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_agent_trim_new_messages.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+A	tests/test_ali_voice_failure_replies.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_atomic_write.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_audio_convert.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_auth_compare_digest.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_baidu_translator.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_baidu_voice_download.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_base_tool_execute_tool_error.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_browser_driver_loss.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_cancel_session_agent_scope.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_channel_instances.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+A	tests/test_channel_stop_primary.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_chat_channel_cancel_deadlock.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_chat_channel_cancelled_worker.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_chat_channel_consume_loop_survives.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_chat_channel_dropped_reply.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_chat_channel_unsupported_reply.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_chat_persist_failure_retry.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_chat_service_cancel.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_chat_service_tool_cards.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_chunker_budget.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_chunker_markdown.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_chunker_version.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+A	tests/test_clawhub_owner.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_cli_backup.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+A	tests/test_cli_workspace_dir.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_cloud_agent_scoping.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+A	tests/test_cloud_history_page.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_config_available_setting.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+A	tests/test_context_kwargs_isolation.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_conversation_older_source_migration.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_conversation_store_long_sessions.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_cow_cli_config_atomic_write.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_custom_voice.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_dashscope_session_system_prompt.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_dashscope_voice_download.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_dingtalk_bounded_media_download.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_dingtalk_errcode_rejection.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_dingtalk_file_receive.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_dingtalk_group_context_guard.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+A	tests/test_dingtalk_image_errcode.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_dingtalk_reply_type_fallback.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_dingtalk_richtext_without_images.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_dingtalk_streaming_cards.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_direct_addressing.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+A	tests/test_discord_video_reply.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_edit_line_endings.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_edit_write_atomic.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_env_config_atomic_write.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_env_config_single_line_entry.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_evolution_backup_integrity.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_expired_dict.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_feishu_bounded_video_download.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_feishu_file_audio_download_bounds.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_feishu_file_upload_url.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_feishu_group_mention_gate.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_feishu_image_download_bounds.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_feishu_image_upload_url.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_feishu_markdown_images.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_feishu_message_recall.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_feishu_progress_card.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+A	tests/test_feishu_tenant_token_failure.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_file_cache.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_godcmd_model_argument_count.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_godcmd_setpri_priority_argument.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_google_voice_errors.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_i18n_traditional.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_image_gen_arg_envelope.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_image_generation_custom_provider.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_inbound_media_download_bounds.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_incremental_persist.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+M	tests/test_keyword_attachment_urls.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_knowledge_graph_rel_path.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_knowledge_path_advertised.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_knowledge_service.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_knowledge_web.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+M	tests/test_linkai_media_urls.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_linkai_midjourney_index_argument.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_linkai_summary_file.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_linkai_voice_error_reply.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_local_video_reply.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_log_tail.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_mcp_client_rpc_error.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_mcp_console.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+A	tests/test_mcp_sse_discovery_deadline.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_media_download.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_memory_decay_scope.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_memory_get_shared_knowledge.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+M	tests/test_memory_global_config.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_memory_hybrid_fusion.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_memory_index_rel_path.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+A	tests/test_memory_path_marks_dirty.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_memory_rerank.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_memory_sync_reconcile.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+A	tests/test_memory_sync_shared_root.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+M	tests/test_minimax_provider.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_model_catalog_atomic_write.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_model_request_timeouts.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_openai_api_type.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_openai_voice.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_oversized_context_files.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_permission_git_global_options.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_permission_git_read_only.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_plugin_activate_no_duplicate_listeners.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_plugin_config_defaults.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_plugin_empty_message.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_plugin_save_config_atomic_write.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_plugin_store_atomic_write.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_project_store_agent_cleanup.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_pytts_voice_timeout.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_qq_attachment_download.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_qq_channel_session.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_qq_image_reply_not_refused.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_qq_msg_seq_counter.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_qq_safe_filename.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_read_edit_improvements.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_read_shared_knowledge.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_reranker_config_shape.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_restore_tool_chains.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_resume_after_reload.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_role_empty_customize_argument.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_root_config_atomic_write.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_safe_get_response_cleanup.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_scheduled_task_empty_reply.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_scheduler_schedule_shape.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_scheduler_second_fold.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_scheduler_skill_call_file_reply.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_scheduler_skill_group.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_scheduler_timezone.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_scheduler_toggle_missing.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_search_external_failure_fallback.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_search_files_powershell_quoting.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_security_edit_env_bypass.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_security_ssrf_browser_navigate.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_security_ssrf_vision_redirect.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_shared_conversation_roster.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_shared_db_recovery.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_skill_delete.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_skill_loader_cache.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_skill_loader_directory_cycles.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_skill_service_download.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_skill_staging.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_skill_zip_tempdir_cleanup.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_skills_config_atomic_write.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_slack_unique_file_downloads.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_spreadsheet_uncached_formulas.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_state_dir.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_subagent.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_summarizer_atomic_memory_write.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_summarizer_flush_retry.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_task_store_atomic_save.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_team_addressing.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_team_legacy_retire_atomic_write.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_telegram_inbound_document_filename.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_telegram_inbound_document_suffix.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_telegram_markdown_fences.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_terminal_image_download.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_time_tool.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_token_bucket.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_token_bucket_stopped.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_token_budget_trim.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_tts_failure_becomes_error_reply.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_uploads_path_containment.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_utf8_bom_configs.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_voice_openai_tts_status.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_voice_request_timeouts.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_voice_tts_tmp_dir.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_voice_xunfei_no_credential_dump.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_web_config_atomic_write.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_web_console_routing.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+M	tests/test_web_console_update.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+A	tests/test_web_fetch_extensionless_document.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_web_fetch_partial_download_cleanup.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_web_history_artifacts_agent_scope.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_web_multi_file_upload.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_web_search.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+A	tests/test_wechat_kf_cursor_delivery.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wechat_kf_file_reply.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wechat_kf_inbound_filename.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wechat_kf_remote_media.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wechat_kf_token_not_logged.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wechat_kf_video_reply.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wechat_media_download_timeout.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wechatcom_file_reply.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	composed with rdai
+A	tests/test_wechatcom_token_refresh_survives.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wechatcomapp_callback_verify.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wechatmp_image_type.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wechatmp_passive_video_reply.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wechatmp_remote_media_bounds.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wechatmp_running_key.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wecom_bot_group_mention.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wecom_bot_media_decrypt.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wecom_bot_media_tmp_dir.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wecom_bot_remote_media_bounds.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wecom_bot_stream_state.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_wecom_response_url_errcode.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_weixin_channel_media_tmp_dir.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	tests/test_weixin_credentials_path.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_weixin_inbound_filename_escape.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_weixin_timeout_is_not_success.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_word_body_text_order.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+A	tests/test_xunfei_tts_stream_timeout.py	回归测试	按 upstream-test-files.txt 和前端回归执行；具体跳过见 validation.md	same as source
+M	translate/baidu/baidu_translate.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/ali/ali_api.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/ali/ali_voice.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/audio_convert.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/baidu/baidu_voice.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/custom/custom_voice.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/dashscope/dashscope_voice.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/edge/edge_voice.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/elevent/elevent_voice.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/google/google_voice.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/linkai/linkai_voice.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/mimo/mimo_voice.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/minimax/minimax_voice.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/openai/openai_voice.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/pytts/pytts_voice.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/xunfei/xunfei_asr.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/xunfei/xunfei_tts.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/xunfei/xunfei_voice.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source
+M	voice/zhipuai/zhipuai_voice.py	模型/媒体提供方	原提供方模块被 rdai Agent/渠道调用；真实提供方范围见能力表	same as source

@@ -281,6 +281,7 @@ from channel.web.fork.handlers.scheduler import (
     SchedulerUpdateHandler,
 )
 from channel.web.fork.handlers.sessions import (
+    UserMessagesHandler,
     HistoryHandler,
     MessageDeleteHandler,
     PromptOptimizeHandler,
@@ -290,6 +291,7 @@ from channel.web.fork.handlers.sessions import (
     SessionTitleHandler,
     SessionsHandler,
 )
+from channel.web.fork.skill_lifecycle import SkillUploadHandler
 from channel.web.fork.handlers.skills import (
     SkillContentHandler,
     SkillsHandler,
@@ -757,8 +759,11 @@ URLS = (
     '/api/weixin/qrlogin', 'WeixinQrHandler',
     '/api/feishu/register', 'FeishuRegisterHandler',
     '/api/tools', 'ToolsHandler',
+    '/api/mcp/servers', 'McpServersHandler',
+    '/api/mcp/servers/test', 'McpServerTestHandler',
     '/api/skills', 'SkillsHandler',
     '/api/skills/content', 'SkillContentHandler',
+    '/api/skills/upload', 'SkillUploadHandler',
     '/api/memory', 'MemoryHandler',
     '/api/memory/content', 'MemoryContentHandler',
     '/api/knowledge/list', 'KnowledgeListHandler',
@@ -788,6 +793,7 @@ URLS = (
     '/api/sessions/(.*)/compact_context', 'SessionCompactContextHandler',
     '/api/sessions/(.*)/settings', 'SessionSettingsHandler',
     '/api/sessions/(.*)', 'SessionDetailHandler',
+    '/api/history/user_messages', 'UserMessagesHandler',
     '/api/history', 'HistoryHandler',
     '/api/messages/delete', 'MessageDeleteHandler',
     '/api/logs/download', 'LogsDownloadHandler',

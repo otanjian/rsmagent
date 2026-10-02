@@ -9,6 +9,7 @@ reference each other without import cycles.
 from __future__ import annotations
 from bridge.context import *
 from common.log import logger
+from common.utils import tail_lines
 import json
 import os
 import time
@@ -56,10 +57,7 @@ class LogsHandler:
 
             # Read last 200 lines for initial display
             try:
-                with open(log_path, 'r', encoding='utf-8', errors='replace') as f:
-                    lines = f.readlines()
-                tail_lines = lines[-200:]
-                chunk = _redact_log_text(''.join(tail_lines))
+                chunk = _redact_log_text(''.join(tail_lines(log_path, 200)))
                 payload = json.dumps({"type": "init", "content": chunk}, ensure_ascii=False)
                 yield f"data: {payload}\n\n".encode('utf-8')
             except Exception as e:

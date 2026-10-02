@@ -41,6 +41,8 @@ import base64
 import datetime
 import hashlib
 import hmac
+from common.utils import constant_time_equals
+from channel.web.core._common import _multipart_lists, _first_value
 import json
 import logging
 import os
@@ -92,6 +94,8 @@ class SSEStreamState:
     stream_complete: bool = False
     completed_at: Optional[float] = None
     closed: bool = False
+    stored_seq: Optional[int] = None
+    stored_event_seq: int = 0
 
 
 def _parse_sse_cursor(*values) -> int:
@@ -115,7 +119,7 @@ def _read_config_file_for_write() -> dict:
     from channel.web.web_channel import get_data_root
     config_path = os.path.join(get_data_root(), "config.json")
     if os.path.exists(config_path):
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, "r", encoding="utf-8-sig") as f:
             return json.load(f)
     return read_config_template()
 
@@ -345,7 +349,7 @@ def _decode_dir_token(token: str) -> str:
     except Exception:
         raise ValueError("Malformed preview token")
     expected = hmac.new(_get_preview_secret(), real.encode("utf-8"), hashlib.sha256).hexdigest()[:16]
-    if not hmac.compare_digest(sig, expected):
+    if not constant_time_equals(sig, expected):
         raise ValueError("Bad preview token signature")
     return real
 
@@ -981,6 +985,7 @@ class WebChannel(ChatChannel):
     SSE_POST_DONE_TAIL_SECONDS = 60
     SSE_COMPLETED_TTL_SECONDS = 60
     SSE_IDLE_TIMEOUT_SECONDS = 1800
+    MAX_UPLOAD_PARTS = 20000
 
     # def __new__(cls):
     #     if cls._instance is None:
@@ -1299,6 +1304,27 @@ class WebChannel(ChatChannel):
                 if delta:
                     publish({"type": "delta", "content": delta})
 
+            elif event_type == "peer_message_start":
+                # A teammate takes over for a stretch of this turn. What follows
+                # is its reply, in the same event types as any other, until the
+                # matching end marker hands the floor back.
+                publish({
+                    "type": "peer_start",
+                    "card_id": data.get("card_id"),
+                    "agent_id": data.get("agent_id"),
+                    "agent_name": data.get("agent_name"),
+                    "source_id": data.get("source_id"),
+                    "source_name": data.get("source_name"),
+                })
+
+            elif event_type == "peer_message_end":
+                publish({
+                    "type": "peer_end",
+                    "card_id": data.get("card_id"),
+                    "agent_id": data.get("agent_id"),
+                    "status": data.get("status", "done"),
+                })
+
             elif event_type == "tool_retrieval":
                 # Additive MCP retrieval diagnostics. Forward only the
                 # allowlisted, already-sanitized fields (query text/vectors are
@@ -1474,6 +1500,9 @@ class WebChannel(ChatChannel):
                 payload = _build_artifact_payload(data)
                 if payload:
                     publish(payload)
+
+            elif event_type in ("agent_start", "turn_end"):
+                self._mark_stored_point(request_id, advance_only=event_type == "turn_end")
 
         return on_event
 
@@ -1667,22 +1696,21 @@ class WebChannel(ChatChannel):
                 web.ctx.env.get("CONTENT_LENGTH") or "?",
                 web.ctx.env.get("CONTENT_TYPE") or "?",
             )
-            params = _raw_web_input()
-            file_obj = params.get("file")
-            file_objs = params.get("files")
-            session_id = params.get("session_id", "")
-            relative_path = params.get("relative_path", "")
-            relative_paths = params.get("relative_paths")
-            upload_id = params.get("upload_id", "")
+            # Every file of a folder upload repeats `files` and `relative_paths`;
+            # read them as lists, since newer web.py keeps only the last value.
+            params = _multipart_lists(self.MAX_UPLOAD_PARTS)
+            file_obj = _first_value(params, "file")
+            relative_path = _first_value(params, "relative_path", "")
+            upload_id = _first_value(params, "upload_id", "")
 
-            directory_files = _ensure_list(file_objs)
+            directory_files = list(params.get("files") or [])
 
             # NOTE: cgi.FieldStorage raises TypeError on truthy checks for single-file
             # uploads (Python 3.9+). Always use `is not None` instead of `if file_obj`.
             if not directory_files and file_obj is not None and relative_path:
                 directory_files = [file_obj]
 
-            directory_rel_paths = _ensure_list(relative_paths)
+            directory_rel_paths = list(params.get("relative_paths") or [])
 
             if not directory_rel_paths and relative_path:
                 directory_rel_paths = [relative_path]
@@ -2169,7 +2197,13 @@ class WebChannel(ChatChannel):
         with self._sse_streams_lock:
             state = self.sse_streams.get(request_id)
         if state is None:
-            yield b"data: {\"type\": \"error\", \"message\": \"invalid request_id\"}\n\n"
+            # Logs live in memory only, so a restart forgets every request the
+            # previous process was streaming. The reason lets the client say so
+            # instead of reporting a generic send failure.
+            yield (
+                b"data: {\"type\": \"error\", \"message\": \"invalid request_id\", "
+                b"\"reason\": \"unknown_request\"}\n\n"
+            )
             return
         try:
             cursor = max(0, int(after_seq))
@@ -2577,6 +2611,77 @@ class WebChannel(ChatChannel):
             self._http_server = None
 
 
+    def resumable_stream(self, session_id: str, agent_id: str = None) -> Optional[dict]:
+        """The unfinished reply a session is streaming, for a page loaded mid-reply.
+
+        Returns ``{"request_id", "stored_seq", "after_seq"}``: render the
+        transcript up to ``stored_seq`` and follow the stream after
+        ``after_seq``. ``stored_seq`` is None before the run has started, when
+        nothing of the reply is stored and the whole stream is to follow.
+        None when nothing is in flight.
+        """
+        try:
+            from agent.registry import get_agent_registry
+            owner = get_agent_registry().get(agent_id).id
+        except Exception:
+            owner = agent_id
+        for request_id, sid in reversed(list(self.request_to_session.items())):
+            if sid != session_id or self.request_to_agent.get(request_id) != owner:
+                continue
+            from common.runtime_identity import current_identity
+            identity = current_identity()
+            if identity.user_id and getattr(self, "request_owners", {}).get(request_id) != (
+                identity.tenant_id, identity.user_id, owner, session_id,
+            ):
+                continue
+            with self._sse_streams_lock:
+                state = self.sse_streams.get(request_id)
+            if state is None:
+                continue
+            with state.condition:
+                if state.closed or state.main_done or state.stream_complete:
+                    return None
+                return {
+                    "request_id": request_id,
+                    "stored_seq": state.stored_seq,
+                    "after_seq": state.stored_event_seq,
+                }
+        return None
+
+
+
+    def _mark_stored_point(self, request_id: str, advance_only: bool) -> None:
+        """Record where the stored transcript and the event log line up.
+
+        The run starts after its query is stored, and each step is stored
+        before turn_end is announced, so at either moment the newest stored
+        message and the newest event describe the same point. A step that did
+        not get stored leaves the transcript where it was; the earlier mark
+        then stays, rather than one that would skip the missing step.
+        """
+        with self._sse_streams_lock:
+            state = self.sse_streams.get(request_id)
+        session_id = self.request_to_session.get(request_id)
+        if state is None or not session_id:
+            return
+        try:
+            from agent.registry import get_agent_registry
+            from agent.memory import get_conversation_store
+            profile = get_agent_registry().get(self.request_to_agent.get(request_id))
+            stored_seq = get_conversation_store(profile.workspace).latest_seq(session_id)
+        except Exception as e:
+            logger.debug(f"[WebChannel] stored point skipped for {request_id}: {e}")
+            return
+        if stored_seq is None:
+            return
+        with state.condition:
+            if advance_only and state.stored_seq is not None and stored_seq <= state.stored_seq:
+                return
+            state.stored_seq = stored_seq
+            state.stored_event_seq = state.next_seq - 1
+
+
+
 _NAVIGATION_MODES = ("classic", "split")
 
 
@@ -2703,6 +2808,17 @@ def _skill_service(agent_id: str = ''):
     from agent.skills.service import SkillService
     from common import state_dir
     workspace_root = _get_workspace_root(agent_id=agent_id or None)
+    if agent_id:
+        from common.runtime_identity import current_identity
+        from agent.registry import get_agent_registry
+        ident = current_identity()
+        if ident.tenant_id:
+            from channel.web.auth_handlers import _require_context
+            from channel.web.web_channel import _require_tenant_agent_binding, _require_private_owner
+            ctx = _require_context(require_tenant=True)
+            _require_tenant_agent_binding(ctx, agent_id)
+            _require_private_owner(ctx, agent_id)
+        workspace_root = get_agent_registry().get(agent_id, require_enabled=False).workspace
     custom_dir = str(state_dir.skills_dir(base=workspace_root))
     return SkillService(SkillManager(custom_dir=custom_dir))
 
@@ -2765,6 +2881,7 @@ def _bind_channel_instance(channel_type: str, instance_id: str = "", agent_id: s
             # "follow the default Agent". No restart: this only changes routing.
             channel.bound_agent_id = agent_id
             channel.members = list(inst.members or [])
+            channel.peers = [dict(peer) for peer in (inst.peers or [])]
             logger.info(
                 f"[WebChannel] Channel '{target_id}' rebound to "
                 f"'{agent_id or 'default'}' with team {inst.members or []} (no restart)"
@@ -2978,20 +3095,35 @@ def _agent_badge(profile) -> dict:
 
 
 def _roster_from_members(host_agent_id: str, members) -> List[dict]:
-    """Badge every reachable member of a conversation, host first."""
+    """Badge every reachable member of a conversation, host first.
+
+    Same rule as ``agent.team_addressing.roster_from_members``, reserved
+    "default" alias included: the browser and an IM group have to agree on who
+    is reachable. Deduped on the resolved id, because an alias and the id it
+    resolves to name one teammate.
+    """
+    from agent.multiagent import peer as peer_of
     from agent.registry import get_agent_registry
 
     if not members:
         return []
     registry = get_agent_registry()
     roster: List[dict] = []
+    seen: set = set()
     for agent_id in [host_agent_id, *members]:
-        if any(item["id"] == agent_id for item in roster):
-            continue
         try:
-            roster.append(_agent_badge(registry.get(agent_id)))
+            badge = _agent_badge(registry.get_addressed(agent_id))
         except Exception:
+            # A teammate hosted elsewhere: it has no local profile, but it is on
+            # the team and must be listed. It carries no avatar of its own here.
+            found = peer_of(agent_id)
+            if found is None:
+                continue
+            badge = {"id": found.id, "name": found.name or found.id, "avatar": ""}
+        if badge["id"] in seen:
             continue
+        seen.add(badge["id"])
+        roster.append(badge)
     return roster
 
 

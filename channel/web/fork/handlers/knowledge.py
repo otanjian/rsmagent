@@ -280,7 +280,7 @@ class KnowledgeImportHandler:
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _ensure_list
         from channel.web.web_channel import _knowledge_workspace_root
-        from channel.web.web_channel import _raw_web_input
+        from channel.web.core._common import _multipart_lists, _first_value
         from channel.web.web_channel import _read_uploaded_file_bytes_limited
         from channel.web.web_channel import _require_knowledge_write
         from channel.web.web_channel import _require_private_owner
@@ -298,7 +298,7 @@ class KnowledgeImportHandler:
                     "payload": None,
                 })
             with _db_scope() as ctx:
-                params = _raw_web_input()
+                params = _multipart_lists(KnowledgeService.MAX_IMPORT_FILES * 2 + 16)
                 # Import is multipart: the client keeps agent_id in the query
                 # string, so a body-only read would build the *default* Agent's
                 # knowledge service instead of the selected one.
@@ -306,12 +306,9 @@ class KnowledgeImportHandler:
                 _require_private_owner(ctx, agent_id)
                 _require_knowledge_write(ctx, agent_id)
                 root = _knowledge_workspace_root(agent_id)
-                target_category = params.get("target_category", "")
-                conflict_strategy = params.get("conflict_strategy", "skip")
-                uploaded = _ensure_list(params.get("files"))
-                single = params.get("file")
-                if single is not None:
-                    uploaded.append(single)
+                target_category = _first_value(params, "target_category", "")
+                conflict_strategy = _first_value(params, "conflict_strategy", "skip")
+                uploaded = list(params.get("files") or []) + list(params.get("file") or [])
                 # Build the service inside the identity scope: an Agent with no
                 # ``knowledge/`` of its own falls back to ``state_dir.shared_root()``,
                 # which resolves through the current identity and must therefore

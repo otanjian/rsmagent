@@ -1,0 +1,112 @@
+[
+  {
+    "log": "rehearsal.log",
+    "sha256": "c5548c00824bf2e3d12d627344c2a729727c5ece8fd708e30b5710228e54a00a",
+    "bytes": 16520
+  },
+  {
+    "log": "upstream-regression-final-3.log",
+    "sha256": "adfd6c72e1b95b344a71b5be53a50fb8437ff404dceac639c2683655c34f2af9",
+    "bytes": 13895
+  },
+  {
+    "log": "core-auth-with-peer-final.log",
+    "sha256": "d1c07b708894ff8f40732478c40d708c29203d9c8f3c381cc6284ac1963d438e",
+    "bytes": 523
+  },
+  {
+    "log": "candidate-final-regression.log",
+    "sha256": "9880dd9c1259829b068ad9d0144a43a222a130766e9ab473a1b001d880189cfb",
+    "bytes": 261
+  },
+  {
+    "log": "peer-final.log",
+    "sha256": "2fa2bc136ea0335c720fabc7c39e9b37eafce950559e7cf9f6d75b01356e91fc",
+    "bytes": 180
+  },
+  {
+    "log": "frontend-final-subset-2.log",
+    "sha256": "97af7457c414714114275dd5b86d4659e8260f0fadcbaad8a4a62e6c5b5d11c0",
+    "bytes": 7192
+  },
+  {
+    "log": "node-final-3.log",
+    "sha256": "ebc67c77fcf640d093688c76ce3a916d164141edebc08a3b807b30f7efe558e3",
+    "bytes": 160295
+  },
+  {
+    "log": "node-baseline-2.log",
+    "sha256": "6bd25a03875fd314a40a7d1881f4fb0cd7a606d2512f7a883787c7b3f493dc08",
+    "bytes": 160200
+  },
+  {
+    "log": "desktop-build-final-3.log",
+    "sha256": "e6e0c3e71260d58cfedd041a7361e24fa85da327d83b66b90235708840d2d221",
+    "bytes": 3194
+  },
+  {
+    "log": "desktop-relogin-with-peer-migration.log",
+    "sha256": "26728094590e2bdda0deb3cb4b3043fbc013fac080e30f54d63924e355cf3439",
+    "bytes": 1189
+  },
+  {
+    "log": "renderer-types-final-2.log",
+    "sha256": "e730271170a750238d6fd45e3f4fdffa18f36b84e707e06a1af580e5fe027c3e",
+    "bytes": 9440
+  },
+  {
+    "log": "renderer-types-baseline.log",
+    "sha256": "1291437790fdf8799e3e59e393279378d456b8cf7620aeee79f764ba24990165",
+    "bytes": 9733
+  },
+  {
+    "log": "route-coverage-final.log",
+    "sha256": "a3c95b12d4901fcef029790d004c89104d1da93770be501ee6895149ae1bc0be",
+    "bytes": 74
+  },
+  {
+    "log": "web-seams-final.log",
+    "sha256": "4b58847573f40f6395fce3922416b7172ee0cd7591b7cdb2a8e7313727784cd4",
+    "bytes": 63
+  },
+  {
+    "log": "peer-lint-final.log",
+    "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "bytes": 19
+  },
+  {
+    "log": "cloud-mcp-final-2.log",
+    "sha256": "49cc401694f0d367c35aa222898f93bc0d4923bc138548519afdbe2e7fde1480",
+    "bytes": 1175
+  },
+  {
+    "log": "external-baseline.log",
+    "sha256": "22044ce836258dbb13ab807d85b11833bc7edab0a3bbaacfeb8851c9403898b5",
+    "bytes": 1772
+  },
+  {
+    "log": "capability-baseline.log",
+    "sha256": "750d8c74c4ab5255aa32f6941c3df83d56ea6e074d58809a058ff91ec357c082",
+    "bytes": 1352
+  },
+  {
+    "log": "peer-real-model-final.log",
+    "sha256": "d221716952194792f9a10550f5d4fa9f2195ab4d263beab70e8780ed5ed18780",
+    "bytes": 3950
+  },
+  {
+    "log": "document-read-final.log",
+    "sha256": "9a01b4fcb9894394b07a78c2f16b603974a78c7d50ac095eeaff19fd890bb3c8",
+    "bytes": 99
+  },
+  {
+    "log": "appearance-browser-final.log",
+    "sha256": "0728131975619b215a6acb30145189da1055fb50e9e123639f8f54997284437c",
+    "bytes": 518
+  },
+  {
+    "log": "appearance-browser-baseline.log",
+    "sha256": "df181f13cbd85f2286479ed96a3698abc9d2df4e2858e495eed7486652dcaee0",
+    "bytes": 518
+  }
+]

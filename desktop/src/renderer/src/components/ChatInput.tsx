@@ -11,6 +11,7 @@ import {
   Mic
 } from 'lucide-react'
 import { t } from '../i18n'
+import { product } from '@product'
 import type { Attachment, WorkspaceEntry, AgentBadge } from '../types'
 import AgentAvatar from './AgentAvatar'
 import { chatDraft } from '../store/draftStore'
@@ -90,18 +91,18 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
   const [mentionIndex, setMentionIndex] = useState(0)
   const mentionStartRef = useRef(-1)
   const mentionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // The teammates addressable with @ in the current group chat. The owner (the
-  // one already replying) is left out — @ hands the turn to someone else.
-  const activeAgentId = useAgentStore((s) => s.activeAgentId)
+  // Everyone addressable with @ in the current group chat, the owner included:
+  // there it is one voice among several, and @ is how the user picks it back
+  // out after a teammate has been speaking.
   const team = useSessionSettingsStore((s) => (s.sessionId === sessionId ? s.cfg?.team : undefined))
   const mentionRoster = useMemo<AgentBadge[]>(() => {
     if (!sharedConversation) return []
     const roster: AgentBadge[] = []
-    for (const m of team?.members || []) {
-      if (m.id !== activeAgentId && !roster.some((a) => a.id === m.id)) roster.push(m)
+    for (const m of [team?.owner, ...(team?.members || [])]) {
+      if (m && !roster.some((a) => a.id === m.id)) roster.push(m)
     }
     return roster
-  }, [sharedConversation, activeAgentId, team])
+  }, [sharedConversation, team])
   const composingRef = useRef(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -164,6 +165,11 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
   const startRecording = async () => {
     let stream: MediaStream
     try {
+      const granted = await window.electronAPI?.requestMicAccess?.()
+      if (granted === false) {
+        flashMicError(t('mic_permission_denied'))
+        return
+      }
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch (e) {
       // Surface the concrete failure name so a denied/missing-device/insecure
@@ -267,8 +273,12 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
     { cmd: '/context', desc: t('slash_context') },
     { cmd: '/compact', desc: t('slash_compact') },
     { cmd: '/skill list', desc: t('slash_skill_list') },
-    { cmd: '/skill search ', desc: t('slash_skill_search') },
-    { cmd: '/skill install ', desc: t('slash_skill_install') },
+    ...(product.skills?.uploadOnly
+      ? []
+      : [
+          { cmd: '/skill search ', desc: t('slash_skill_search') },
+          { cmd: '/skill install ', desc: t('slash_skill_install') },
+        ]),
     { cmd: '/memory dream ', desc: t('slash_memory_dream') },
     { cmd: '/knowledge', desc: t('slash_knowledge') },
     { cmd: '/knowledge list', desc: t('slash_knowledge_list') },

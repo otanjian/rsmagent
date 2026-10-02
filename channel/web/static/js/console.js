@@ -1,3 +1,704 @@
+function parseSkillFrontmatter(content) {
+    const text = content || '';
+    const match = text.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?/);
+    if (!match) return { fields: [], body: text };
+
+    const fields = [];
+    for (const raw of match[1].split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#')) continue;
+        const idx = line.indexOf(':');
+        if (idx === -1) continue;
+        const key = line.slice(0, idx).trim();
+        let value = line.slice(idx + 1).trim();
+        // Drop surrounding quotes a YAML scalar may carry.
+        value = value.replace(/^['"]|['"]$/g, '');
+        if (key) fields.push([key, value]);
+    }
+    return { fields, body: text.slice(match[0].length) };
+}
+
+function handoffPayload(step) {
+    if (!step || step.type !== 'tool' || step.name !== 'agent_delegate') return null;
+    let payload;
+    try {
+        payload = JSON.parse(step.result || '{}');
+    } catch (e) {
+        return null;
+    }
+    return (payload && payload.content) ? payload : null;
+}
+
+function splitAssistantTurn(msg) {
+    const steps = (msg && msg.steps) || [];
+    if (!steps.some(handoffPayload)) return [{ msg: msg, peer: null }];
+
+    const bubbles = [];
+    let pending = [];
+    for (let i = 0; i < steps.length; i++) {
+        pending.push(steps[i]);
+        const payload = handoffPayload(steps[i]);
+        if (!payload) continue;
+        // Everything the Agent did up to and including asking for help. No
+        // answer text and no seq: those belong to the turn's last bubble.
+        bubbles.push({
+            msg: Object.assign({}, msg, { steps: pending, content: '', artifacts: null, extras: null }),
+            peer: null,
+        });
+        bubbles.push({
+            msg: { content: payload.content || '', steps: [], created_at: msg.created_at },
+            peer: {
+                id: payload.agent_id || '',
+                name: payload.agent_name || payload.agent_id || '',
+            },
+        });
+        pending = [];
+    }
+    // The tail carries the answer, the artifacts and the seq — drop it only
+    // when the hand-off was the last thing that happened and it is empty.
+    if (pending.length || (msg.content || '').trim()) {
+        bubbles.push({ msg: Object.assign({}, msg, { steps: pending }), peer: null });
+    }
+    return bubbles;
+}
+
+function isCancelMarker(text) {
+    return /^\s*_\(Cancelled(?: by user)?\)_\s*$/.test(text || '');
+}
+
+function replyStatusHtml(kind) {
+    const icon = { cancelled: 'fa-circle-stop', interrupted: 'fa-circle-exclamation', running: 'fa-hourglass-half' }[kind];
+    const label = t({ cancelled: 'reply_cancelled', interrupted: 'reply_interrupted', running: 'reply_running' }[kind]);
+    return `<div class="agent-step agent-status-step"><i class="fas ${icon}"></i><span>${escapeHtml(label)}</span></div>`;
+}
+
+function reloadHistoryView() {
+    messagesDiv.innerHTML = '';
+    historyPage = 0;
+    historyHasMore = false;
+    historyLoading = false;
+    loadHistory(1);
+}
+
+
+function markHandoffCard(toolEl, item) {
+    if (!toolEl) return;
+    toolEl.classList.add('agent-handoff-step');
+    const nameEl = toolEl.querySelector('.tool-name');
+    if (nameEl) {
+        const to = item.agent_name || item.agent_id || '';
+        nameEl.textContent = t('handoff_to').replace('{name}', to);
+    }
+}
+
+let _weixinStatusPollTimers = {};
+
+let _weixinShownQr = {};
+
+function isWeixinInstanceCard(iid) {
+    return !!iid && iid !== 'weixin';
+}
+
+function weixinQrPanelId(iid) {
+    return isWeixinInstanceCard(iid) ? `weixin-qr-panel-${iid}` : 'weixin-qr-panel';
+}
+
+function findWeixinEntry(data, iid) {
+    if (isWeixinInstanceCard(iid)) {
+        return (data.instances || []).find(i => i.instance_id === iid) || null;
+    }
+    return (data.channels || []).find(c => c.name === 'weixin') || null;
+}
+
+function syncWeixinInstanceQr(iid, loginStatus) {
+    if (!isWeixinInstanceCard(iid) || !_weixinShownQr[iid]) return;
+    const panel = document.getElementById(weixinQrPanelId(iid));
+    if (!panel) { delete _weixinShownQr[iid]; return; }
+    fetch(`/api/weixin/qrlogin?instance_id=${encodeURIComponent(iid)}`)
+        .then(r => r.json())
+        .then(data => {
+            if (!_weixinShownQr[iid] || !document.getElementById(weixinQrPanelId(iid))) return;
+            if (data.status !== 'success' || !data.qrcode_url) return;
+            const status = loginStatus === 'scanned' ? 'scanned' : 'waiting';
+            if (data.qrcode_url !== _weixinShownQr[iid].url || status !== _weixinShownQr[iid].status) {
+                _weixinShownQr[iid] = { url: data.qrcode_url, status };
+                renderWeixinQr(data.qr_image || data.qrcode_url, status, iid);
+            }
+        })
+        .catch(() => {});
+}
+
+const WEIXIN_QR_PENDING_MAX_TRIES = 15;
+
+function _rosterFromTeam(team) {
+    const roster = [];
+    if (!team) return roster;
+    [team.owner].concat(team.members || []).forEach(m => {
+        if (m && m.id && !roster.some(a => a.id === m.id)) {
+            roster.push({ id: m.id, name: m.name, avatar: m.avatar || '' });
+        }
+    });
+    return roster.length > 1 ? roster : [];
+}
+
+function setSessionParticipants(sid, team) {
+    const entry = _sessionItems.find(s => s.session_id === sid);
+    if (!entry) return;
+    const roster = _rosterFromTeam(team);
+    if (roster.length) entry.participants = roster;
+    else delete entry.participants;
+    _renderSessionList();
+}
+
+let toolsExpanded = false;
+
+const TOOLS_COLLAPSED_COUNT = 4;
+
+let skillsConfigUiBound = false;
+
+function bindSkillsConfigUi() {
+    if (skillsConfigUiBound) return;
+    skillsConfigUiBound = true;
+    const on = (id, evt, fn) => document.getElementById(id)?.addEventListener(evt, fn);
+
+    on('tools-toggle-btn', 'click', () => { toolsExpanded = !toolsExpanded; applyToolsCollapse(); });
+
+    bindSkillAddUi();
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (!document.getElementById('skill-add-overlay')?.classList.contains('hidden')) closeSkillAdd();
+    });
+}
+
+function setButtonBusy(btn, busy) {
+    if (!btn) return;
+    btn.disabled = !!busy;
+}
+
+async function postJson(url, body, method) {
+    const res = await fetch(url, {
+        method: method || 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    return res.json();
+}
+
+function applyToolsCollapse() {
+    const listEl = document.getElementById('tools-list');
+    const btn = document.getElementById('tools-toggle-btn');
+    if (!listEl || !btn) return;
+    const cards = Array.from(listEl.children);
+    cards.forEach((card, i) => {
+        card.classList.toggle('hidden', !toolsExpanded && i >= TOOLS_COLLAPSED_COUNT);
+    });
+    const collapsible = cards.length > TOOLS_COLLAPSED_COUNT;
+    btn.classList.toggle('hidden', !collapsible);
+    const label = document.getElementById('tools-toggle-label');
+    if (label) {
+        const key = toolsExpanded ? 'tools_collapse' : 'tools_show_all';
+        label.dataset.i18n = key;
+        label.textContent = t(key);
+    }
+    const icon = document.getElementById('tools-toggle-icon');
+    if (icon) icon.style.transform = toolsExpanded ? 'rotate(180deg)' : '';
+}
+
+const SKILL_SOURCES = {
+    hub: { labelKey: 'skill_value_hub', placeholder: 'skill-name', hintKey: 'skill_hint_hub', link: 'https://skills.cowagent.ai/' },
+    github: { labelKey: 'skill_value_github', placeholder: 'https://github.com/owner/repo/tree/main/skills/my-skill', hintKey: 'skill_hint_github' },
+    clawhub: { labelKey: 'skill_value_clawhub', placeholder: 'skill-name', hintKey: 'skill_hint_clawhub', link: 'https://clawhub.ai/skills' },
+};
+
+const SKILL_SOURCE_LABELS = {
+    cowhub: 'Cow Skill Hub', github: 'GitHub', clawhub: 'ClawHub', url: 'URL',
+};
+
+const SKILL_UPLOAD_MAX_BYTES = 50 * 1024 * 1024;
+
+const skillAdd = {
+    tab: 'market',
+    source: 'hub',
+    step: 'input',
+    token: null,
+    skills: [],
+    selected: new Set(),
+    busy: false,
+    // Bumped when a fetch or upload is abandoned, so its late reply is ignored.
+    req: 0,
+};
+
+function bindSkillAddUi() {
+    const on = (id, evt, fn) => document.getElementById(id)?.addEventListener(evt, fn);
+    on('skill-add-btn', 'click', openSkillAdd);
+    on('skill-add-close', 'click', closeSkillAdd);
+    on('skill-add-cancel', 'click', closeSkillAdd);
+    on('skill-add-back', 'click', backToSkillInput);
+    on('skill-add-primary', 'click', onSkillAddPrimary);
+    on('skill-add-overlay', 'click', (e) => { if (e.target.id === 'skill-add-overlay') closeSkillAdd(); });
+    document.querySelectorAll('[data-skill-tab]').forEach(btn => {
+        btn.addEventListener('click', () => switchSkillTab(btn.dataset.skillTab));
+    });
+    document.querySelectorAll('.skill-source-opt').forEach(btn => {
+        btn.addEventListener('click', () => setSkillSource(btn.dataset.source));
+    });
+    on('skill-value-input', 'input', () => { hideSkillInputError(); syncSkillAddFooter(); });
+    on('skill-value-input', 'keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); fetchSkillPreview(); }
+    });
+    on('skill-preview-all', 'change', (e) => {
+        skillAdd.selected = e.target.checked ? new Set(skillAdd.skills.map(s => s.name)) : new Set();
+        renderSkillPreviewList();
+    });
+
+    on('skill-pick-file', 'click', () => document.getElementById('skill-file-input').click());
+    on('skill-pick-folder', 'click', () => document.getElementById('skill-folder-input').click());
+    on('skill-file-input', 'change', (e) => {
+        const files = Array.from(e.target.files || []).map(f => ({ file: f, path: f.name }));
+        e.target.value = '';
+        uploadSkillFiles(files);
+    });
+    on('skill-folder-input', 'change', (e) => {
+        const files = Array.from(e.target.files || []).map(f => ({ file: f, path: f.webkitRelativePath || f.name }));
+        e.target.value = '';
+        uploadSkillFiles(files);
+    });
+
+    const zone = document.getElementById('skill-dropzone');
+    if (zone) {
+        ['dragenter', 'dragover'].forEach(evt => zone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            if (!skillAdd.busy) zone.classList.add('dragover');
+        }));
+        ['dragleave', 'drop'].forEach(evt => zone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            zone.classList.remove('dragover');
+        }));
+        zone.addEventListener('drop', async (e) => {
+            if (skillAdd.busy) return;
+            const files = await collectDroppedFiles(e.dataTransfer);
+            uploadSkillFiles(files);
+        });
+    }
+}
+
+function openSkillAdd() {
+    skillAdd.tab = 'market';
+    skillAdd.step = 'input';
+    skillAdd.token = null;
+    skillAdd.skills = [];
+    skillAdd.selected = new Set();
+    skillAdd.busy = false;
+    document.getElementById('skill-value-input').value = '';
+    switchSkillTab('market');
+    setSkillSource('hub');
+    showSkillStep('input');
+    document.getElementById('skill-add-overlay').classList.remove('hidden');
+    setTimeout(() => document.getElementById('skill-value-input')?.focus(), 30);
+}
+
+function closeSkillAdd() {
+    if (skillAdd.busy) {
+        // Installing is quick and not safely interruptible; fetching can hang on the network.
+        if (skillAdd.step !== 'input') return;
+        skillAdd.req++;
+        setSkillAddBusy(false);
+    }
+    discardSkillPreview();
+    document.getElementById('skill-add-overlay').classList.add('hidden');
+}
+
+function discardSkillPreview() {
+    if (!skillAdd.token) return;
+    const token = skillAdd.token;
+    skillAdd.token = null;
+    postJson('/api/skills', { action: 'discard', token }).catch(() => {});
+}
+
+function switchSkillTab(tab) {
+    if (skillAdd.busy) return;
+    skillAdd.tab = tab;
+    document.querySelectorAll('[data-skill-tab]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.skillTab === tab);
+    });
+    document.getElementById('skill-pane-market').classList.toggle('hidden', tab !== 'market');
+    document.getElementById('skill-pane-upload').classList.toggle('hidden', tab !== 'upload');
+    hideSkillInputError();
+    syncSkillAddFooter();
+}
+
+function setSkillSource(source) {
+    const meta = SKILL_SOURCES[source];
+    if (!meta) return;
+    skillAdd.source = source;
+    document.querySelectorAll('.skill-source-opt').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.source === source);
+    });
+    const label = document.getElementById('skill-value-label');
+    label.dataset.i18n = meta.labelKey;
+    label.textContent = t(meta.labelKey);
+    const input = document.getElementById('skill-value-input');
+    input.placeholder = meta.placeholder;
+    const hint = document.getElementById('skill-source-hint');
+    const link = meta.link
+        ? ` <a href="${meta.link}" target="_blank" rel="noopener noreferrer" class="text-primary-500 hover:text-primary-600">${escapeHtml(meta.link.replace(/^https:\/\/|\/$/g, ''))}</a>`
+        : '';
+    hint.innerHTML = escapeHtml(t(meta.hintKey)) + link;
+    hideSkillInputError();
+    input.focus();
+}
+
+function showSkillInputError(msg) {
+    const el = document.getElementById('skill-input-error');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+}
+
+function hideSkillInputError() {
+    document.getElementById('skill-input-error')?.classList.add('hidden');
+}
+
+function showSkillStep(step) {
+    skillAdd.step = step;
+    ['input', 'preview', 'done'].forEach(name => {
+        document.getElementById(`skill-step-${name}`).classList.toggle('hidden', name !== step);
+    });
+    const subtitle = document.getElementById('skill-add-subtitle');
+    if (step === 'preview') {
+        subtitle.textContent = t('skill_preview_title');
+        subtitle.classList.remove('hidden');
+    } else {
+        subtitle.classList.add('hidden');
+    }
+    syncSkillAddFooter();
+}
+
+function setSkillAddBusy(busy) {
+    skillAdd.busy = busy;
+    document.getElementById('skill-add-primary-spin').classList.toggle('hidden', !busy);
+    const zoneIcon = document.getElementById('skill-dropzone-icon');
+    if (zoneIcon) {
+        zoneIcon.className = busy && skillAdd.tab === 'upload' && skillAdd.step === 'input'
+            ? 'fas fa-spinner fa-spin text-primary-500'
+            : 'fas fa-file-arrow-up text-slate-400';
+    }
+    syncSkillAddFooter();
+}
+
+function syncSkillAddFooter() {
+    const primary = document.getElementById('skill-add-primary');
+    const label = document.getElementById('skill-add-primary-label');
+    const cancel = document.getElementById('skill-add-cancel');
+    const back = document.getElementById('skill-add-back');
+    back.classList.toggle('hidden', skillAdd.step !== 'preview');
+    back.disabled = skillAdd.busy;
+    cancel.classList.toggle('hidden', skillAdd.step === 'done');
+    cancel.disabled = skillAdd.busy && skillAdd.step !== 'input';
+
+    let text = '';
+    let show = true;
+    let enabled = !skillAdd.busy;
+    if (skillAdd.step === 'input') {
+        if (skillAdd.tab === 'upload') {
+            show = skillAdd.busy;
+            text = t('skill_uploading');
+        } else {
+            text = t(skillAdd.busy ? 'skill_fetching' : 'skill_fetch');
+            enabled = enabled && !!document.getElementById('skill-value-input').value.trim();
+        }
+    } else if (skillAdd.step === 'preview') {
+        const n = skillAdd.selected.size;
+        text = skillAdd.busy ? t('skill_installing') : t('skill_confirm_install_n').replace('{n}', n);
+        enabled = enabled && n > 0;
+    } else {
+        text = t('skill_done');
+    }
+    primary.classList.toggle('hidden', !show);
+    primary.disabled = !enabled;
+    label.textContent = text;
+}
+
+function onSkillAddPrimary() {
+    if (skillAdd.step === 'input') fetchSkillPreview();
+    else if (skillAdd.step === 'preview') confirmSkillInstall();
+    else finishSkillAdd();
+}
+
+async function fetchSkillPreview() {
+    if (skillAdd.busy || skillAdd.tab !== 'market') return;
+    const value = document.getElementById('skill-value-input').value.trim();
+    if (!value) return;
+    await stageSkillPreview(() => postJson('/api/skills', { action: 'preview', source: skillAdd.source, value }));
+}
+
+async function stageSkillPreview(request) {
+    const req = ++skillAdd.req;
+    hideSkillInputError();
+    setSkillAddBusy(true);
+    try {
+        const data = await request();
+        if (req !== skillAdd.req) {
+            if (data && data.token) postJson('/api/skills', { action: 'discard', token: data.token }).catch(() => {});
+            return;
+        }
+        if (data.status !== 'success') throw new Error(data.message || t('skill_install_error'));
+        showSkillPreview(data);
+    } catch (err) {
+        if (req === skillAdd.req) showSkillInputError(err.message || t('skill_install_error'));
+    } finally {
+        if (req === skillAdd.req) setSkillAddBusy(false);
+    }
+}
+
+async function collectDroppedFiles(dataTransfer) {
+    const items = Array.from(dataTransfer?.items || []);
+    const entries = items.map(item => item.webkitGetAsEntry && item.webkitGetAsEntry()).filter(Boolean);
+    if (!entries.length) {
+        return Array.from(dataTransfer?.files || []).map(f => ({ file: f, path: f.name }));
+    }
+    const out = [];
+    const readAll = (reader) => new Promise((resolve) => {
+        const acc = [];
+        const next = () => reader.readEntries((batch) => {
+            if (!batch.length) { resolve(acc); return; }
+            acc.push(...batch);
+            next();
+        }, () => resolve(acc));
+        next();
+    });
+    const walk = async (entry, prefix) => {
+        if (entry.isFile) {
+            const file = await new Promise((resolve) => entry.file(resolve, () => resolve(null)));
+            if (file) out.push({ file, path: prefix + file.name });
+        } else if (entry.isDirectory) {
+            const children = await readAll(entry.createReader());
+            for (const child of children) await walk(child, `${prefix}${entry.name}/`);
+        }
+    };
+    for (const entry of entries) await walk(entry, '');
+    return out;
+}
+
+async function uploadSkillFiles(files) {
+    if (skillAdd.busy || !files.length) return;
+    hideSkillInputError();
+    const total = files.reduce((sum, f) => sum + (f.file.size || 0), 0);
+    if (total > SKILL_UPLOAD_MAX_BYTES) {
+        showSkillInputError(t('skill_upload_too_large'));
+        return;
+    }
+    const form = new FormData();
+    files.forEach(({ file, path }) => {
+        form.append('files', file, file.name);
+        form.append('paths', path);
+    });
+    await stageSkillPreview(async () => {
+        const res = await fetch('/api/skills/upload', { method: 'POST', body: form });
+        return res.json();
+    });
+}
+
+function showSkillPreview(data) {
+    discardSkillPreview();
+    skillAdd.token = data.token;
+    skillAdd.skills = data.skills || [];
+    skillAdd.selected = new Set(skillAdd.skills.map(s => s.name));
+    const multi = skillAdd.skills.length > 1;
+    document.getElementById('skill-preview-count').textContent =
+        t('skill_preview_found').replace('{n}', skillAdd.skills.length);
+    const allWrap = document.getElementById('skill-preview-all-wrap');
+    allWrap.classList.toggle('hidden', !multi);
+    allWrap.classList.toggle('flex', multi);
+    document.getElementById('skill-preview-error').classList.add('hidden');
+    renderSkillPreviewList();
+    showSkillStep('preview');
+}
+
+function formatBytes(bytes) {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let n = bytes;
+    let i = 0;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+    return `${n >= 10 || i === 0 ? Math.round(n) : n.toFixed(1)} ${units[i]}`;
+}
+
+function skillSourceLabel(source) {
+    if (!source) return '';
+    if (source === 'local') return t('skill_source_local');
+    return SKILL_SOURCE_LABELS[source] || source;
+}
+
+function renderSkillPreviewMd(sk) {
+    if (!sk.has_skill_md) {
+        return `<p class="text-xs text-slate-400">${escapeHtml(t('skill_preview_no_md'))}</p>`;
+    }
+    const { fields, body } = parseSkillFrontmatter(sk.skill_md);
+    const rows = fields.map(([key, value]) => `
+        <div class="flex gap-3 text-xs">
+            <span class="flex-shrink-0 w-20 font-medium text-slate-400 dark:text-slate-500">${escapeHtml(key)}</span>
+            <span class="flex-1 min-w-0 text-slate-600 dark:text-slate-300 break-words">${escapeHtml(value)}</span>
+        </div>`).join('');
+    const header = rows ? `<div class="mb-3 pb-3 border-b border-slate-200/70 dark:border-white/10 space-y-1">${rows}</div>` : '';
+    const truncated = sk.skill_md_truncated
+        ? `<p class="mt-3 text-xs text-slate-400">${escapeHtml(t('skill_preview_truncated'))}</p>` : '';
+    return `${header}<div class="msg-content">${renderMarkdown(body || '')}</div>${truncated}`;
+}
+
+function renderSkillPreviewList() {
+    const listEl = document.getElementById('skill-preview-list');
+    const multi = skillAdd.skills.length > 1;
+    listEl.innerHTML = '';
+    skillAdd.skills.forEach(sk => {
+        const selected = skillAdd.selected.has(sk.name);
+        const card = document.createElement('div');
+        card.className = 'skill-preview-card' + (selected ? '' : ' unselected');
+        const title = sk.display_name || sk.name;
+        const extra = [
+            `<span><i class="far fa-file mr-1"></i>${escapeHtml(t('skill_preview_files').replace('{n}', sk.file_count))}</span>`,
+            `<span>${escapeHtml(formatBytes(sk.size))}</span>`,
+        ];
+        const source = skillSourceLabel(sk.source);
+        if (source) extra.push(`<span>${escapeHtml(source)}</span>`);
+        card.innerHTML = `
+            <div class="flex items-start gap-3 p-4">
+                ${multi ? `<input type="checkbox" data-select class="mt-2.5 rounded accent-primary-500 cursor-pointer" ${selected ? 'checked' : ''}>` : ''}
+                <div class="w-9 h-9 rounded-lg bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-bolt text-primary-500 text-sm"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-medium text-sm text-slate-800 dark:text-slate-100">${escapeHtml(title)}</span>
+                        ${title !== sk.name ? `<span class="text-xs font-mono text-slate-400">${escapeHtml(sk.name)}</span>` : ''}
+                        ${sk.exists ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400">${escapeHtml(t('skill_preview_exists'))}</span>` : ''}
+                    </div>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-3">${escapeHtml(sk.description || '--')}</p>
+                    <div class="flex items-center gap-2.5 mt-2 text-[11px] text-slate-400 dark:text-slate-500">${extra.join('<span class="opacity-40">·</span>')}</div>
+                    <div class="flex items-center gap-1 mt-2 -ml-2">
+                        <button type="button" data-toggle="md" class="cap-link-btn">
+                            <i class="fas fa-chevron-right text-[9px] transition-transform"></i><span>SKILL.md</span>
+                        </button>
+                        <button type="button" data-toggle="files" class="cap-link-btn">
+                            <i class="fas fa-chevron-right text-[9px] transition-transform"></i><span>${escapeHtml(t('skill_preview_show_files'))}</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div data-pane="md" class="skill-preview-md hidden"></div>
+            <div data-pane="files" class="skill-preview-files hidden"></div>`;
+
+        const panes = {
+            md: card.querySelector('[data-pane="md"]'),
+            files: card.querySelector('[data-pane="files"]'),
+        };
+        const toggle = (which, open) => {
+            const pane = panes[which];
+            const isOpen = open !== undefined ? open : pane.classList.contains('hidden');
+            if (isOpen && !pane.dataset.rendered) {
+                if (which === 'md') {
+                    pane.innerHTML = renderSkillPreviewMd(sk);
+                    applyHighlighting(pane);
+                } else {
+                    const more = sk.file_count > sk.files.length
+                        ? `<div class="opacity-60">… +${sk.file_count - sk.files.length}</div>` : '';
+                    pane.innerHTML = sk.files.map(f => `<div class="truncate">${escapeHtml(f)}</div>`).join('') + more;
+                }
+                pane.dataset.rendered = '1';
+            }
+            pane.classList.toggle('hidden', !isOpen);
+            const icon = card.querySelector(`[data-toggle="${which}"] i`);
+            if (icon) icon.style.transform = isOpen ? 'rotate(90deg)' : '';
+        };
+        card.querySelectorAll('[data-toggle]').forEach(btn => {
+            btn.addEventListener('click', () => toggle(btn.dataset.toggle));
+        });
+        const checkbox = card.querySelector('[data-select]');
+        if (checkbox) {
+            checkbox.addEventListener('change', () => {
+                if (checkbox.checked) skillAdd.selected.add(sk.name);
+                else skillAdd.selected.delete(sk.name);
+                card.classList.toggle('unselected', !checkbox.checked);
+                document.getElementById('skill-preview-all').checked =
+                    skillAdd.selected.size === skillAdd.skills.length;
+                syncSkillAddFooter();
+            });
+        }
+        if (!multi) toggle('md', true);
+        listEl.appendChild(card);
+    });
+    document.getElementById('skill-preview-all').checked = skillAdd.selected.size === skillAdd.skills.length;
+    syncSkillAddFooter();
+}
+
+function backToSkillInput() {
+    if (skillAdd.busy) return;
+    discardSkillPreview();
+    skillAdd.skills = [];
+    skillAdd.selected = new Set();
+    showSkillStep('input');
+}
+
+async function confirmSkillInstall() {
+    if (skillAdd.busy || !skillAdd.token || !skillAdd.selected.size) return;
+    const errorEl = document.getElementById('skill-preview-error');
+    errorEl.classList.add('hidden');
+    setSkillAddBusy(true);
+    try {
+        const data = await postJson('/api/skills', {
+            action: 'confirm',
+            token: skillAdd.token,
+            names: Array.from(skillAdd.selected),
+        });
+        if (data.status !== 'success') throw new Error(data.message || t('skill_install_error'));
+        skillAdd.token = null;
+        showSkillDone(data.installed || []);
+    } catch (err) {
+        errorEl.textContent = err.message || t('skill_install_error');
+        errorEl.classList.remove('hidden');
+    } finally {
+        setSkillAddBusy(false);
+    }
+}
+
+function showSkillDone(installed) {
+    skillAdd.installed = installed;
+    const byName = Object.fromEntries(skillAdd.skills.map(s => [s.name, s]));
+    document.getElementById('skill-done-desc').textContent =
+        t('skill_installed_desc').replace('{n}', installed.length);
+    document.getElementById('skill-done-names').innerHTML = installed.map(name => {
+        const sk = byName[name] || {};
+        return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-200">
+            <i class="fas fa-bolt text-primary-500 text-[10px]"></i>${escapeHtml(sk.display_name || name)}</span>`;
+    }).join('');
+    showSkillStep('done');
+    loadSkillsSection(installed);
+}
+
+function finishSkillAdd() {
+    document.getElementById('skill-add-overlay').classList.add('hidden');
+    const first = (skillAdd.installed || [])[0];
+    const card = first && document.querySelector(`#skills-list [data-skill-name="${CSS.escape(first)}"]`);
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function deleteSkill(name, resource_id) {
+    showConfirmDialog({
+        title: t('skill_delete'),
+        message: t('skill_delete_confirm'),
+        okText: t('skill_delete'),
+        onConfirm: async () => {
+            try {
+                const data = await postJson('/api/skills', { action: 'delete', name, resource_id });
+                if (data.status !== 'success') throw new Error(data.message || t('skill_delete_error'));
+                loadSkillsSection();
+            } catch (err) {
+                _wsToast(err.message || t('skill_delete_error'));
+            }
+        },
+    });
+}
+
 /* =====================================================================
    容大AI Console - Main Application Script
    ===================================================================== */
@@ -58,6 +759,7 @@ function removeScopedPreference(key) {
 let _accountState = { phase: 'loading', mode: 'database', authRequired: null,
     authenticated: null, username: '', displayName: '', mustChangePassword: false };
 let _authEpoch = 0;
+const resumedRequests = new Set();
 let _accountCheckSeq = 0;
 let _accountCheckRequest = null;
 let _accountWritePending = null;
@@ -443,6 +1145,8 @@ function _clearTenantPicker() {
 
 function _invalidateAccountIdentity(phase) {
     ++_authEpoch;
+    resumedRequests.clear();
+    if (typeof resetTimeline === "function") resetTimeline();
     if (typeof resetAgentWorkbenchFilters === 'function') resetAgentWorkbenchFilters(true);
     ++_accountCheckSeq;
     _accountCheckRequest = null;
@@ -5347,6 +6051,12 @@ function setTeamMembers(ids, target) {
             // Inviting or removing someone changes whether one model can speak
             // for this conversation.
             _renderModelChip();
+            _renderInputPlaceholder();
+            // Keep the session list's faces in step with the roster we just
+            // changed, which it cannot read from the API until the first message.
+            if (typeof setSessionParticipants === 'function') {
+                setSessionParticipants(sessionId, data.team);
+            }
         }
         return data;
     }));
@@ -8672,7 +9382,7 @@ function sendMessage() {
     postWithRetry(0);
 }
 
-function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, ownerContext) {
+function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, ownerContext, resume) {
     let botEl = null;
     let stepsEl = null;    // .agent-steps  (thinking summaries + tool indicators)
     let contentEl = null;  // .answer-content (final streaming answer)
@@ -8686,7 +9396,36 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
     let mainDone = false;
     let completedBotSeq = null;
     let cancelled = false;
-    let lastSeq = 0;
+    let lastSeq = (resume && resume.afterSeq) || 0;
+
+    // Who the bubble currently being written belongs to. A delegation hands the
+    // floor to a teammate partway through the turn: the teammate's reply gets
+    // its own bubble, and when it ends the floor returns to whoever held it
+    // before. Nesting therefore reads as a flat run of turns, in the order they
+    // happened, rather than turns buried inside each other.
+    const speakerStack = [];
+    const peerSpeaker = () => (speakerStack.length ? speakerStack[speakerStack.length - 1] : null);
+
+    // Seal the current bubble so whatever comes next starts a new one. In-flight
+    // tools are deliberately left alone: the delegating call is still running
+    // while its teammate speaks, and its card should keep spinning.
+    function closeBubble() {
+        if (currentReasoningEl) {
+            finalizeThinking(currentReasoningEl, reasoningStartTime, reasoningText);
+            currentReasoningEl = null;
+            reasoningText = '';
+        }
+        if (botEl && contentEl) {
+            if (accumulatedText.trim()) contentEl.innerHTML = renderMarkdown(accumulatedText);
+            contentEl.classList.remove('sse-streaming');
+            applyHighlighting(botEl);
+        }
+        accumulatedText = '';
+        botEl = null;
+        stepsEl = null;
+        contentEl = null;
+        mediaEl = null;
+    }
 
     // A stream can end while tools are still marked in-flight (cancel, dropped
     // connection). Settle them so nothing spins forever.
@@ -8744,11 +9483,17 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
         // The streaming face is whoever is answering this request: the addressed
         // teammate if one was named, else the conversation's own Agent. Wrapped
         // in .bot-face so a later avatar change repaints it like any bubble.
-        const speaker = liveSpeakerAgent(requestId);
+        const peer = peerSpeaker();
+        const speaker = peer || liveSpeakerAgent(requestId);
         if (speaker && speaker.id) botEl.dataset.speakerAgent = speaker.id;
+        // Marks the bubble as belonging to a teammate rather than to the Agent
+        // this request was addressed to, so lookups for "the reply" skip it.
+        if (peer) botEl.dataset.peerBubble = '1';
         // In a group the bubble is labelled with its author while it streams,
         // exactly as the replayed history shows it — a solo chat stays unlabelled.
-        const speakerName = (sharedConversation() && speaker)
+        // A teammate's bubble is always labelled: the label is what makes it read
+        // as someone else answering instead of the Agent changing voice mid-reply.
+        const speakerName = ((peer || sharedConversation()) && speaker)
             ? `<div class="bot-speaker">${escapeHtml(speaker.name || speaker.id)}</div>`
             : '';
         botEl.innerHTML = `
@@ -8780,6 +9525,28 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
         contentEl = botEl.querySelector('.answer-content');
         mediaEl = botEl.querySelector('.media-content');
     }
+
+    // Write on in a bubble rendered from this reply's stored steps. Its
+    // actions stay hidden until the answer lands, as in a live bubble.
+    function adoptBotEl(el) {
+        const box = el.querySelector('.msg-content');
+        if (!box) return;
+        botEl = el;
+        botEl.dataset.requestId = requestId;
+        contentEl = box.querySelector('.answer-content');
+        mediaEl = box.querySelector('.media-content');
+        stepsEl = box.querySelector('.agent-steps');
+        if (!stepsEl) {
+            stepsEl = document.createElement('div');
+            stepsEl.className = 'agent-steps';
+            box.insertBefore(stepsEl, contentEl);
+        }
+        box.querySelectorAll('.agent-status-step').forEach(status => status.remove());
+        contentEl.classList.add('sse-streaming');
+        botEl.querySelectorAll('.copy-msg-btn, .speak-msg-btn, .regenerate-msg-btn')
+            .forEach(btn => { btn.style.display = 'none'; });
+    }
+    if (resume && resume.el) adoptBotEl(resume.el);
 
     // Holds the live EventSource so terminal events (done/voice_attach/error)
     // can close it. During replay there is no live connection (null).
@@ -8873,6 +9640,70 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
                     scrollChatToBottom();
                 }
 
+            } else if (item.type === 'peer_start') {
+                // A teammate takes the floor. Everything until the matching
+                // peer_end is its reply, and it renders through the very same
+                // branches below — it just lands in a bubble wearing its face.
+                closeBubble();
+                speakerStack.push(
+                    findAgent(item.agent_id)
+                    || { id: item.agent_id || '', name: item.agent_name || item.agent_id || '' }
+                );
+                // The card that spawned this turn now only needs to say who was
+                // handed the work; the answer itself is the bubble.
+                markHandoffCard(toolElements.get(item.card_id), item);
+
+            } else if (item.type === 'peer_end') {
+                closeBubble();
+                speakerStack.pop();
+
+            } else if (item.type === 'tool_retrieval') {
+                ensureBotEl();
+                const fallback = item.mode === 'fallback';
+                const selected = Array.isArray(item.selected_tools) ? item.selected_tools : [];
+                const ranked = Array.isArray(item.ranked_tools) ? item.ranked_tools : [];
+                const summary = (fallback ? t('retrieval_fallback') : t('retrieval_selected'))
+                    .replace('{selected}', String(item.selected_mcp_tools || 0))
+                    .replace('{total}', String(item.total_mcp_tools || 0));
+                const details = [];
+                if (!fallback && selected.length) {
+                    details.push(`
+                        <div class="tool-detail-section">
+                            <div class="tool-detail-label">${t('retrieval_selected_tools')}</div>
+                            <pre class="tool-detail-content">${escapeHtml(selected.join(', '))}</pre>
+                        </div>`);
+                }
+                if (!fallback && ranked.length) {
+                    const ranking = ranked.map(tool => {
+                        const score = Number(tool.score);
+                        return `${tool.name} (${Number.isFinite(score) ? score.toFixed(3) : '0.000'})`;
+                    }).join(', ');
+                    details.push(`
+                        <div class="tool-detail-section">
+                            <div class="tool-detail-label">${t('retrieval_ranking')}</div>
+                            <pre class="tool-detail-content">${escapeHtml(ranking)}</pre>
+                        </div>`);
+                }
+                if (item.fallback_reason) {
+                    details.push(`
+                        <div class="tool-detail-section">
+                            <div class="tool-detail-label">${t('retrieval_fallback_reason')}</div>
+                            <pre class="tool-detail-content">${escapeHtml(String(item.fallback_reason))}</pre>
+                        </div>`);
+                }
+
+                const retrievalEl = document.createElement('div');
+                retrievalEl.className = 'agent-step agent-tool-step agent-retrieval-step';
+                retrievalEl.innerHTML = `
+                    <div class="tool-header" onclick="this.parentElement.classList.toggle('expanded')">
+                        <i class="fas ${fallback ? 'fa-layer-group text-amber-400' : 'fa-filter text-primary-400'} flex-shrink-0 tool-icon"></i>
+                        <span class="tool-name">${escapeHtml(summary)}</span>
+                        <i class="fas fa-chevron-right tool-chevron"></i>
+                    </div>
+                    <div class="tool-detail">${details.join('')}</div>`;
+                stepsEl.appendChild(retrievalEl);
+                scrollChatToBottom();
+
             } else if (item.type === 'tool_start') {
                 ensureBotEl();
                 if (currentReasoningEl) {
@@ -8930,10 +9761,14 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
                 const toolEl = toolElements.get(item.tool_call_id);
                 if (toolEl) {
                     const isError = item.status !== 'success';
+                    // A hand-off keeps the icon that says what it was, rather
+                    // than the generic tick: the teammate's bubble below is the
+                    // outcome, and this row is the fact that work was passed on.
+                    const handoff = !isError && toolEl.classList.contains('agent-handoff-step');
                     const icon = toolEl.querySelector('.tool-icon');
                     icon.className = isError
                         ? 'fas fa-times text-red-400 flex-shrink-0 tool-icon'
-                        : 'fas fa-check text-primary-400 flex-shrink-0 tool-icon';
+                        : `fas ${handoff ? 'fa-share' : 'fa-check'} text-primary-400 flex-shrink-0 tool-icon`;
 
                     // Show execution time
                     const nameEl = toolEl.querySelector('.tool-name');
@@ -8960,8 +9795,11 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
                     toolEl.classList.remove('tool-streaming');
                     // Tools collapse once they are done; their output is a
                     // trace. A tool that wrote something for a person to read
-                    // stays open — the reader just waited for it.
-                    toolEl.classList.toggle('expanded', !!item.display);
+                    // stays open — the reader just waited for it. A hand-off is
+                    // the exception: its answer is already the bubble below, so
+                    // it folds away and keeps the task it passed on for whoever
+                    // opens it.
+                    toolEl.classList.toggle('expanded', !!item.display && !handoff);
                     if (!item.result && !item.display) {
                         const outputSection = toolEl.querySelector('.tool-output-section');
                         if (outputSection) outputSection.remove();
@@ -9050,11 +9888,8 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
                     currentReasoningEl = null;
                     reasoningText = '';
                 }
-                if (!botEl.querySelector('.agent-cancelled-tag')) {
-                    const tag = document.createElement('div');
-                    tag.className = 'agent-cancelled-tag text-xs text-amber-600 dark:text-amber-400 mt-1';
-                    tag.textContent = (currentLang === 'zh') ? '已中止' : 'Cancelled';
-                    stepsEl.appendChild(tag);
+                if (!stepsEl.querySelector('.agent-status-step')) {
+                    stepsEl.insertAdjacentHTML('beforeend', replyStatusHtml('cancelled'));
                 }
                 resetSendBtnSendMode();
 
@@ -9069,7 +9904,14 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
                 resetSendBtnSendMode();
 
                 const finalTextRaw = item.content || accumulatedText;
-                const finalText = localizeCancelMarker(finalTextRaw);
+                // A stopped reply is already marked by its status line.
+                const finalText = cancelled && isCancelMarker(finalTextRaw)
+                    ? ''
+                    : localizeCancelMarker(finalTextRaw);
+                // Steps that finished after the stop was pressed land below
+                // the status line; it belongs at the end.
+                const statusEl = stepsEl && stepsEl.querySelector('.agent-status-step');
+                if (statusEl) stepsEl.appendChild(statusEl);
 
                 if (!botEl && finalText) {
                     if (loadingEl) { loadingEl.remove(); loadingEl = null; }
@@ -9086,7 +9928,11 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
                 // Backfill seq metadata so edit/regenerate buttons can call
                 // the delete API without a page refresh. Backend includes
                 // user_seq / bot_seq on the done event after persistence.
-                const targetBotEl = botEl || (requestId ? messagesDiv.querySelector(`[data-request-id="${requestId}"]`) : null);
+                // Never a teammate's bubble: the seq being backfilled belongs to
+                // the reply this request persisted, which is the Agent's own.
+                const targetBotEl = botEl || (requestId
+                    ? messagesDiv.querySelector(`[data-request-id="${requestId}"]:not([data-peer-bubble])`)
+                    : null);
                 if (targetBotEl) {
                     if (item.bot_seq !== undefined && item.bot_seq !== null) {
                         targetBotEl.dataset.seq = item.bot_seq;
@@ -9104,6 +9950,11 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
                             prev.dataset.seq = item.user_seq;
                         }
                     }
+                }
+                // The turn is persisted: refresh the navigation rail so the new
+                // question gets its own dot (only for the foreground session).
+                if (isActive() && typeof refreshTimeline === 'function') {
+                    refreshTimeline();
                 }
                 renderBotSpeakerButton(botEl, finalText);
                 scrollChatToBottom();
@@ -9134,13 +9985,7 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
                 delete activeStreams[requestId];
                 clearOwnerRequest();
                 resetSendBtnSendMode();
-                if (isActive()) {
-                    messagesDiv.innerHTML = '';
-                    historyPage = 0;
-                    historyHasMore = false;
-                    historyLoading = false;
-                    loadHistory(1);
-                }
+                if (isActive()) reloadHistoryView();
 
             } else if (item.type === 'error') {
                 done = true;
@@ -9149,9 +9994,19 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
                 delete activeStreams[requestId];
                 clearOwnerRequest();
                 if (loadingEl) { loadingEl.remove(); loadingEl = null; }
+                if (contentEl) contentEl.classList.remove('sse-streaming');
                 // After a stop the stream is expected to end; the bubble is
-                // already tagged "已中止", so don't stack a failure on top.
-                if (!cancelled) addBotMessage(t('error_send'), new Date());
+                // already marked stopped, so don't stack a failure on top.
+                // An unknown request after "done" only means its log was
+                // reclaimed: the reply is persisted and already on screen.
+                // Before "done" the service restarted mid-reply: what it
+                // stored shows up, marked interrupted, once history reloads.
+                const unknown = item.reason === 'unknown_request';
+                if (unknown && !mainDone && !cancelled) {
+                    if (isActive()) reloadHistoryView();
+                } else if (!cancelled && !unknown) {
+                    addBotMessage(t('error_send'), new Date());
+                }
                 resetSendBtnSendMode();
             }
     }
@@ -9212,7 +10067,7 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
                 }
                 notifyTaskFinished(ownerSession, 'done', item.content);
             } else if (item.type === 'error') {
-                if (!cancelled) notifyTaskFinished(ownerSession, 'error', '');
+                if (!cancelled && !mainDone && !isSchedulerRequest(requestId)) notifyTaskFinished(ownerSession, 'error', '', ownerAgent);
             } else if (
                 item.type === 'voice_attach'
                 && item.url
@@ -9283,13 +10138,14 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
             settlePendingTools();
             if (!isActive()) return;
             if (loadingEl) { loadingEl.remove(); loadingEl = null; }
-            if (!botEl) {
-                addBotMessage(t('error_send'), new Date());
-            } else if (accumulatedText) {
+            if (botEl && contentEl) {
                 contentEl.classList.remove('sse-streaming');
-                contentEl.innerHTML = renderMarkdown(accumulatedText);
+                if (accumulatedText) contentEl.innerHTML = renderMarkdown(accumulatedText);
                 applyHighlighting(botEl);
             }
+            // The message itself was accepted; only the live view dropped, and
+            // the server may still finish and persist the reply.
+            if (!mainDone) addBotMessage(t('error_connection_lost'), new Date());
             resetSendBtnSendMode();
         };
     }
@@ -9562,12 +10418,12 @@ function renderThinkingHtml(text) {
 </div>`;
 }
 
-function renderStepsHtml(steps) {
+function renderStepsHtml(steps, keepContent) {
     if (!steps || steps.length === 0) return { stepsHtml: '', finalContent: '' };
 
     // Find the index of the last content step — it becomes the main answer, not a step
     let lastContentIdx = -1;
-    for (let i = steps.length - 1; i >= 0; i--) {
+    for (let i = steps.length - 1; i >= 0 && !keepContent; i--) {
         if (steps[i].type === 'content') { lastContentIdx = i; break; }
     }
 
@@ -9587,9 +10443,16 @@ function renderStepsHtml(steps) {
             const argsStr = formatToolArgs(step.arguments || {});
             const resultStr = step.result ? escapeHtml(String(step.result)) : '';
             const isErr = step.is_error === true;
+            // A hand-off is headed by who took the work, since its answer is
+            // replayed as that teammate's own bubble just below. The card still
+            // folds open onto the task it was handed, which lives nowhere else.
+            const handoff = isErr ? null : handoffPayload(step);
             const iconClass = isErr
                 ? 'fas fa-times text-red-400 flex-shrink-0 tool-icon'
-                : 'fas fa-check text-primary-400 flex-shrink-0 tool-icon';
+                : `fas ${handoff ? 'fa-share' : 'fa-check'} text-primary-400 flex-shrink-0 tool-icon`;
+            const toolLabel = handoff
+                ? t('handoff_to').replace('{name}', handoff.agent_name || handoff.agent_id || '')
+                : (step.name || '');
             // Same rule as the live stream: a tool that wrote its outcome for
             // a person shows that, not the form the model was handed.
             const outputHtml = step.display
@@ -9598,10 +10461,10 @@ function renderStepsHtml(steps) {
                     ? `<pre class="tool-detail-content${isErr ? ' tool-error-text' : ''}">${resultStr}</pre>`
                     : '');
             html += `
-<div class="agent-step agent-tool-step${isErr ? ' tool-failed' : ''}">
+<div class="agent-step agent-tool-step${isErr ? ' tool-failed' : ''}${handoff ? ' agent-handoff-step' : ''}">
     <div class="tool-header" onclick="this.parentElement.classList.toggle('expanded')">
         <i class="${iconClass}"></i>
-        <span class="tool-name">${escapeHtml(step.name || '')}</span>
+        <span class="tool-name">${escapeHtml(toolLabel)}</span>
         <i class="fas fa-chevron-right tool-chevron"></i>
     </div>
     <div class="tool-detail">
@@ -9660,15 +10523,24 @@ function localizeCancelMarker(text) {
         .replace(/_\(Cancelled\)_/g, '_(已中止)_');
 }
 
-function createBotMessageEl(content, timestamp, requestId, msg) {
+function createBotMessageEl(content, timestamp, requestId, msg, peer) {
     const el = document.createElement('div');
     el.className = 'flex gap-3 px-4 sm:px-6 py-3 bot-message-group';
     if (requestId) el.dataset.requestId = requestId;
+    if (peer) el.dataset.peerBubble = '1';
 
     let stepsHtml = '';
     let displayContent = localizeCancelMarker(content);
+    // A reply still running, cut off before its answer (a crash), or stopped
+    // by the user: none has an answer, so every text stays a step.
+    const runState = msg && msg.run_state;
+    const status = runState || (isCancelMarker(content) ? 'cancelled' : null);
 
-    if (msg && msg.steps && msg.steps.length > 0) {
+    if (status) {
+        const steps = ((msg && msg.steps) || []).filter(s => !(s.type === 'content' && isCancelMarker(s.content)));
+        stepsHtml = renderStepsHtml(steps, true).stepsHtml + replyStatusHtml(status);
+        displayContent = '';
+    } else if (msg && msg.steps && msg.steps.length > 0) {
         // New format: ordered steps with interleaved content
         const result = renderStepsHtml(msg.steps);
         stepsHtml = result.stepsHtml;
@@ -9702,12 +10574,16 @@ function createBotMessageEl(content, timestamp, requestId, msg) {
     // product logo by default. A shared conversation also labels the bubble,
     // since consecutive bubbles can come from different Agents; a solo chat
     // stays unlabelled but still reflects that Agent's own avatar.
-    const speaker = botSpeakerAgent(msg, requestId) || findAgent(activeAgentId);
+    // A teammate's bubble names itself: the label is what makes it read as
+    // someone else answering rather than the Agent changing voice mid-reply.
+    const speaker = peer
+        ? (findAgent(peer.id) || peer)
+        : (botSpeakerAgent(msg, requestId) || findAgent(activeAgentId));
     // Remember who spoke, so a later avatar change can repaint this exact face
     // without re-rendering the whole bubble.
     if (speaker && speaker.id) el.dataset.speakerAgent = speaker.id;
     const faceHtml = `<span class="bot-face">${agentAvatarHTML(speaker, 32)}</span>`;
-    const speakerName = (sharedConversation() && speaker)
+    const speakerName = ((peer || sharedConversation()) && speaker)
         ? `<div class="bot-speaker">${escapeHtml(speaker.name || speaker.id)}</div>`
         : '';
 
@@ -9730,9 +10606,9 @@ function createBotMessageEl(content, timestamp, requestId, msg) {
                 <button class="speak-msg-btn text-xs text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400 transition-colors cursor-pointer" title="${t('speak_msg')}" style="display:none;">
                     <i class="fas fa-volume-up"></i>
                 </button>
-                <button class="regenerate-msg-btn text-xs text-slate-300 dark:text-slate-600 hover:text-primary-400 dark:hover:text-primary-400 transition-colors cursor-pointer" title="${t('regenerate_response')}">
+                ${peer ? '' : `<button class="regenerate-msg-btn text-xs text-slate-300 dark:text-slate-600 hover:text-primary-400 dark:hover:text-primary-400 transition-colors cursor-pointer" title="${t('regenerate_response')}">
                     <i class="fas fa-rotate-right"></i>
-                </button>
+                </button>`}
             </div>
         </div>
     `;
@@ -9952,7 +10828,7 @@ function addBotMessage(content, timestamp, requestId) {
 
 // Load conversation history from the server (page 1 = most recent messages).
 // Subsequent pages prepend older messages when the user scrolls to the top.
-function loadHistory(page) {
+function loadHistory(page, untilSeq) {
     const historySessionId = sessionId;
     const historyAgentId = activeAgentId;
     const historyEpoch = _authEpoch;
@@ -9973,9 +10849,10 @@ function loadHistory(page) {
     // before rendering so a reload looks exactly like the live conversation.
     const ready = _sessCfg ? Promise.resolve() : refreshSessionSettings().catch(() => {});
 
+    const until = untilSeq != null ? `&until_seq=${encodeURIComponent(untilSeq)}` : "";
     return ready.then(() => {
         if (!current()) return;
-        return fetch(`/api/history?session_id=${encodeURIComponent(historySessionId)}&agent_id=${encodeURIComponent(historyAgentId)}&page=${page}&page_size=20`)
+        return fetch(`/api/history?session_id=${encodeURIComponent(historySessionId)}&agent_id=${encodeURIComponent(historyAgentId)}&page=${page}&page_size=20${until}`)
         .then(async r => {
             const data = await r.json();
             if (!r.ok || data.status !== 'success' || !Array.isArray(data.messages)) {
@@ -9989,6 +10866,7 @@ function loadHistory(page) {
             if (!current() || data.messages.length === 0) return;
 
             const prevScrollHeight = messagesDiv.scrollHeight;
+            const prevScrollTop = messagesDiv.scrollTop;
             const isFirstLoad = page === 1;
 
             // On first load, remove the welcome screen if history exists
@@ -10007,10 +10885,22 @@ function loadHistory(page) {
             const ctxStartSeq = data.context_start_seq || 0;
             let dividerInserted = false;
 
+            // A reply this page already streams owns its unfinished turn, so the
+            // stored copy stays out. Otherwise a reply still in flight on the
+            // server (the page was reloaded mid-reply) is picked up once, and
+            // continues in the bubble of its stored steps.
+            const streamedHere = isFirstLoad && !!sessionActiveRequest[runtimeSessionKey(historySessionId)];
+            const active = isFirstLoad && !streamedHere ? data.active_request : null;
+            const resume = active && active.request_id && !resumedRequests.has(active.request_id) ? active : null;
+            let resumeEl = null;
+
             data.messages.forEach(msg => {
                 const hasContent = msg.content && msg.content.trim();
                 const hasToolCalls = msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0;
-                if (!hasContent && !hasToolCalls) return;
+                const hasSteps = msg.role === 'assistant' && msg.steps && msg.steps.length > 0;
+                const runState = msg.role === 'assistant' && msg.run_state;
+                if (!hasContent && !hasToolCalls && !hasSteps && !runState) return;
+                if (runState === 'running' && streamedHere) return;
 
                 // Insert context divider when transitioning from above to below boundary
                 if (ctxStartSeq > 0 && !dividerInserted && msg._seq !== undefined && msg._seq >= ctxStartSeq) {
@@ -10022,14 +10912,30 @@ function loadHistory(page) {
                 }
 
                 const ts = new Date(msg.created_at * 1000);
-                const el = msg.role === 'user'
-                    ? createUserMessageEl(msg.content, ts)
-                    : createBotMessageEl(msg.content || '', ts, null, msg);
-                // Store seq for delete functionality
-                if (msg._seq !== undefined) {
-                    el.dataset.seq = msg._seq;
+                if (msg.role === 'user') {
+                    const el = createUserMessageEl(msg.content, ts);
+                    if (msg._seq !== undefined) el.dataset.seq = msg._seq;
+                    fragment.appendChild(el);
+                    return;
                 }
-                fragment.appendChild(el);
+                // One stored turn can be several bubbles: a hand-off showed the
+                // teammate answering in its own. The seq identifies the stored
+                // message, so it goes on the last bubble — the one edit, delete
+                // and regenerate act on.
+                const parts = splitAssistantTurn(msg);
+                parts.forEach((part, i) => {
+                    const isLast = i === parts.length - 1;
+                    // Only the closing bubble of the turn is the unfinished one.
+                    const partMsg = runState && !isLast
+                        ? Object.assign({}, part.msg, { run_state: null })
+                        : part.msg;
+                    const el = createBotMessageEl(partMsg.content || '', ts, null, partMsg, part.peer);
+                    if (msg._seq !== undefined && isLast && !part.peer) {
+                        el.dataset.seq = msg._seq;
+                    }
+                    if (resume && runState === 'running' && isLast && !part.peer) resumeEl = el;
+                    fragment.appendChild(el);
+                });
             });
 
             // If context was cleared but no new messages exist yet, append divider at the end
@@ -10052,6 +10958,20 @@ function loadHistory(page) {
                 flushPendingVoiceAttachments(historySessionId, false);
             }
 
+            // Follow the in-flight reply from where the stored steps end. With
+            // no bubble of its own to write on (nothing stored yet, or a
+            // teammate spoke last) it continues in a fresh one.
+            if (resume) {
+                resumedRequests.add(resume.request_id);
+                setSendBtnCancelMode(resume.request_id);
+                startSSE(
+                    resume.request_id,
+                    resumeEl ? null : addLoadingIndicator(),
+                    new Date(), null, null, { authEpoch: historyEpoch, tenantId: historyTenantId, agentId: historyAgentId, sid: historySessionId },
+                    { el: resumeEl, afterSeq: resume.after_seq || 0 }
+                );
+            }
+
             // Manage the "load more" sentinel at the very top
             if (data.has_more) {
                 if (!document.getElementById('history-load-more')) {
@@ -10067,7 +10987,13 @@ function loadHistory(page) {
             }
 
             historyHasMore = data.has_more;
-            historyPage = page;
+            historyPage = data.page || page;
+
+            // Rebuild the navigation rail from the full user-message index on
+            // the first load of a session (later pages don't change the index).
+            if (isFirstLoad && typeof refreshTimeline === 'function') {
+                refreshTimeline();
+            }
 
             if (isFirstLoad) {
                 // Scroll to the very bottom after the DOM settles. A single
@@ -10077,8 +11003,10 @@ function loadHistory(page) {
                 requestAnimationFrame(() => scrollChatToBottom(true));
                 [120, 350, 700].forEach(d => setTimeout(() => scrollChatToBottom(true), d));
             } else {
-                // Restore scroll position so loading older messages doesn't jump the view
-                messagesDiv.scrollTop = messagesDiv.scrollHeight - prevScrollHeight;
+                // Restore scroll position so loading older messages doesn't jump the
+                // view. Offset from where the reader was, not from the top: a page
+                // can also be pulled in from mid-list (the message navigator).
+                messagesDiv.scrollTop = prevScrollTop + (messagesDiv.scrollHeight - prevScrollHeight);
             }
         });
     })
@@ -10663,6 +11591,7 @@ function newChat(optimistic = true, inherit = true) {
     if (typeof wsGuardUnsaved === 'function'
         && !wsGuardUnsaved(() => newChat(optimistic, inherit))) return;
     commitPreparedSession(generateSessionId(), { optimistic, inherit });
+    if (typeof resetTimeline === 'function') resetTimeline();
 }
 
 /**
@@ -10771,6 +11700,7 @@ function _applyInputTooltips() {
     // The history page's inline refresh button carries a translated tooltip.
     const historyRefresh = document.querySelector('.history-refresh-btn');
     if (historyRefresh) _setBtnTooltip(historyRefresh, t('ws_refresh'));
+    set('timeline-toggle-btn', 'timeline_nav', 'bottom');
     // Optimize / mic buttons carry state-dependent tooltips managed in their
     // own setup, but on language switch we reset them to the idle label so the
     // tooltip follows the current locale.
@@ -10792,11 +11722,17 @@ function _addOptimisticSessionItem(sid) {
     if (!container) return;
     if (_sessionItems.some(s => s.session_id === sid)) return;
 
+    // This runs from a callback, so a chat opened as a group may already have its
+    // members by now: seed the faces from them rather than waiting for a change
+    // that has already happened.
+    const roster = sid === sessionId && _sessCfg ? _rosterFromTeam(_sessCfg.team) : [];
+
     _sessionItems.unshift({
         session_id: sid,
         title: t('new_chat'),
         last_active: Math.floor(Date.now() / 1000),
         pinned: 0,
+        participants: roster.length ? roster : undefined,
         // The fresh session inherits the workspace the selector currently shows.
         project: _wsSelState.current
             ? { path: _wsSelState.current.path, name: _wsSelState.current.name }
@@ -12529,6 +13465,7 @@ function switchSession(newSessionId, agentId) {
     historyLoading = false;
 
     messagesDiv.innerHTML = '';
+    if (typeof resetTimeline === 'function') resetTimeline();
     loadHistory(1);
     startPolling();
 
@@ -14280,6 +15217,7 @@ const TOOL_ICONS = {
     browser: 'fa-globe',
     env_config: 'fa-key',
     scheduler: 'fa-clock',
+    time: 'fa-calendar-day',
     memory_get: 'fa-brain',
     memory_search: 'fa-brain',
 };
@@ -14289,6 +15227,7 @@ function getToolIcon(name) {
 }
 
 function loadSkillsView() {
+    bindSkillsConfigUi();
     loadToolsSection();
     loadSkillsSection();
 }
@@ -14298,17 +15237,17 @@ function loadToolsSection() {
     const emptyEl = document.getElementById('tools-empty');
     const listEl = document.getElementById('tools-list');
     const badge = document.getElementById('tools-count-badge');
+    const showEmpty = (key) => {
+        emptyEl.classList.remove('hidden');
+        emptyEl.innerHTML = `<span class="text-sm text-slate-400 dark:text-slate-500">${escapeHtml(t(key))}</span>`;
+    };
 
     fetch('/api/tools').then(r => r.json()).then(data => {
-        if (data.status !== 'success') return;
+        if (data.status !== 'success') { showEmpty('tools_load_failed'); return; }
         const tools = data.tools || [];
         toolsState.rows = tools;
         emptyEl.classList.add('hidden');
-        if (tools.length === 0) {
-            emptyEl.classList.remove('hidden');
-            emptyEl.innerHTML = `<span class="text-sm text-slate-400 dark:text-slate-500">${currentLang === 'zh' ? '暂无内置工具' : 'No built-in tools'}</span>`;
-            return;
-        }
+        if (tools.length === 0) { showEmpty('tools_empty'); return; }
         badge.textContent = tools.length;
         badge.classList.remove('hidden');
         listEl.innerHTML = '';
@@ -14325,9 +15264,7 @@ function loadToolsSection() {
                     <i class="fas ${getToolIcon(tool.name)} text-blue-500 dark:text-blue-400 text-sm"></i>
                 </div>
                 <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2">
-                        <span class="font-medium text-sm text-slate-700 dark:text-slate-200 font-mono">${escapeHtml(tool.name)}</span>
-                    </div>
+                    <span class="block font-medium text-sm text-slate-700 dark:text-slate-200 font-mono truncate">${escapeHtml(tool.name)}</span>
                     <p class="text-xs text-slate-400 dark:text-slate-500 mt-1 line-clamp-2">${escapeHtml(tool.description || '--')}</p>
                 </div>
                 <i class="fas fa-chevron-right text-[11px] text-slate-300 dark:text-slate-600 mt-1"></i>`;
@@ -14335,32 +15272,36 @@ function loadToolsSection() {
             listEl.appendChild(card);
         });
         listEl.classList.remove('hidden');
+        applyToolsCollapse();
         toolsLoaded = true;
-    }).catch(() => {
-        emptyEl.classList.remove('hidden');
-        emptyEl.innerHTML = `<span class="text-sm text-slate-400 dark:text-slate-500">${currentLang === 'zh' ? '加载失败' : 'Failed to load'}</span>`;
-    });
+    }).catch(() => showEmpty('tools_load_failed'));
 }
 
-function loadSkillsSection() {
+function loadSkillsSection(highlight) {
     const emptyEl = document.getElementById('skills-empty');
     const listEl = document.getElementById('skills-list');
     const badge = document.getElementById('skills-count-badge');
+    const fresh = new Set(highlight || []);
 
-    fetch('/api/skills').then(r => r.json()).then(data => {
+    return fetch('/api/skills').then(r => r.json()).then(data => {
         if (data.status !== 'success') return;
         const skills = data.skills || [];
+        const addButton = document.getElementById('skill-add-btn');
+        if (addButton) addButton.hidden = data.can_install !== true;
         skillsState.byName = {};
         skills.forEach(sk => { if (sk && sk.name) skillsState.byName[sk.name] = sk; });
+        badge.textContent = skills.length;
+        badge.classList.toggle('hidden', skills.length === 0);
+        listEl.innerHTML = '';
         if (skills.length === 0) {
-            const p = emptyEl.querySelector('p');
-            if (p) p.textContent = currentLang === 'zh' ? '暂无技能' : 'No skills found';
+            emptyEl.classList.remove('hidden');
+            const title = emptyEl.querySelector('p');
+            if (title) { title.dataset.i18n = 'skills_empty'; title.textContent = t('skills_empty'); }
+            const desc = emptyEl.querySelectorAll('p')[1];
+            if (desc) { desc.dataset.i18n = 'skills_empty_hint'; desc.textContent = t('skills_empty_hint'); }
             return;
         }
-        badge.textContent = skills.length;
-        badge.classList.remove('hidden');
         emptyEl.classList.add('hidden');
-        listEl.innerHTML = '';
 
         skills.forEach(sk => {
             const card = document.createElement('div');
@@ -14371,7 +15312,12 @@ function loadSkillsSection() {
             card.dataset.skillDesc = sk.description || '';
             card.dataset.skillDisplayName = sk.display_name || '';
             card.dataset.enabled = sk.enabled ? '1' : '0';
+            card.dataset.deletable = sk.deletable ? '1' : '0';
             renderSkillCard(card, sk);
+            if (fresh.has(sk.name)) {
+                card.classList.add('cap-flash');
+                setTimeout(() => card.classList.remove('cap-flash'), 2600);
+            }
             listEl.appendChild(card);
         });
     }).catch(() => {});
@@ -14384,7 +15330,7 @@ function renderSkillCard(card, sk) {
     // the switch regardless would advertise a request that is refused; the state
     // itself stays visible either way, because reading it is not the action.
     const canToggle = !sk.actions || sk.actions.enable !== false;
-    const iconColor = enabled ? 'text-primary-400' : 'text-slate-300 dark:text-slate-600';
+    const iconColor = enabled ? 'text-primary-500' : 'text-slate-300 dark:text-slate-600';
     const trackClass = enabled
         ? 'bg-primary-400'
         : 'bg-slate-200 dark:bg-slate-700';
@@ -14406,12 +15352,27 @@ function renderSkillCard(card, sk) {
                     title="${t('skill_global_toggle_managed')}"
                 >${enabled ? t('skill_enable') : t('skill_disable')}</span>`;
     card.innerHTML = `
-        <div class="w-9 h-9 rounded-lg bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center flex-shrink-0">
+        <div class="w-9 h-9 rounded-lg bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center flex-shrink-0">
             <i class="fas fa-bolt ${iconColor} text-sm"></i>
         </div>
         <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-1">
                 <span class="font-medium text-sm text-slate-700 dark:text-slate-200 truncate flex-1">${escapeHtml(sk.display_name || sk.name)}</span>
+                ${sk.editable ? `<button
+                    data-skill-edit
+                    class="flex-shrink-0 p-1 -mx-1 -mt-1.5 -mb-1 rounded text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-300 transition-colors"
+                    title="${t('skill_edit_hint')}"
+                >
+                    <i class="fas fa-pen text-[10px]"></i>
+                </button>` : ''}
+                ${sk.deletable ? `
+                <button
+                    data-skill-delete
+                    class="flex-shrink-0 p-1 -mx-1 -mt-1.5 -mb-1 rounded text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                    title="${t('skill_delete')}"
+                >
+                    <i class="fas fa-trash text-[10px]"></i>
+                </button>` : ''}
                 ${switchMarkup}
             </div>
             <p class="text-xs text-slate-400 dark:text-slate-500 line-clamp-2">${escapeHtml(sk.description || '--')}</p>
@@ -14422,6 +15383,20 @@ function renderSkillCard(card, sk) {
     // an inline onclick attribute.
     card.title = t('skill_open_hint');
     card.onclick = () => openResourceDetail('skill', sk);
+    const editBtn = card.querySelector('[data-skill-edit]');
+    if (editBtn) {
+        editBtn.onclick = (e) => {
+            e.stopPropagation();
+            openResourceDetail('skill', sk);
+        };
+    }
+    const deleteBtn = card.querySelector('[data-skill-delete]');
+    if (deleteBtn) {
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            deleteSkill(sk.name, sk.resource_id);
+        };
+    }
     const sw = card.querySelector('[data-skill-switch]');
     if (sw) {
         sw.onclick = (e) => {
@@ -14450,7 +15425,7 @@ function toggleSkill(name, currentlyEnabled) {
     .then(data => {
         if (data.status !== 'success') {
             if (card) card.style.opacity = '1';
-            alert(currentLang === 'zh' ? '操作失败，请稍后再试' : 'Operation failed, please try again');
+            _wsToast(t('skill_toggle_error'));
             return false;
         }
         if (row) row.enabled = !currentlyEnabled;
@@ -14468,7 +15443,7 @@ function toggleSkill(name, currentlyEnabled) {
     })
     .catch(() => {
         if (card) card.style.opacity = '1';
-        alert(currentLang === 'zh' ? '操作失败，请稍后再试' : 'Operation failed, please try again');
+        _wsToast(t('skill_toggle_error'));
         return false;
     });
 }
@@ -18460,8 +19435,8 @@ function renderActiveChannels() {
                     <div class="cfg-dropdown-menu"></div>
                 </div>
             </div>` : ''}
-            ${weixinWaiting ? `<div id="weixin-active-qr" class="flex flex-col items-center py-2">
-                <button onclick="showWeixinActiveQr()"
+            ${weixinWaiting ? `<div id="weixin-active-qr-${escapeHtml(iid)}" class="flex flex-col items-center py-2">
+                <button onclick="showWeixinActiveQr('${escapeHtml(iid)}')"
                     class="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium
                            cursor-pointer transition-colors duration-150">
                     ${t('weixin_scan_title')}
@@ -18493,7 +19468,7 @@ function renderActiveChannels() {
         initChannelTeam(ch);
 
         if (weixinWaiting) {
-            startWeixinActiveStatusPoll();
+            startWeixinActiveStatusPoll(iid);
         }
     });
 }
@@ -18905,41 +19880,52 @@ function submitAddChannel() {
 let _weixinQrPollTimer = null;
 let _weixinStatusPollTimer = null;
 
-function stopWeixinStatusPoll() {
-    if (_weixinStatusPollTimer) {
-        clearTimeout(_weixinStatusPollTimer);
-        _weixinStatusPollTimer = null;
+function stopWeixinStatusPoll(iid) {
+    if (iid === undefined) {
+        Object.keys(_weixinStatusPollTimers).forEach(k => stopWeixinStatusPoll(k));
+        return;
+    }
+    if (_weixinStatusPollTimers[iid]) {
+        clearTimeout(_weixinStatusPollTimers[iid]);
+        delete _weixinStatusPollTimers[iid];
     }
 }
 
-function startWeixinActiveStatusPoll() {
-    stopWeixinStatusPoll();
-    _weixinStatusPollTimer = setTimeout(() => {
+function startWeixinActiveStatusPoll(iid) {
+    iid = iid || 'weixin';
+    stopWeixinStatusPoll(iid);
+    _weixinStatusPollTimers[iid] = setTimeout(() => {
         fetch('/api/channels').then(r => r.json()).then(data => {
             if (data.status !== 'success') return;
-            const wx = (data.channels || []).find(c => c.name === 'weixin');
-            if (!wx || !wx.active) return;
+            const wx = findWeixinEntry(data, iid);
+            if (!wx || (!isWeixinInstanceCard(iid) && !wx.active)) return;
             if (wx.login_status === 'logged_in') {
+                delete _weixinShownQr[iid];
                 channelsData = data.channels;
+                channelInstancesView = data.instances || [];
                 renderActiveChannels();
             } else {
-                const ch = channelsData.find(c => c.name === 'weixin');
-                if (ch) ch.login_status = wx.login_status;
-                startWeixinActiveStatusPoll();
+                const local = isWeixinInstanceCard(iid)
+                    ? channelInstancesView.find(i => i.instance_id === iid)
+                    : channelsData.find(c => c.name === 'weixin');
+                if (local && wx.login_status) local.login_status = wx.login_status;
+                syncWeixinInstanceQr(iid, wx.login_status);
+                startWeixinActiveStatusPoll(iid);
             }
-        }).catch(() => { startWeixinActiveStatusPoll(); });
+        }).catch(() => { startWeixinActiveStatusPoll(iid); });
     }, 3000);
 }
 
-function showWeixinActiveQr() {
-    const container = document.getElementById('weixin-active-qr');
+function showWeixinActiveQr(iid) {
+    iid = iid || 'weixin';
+    const container = document.getElementById(`weixin-active-qr-${iid}`);
     if (!container) return;
     container.innerHTML = `
-        <div id="weixin-qr-panel" class="flex flex-col items-center py-2">
+        <div id="${weixinQrPanelId(iid)}" class="flex flex-col items-center py-2">
             <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">${t('weixin_scan_loading')}</p>
         </div>`;
-    stopWeixinStatusPoll();
-    startWeixinQrLogin();
+    stopWeixinStatusPoll(iid);
+    startWeixinQrLogin(iid);
 }
 
 function stopWeixinQrPoll() {
@@ -18949,32 +19935,47 @@ function stopWeixinQrPoll() {
     }
 }
 
-function startWeixinQrLogin() {
+function startWeixinQrLogin(iid, pendingTries) {
     stopWeixinQrPoll();
-    fetch('/api/weixin/qrlogin')
+    pendingTries = pendingTries || 0;
+    const url = isWeixinInstanceCard(iid)
+        ? `/api/weixin/qrlogin?instance_id=${encodeURIComponent(iid)}`
+        : '/api/weixin/qrlogin';
+    fetch(url)
         .then(r => r.json())
         .then(data => {
-            const panel = document.getElementById('weixin-qr-panel');
+            const panel = document.getElementById(weixinQrPanelId(iid));
             if (!panel) return;
+            if (data.status === 'pending') {
+                if (pendingTries >= WEIXIN_QR_PENDING_MAX_TRIES) {
+                    panel.innerHTML = `<p class="text-sm text-red-500">${t('weixin_scan_fail')}</p>`;
+                    return;
+                }
+                setTimeout(() => startWeixinQrLogin(iid, pendingTries + 1), 2000);
+                return;
+            }
             if (data.status !== 'success') {
                 panel.innerHTML = `<p class="text-sm text-red-500">${t('weixin_scan_fail')}: ${data.message || ''}</p>`;
                 return;
             }
-            renderWeixinQr(data.qr_image || data.qrcode_url, 'waiting');
+            renderWeixinQr(data.qr_image || data.qrcode_url, 'waiting', iid);
             if (data.source === 'channel') {
-                startWeixinActiveStatusPoll();
+                if (isWeixinInstanceCard(iid)) {
+                    _weixinShownQr[iid] = { url: data.qrcode_url, status: 'waiting' };
+                }
+                startWeixinActiveStatusPoll(iid);
             } else {
                 pollWeixinQrStatus();
             }
         })
         .catch(() => {
-            const panel = document.getElementById('weixin-qr-panel');
+            const panel = document.getElementById(weixinQrPanelId(iid));
             if (panel) panel.innerHTML = `<p class="text-sm text-red-500">${t('weixin_scan_fail')}</p>`;
         });
 }
 
-function renderWeixinQr(qrcodeUrl, status) {
-    const panel = document.getElementById('weixin-qr-panel');
+function renderWeixinQr(qrcodeUrl, status, iid) {
+    const panel = document.getElementById(weixinQrPanelId(iid));
     if (!panel) return;
 
     let statusText = t('weixin_scan_waiting');

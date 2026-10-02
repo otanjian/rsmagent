@@ -338,9 +338,9 @@ class ToolManager:
                 for tool_name in missing_tools:
                     if tool_name == "google_search":
                         logger.warning(
-                            f"[ToolManager] Google Search tool is configured but may need API key.\n"
-                            f"  Get API key from: https://serper.dev\n"
-                            f"  Configure in config.json: tools.google_search.api_key"
+                            "[ToolManager] Google Search tool is configured but may need API key.\n"
+                            "  Get API key from: https://serper.dev\n"
+                            "  Configure in config.json: tools.google_search.api_key"
                         )
                     else:
                         logger.warning(f"[ToolManager] Tool '{tool_name}' is configured but could not be loaded.")
@@ -402,13 +402,15 @@ class ToolManager:
                 # DEBUG: with N agents this fires N times for the same shared
                 # mcp.json; the real boot is logged once at INFO further below.
                 logger.debug(f"[ToolManager] Loading MCP config from {mcp_json_path}")
+                from agent.tools.mcp.service import mcp_is_disabled
                 return self._without_migrated_servers(
-                    mcp_json_path, _normalize_mcp_configs(raw))
+                    mcp_json_path, [cfg for cfg in _normalize_mcp_configs(raw) if not mcp_is_disabled(cfg)])
             except Exception as e:
                 logger.warning(f"[ToolManager] Failed to read {mcp_json_path}: {e}, falling back to config.json")
 
         raw = conf().get("mcp_servers", [])
-        return _normalize_mcp_configs(raw)
+        from agent.tools.mcp.service import mcp_is_disabled
+        return [cfg for cfg in _normalize_mcp_configs(raw) if not mcp_is_disabled(cfg)]
 
     def _without_migrated_servers(self, path: str, entries: list) -> list:
         """Drop the entries the control plane has taken over from the file.

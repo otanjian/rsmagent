@@ -22,12 +22,14 @@ def get_workspace_dir(agent_id: str = None) -> str:
 
     The CLI runs out of process and reads config.json itself, but resolves it
     through the same registry as the gateway so both agree on where an Agent's
-    files live.
+    files live. The roster lives in its own team.json, not in config.json, so
+    it has to be overlaid or every Agent but the default goes unresolved.
     """
     _ensure_project_on_path()
+    from agent import team
     from agent.registry import AgentRegistry
 
-    registry = AgentRegistry.from_config(load_config_json())
+    registry = AgentRegistry.from_config(team.resolve(load_config_json()))
     return registry.get(agent_id, require_enabled=False).workspace
 
 
@@ -52,13 +54,20 @@ def get_builtin_skills_dir() -> str:
     return os.path.join(get_project_root(), "skills")
 
 
+def _config_json_path() -> str:
+    # Mirrors config.get_data_root(): the desktop build keeps config.json in
+    # COW_DATA_DIR, outside the read-only app bundle.
+    data_dir = os.environ.get("COW_DATA_DIR")
+    root = os.path.expanduser(data_dir) if data_dir else get_project_root()
+    return os.path.join(root, "config.json")
+
+
 def load_config_json() -> dict:
-    """Load config.json from project root."""
-    config_path = os.path.join(get_project_root(), "config.json")
+    """Load config.json from the data root (the project root outside the desktop build)."""
+    config_path = _config_json_path()
     if not os.path.exists(config_path):
         return {}
     try:
-        # utf-8-sig tolerates a UTF-8 BOM (e.g. edited with Windows Notepad).
         with open(config_path, "r", encoding="utf-8-sig") as f:
             return json.load(f)
     except Exception:
@@ -87,7 +96,7 @@ def load_skills_config() -> dict:
     if not os.path.exists(path):
         return {}
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8-sig") as f:
             return json.load(f)
     except Exception:
         return {}

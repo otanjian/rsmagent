@@ -2914,6 +2914,18 @@ def _migration_44(con: sqlite3.Connection) -> None:
 _migrations.append(_migration_44)
 
 
+def _migration_45(con: sqlite3.Connection) -> None:
+    """One-time signed cross-deployment requests, without prompt/credential data."""
+    con.execute("""CREATE TABLE IF NOT EXISTS peer_identity_nonces(
+        issuer TEXT NOT NULL, nonce TEXT NOT NULL, expires_at INTEGER NOT NULL,
+        tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, request_id TEXT NOT NULL,
+        PRIMARY KEY (issuer, nonce))""")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_peer_identity_nonce_expiry ON peer_identity_nonces(expires_at)")
+
+
+_migrations.append(_migration_45)
+
+
 class IdentityStoreError(RuntimeError):
     """Raised when the identity store cannot be opened or migrated."""
 

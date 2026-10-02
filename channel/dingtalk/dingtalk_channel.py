@@ -10,6 +10,8 @@ import json
 import logging
 import os
 import time
+from urllib.parse import unquote, urlparse
+
 import requests
 
 import dingtalk_stream
@@ -21,13 +23,34 @@ from dingtalk_stream.card_replier import CardReplier
 from bridge.context import Context, ContextType
 from bridge.reply import Reply, ReplyType
 from channel.chat_channel import ChatChannel
+from channel.chat_message import safe_filename
 from common import state_dir
+from common.media_download import MAX_FILE_BYTES, MediaTooLargeError, download_to_file
 from channel.dingtalk.dingtalk_message import DingTalkMessage
+from channel.dingtalk.dingtalk_stream_card import (
+    DingTalkCardStreamer,
+    sanitize_dingtalk_markdown,
+)
 from common.expired_dict import ExpiredDict
 from common.log import logger
 from common.singleton import singleton
 from common.time_check import time_checker
 from config import conf
+
+_MAX_REMOTE_FILE_SECONDS = 300
+
+
+def _markdown_preview_title(markdown: str, limit: int = 30) -> str:
+    """Plain-text title for a webhook markdown message.
+
+    DingTalk requires a non-empty title; it is only shown in the conversation
+    list preview, not inside the bubble, so use the first line of the reply.
+    """
+    for line in (markdown or "").splitlines():
+        text = line.strip().strip("#>*-_`|").strip()
+        if text:
+            return text[:limit]
+    return "CowAgent"
 
 
 class CustomAICardReplier(CardReplier):
@@ -108,8 +131,10 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
         # Consecutive reconnect failures, driving exponential backoff so a bad
         # proxy env or a rejecting gateway doesn't flood the log.
         self._reconnect_fails = 0
-        logger.debug("[DingTalk] client_id={}, client_secret={} ".format(
-            self.dingtalk_client_id, self.dingtalk_client_secret))
+        _secret = self.dingtalk_client_secret or ""
+        logger.debug("[DingTalk] client_id={}, client_secret_masked={}".format(
+            self.dingtalk_client_id,
+            ("***" + _secret[-4:]) if len(_secret) > 4 else "***"))
         # 无需群校验和前缀
         conf()["group_name_white_list"] = ["ALL_GROUP"]
         # 单聊无需前缀
@@ -393,7 +418,7 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
             response = requests.post(url, headers=headers, json=data, timeout=10)
             result = response.json()
             
-            if response.status_code == 200:
+            if response.status_code == 200 and result.get("errcode", 0) == 0:
                 logger.info(f"[DingTalk] Group message sent successfully to {conversation_id}")
                 return True
             else:
@@ -423,26 +448,29 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
         if file_path.startswith("file://"):
             file_path = file_path[7:]
         
-        # 如果是 HTTP URL，先下载
+        # 如果是 HTTP URL，先下载（带字节上限，防止超大响应耗尽内存/磁盘）
         if file_path.startswith("http://") or file_path.startswith("https://"):
             try:
                 import uuid
-                response = requests.get(file_path, timeout=(5, 60))
-                if response.status_code != 200:
-                    logger.error(f"[DingTalk] Failed to download file from URL: {file_path}")
-                    return None
-                
-                # 保存到临时文件
-                file_name = os.path.basename(file_path) or f"media_{uuid.uuid4()}"
+                # Query strings may carry tokens and characters Windows rejects
+                # in file names; keep only the sanitized last path segment.
+                file_name = (
+                    safe_filename(unquote(os.path.basename(urlparse(file_path).path)))
+                    or f"media_{uuid.uuid4()}"
+                )
                 temp_file = os.path.join(str(state_dir.tmp_dir()), file_name)
-                
-                with open(temp_file, "wb") as f:
-                    f.write(response.content)
-                
+                try:
+                    download_to_file(
+                        file_path, temp_file, MAX_FILE_BYTES,
+                        timeout=(5, 60), max_seconds=_MAX_REMOTE_FILE_SECONDS,
+                    )
+                except MediaTooLargeError:
+                    logger.error("[DingTalk] Remote file exceeds size limit, skipped upload")
+                    return None
                 file_path = temp_file
                 logger.info(f"[DingTalk] Downloaded file to {file_path}")
             except Exception as e:
-                logger.error(f"[DingTalk] Error downloading file: {e}")
+                logger.error(f"[DingTalk] Error downloading file: {type(e).__name__}")
                 return None
         
         if not os.path.exists(file_path):
@@ -513,11 +541,18 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
         
         try:
             response = requests.post(url=url, headers=headers, json=body, timeout=10)
-            result = response.json()
-            
+
             logger.info(f"[DingTalk] Image send result: {response.text}")
+
+            # DingTalk reports a rejection as HTTP 200 with a non-zero errcode,
+            # so the status alone calls a dropped image sent (the same contract
+            # _send_file_message and _upload_media already follow).
+            try:
+                result = response.json()
+            except Exception:
+                result = {}
             
-            if response.status_code == 200:
+            if response.status_code == 200 and result.get("errcode", 0) == 0:
                 return True
             else:
                 logger.error(f"[DingTalk] Send image error: {response.text}")
@@ -579,8 +614,10 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
             response = requests.post(url, headers=headers, json=data, timeout=10)
             result = response.json()
             
-            if response.status_code == 200:
-                logger.info(f"[DingTalk] Image message sent successfully")
+            # DingTalk rejects with HTTP 200 and a non-zero errcode in the body,
+            # so the status alone reports a dropped image as sent.
+            if response.status_code == 200 and result.get("errcode", 0) == 0:
+                logger.info("[DingTalk] Image message sent successfully")
                 return True
             else:
                 logger.error(f"[DingTalk] Failed to send image message: {result}")
@@ -724,6 +761,7 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
                 # callers build) carries just the resolved author id.
                 subject=cmsg.actual_user_id or getattr(cmsg, "sender_staff_id", "") or "",
             )
+            self._maybe_attach_dingtalk_stream(context)
             self.produce(context)
 
 
@@ -799,8 +837,8 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
                 file_cache.clear(session_id)
         
         context = self._compose_context(cmsg.ctype, cmsg.content, isgroup=True, msg=cmsg)
-        context['no_need_at'] = True
         if context:
+            context['no_need_at'] = True
             from agent.team_addressing import stamp_speaker_from_channel
             stamp_speaker_from_channel(self, context, cmsg.content)
             # Database identity mode: bind to the author's external identity
@@ -815,8 +853,35 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
                 # callers build) carries just the resolved author id.
                 subject=cmsg.actual_user_id or getattr(cmsg, "sender_staff_id", "") or "",
             )
+            self._maybe_attach_dingtalk_stream(context)
             self.produce(context)
 
+
+    def _maybe_attach_dingtalk_stream(self, context: Context):
+        if not context:
+            return context
+        if not conf().get("dingtalk_card_enabled"):
+            return context
+        msg = context.get("msg")
+        if msg is None or getattr(msg, "incoming_message", None) is None:
+            return context
+        context["on_event"] = self._make_dingtalk_stream_callback(context)
+        return context
+
+    def _make_dingtalk_stream_callback(self, context: Context):
+        incoming = context["msg"].incoming_message
+        is_group = bool(context.get("isgroup"))
+        sender_id = getattr(incoming, "sender_staff_id", None)
+        recipients = None if is_group else ([sender_id] if sender_id else None)
+
+        def start_card():
+            # No title: the AI card template omits the header row (and its
+            # divider) when msgTitle is absent, so the card reads like a plain
+            # markdown message.
+            return self.ai_markdown_card_start(incoming, recipients=recipients)
+
+        streamer = DingTalkCardStreamer(start_card=start_card, context=context)
+        return streamer.handle_event
 
     def send(self, reply: Reply, context: Context):
         logger.debug(f"[DingTalk] send() called with reply.type={reply.type}, content_length={len(str(reply.content))}")
@@ -834,7 +899,7 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
             logger.info(f"[DingTalk] Using robot_code: {robot_code}, cached: {self._robot_code}, config: {self.cfg('dingtalk_robot_code')}")
             
             if not robot_code:
-                logger.error(f"[DingTalk] Cannot send scheduled task: robot_code not available. Please send at least one message to the bot first, or configure dingtalk_robot_code in config.json")
+                logger.error("[DingTalk] Cannot send scheduled task: robot_code not available. Please send at least one message to the bot first, or configure dingtalk_robot_code in config.json")
                 return
             
             # 根据是否群聊选择不同的 API
@@ -844,14 +909,14 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
                 # 单聊场景：尝试从 context 中获取 dingtalk_sender_staff_id
                 sender_staff_id = context.get("dingtalk_sender_staff_id")
                 if not sender_staff_id:
-                    logger.error(f"[DingTalk] Cannot send single chat scheduled message: sender_staff_id not available in context")
+                    logger.error("[DingTalk] Cannot send single chat scheduled message: sender_staff_id not available in context")
                     return
                 
                 logger.info(f"[DingTalk] Sending single message to staff_id: {sender_staff_id}")
                 success = self.send_single_message(sender_staff_id, reply.content, robot_code)
             
             if not success:
-                logger.error(f"[DingTalk] Failed to send scheduled task message")
+                logger.error("[DingTalk] Failed to send scheduled task message")
             return
         
         # 从正常消息中提取并缓存 robot_code
@@ -897,7 +962,7 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
                 self.reply_text("抱歉，图片上传失败", incoming_message)
             return
         
-        elif reply.type == ReplyType.FILE:
+        elif reply.type in (ReplyType.FILE, ReplyType.VIDEO):
             # 如果有附加的文本内容，先发送文本
             if hasattr(reply, 'text_content') and reply.text_content:
                 self.reply_text(reply.text_content, incoming_message)
@@ -909,7 +974,10 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
             if file_path.startswith("file://"):
                 file_path = file_path[7:]
             
-            is_video = file_path.lower().endswith(('.mp4', '.avi', '.mov', '.wmv', '.flv'))
+            # ReplyType.VIDEO 已说明内容就是视频，不能只靠扩展名判断：
+            # 生成的临时文件名可能没有已知的视频后缀。
+            is_video = reply.type == ReplyType.VIDEO or file_path.lower().endswith(
+                ('.mp4', '.avi', '.mov', '.wmv', '.flv'))
             
             access_token = self.get_access_token()
             if not access_token:
@@ -1011,8 +1079,13 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
 
         # 处理文本消息
         elif reply.type == ReplyType.TEXT:
+            if context.get("dingtalk_streamed"):
+                logger.debug("[DingTalk] streaming already delivered text reply, skipping send()")
+                return
             logger.info(f"[DingTalk] Sending text message, length={len(reply.content)}")
-            if conf().get("dingtalk_card_enabled"):
+            # If the streaming card failed (typically missing card permission),
+            # the one-shot card API would fail the same way, so use the webhook.
+            if conf().get("dingtalk_card_enabled") and not context.get("dingtalk_stream_failed"):
                 logger.info("[Dingtalk] sendMsg={}, receiver={}".format(reply, receiver))
                 def reply_with_text():
                     self.reply_text(reply.content, incoming_message)
@@ -1032,9 +1105,47 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
                     # 暂不支持其它类型消息回复
                     reply_with_text()
             else:
-                self.reply_text(reply.content, incoming_message)
+                self._reply_markdown_or_text(reply.content, incoming_message)
             return
-    
+
+        # ERROR carries a failed turn from the bridge and INFO carries godcmd and
+        # plugin answers; both reach send() through ChatChannel._send_reply's last
+        # else, so without this branch the user got silence instead of the message.
+        elif reply.type in (ReplyType.ERROR, ReplyType.INFO):
+            text = str(reply.content) if reply.content is not None else ""
+            if not text:
+                logger.warning(f"[DingTalk] Empty {reply.type} reply, nothing to send")
+                return
+            logger.info(f"[DingTalk] Sending {reply.type} reply as text, length={len(text)}")
+            self._reply_markdown_or_text(text, incoming_message)
+            return
+
+        else:
+            # In-memory IMAGE, VIDEO_URL and the WeChat-only card types need an
+            # upload or a payload this channel does not implement. Log them: a
+            # silent return leaves no trace of why nothing arrived.
+            logger.warning(f"[DingTalk] Unsupported reply type: {reply.type}, not sent")
+            return
+
+    def _reply_markdown_or_text(self, content: str, incoming_message) -> None:
+        """Reply through the session webhook as a markdown message.
+
+        This needs no card permission. DingTalk answers HTTP 200 with a
+        non-zero ``errcode`` on rejection (the SDK only checks the HTTP
+        status), so inspect the body and fall back to plain text on failure.
+        """
+        markdown = sanitize_dingtalk_markdown(content)
+        title = _markdown_preview_title(markdown)
+        try:
+            result = self.reply_markdown(title, markdown, incoming_message)
+        except Exception as e:
+            logger.warning(f"[DingTalk] markdown reply raised {e}, falling back to text")
+            result = None
+        if isinstance(result, dict) and result.get("errcode", 0) == 0:
+            return
+        logger.warning(f"[DingTalk] markdown reply rejected: {result}, falling back to text")
+        self.reply_text(content, incoming_message)
+
     def _send_file_message(self, access_token: str, incoming_message, msg_key: str, msg_param: dict, is_group: bool) -> bool:
         """
         发送文件/视频消息的通用方法
@@ -1071,11 +1182,16 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
         
         try:
             response = requests.post(url=url, headers=headers, json=body, timeout=10)
-            result = response.json()
-            
+
             logger.info(f"[DingTalk] File send result: {response.text}")
-            
-            if response.status_code == 200:
+
+            # DingTalk reports a rejection as HTTP 200 with a non-zero errcode.
+            try:
+                result = response.json()
+            except Exception:
+                result = {}
+
+            if response.status_code == 200 and result.get("errcode", 0) == 0:
                 return True
             else:
                 logger.error(f"[DingTalk] Send file error: {response.text}")

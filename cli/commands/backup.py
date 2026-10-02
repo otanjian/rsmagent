@@ -1,6 +1,7 @@
 """Portable local backup and restore commands for RongAI user data."""
 
 import base64
+import errno
 import json
 import os
 import re
@@ -115,7 +116,7 @@ def _read_config(data_root: Path) -> dict:
     if not path.is_file():
         return {}
     try:
-        with path.open("r", encoding="utf-8") as handle:
+        with path.open("r", encoding="utf-8-sig") as handle:
             value = json.load(handle)
         return value if isinstance(value, dict) else {}
     except (OSError, ValueError):
@@ -276,7 +277,8 @@ def create_backup_archive(
         },
     }
 
-    temp_dir = Path(tempfile.mkdtemp(prefix="cowagent-backup-"))
+    # os.replace requires the staging archive and output to share a filesystem.
+    temp_dir = Path(tempfile.mkdtemp(prefix="cowagent-backup-", dir=str(output.parent)))
     temp_archive = temp_dir / "backup.zip"
     try:
         with zipfile.ZipFile(
@@ -307,7 +309,14 @@ def create_backup_archive(
                 for path in files:
                     relative = path.relative_to(source).as_posix()
                     archive.write(str(path), f"{archive_root}/{relative}")
-        os.replace(str(temp_archive), str(output))
+        try:
+            os.replace(str(temp_archive), str(output))
+        except OSError as exc:
+            # os.replace is atomic but cannot cross filesystems; shutil.move
+            # falls back to copy + remove when the staging dir lands elsewhere.
+            if exc.errno != errno.EXDEV:
+                raise
+            shutil.move(str(temp_archive), str(output))
         try:
             os.chmod(str(output), stat.S_IRUSR | stat.S_IWUSR)
         except OSError:
@@ -480,6 +489,12 @@ def restore_backup_archive(
     archive_path = Path(archive_path).expanduser().resolve()
     data_root = Path(data_root).expanduser().resolve()
     current_config = _read_config(data_root)
+    if current_config:
+        # A live install keeps its roster beside the workspaces rather than in
+        # config.json, so the layout this machine runs on only shows up once
+        # team.json is overlaid. Without it every Agent lands on the layout the
+        # archive implies and its real workspace is left behind.
+        current_config = _team().resolve(current_config)
 
     temp_dir = Path(tempfile.mkdtemp(prefix="cowagent-restore-"))
     try:
@@ -490,7 +505,7 @@ def restore_backup_archive(
         archived_config_path = temp_dir / "data" / "config.json"
         archived_config = {}
         if archived_config_path.is_file():
-            with archived_config_path.open("r", encoding="utf-8") as handle:
+            with archived_config_path.open("r", encoding="utf-8-sig") as handle:
                 value = json.load(handle)
             if not isinstance(value, dict):
                 raise ValueError("archived config.json must contain an object")

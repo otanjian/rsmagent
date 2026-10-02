@@ -106,43 +106,6 @@ desktop/resources/bin/
 # Obsidian editor workspace (accidental commit vector; never part of the app)
 .obsidian/
 
-# Local runtime data written into the workspace on source deployments
-# (config.py: get_data_root() falls back to the workspace root). These are
-# private per-instance artifacts, not source, so keep them out of git.
-/identity.db
-# Timestamped pre-migration dumps of the same database (`identity.db.bak-<stamp>`,
-# `identity.db.prt<n>-...`), written next to it by migration/acceptance scripts.
-/identity.db.bak-*
-/identity.db.prt*
-/memory/
-# Instance-level Web branding state (name/logo/snapshots/rollback) written by
-# channel/web/branding.py under get_data_root(); see /identity.db above.
-/branding/
-
-# Scratch debug instance (`--data-root dbg` local runs): carries its own
-# identity.db (real user rows and password hashes) and agent workspace. Runtime
-# state for reproducing a bug, never source; see /identity.db above.
-/dbg/
-
-# Transient verification scratch files (launcher scripts + their data dir).
-# `.tmp_*` is the general rule; the named entries below document the two
-# harnesses that were used before it existed (browser walk in evidence.md §10.6).
-.tmp_*
-.tmp_verify_launcher.py
-.tmp_verify_server.py
-.tmp_verify_data/
-
-# README files are not synced to the remote repository.
-README*.md
-# ...but a sub-Agent's guide is a *shipped asset*, not repository
-# documentation: the feature hands it to the user to copy, and upstream's
-# test_subagent asserts it is in the tree. Un-ignore that one file.
-!agent/subagent/assets/README.md
-
-# Local brainstorm / visual companion sessions
-.superpowers/
-
-# =============================================================================
 # FORK-ONLY IGNORE RULES (RongAI fork of CowAgent) — keep this section LAST.
 #
 # Everything below this banner is this fork's local convention, not upstream's.
@@ -180,3 +143,45 @@ README*.md
 # branch; the code under test then writes skills_config.json into it. A stray
 # test artifact, not source, and it must not be committed.
 /does-not-exist/
+# FuXi session state (settings, scheduled-task locks, scratchpad symlinks)
+.fuxi/
+
+# Persistent Agent Mail credentials and npm runtime created by the optional compose overlay.
+docker/agent-mail-data/
+# Local runtime data written into the workspace on source deployments
+# (config.py: get_data_root() falls back to the workspace root). These are
+# private per-instance artifacts, not source, so keep them out of git.
+/identity.db
+# Timestamped pre-migration dumps of the same database (`identity.db.bak-<stamp>`,
+# `identity.db.prt<n>-...`), written next to it by migration/acceptance scripts.
+/identity.db.bak-*
+/identity.db.prt*
+/memory/
+# Instance-level Web branding state (name/logo/snapshots/rollback) written by
+# channel/web/branding.py under get_data_root(); see /identity.db above.
+/branding/
+
+# Scratch debug instance (`--data-root dbg` local runs): carries its own
+# identity.db (real user rows and password hashes) and agent workspace. Runtime
+# state for reproducing a bug, never source; see /identity.db above.
+/dbg/
+
+# Transient verification scratch files (launcher scripts + their data dir).
+# `.tmp_*` is the general rule; the named entries below document the two
+# harnesses that were used before it existed (browser walk in evidence.md §10.6).
+.tmp_*
+.tmp_verify_launcher.py
+.tmp_verify_server.py
+.tmp_verify_data/
+
+# README files are not synced to the remote repository.
+README*.md
+# ...but a sub-Agent's guide is a *shipped asset*, not repository
+# documentation: the feature hands it to the user to copy, and upstream's
+# test_subagent asserts it is in the tree. Un-ignore that one file.
+!agent/subagent/assets/README.md
+
+# Local brainstorm / visual companion sessions
+.superpowers/
+
+# ======================================================================

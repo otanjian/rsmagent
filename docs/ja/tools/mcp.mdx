@@ -5,6 +5,21 @@ description: Model Context Protocol を介して外部Toolエコシステムを�
 
 容大AI は [Model Context Protocol (MCP)](https://modelcontextprotocol.io) をサポートしており、コミュニティで提供されている数万種類の MCP Tool を Agent から直接呼び出せます。`mcp.json` を一度設定すれば、組み込みToolとまったく同じ形で LLM に公開され、自動的に選択・呼び出されます。
 
+## Web / デスクトップコンソール
+
+**Web コンソール**と**デスクトップクライアント**の「機能」ページにある **MCP Tool** セクションから、`mcp.json` を手動で編集せずに MCP サーバーを追加・編集・無効化・削除できます。
+
+- **フォームまたは JSON**：フォーム入力のほか、JSON モードで標準の `mcpServers` 設定を貼り付けられます（複数サーバーを一括指定可）。例：`{"mcpServers":{"fetch":{"command":"uvx","args":["mcp-server-fetch"]}}}`。
+- **接続テスト**：サーバーが利用可能かを確認し、その Tool を一覧表示します。保存前にも自動で確認し、失敗した場合は設定を修正するか「このまま保存」を選択できます（保存後に認可が必要なサーバー向け）。
+- **設定の保存先**：現在の Agent の `mcp.json` に、Claude Desktop / Cursor と同じ形式で書き込まれます。
+- **即時反映**：変更は次のメッセージから反映され、再起動は不要です。
+
+stdio、SSE、Streamable HTTP のいずれにも対応しています。無効化したサーバーはファイルに残りますが、起動されません。
+
+<Frame>
+  <img src="https://cdn.jsdelivr.net/gh/zhayujie/cowagent-assets@main/screenshots/en/mcp-config.png" alt="MCP Tool の追加" width="800" />
+</Frame>
+
 ## 設定ファイル
 
 容大AI は `~/cow/mcp.json` を読み込みます。ファイルが存在しない場合は MCP Tool は読み込まれず、エラーにもなりません。
@@ -62,6 +77,28 @@ MCP コミュニティ標準に完全準拠しており、Claude Desktop / Curso
 
 - **fetch**：汎用 Web ページ取得。ページ本文を返す。API Key 不要
 - **github**：GitHub のリポジトリ、Issue、PR などにアクセス。Personal Access Token が必要
+
+### Streamable HTTP + Bearer キー
+
+固定の API Key で認証するリモート server は、`type` を明示し（リモート URL で省略すると `sse` として扱われます）、`headers` にキーを渡します：
+
+```json
+{
+  "mcpServers": {
+    "my-remote-tools": {
+      "type": "streamable-http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_KEY"
+      }
+    }
+  }
+}
+```
+
+- ヘッダの値はそのまま送信されます。`${API_KEY}` は環境変数から展開**されません**
+- キーは `mcp.json` に平文で保存されるため、バージョン管理に含めないでください
+- `Authorization` を設定すると静的認証として扱われ、値が誤っていても下記の OAuth フローは実行されません
 
 ## Agent に設定を任せる
 

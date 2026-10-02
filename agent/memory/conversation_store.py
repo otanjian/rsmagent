@@ -126,6 +126,11 @@ def dimension_clause(
     return " AND " + " AND ".join(clauses), tuple(params)
 
 
+# Runs this process opened and has not finished yet. A run stored as
+# "running" but missing here was cut off by a stop or a crash.
+_live_runs: set = set()
+
+
 # ---------------------------------------------------------------------------
 # Schema
 # ---------------------------------------------------------------------------
@@ -236,6 +241,31 @@ def _extract_display_text(content: Any) -> str:
     return ""
 
 
+def _first_line_preview(text: str, max_chars: int = 60) -> str:
+    """Compact single-line preview of a user message, for the nav timeline.
+
+    Collapses whitespace to keep the tooltip on one line and truncates to
+    ``max_chars`` with an ellipsis. Trailing ``[label: path]`` attachment
+    markers are stripped so the preview shows the actual question, not the
+    file references appended to it.
+    """
+    if not text:
+        return ""
+    # Drop trailing attachment marker lines (e.g. "[Image: /path]").
+    lines = text.split("\n")
+    while lines:
+        stripped = lines[-1].strip()
+        if stripped and re.match(r"^\[[^\]:]+:\s*.+\]$", stripped):
+            lines.pop()
+            continue
+        break
+    body = "\n".join(lines)
+    collapsed = " ".join(body.split())
+    if len(collapsed) > max_chars:
+        return collapsed[:max_chars].rstrip() + "…"
+    return collapsed
+
+
 # Internal markers written into the session for the agent's own bookkeeping
 # (scheduler injection / self-evolution undo). They must stay in the stored
 # content (the LLM reads them, e.g. to find a backup_id for undo) but should
@@ -333,14 +363,33 @@ def _extract_tool_results(content: Any) -> Dict[str, dict]:
     return results
 
 
+def _ends_with_answer(rest: List[tuple]) -> bool:
+    """True when a turn's stored reply closes with a final assistant message."""
+    if not rest:
+        return False
+    role, content = rest[-1][0], rest[-1][1]
+    if role != "assistant":
+        return False
+    return not (isinstance(content, list) and any(
+        isinstance(b, dict) and b.get("type") == "tool_use" for b in content
+    ))
+
+
 def _group_into_display_turns(
     rows: List[tuple],
     include_thinking: bool = True,
+    unfinished_runs: Optional[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Convert raw DB rows into display turns. Rows loaded for the web history
-    include ``seq`` as their first field; older callers may still pass the
-    legacy ``(role, content_json, created_at, extras)`` shape.
+    include ``seq`` as their first field and may carry ``run_id`` as their
+    last; older callers may still pass the legacy
+    ``(role, content_json, created_at, extras)`` shape.
+
+    ``unfinished_runs`` maps a run id to ``"running"`` or ``"interrupted"``.
+    A turn of such a run whose reply stops short of a final answer is tagged
+    with that ``run_state``, and still gets an assistant turn when nothing of
+    the reply was stored yet.
 
     One display turn = one visible user message  +  one merged assistant reply.
     All intermediate assistant messages (those carrying tool_use) and the final
@@ -367,7 +416,10 @@ def _group_into_display_turns(
     started = False
 
     for row in rows:
-        if len(row) == 5:
+        run_id = ""
+        if len(row) == 6:
+            seq, role, raw_content, created_at, raw_extras, run_id = row
+        elif len(row) == 5:
             seq, role, raw_content, created_at, raw_extras = row
         else:
             seq = None
@@ -386,11 +438,11 @@ def _group_into_display_turns(
         if role == "user" and _is_visible_user_message(content):
             if started:
                 groups.append((cur_user, cur_rest))
-            cur_user = (content, created_at, extras, seq)
+            cur_user = (content, created_at, extras, seq, run_id or "")
             cur_rest = []
             started = True
         else:
-            cur_rest.append((role, content, created_at, extras, seq))
+            cur_rest.append((role, content, created_at, extras, seq, run_id or ""))
 
     if started:
         groups.append((cur_user, cur_rest))
@@ -403,7 +455,7 @@ def _group_into_display_turns(
     for user_row, rest in groups:
         # User turn
         if user_row:
-            content, created_at, _u_extras, user_seq = user_row
+            content, created_at, _u_extras, user_seq, _u_run = user_row
             text = _extract_display_text(content)
             # Hide internal injection markers (scheduler / self-evolution) so the
             # user never sees a synthetic "[SCHEDULED] self-evolution" bubble;
@@ -423,7 +475,7 @@ def _group_into_display_turns(
         final_seq: Optional[int] = None
         merged_extras: Dict[str, Any] = {}
 
-        for role, content, created_at, extras, seq in rest:
+        for role, content, created_at, extras, seq, _run in rest:
             if role == "assistant" and isinstance(extras, dict):
                 merged_extras.update(extras)
             if role == "user":
@@ -481,13 +533,22 @@ def _group_into_display_turns(
             if step.get("type") == "content":
                 step["content"] = _clean_display_text(step.get("content", ""))
 
-        if steps or final_text:
+        run_state = None
+        if unfinished_runs and not _ends_with_answer(rest):
+            run_id = (user_row[4] if user_row else "") or next(
+                (r[5] for r in reversed(rest) if r[5]), ""
+            )
+            run_state = unfinished_runs.get(run_id)
+
+        if steps or final_text or run_state:
             turn = {
                 "role": "assistant",
                 "content": final_text,
                 "steps": steps,
                 "created_at": final_ts or (user_row[1] if user_row else 0),
             }
+            if run_state:
+                turn["run_state"] = run_state
             if is_evolution:
                 turn["kind"] = "evolution"
             if merged_extras:
@@ -614,7 +675,7 @@ class ConversationStore:
 
                 columns = "seq, role, content" + (", extras" if with_authors else "")
                 scope_sql, scope_params = dimension_clause(values=values)
-                rows = conn.execute(
+                cursor = conn.execute(
                     f"""
                     SELECT {columns}
                     FROM messages
@@ -622,7 +683,8 @@ class ConversationStore:
                     ORDER BY seq DESC
                     """,
                     (session_id, ctx_start) + scope_params,
-                ).fetchall()
+                )
+                rows = self._rows_within_turns(cursor, max(1, max_turns))
             finally:
                 conn.close()
 
@@ -631,26 +693,8 @@ class ConversationStore:
 
         authors = {row[0]: self._author_of(row[3]) for row in rows} if with_authors else {}
 
-        visible_turn_seqs: List[int] = []
-        for seq, role, raw_content, *_ in rows:
-            if role != "user":
-                continue
-            try:
-                content = json.loads(raw_content)
-            except Exception:
-                content = raw_content
-            if _is_visible_user_message(content):
-                visible_turn_seqs.append(seq)
-
-        if len(visible_turn_seqs) <= max_turns:
-            cutoff_seq = None
-        else:
-            cutoff_seq = visible_turn_seqs[max_turns - 1]
-
         result = []
         for seq, role, raw_content, *_ in reversed(rows):
-            if cutoff_seq is not None and seq < cutoff_seq:
-                continue
             try:
                 content = json.loads(raw_content)
             except Exception:
@@ -663,6 +707,45 @@ class ConversationStore:
                 message["agent_id"] = authors[seq]
             result.append(message)
         return result
+
+    @staticmethod
+    def _rows_within_turns(cursor, max_turns: int) -> List[tuple]:
+        """Newest-first rows back to the ``max_turns``-th visible user message.
+
+        Reading stops at the first visible user message beyond the budget, so a
+        long session costs its recent tail instead of its whole history. When
+        the session has no more than ``max_turns`` visible turns, every row is
+        returned, including any that precede the oldest visible message.
+        """
+        kept: List[tuple] = []
+        older: List[tuple] = []
+        visible = 0
+        for row in cursor:
+            is_visible = False
+            if row[1] == "user":
+                try:
+                    content = json.loads(row[2])
+                except Exception:
+                    content = row[2]
+                is_visible = _is_visible_user_message(content)
+            if visible >= max_turns:
+                if is_visible:
+                    return kept
+                older.append(row)
+                continue
+            kept.append(row)
+            if is_visible:
+                visible += 1
+        return kept + older
+
+    def _adjust_msg_count(self, conn: sqlite3.Connection, session_id: str, delta: int) -> None:
+        if not delta:
+            return
+        scope_sql, scope_params = dimension_clause(values=self._dimensions())
+        conn.execute(
+            f"UPDATE sessions SET msg_count = MAX(msg_count + ?, 0) WHERE session_id = ?{scope_sql}",
+            (delta, session_id) + scope_params,
+        )
 
     @staticmethod
     def _author_of(raw_extras: Any) -> str:
@@ -774,6 +857,7 @@ class ConversationStore:
                     ).fetchone()
                     next_seq = row[0] + 1
 
+                    inserted = 0
                     for msg in messages:
                         role = msg.get("role", "")
                         content = json.dumps(
@@ -782,7 +866,7 @@ class ConversationStore:
                         extras_obj = msg.get("extras") or {}
                         extras = json.dumps(extras_obj, ensure_ascii=False) if extras_obj else ""
                         msg_run_id = str(msg.get("run_id") or run_id or "")
-                        conn.execute(
+                        cur = conn.execute(
                             """
                             INSERT OR IGNORE INTO messages
                                 (agent_id, session_id, seq, role, content, created_at,
@@ -793,19 +877,14 @@ class ConversationStore:
                              content, now, extras, msg_run_id, owner,
                              tenant_dim),
                         )
+                        inserted += max(cur.rowcount, 0)
                         next_seq += 1
 
-                    conn.execute(
-                        """
-                        UPDATE sessions
-                        SET msg_count = (
-                            SELECT COUNT(*) FROM messages
-                            WHERE session_id = ?{scope_sql}
-                        )
-                        WHERE session_id = ?{scope_sql}
-                        """.format(scope_sql=scope_sql),
-                        (session_id,) + scope_params + (session_id,) + scope_params,
-                    )
+                    # Incremental on purpose: on databases upgraded in place the
+                    # session index lacks agent_id, so a COUNT(*) here reads
+                    # every row of the session and, on a long transcript, holds
+                    # the write lock for minutes.
+                    self._adjust_msg_count(conn, session_id, inserted)
 
                     # Auto-generate title from the first visible user message
                     cur_title = conn.execute(
@@ -841,15 +920,15 @@ class ConversationStore:
             conn = self._connect()
             try:
                 with conn:
-                    aid = self._agent_id
+                    scope_sql, scope_params = dimension_clause(values=self._dimensions())
                     row = conn.execute(
-                        "SELECT COALESCE(MAX(seq), -1) FROM messages WHERE agent_id = ? AND session_id = ?",
-                        (aid, session_id),
+                        "SELECT COALESCE(MAX(seq), -1) FROM messages WHERE session_id = ?" + scope_sql,
+                        (session_id,) + scope_params,
                     ).fetchone()
                     new_start = row[0] + 1
                     conn.execute(
-                        "UPDATE sessions SET context_start_seq = ? WHERE agent_id = ? AND session_id = ?",
-                        (new_start, aid, session_id),
+                        "UPDATE sessions SET context_start_seq = ? WHERE session_id = ?" + scope_sql,
+                        (new_start, session_id) + scope_params,
                     )
                     return new_start
             finally:
@@ -860,9 +939,10 @@ class ConversationStore:
         with self._lock:
             conn = self._connect()
             try:
+                scope_sql, scope_params = dimension_clause(values=self._dimensions())
                 row = conn.execute(
-                    "SELECT context_start_seq FROM sessions WHERE agent_id = ? AND session_id = ?",
-                    (self._agent_id, session_id),
+                    "SELECT context_start_seq FROM sessions WHERE session_id = ?" + scope_sql,
+                    (session_id,) + scope_params,
                 ).fetchone()
                 return row[0] if row else 0
             finally:
@@ -1033,19 +1113,7 @@ class ConversationStore:
                         (aid, session_id, start_seq, end_seq),
                     )
                     deleted = cur.rowcount
-
-                    # Update session msg_count
-                    conn.execute(
-                        """
-                        UPDATE sessions
-                        SET msg_count = (
-                            SELECT COUNT(*) FROM messages
-                            WHERE agent_id = ? AND session_id = ?
-                        )
-                        WHERE agent_id = ? AND session_id = ?
-                        """,
-                        (aid, session_id, aid, session_id),
-                    )
+                    self._adjust_msg_count(conn, session_id, -deleted)
 
                     return deleted
             finally:
@@ -1097,9 +1165,11 @@ class ConversationStore:
             conn = self._connect()
             try:
                 aid = self._agent_id
+                # Only user content can carry a marker. Skipping the rest keeps
+                # SQLite from pulling large assistant/tool payloads off disk.
                 rows = conn.execute(
                     """
-                    SELECT seq, role, content
+                    SELECT seq, role, CASE WHEN role = 'user' THEN content ELSE '' END
                     FROM messages
                     WHERE agent_id = ? AND session_id = ?
                     ORDER BY seq ASC
@@ -1135,21 +1205,11 @@ class ConversationStore:
 
                 placeholders = ",".join("?" * len(seqs_to_delete))
                 with conn:
-                    conn.execute(
+                    cur = conn.execute(
                         f"DELETE FROM messages WHERE agent_id = ? AND session_id = ? AND seq IN ({placeholders})",
                         (aid, session_id, *seqs_to_delete),
                     )
-                    conn.execute(
-                        """
-                        UPDATE sessions
-                        SET msg_count = (
-                            SELECT COUNT(*) FROM messages
-                            WHERE agent_id = ? AND session_id = ?
-                        )
-                        WHERE agent_id = ? AND session_id = ?
-                        """,
-                        (aid, session_id, aid, session_id),
-                    )
+                    self._adjust_msg_count(conn, session_id, -cur.rowcount)
                 return len(seqs_to_delete)
             finally:
                 conn.close()
@@ -1311,6 +1371,8 @@ class ConversationStore:
             raise ValueError("run_id is required")
         if not self._runs_ready:
             return False
+        if status == "running":
+            _live_runs.add(run_id)
         now = int(time.time())
         extras_json = (
             json.dumps(extras, ensure_ascii=False) if extras else ""
@@ -1347,6 +1409,7 @@ class ConversationStore:
         merges ``extras`` into the stored sidecar. Returns True if the run
         existed.
         """
+        _live_runs.discard(run_id)
         if not run_id or not self._runs_ready:
             return False
         now = int(time.time())
@@ -1421,6 +1484,47 @@ class ConversationStore:
                     return True
             finally:
                 conn.close()
+
+    def _unfinished_runs(self, conn: sqlite3.Connection, session_id: str) -> Dict[str, str]:
+        """Runs of a session that have not completed, as run_id -> run_state.
+
+        A run still marked running is ``"running"`` only while this process
+        runs it; otherwise it was cut off and reads as ``"interrupted"``, the
+        same as a failed one.
+        """
+        if not self._runs_ready:
+            return {}
+        try:
+            dims = self._dimensions()
+            # Runs use user_id rather than the message table's owner column.
+            dims["user_id"] = dims.pop("owner", "")
+            dims.pop("tenant_id", None)  # The database file is tenant-scoped.
+            scope_sql, scope_params = dimension_clause(values=dims, keys=("agent_id", "user_id"))
+            rows = conn.execute(
+                "SELECT run_id, status FROM runs "
+                "WHERE session_id = ? AND status IN ('running', 'failed')" + scope_sql,
+                (session_id,) + scope_params,
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return {}
+        return {
+            run_id: "running" if status == "running" and run_id in _live_runs else "interrupted"
+            for run_id, status in rows
+        }
+
+    def latest_seq(self, session_id: str) -> Optional[int]:
+        """Seq of the newest stored message in a session, or None if empty."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                scope_sql, scope_params = dimension_clause(values=self._dimensions())
+                row = conn.execute(
+                    "SELECT MAX(seq) FROM messages WHERE session_id = ?" + scope_sql,
+                    (session_id,) + scope_params,
+                ).fetchone()
+            finally:
+                conn.close()
+        return int(row[0]) if row and row[0] is not None else None
 
     def get_run(self, run_id: str) -> Optional[Dict[str, Any]]:
         """Return a single run by id, or None."""
@@ -1614,9 +1718,23 @@ class ConversationStore:
         page: int = 1,
         page_size: int = 20,
         user_id: Optional[str] = None,
+        until_seq: Optional[int] = None,
+        max_seq: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Load a page of conversation history for UI display, grouped into turns.
+
+        With ``until_seq`` the response runs from ``page`` back through the
+        page holding the turn with that seq, in one go, and ``page`` in the
+        result is the last page covered. This lets a client jump to an old
+        message without walking the history one page per request.
+
+        ``max_seq`` leaves out messages stored after it, so a reply still in
+        flight can be shown as of a known point and followed live from there.
+
+        An assistant turn whose run has not reached a final answer carries
+        ``run_state``: ``"running"`` while this process still runs it,
+        ``"interrupted"`` once it failed or was cut off by a stop or crash.
 
         Each "turn" maps to one of:
           - A user message (role="user", content=str)
@@ -1675,7 +1793,7 @@ class ConversationStore:
                 try:
                     rows = conn.execute(
                         f"""
-                        SELECT seq, role, content, created_at, extras
+                        SELECT seq, role, content, created_at, extras, run_id
                         FROM messages
                         {msg_where}
                         ORDER BY seq ASC
@@ -1684,7 +1802,7 @@ class ConversationStore:
                     ).fetchall()
                 except sqlite3.OperationalError:
                     rows = [
-                        (seq, role, content, created_at, "")
+                        (seq, role, content, created_at, "", "")
                         for (seq, role, content, created_at) in conn.execute(
                             f"""
                             SELECT seq, role, content, created_at
@@ -1695,8 +1813,12 @@ class ConversationStore:
                             msg_args,
                         ).fetchall()
                     ]
+                unfinished_runs = self._unfinished_runs(conn, session_id)
             finally:
                 conn.close()
+
+        if max_seq is not None:
+            rows = [row for row in rows if row[0] <= max_seq]
 
         # Honour the current enable_thinking switch when building display turns
         # so that toggling it off hides previously-saved thinking blocks too.
@@ -1706,20 +1828,32 @@ class ConversationStore:
         except Exception:
             include_thinking = False
 
-        visible = _group_into_display_turns(rows, include_thinking=include_thinking)
+        visible = _group_into_display_turns(
+            rows,
+            include_thinking=include_thinking,
+            unfinished_runs=unfinished_runs,
+        )
 
         total = len(visible)
+        newest_first = list(reversed(visible))
         offset = (page - 1) * page_size
-        page_items = list(reversed(visible))[offset: offset + page_size]
-        page_items = list(reversed(page_items))
+        last_page = page
+        if until_seq is not None:
+            for idx, turn in enumerate(newest_first):
+                seq = turn.get("_seq")
+                if seq is not None and seq <= until_seq:
+                    last_page = max(page, idx // page_size + 1)
+                    break
+        end = last_page * page_size
+        page_items = list(reversed(newest_first[offset:end]))
 
         return {
             "messages": page_items,
             "context_start_seq": ctx_start,
             "total": total,
-            "page": page,
+            "page": last_page,
             "page_size": page_size,
-            "has_more": offset + page_size < total,
+            "has_more": end < total,
         }
 
     def get_session_owner(self, session_id: str) -> Optional[str]:
@@ -1750,6 +1884,69 @@ class ConversationStore:
         if row is None:
             return None
         return row[0] or None
+
+    def list_user_messages(
+        self,
+        session_id: str,
+        preview_chars: int = 60,
+    ) -> Dict[str, Any]:
+        """
+        Return a lightweight index of every visible user message in a session,
+        for building a navigation timeline in the UI.
+
+        Unlike ``load_history_page`` this skips turn grouping and assistant
+        content entirely: it only walks user rows, applies the same visibility
+        rules (hiding tool_result and internal marker messages), and returns a
+        compact ``{seq, preview, created_at}`` per entry. The payload stays
+        small even for very long conversations, so the whole index can be
+        fetched at once without pagination.
+
+        Returns:
+            {
+                "messages": [{"seq": int, "preview": str, "created_at": int}, ...],
+                "total": int,
+            }
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                scope_sql, scope_params = dimension_clause(values=self._dimensions())
+                rows = conn.execute(
+                    f"""
+                    SELECT seq, content, created_at
+                    FROM messages
+                    WHERE session_id = ? AND role = 'user'{scope_sql}
+                    ORDER BY seq ASC
+                    """,
+                    (session_id,) + scope_params,
+                ).fetchall()
+            finally:
+                conn.close()
+
+        items: List[Dict[str, Any]] = []
+        for seq, raw_content, created_at in rows:
+            try:
+                content = json.loads(raw_content)
+            except Exception:
+                content = raw_content
+            # Only real user turns: skip tool_result carriers and the internal
+            # scheduler / self-evolution injection markers.
+            if not _is_visible_user_message(content):
+                continue
+            text = _extract_display_text(content)
+            if not text or _is_internal_user_marker(text):
+                continue
+            preview = _first_line_preview(text, preview_chars)
+            if not preview:
+                continue
+            items.append({
+                "seq": seq,
+                "preview": preview,
+                "created_at": created_at,
+            })
+
+        return {"messages": items, "total": len(items)}
+
 
     def list_sessions(
         self,
@@ -2497,13 +2694,35 @@ class ConversationStore:
         replace it on corruption. Without this check, every later query would
         keep failing with "no such table: sessions" for the whole process
         lifetime, so new messages would silently stop being persisted.
+
+        The stat identity alone is not sufficient: filesystems that hand freed
+        inodes straight back (ext4/tmpfs, e.g. CI /tmp) can recreate the file
+        under the exact same (dev, ino) pair, so the replacement is also caught
+        by verifying the core table is still present.
         """
-        if self._db_identity() == self._schema_identity:
+        if self._db_identity() == self._schema_identity and self._schema_present():
             return
         logger.warning(
             "[ConversationStore] Shared DB file was replaced; recreating conversation schema"
         )
         self._init_db()
+
+    def _schema_present(self) -> bool:
+        try:
+            conn = self._raw_connect()
+        except sqlite3.Error:
+            return False
+        try:
+            return (
+                conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sessions'"
+                ).fetchone()
+                is not None
+            )
+        except sqlite3.Error:
+            return False
+        finally:
+            conn.close()
 
     def _migrate(self, conn: sqlite3.Connection) -> None:
         """Apply the composed schema to an existing database.
@@ -3032,19 +3251,38 @@ def _merge_one_agent(conn: sqlite3.Connection, src_path: str, agent_id: str) -> 
         )
         with conn:
             if "sessions" in src_tables:
+                session_cols = {
+                    row[1] for row in conn.execute("PRAGMA src.table_info(sessions)")
+                }
+                # Secondary workspaces have not passed through _migrate():
+                # opening a store already resolves to the global file. Supply
+                # the same defaults for metadata added by skipped releases.
+                optional_session_cols = ", ".join(
+                    name if name in session_cols else default
+                    for name, default in (
+                        ("channel_type", "''"), ("title", "''"),
+                        ("context_start_seq", "0"),
+                    )
+                )
+                pinned = "pinned" if "pinned" in session_cols else "0"
                 conn.execute(
                     f"""
                     INSERT OR IGNORE INTO sessions
                         (agent_id, session_id, channel_type, title, context_start_seq,
                          created_at, last_active, msg_count, pinned, owner, tenant_id)
-                    SELECT ?, session_id, channel_type, title, context_start_seq,
-                           created_at, last_active, msg_count, pinned,
+                    SELECT ?, session_id, {optional_session_cols},
+                           created_at, last_active, msg_count, {pinned},
                            {session_owner}, {session_tenant}
                     FROM src.sessions
                     """,
                     (agent_id,),
                 )
             if "messages" in src_tables:
+                message_cols = {
+                    row[1] for row in conn.execute("PRAGMA src.table_info(messages)")
+                }
+                extras = "COALESCE(extras, '')" if "extras" in message_cols else "''"
+                run_id = "COALESCE(run_id, '')" if "run_id" in message_cols else "''"
                 # id -> NULL so the global file re-issues AUTOINCREMENT ids and
                 # cross-file ids never collide; dedupe is on (agent_id, session_id, seq).
                 conn.execute(
@@ -3053,7 +3291,7 @@ def _merge_one_agent(conn: sqlite3.Connection, src_path: str, agent_id: str) -> 
                         (agent_id, session_id, seq, role, content, created_at, extras,
                          run_id, owner, tenant_id)
                     SELECT ?, session_id, seq, role, content, created_at,
-                           COALESCE(extras, ''), COALESCE(run_id, ''),
+                           {extras}, {run_id},
                            {message_owner}, {message_tenant}
                     FROM src.messages
                     """,

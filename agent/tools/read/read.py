@@ -4,7 +4,7 @@ Supports text files, images (jpg, png, gif, webp), and PDF files
 """
 
 import os
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from pathlib import Path
 
 from agent.tools.base_tool import BaseTool, ToolResult
@@ -148,7 +148,16 @@ class Read(BaseTool):
         
         # Resolve path
         absolute_path = self._resolve_path(path)
-        
+
+        # Reached only once the path already missed, so nothing that resolves
+        # today changes: a "knowledge/..." miss is retried under the shared
+        # root before giving up. Runs ahead of the credential check below so
+        # whatever is finally read is still screened by it.
+        if not os.path.exists(absolute_path):
+            shared_page = self._shared_knowledge_path(path)
+            if shared_page:
+                absolute_path = shared_page
+
         # Security check: block credential files and their aliases.
         # See issue #2913 (/proc/self/environ bypass) and #2863 (scope).
         if self._is_credential_path(absolute_path):
@@ -206,6 +215,33 @@ class Read(BaseTool):
         # Read text file (with truncation for large files)
         return self._read_text(absolute_path, path, offset, limit)
     
+    def _shared_knowledge_path(self, path: str) -> Optional[str]:
+        """An existing knowledge page under the shared root, or None.
+
+        ``state_dir`` sends an Agent with no ``knowledge/`` of its own to the
+        shared root, which is outside the workspace relative paths resolve
+        against here. That is the spelling memory_search results and the links
+        in index.md use, so accept it rather than making the model translate
+        it. Anything else returns None, keeping this to one extra lookup on a
+        path that has already missed.
+        """
+        if os.path.isabs(path) or path.startswith('~'):
+            return None
+        parts = Path(path).parts
+        if len(parts) < 2 or parts[0] != 'knowledge':
+            return None
+        try:
+            from common import state_dir
+            root = os.path.realpath(str(state_dir.knowledge_dir(base=self.cwd)))
+        except Exception:
+            return None
+        candidate = os.path.realpath(os.path.join(root, *parts[1:]))
+        # "knowledge/../.." must not turn this into a general way to name files
+        # elsewhere; the fallback only ever means a page under the shared root.
+        if candidate != root and not candidate.startswith(root + os.sep):
+            return None
+        return candidate if os.path.exists(candidate) else None
+
     def _resolve_path(self, path: str) -> str:
         """
         Resolve path to absolute path
@@ -468,25 +504,21 @@ class Read(BaseTool):
                 from docx import Document
             except ImportError:
                 raise ImportError("Error: python-docx library not installed. Install with: pip install python-docx")
+            from common.office_text import iter_docx_body_text
             doc = Document(absolute_path)
-            paragraphs = [p.text for p in doc.paragraphs]
-            for table in doc.tables:
-                for row in table.rows:
-                    paragraphs.append('\t'.join(cell.text for cell in row.cells))
-            return '\n'.join(paragraphs)
+            return '\n'.join(iter_docx_body_text(doc))
 
         if file_ext in ('.xlsx', '.xls'):
             try:
                 from openpyxl import load_workbook
             except ImportError:
                 raise ImportError("Error: openpyxl library not installed. Install with: pip install openpyxl")
-            wb = load_workbook(absolute_path, read_only=True, data_only=True)
+            from common.office_text import spreadsheet_sheets
             parts = []
-            for ws in wb.worksheets:
-                parts.append(f"--- Sheet: {ws.title} ---")
-                for row in ws.iter_rows(values_only=True):
-                    parts.append('\t'.join(str(c) if c is not None else '' for c in row))
-            wb.close()
+            with spreadsheet_sheets(absolute_path, load_workbook) as sheets:
+                for name, rows in sheets:
+                    parts.append(f"--- Sheet: {name} ---")
+                    parts.extend('\t'.join(row) for row in rows)
             return '\n'.join(parts)
 
         if file_ext in ('.pptx', '.ppt'):

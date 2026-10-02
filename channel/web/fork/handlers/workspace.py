@@ -504,7 +504,7 @@ class WorkspaceWriteHandler:
     def POST(self):
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _editable_target
-        from channel.web.web_channel import _is_memory_rel
+        from agent.tools.utils.memory_path import indexes_rel_path
         from channel.web.web_channel import _is_system_asset_rel
         from channel.web.web_channel import _mark_memory_dirty
         web.header('Content-Type', 'application/json; charset=utf-8')
@@ -552,7 +552,7 @@ class WorkspaceWriteHandler:
 
                 # A memory file feeds the vector index; re-embed it on edit so search
                 # doesn't keep returning the stale pre-edit text.
-                if _is_memory_rel(rel):
+                if indexes_rel_path(rel):
                     _mark_memory_dirty(agent_id)
 
                 logger.info(f"[WebChannel] Workspace file saved: {result['path']} ({result['size']} bytes)")

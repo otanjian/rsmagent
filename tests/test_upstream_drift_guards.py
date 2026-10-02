@@ -179,7 +179,7 @@ class TasksPagePortDriftTests(unittest.TestCase):
         "static/js/views/tasks.js":
             "f3d2263e0593ec3c1bb73300ab61804ed81f8e822d54a12c58af27277e254431",
         "static/js/views/tasks-modal.js":
-            "e7219f32fc9dd44fdea6cc602a03c1e52dbdfdd63c8a91fcd36761c5f4492d37",
+            "243da6590c1f80872a1ea38788c363f18b4c1fd1e0ac40c744f4d4818c17e795",
     }
     PARALLEL_FORK_MODULE = "static/js/fork/tasks-console.js"
 

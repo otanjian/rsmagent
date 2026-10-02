@@ -654,6 +654,7 @@ function resumeFixture(transport) {
     h.run(sourceSection('function activeSessionStorageKey(', 'function generateSessionId('));
     ctx.fetch = (...args) => ctx.window.fetch(...args);
     h.run(sourceSection('function focusChatComposer(', '// When a card\'s target'));
+    h.run(sourceSection('function handoffPayload(', 'function reloadHistoryView('));
     h.run(sourceSection('function loadHistory(', 'function addLoadingIndicator('));
     h.run(sourceSection('function switchSession(', '// In-place rename a session title'));
     h.run(sourceSection('function sendMessage(', 'function startSSE('));
@@ -800,4 +801,24 @@ test('tenant changes allow a fresh history read while the previous tenant reques
     await settle();
     assert.deepEqual(h.messages.children.map(el => el.textContent), ['Selected tenant history']);
     assert.equal(h.ctx.historyLoading, false);
+});
+
+test('history reconnect carries the same identity and Agent ownership as a live stream', async () => {
+    const h = resumeFixture(async () => ({ ok: true, status: 200, json: async () => ({
+        status: 'success', messages: [{ role: 'user', content: 'In progress', created_at: 1, _seq: 1 }],
+        active_request: { request_id: 'pending-reply', after_seq: 7 }, has_more: false,
+    }) }));
+    const calls = [];
+    h.ctx.resumedRequests = new Set();
+    h.ctx.startSSE = (...args) => calls.push(args);
+    await h.ctx.loadHistory(1);
+    assert.equal(calls.length, 1);
+    const owner = calls[0][5];
+    assert.equal(owner.authEpoch, 1);
+    assert.equal(owner.tenantId, 'tenant-one');
+    assert.equal(owner.agentId, 'agent-a');
+    assert.equal(owner.sid, 'current');
+    assert.equal(calls[0][6].afterSeq, 7);
+    await h.ctx.loadHistory(1);
+    assert.equal(calls.length, 1, 'one active request is resumed only once');
 });

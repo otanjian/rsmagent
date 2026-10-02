@@ -1,0 +1,581 @@
+48c0d79c Merge pull request #3435 from c020627/fix-wecom-response-url-errcode
+2bec4db3 Merge pull request #3434 from huiq777/fix/feishu-images-in-code
+076a3665 Merge pull request #3437 from c020627/fix-file-cache-expired-sweep
+152dc71b Merge pull request #3438 from c020627/fix-mcp-json-overlapping-save
+3f2c8b31 Merge pull request #3436 from Harbor404/fix/3380-read-core-file-cap
+6dd03a4b Merge pull request #3433 from c020627/fix-root-config-atomic-write
+8f5c62c7 Merge pull request #3432 from c020627/fix-dingtalk-image-errcode
+9817939b fix: keep the response_url claim when the push outcome is unknown
+36be92a4 fix: reuse the shared fence scanner for Feishu image resolution
+f2258ac5 fix: back FileCache with ExpiredDict
+1ef904d8 fix: trim the mcp.json atomic write comments
+edc991f8 fix(mcp): save mcp.json through the shared atomic writer
+6b63ffb6 fix(channel): sweep expired file-cache batches on write
+3e994e35 fix(agents): cap core file reads at 1 MiB
+679d7a4e fix(wecom_bot): only claim a refused response_url push once WeCom accepts it
+e48744a1 fix(feishu): leave Markdown images inside code untouched
+a58e6408 fix: build root config.json beside the file outside the console
+824536a5 fix(dingtalk): read the image send errcode, not just the HTTP status
+986f44a1 Merge pull request #3431 from aniruddhaadak80/fix/reranker-tolerate-non-string-config
+90c265f2 Merge pull request #3277 from c020627/fix-weixin-timeout-not-success
+34472363 fix: trim the reranker config docstrings
+754e1c89 fix: trim the weixin timeout comments
+9f0365f2 Merge pull request #3420 from huiq777/fix/dingtalk-keep-all-fenced-code
+44e2c0f8 Merge pull request #3349 from c020627/fix-web-logs-tail-bounded-read
+687c9cdc Merge pull request #3329 from c020627/fix-custom-bounded-download
+032eb41b Merge pull request #3412 from c020627/fix-plugin-config-bom
+1ba4d01e Merge pull request #3409 from aniruddhaadak80/fix/uploads-path-prefix-escape
+4b79b78f Merge pull request #3405 from aniruddhaadak80/fix/qq-msg-seq-counter-unbounded
+c6a53dc1 Merge pull request #3397 from aniruddhaadak80/fix/wecom-bot-stream-state-leak
+786f86a4 Merge pull request #3424 from aniruddhaadak80/fix/tool-execute-tool-returns-result
+3845443d Merge pull request #3404 from aniruddhaadak80/fix/edit-write-atomic-write
+827cd365 Merge pull request #3401 from aniruddhaadak80/fix/web-fetch-partial-download-cleanup
+d3178168 Merge pull request #3391 from rudycelekli/fix/search-external-failure-fallback-20260930
+4db2015c Merge pull request #3376 from fly0sheep-1734/pr/memory-decay-anchor
+bf229bf0 Merge pull request #3330 from aniruddhaadak80/fix/pytts-voice-unbounded-wait
+d2985259 fix(channels): stream every inbound media download through the same cap
+43f869a5 fix: trim the tail reader docstring and comments
+545bfba5 fix: trim repeated comments around the bounded downloads
+abd6b3ee fix: trim redundant comments after batch-4 merges
+ec843c6c test: fold the per-file BOM tests into one module
+e0c03ed1 refactor(web): reuse _is_within_directory for the uploads check
+906b2bc0 refactor(qq): expire msg_seq counters with ExpiredDict instead of a size cap
+aaceb43a Merge branch 'master' into pr-3405
+f1e5fe24 fix(wecom_bot): skip the finish packet when nothing was streamed
+68f299b3 refactor: share the fenced code block scan between telegram and dingtalk
+ffb66b07 Merge pull request #3429 from aniruddhaadak80/fix/scheduler-validate-schedule-shape
+3a7997bf Merge pull request #3426 from rudycelekli/fix/memory-chunk-budget-20260930
+57cb9c62 Merge pull request #3416 from aniruddhaadak80/fix/telegram-inbound-document-suffix
+1e6ceaba Merge pull request #3411 from aniruddhaadak80/fix/wechatmp-running-key-mismatch
+c38a7bc2 Merge pull request #3407 from SEVEN-us/fix/file-cache-expired-batch-20260930
+c1df10e2 Merge pull request #3406 from aniruddhaadak80/fix/summarizer-flush-retry-after-failure
+96656b98 Merge pull request #3403 from aniruddhaadak80/fix/agent-stream-max-turns-summary
+62b717df Merge pull request #3402 from aniruddhaadak80/fix/web-history-artifacts-agent-scope
+bf51815c Merge pull request #3399 from aniruddhaadak80/fix/voice-xunfei-print-credentials
+5b6a44f6 Merge pull request #3398 from aniruddhaadak80/fix/plugin-activate-duplicate-listeners
+2affce44 Merge pull request #3396 from aniruddhaadak80/fix/dingtalk-errcode-reported-as-success
+ca9857fc Merge pull request #3410 from aniruddhaadak80/fix/chat-channel-cancelled-error-type
+bb08e0f5 Merge pull request #3395 from aniruddhaadak80/fix/chat-channel-cancel-deadlock
+ca4ec009 fix: keep the test suite out of the real home directory
+2fd55b34 fix: read user-edited config files as utf-8-sig (BOM tolerance)
+56a54928 test(tools): stop the execute_tool test from disabling logging suite-wide
+2054d572 Merge branch 'master' into pr-3404
+7b2f9408 Merge branch 'master' into pr-3401
+1f856f86 fix(search_files): keep partial rg results when one file is unreadable
+081a37f5 Merge pull request #3428 from rudycelekli/fix/web-fetch-close-rejected-redirect-20260930
+14efe05b Merge pull request #3425 from aniruddhaadak80/fix/mcp-surface-jsonrpc-error
+095e998b Merge pull request #3418 from c020627/docs-mcp-test-connection-wording
+d495deed Merge pull request #3414 from aniruddhaadak80/fix/mcp-sse-discovery-deadline
+e88c5a73 refactor(logs): share one bounded tail reader across the log views
+07c23aed Merge pull request #3400 from aniruddhaadak80/fix/search-files-powershell-quote
+f67d0d35 Merge pull request #3394 from rudycelekli/fix/spreadsheet-uncached-formulas-20260930
+14b84c36 Merge pull request #3393 from rudycelekli/fix/word-body-text-order-20260930
+b8faef87 Merge pull request #3392 from rudycelekli/fix/web-fetch-original-document-url-20260930
+9bf57694 Merge pull request #3413 from aniruddhaadak80/fix/edit-preserve-crlf-line-endings
+24875ea0 fix(weixin): retry only connection failures, keep the long poll tolerant
+4a2d9eef fix(voice): bound every TTS/download path through one shared helper
+2d507a34 docs(mcp): name the console control as the UI does
+56dd5717 test(memory): cover a non-string rerank_provider / rerank_model config value
+eb65df1c fix(memory): disable reranking on a non-string config value instead of raising
+2b2ca7ef test(mcp): cover a JSON-RPC error envelope in list_tools and call_tool
+1934225c fix(mcp): surface a server's JSON-RPC error instead of reading it as empty
+24c2d98d fix(tools): return a failed ToolResult when a tool raises
+868742d5 chore(tools): drop the unused copy import in base_tool
+ed170237 fix(telegram): sanitise the extension derived from a server-supplied document name
+67ea1b83 fix(mcp): bound the SSE endpoint discovery by total time, not per read
+c1c7f72e chore(edit): drop the unused exception binding the lint gate flags
+b54d79c5 fix(edit): detect the real line ending from the file bytes, not the translated read
+c4735786 fix(wechatmp): clear the running entry under the key passive_reply stored it with
+02a1fd6b fix(chat_channel): catch the futures CancelledError so a cancel is not logged as a crash
+6da0d41f fix(web): contain the uploads handler by path separator, not by prefix
+a9d0e590 test(scheduler): cover a null or non-mapping stored schedule
+6047df61 fix(scheduler): reject a non-mapping schedule and stop task_timezone crashing on one
+4fa90e74 fix: compare the feishu callback token with constant_time_equals
+2dcb91e8 fix: keep per-user and dream diaries under temporal decay
+b6e673a1 Merge pull request #3390 from rudycelekli/fix/scheduler-future-dst-fold-20260930
+5de12908 Merge pull request #3389 from rudycelekli/fix/skill-loader-directory-cycles-20260930
+0f6092d1 Merge pull request #3388 from rudycelekli/fix/chat-persist-failure-retry-20260930
+37308467 Merge pull request #3387 from rudycelekli/fix/conversation-legacy-source-import-20260930
+b2491055 Merge pull request #3385 from rudycelekli/fix/evolution-restore-preflight-20260930
+0e3db50b Merge pull request #3384 from rudycelekli/fix/token-bucket-stopped-waiters-20260930
+f2474219 Merge pull request #3383 from aniruddhaadak80/fix/cloud-history-bad-page
+6fda17af Merge pull request #3379 from aniruddhaadak80/fix/image-gen-non-object-json-arg
+785d3d96 Merge pull request #3375 from aniruddhaadak80/fix/scheduler-skill-call-group-flag
+8303d1a7 Merge pull request #3374 from aniruddhaadak80/fix/scheduler-toggle-unknown-task
+1ae7a690 Merge pull request #3373 from aniruddhaadak80/fix/stop-clears-primary-channel
+22394d89 Merge pull request #3369 from aniruddhaadak80/fix/compare-digest-raises-on-non-ascii
+1a06123a Merge pull request #3367 from aniruddhaadak80/fix/plugin-empty-message-indexerror
+0b83721e Merge pull request #3363 from aniruddhaadak80/fix/voice-openai-tts-status-check
+92107c4a Merge pull request #3360 from aniruddhaadak80/fix/wechatmp-passive-video-reply
+4acd71b5 fix: keep git write flags checked after the read-only operand guards
+9c82a189 Merge pull request #3358 from aniruddhaadak80/fix/feishu-token-timeout-and-fallback
+e80e237c Merge pull request #3356 from c020627/fix-wechat-kf-token-not-logged
+babf604d Merge pull request #3348 from c020627/fix-chat-channel-consume-loop-survives
+cc66fd2c Merge pull request #3347 from aniruddhaadak80/fix/i18n-traditional-char-map
+16d0b8d4 Merge pull request #3345 from c020627/fix-wechatcom-token-refresh-thread
+ea5bb814 Merge pull request #3344 from Lesereingrape/fix/env-config-single-line
+3d65d6d0 Merge pull request #3342 from Bdysj/fix/register-external-api-token
+d601d68e Merge pull request #3341 from c020627/fix-qq-image-reply-not-refused
+016cdbc2 Merge pull request #3340 from Bdysj/fix/expired-dict-purge
+f21ad418 Merge pull request #3352 from aniruddhaadak80/fix/permission-read-only-git-writes
+faf8d5fa Merge pull request #3357 from drakeo338/claude/3355-fix
+65498c29 fix: use f-string for the pytts timeout log message
+501f9ebb Merge pull request #3336 from c020627/fix-baidu-bounded-tts-download
+29896fd2 Merge pull request #3328 from c020627/fix-dashscope-bounded-download
+23a30009 Merge pull request #3327 from c020627/fix-skill-bounded-download
+cc2b14f8 Merge pull request #3332 from Lesereingrape/fix/knowledge-graph-posix-rel-path
+654d820d fix: show the right pip command for missing optional tool dependencies
+1533a9d4 fix: keep scheduler loadable on Python < 3.9 without zoneinfo
+dae6bc6d fix: drop doc wording assertions from MCP console contract test
+328f9329 fix(memory): keep line chunks within their character budget
+446bc547 fix(web): close streamed redirects when validation fails
+613258b1 fix(dingtalk): keep every fenced code block untouched in card markdown
+8d3138a9 docs: add console screenshots to the MCP guide and move the console section first
+5a195795 Merge pull request #3408 from 6vision/fix/mcp-windows-npx
+b6d3e7bd fix(mcp): resolve stdio command via PATHEXT on Windows
+dfb7b939 fix(channel): start a fresh attachment batch after cache expiry
+707b3a45 fix(memory): keep a failed summary flush retryable
+b702aa2d fix(qq): stop the per-message sequence counter growing forever
+046214c3 chore(edit,write): drop the two unused bindings the lint gate flags
+f9c930b4 test(edit,write): cover the BOM, the platform's own line endings and a new file
+ff0d4a73 fix(edit,write): write through a sibling file so a failed write keeps the original
+d1b8e399 fix(agent): do not overwrite a finished answer with a step-limit summary
+eff25661 fix(web): resolve history artifacts in the session's own agent scope
+09cbd629 fix(web_fetch): remove the partial download when the transfer fails mid-stream
+8c5d642b fix(search_files): quote a search root that contains an apostrophe
+ee750134 fix(voice): stop printing the xunfei credentials on every bot reset
+54e623f2 fix(plugins): do not register the same listener twice when a plugin is re-enabled
+c283adc8 fix(wecom_bot): close the reply stream and free its state on non-text replies
+0b74cee3 fix(dingtalk): treat a non-zero errcode as a failed send
+47a0a10b fix(chat_channel): do not deadlock the channel when cancelling a queued turn
+ee0b76a9 fix(documents): preserve Excel formulas without cached results
+23275b8b fix(documents): preserve Word tables and paragraph order
+97b4dca5 fix(web_fetch): parse extensionless downloads without rewriting the URL
+b1ab2b32 fix(search_files): fall back when the external search process fails
+f4786cc8 fix(scheduler): skip elapsed first-fold cron occurrences
+2a2437b3 fix(skills): stop recursive discovery at directory cycles
+617484a2 fix(chat): retry streamed steps after a failed history write
+3f2ac7ac fix(memory): import older secondary conversation schemas safely
+0727d457 fix(evolution): reject incomplete undo snapshots before restoring files
+18c8cca7 fix(common): wake token callers when the rate limiter stops
+71a2d91d fix(cloud): report a non-numeric page instead of raising out of the query
+496a9566 fix(skills): report a non-object JSON argument instead of an AttributeError
+c94f3bba feat: release v2.2.0
+4f08165f feat: add gpt-6.1-sol as the default OpenAI model
+415f8074 fix(memory): anchor temporal decay to daily diary files only
+a0c5063b fix(desktop): re-scan an existing WeChat instance instead of minting a new one
+77f7f608 fix(skills): delete a skill from the folder it was loaded from
+d4a5ef54 fix(scheduler): read the group flag a skill_call task actually sets
+fac61d04 fix(scheduler): report an unknown task id instead of a successful no-op
+d5b9c304 fix(app): clear the primary channel when it is stopped
+e4a370c2 fix(web): stop compare_digest from turning a bad credential into a 500
+4ffe3361 fix: find the git sub-command after global options in read-only mode
+c3e95ff8 fix(voice): return an ERROR reply when the OpenAI TTS request fails
+1c93c994 fix(plugins): do not let a blank message raise inside the role and dungeon handlers
+bc7f9494 fix(wechatmp): deliver a cached video reply instead of dropping it
+12593d1d fix(wechat_kf): redact the access token before it is written to run.log
+53893574 fix(feishu): bound the tenant token request and return a string when it fails
+cf8c6326 fix(permission): refuse the git writes that read-only mode was letting through
+f2bb9bf3 fix(chat_channel): keep the shared consume loop alive after a failed session
+0068194b fix(i18n): pair the simplified/traditional tables one to one
+33d11839 fix(wechatcom): keep the token refresh thread alive after a failed refresh
+2e73be0d fix(env_config): refuse entries the .env line format cannot hold
+5d59a74e fix(config): register external_api_token so EXTERNAL_API_TOKEN can enable the OpenAI-compatible API
+69850467 fix(qq): stop refusing the image replies this channel can send
+27ec985d fix(common): purge expired entries in ExpiredDict so dedup caches stop growing
+d15e56b7 fix(voice): bound Baidu's long-text synthesis audio download
+0aac0d25 fix(voice): bound the pytts synthesis wait so a stuck engine cannot hang the turn
+08f64f70 ci(desktop): fail the overlay mac build when an extension links OpenSSL dynamically
+6ed2a802 fix(desktop): install cryptography from wheels so the Intel mac backend loads it
+c321cc2d fix(knowledge): keep graph node paths slash-separated on Windows
+75c8f53c fix(voice): cap DashScope TTS audio download size to avoid disk-fill DoS
+c1469876 fix(skills): cap skill file download size to avoid disk-fill DoS
+25a44908 fix(voice): drop return-in-finally so interrupts propagate from openai and pytts
+e5b535db fix: keep the agent profile form in sync when the roster refreshes
+96f633b1 Merge pull request #3325 from Lesereingrape/fix/skill-zip-tempdir-leak
+89eac32d Merge pull request #3326 from aniruddhaadak80/fix/google-voice-finally-swallows-errors
+353eb7b9 fix(dingtalk): cap remote download time and keep URL query out of temp file names
+01984187 Merge pull request #3322 from c020627/fix-dingtalk-bounded-download
+4cb33093 fix(voice): stop google_voice from turning errors into UnboundLocalError
+8974a5bc fix(cli): remove the temp dir when a repo archive cannot be extracted
+63b83ff0 fix(dingtalk): cap remote media download at MAX_FILE_BYTES
+9e8eb119 docs: add wechatmp video reply and backup restore fixes to v2.2.0 notes
+724ecb04 Merge pull request #3319 from Lesereingrape/fix/restore-live-agent-roster
+c7ce0e72 Merge pull request #3321 from Lesereingrape/fix/wechatmp-local-video
+1333d38f fix(wechatmp): read a local video reply as the path it is
+f9d6565d fix: allow cancelling the skill add dialog while a preview is being fetched
+f184c4b5 fix: support owner-qualified ClawHub installs for ambiguous skill names
+52547ac0 fix(cli): overlay the live roster when restoring a backup
+3e74cd07 fix(web): scope queue and run cancellation to the agent when deleting a session
+3c9b7d5d Merge pull request #3316 from Lesereingrape/fix/cancel-session-queue-key
+2fa6a53e Merge pull request #3314 from Lesereingrape/fix/plugin-store-entry-shape
+cf8f9d1e fix: cancel queued work under the agent-scoped session key
+04eb97cf fix: resolve non-default agents from team.json when installing skills
+4ace2804 fix(plugins): normalize damaged entries instead of losing every plugin
+44e84d1e fix: keep /skill hub commands in renamed builds, hide the hub URL there
+06bd817b fix(wechatcom): cap total remote download time and keep URLs out of the error log
+66fcc0b8 Merge pull request #3312 from Lesereingrape/fix/wechatcom-local-image
+e58424e8 docs: update the 2.2.0 release notes
+159be14d refactor: use the shared safe_filename in QQ and DingTalk, tighten the #model message
+2fa90b45 fix(wechatcom): read a locally generated image instead of fetching it
+37879dd3 Merge pull request #3301 from c020627/fix-qq-safe-filename
+8fd55bce Merge pull request #3310 from Bdysj/fix/dashscope-session-system-prompt
+0d24c3a1 Merge pull request #3309 from Bdysj/fix/chunker-preface-and-skipped-levels
+641c3493 Merge pull request #3307 from Bdysj/fix/decorate-dropped-reply
+892abc8c Merge pull request #3306 from Bdysj/fix/unsupported-reply-type-name
+1c4b7fca Merge pull request #3305 from Lesereingrape/fix/godcmd-model-argument
+68765209 Merge pull request #3303 from Lesereingrape/fix/godcmd-setpri-priority
+572ccced fix: drop an unused import flagged by the CI lint gate
+54148863 fix(godcmd): answer when #model is given more than one argument
+2a5385ae fix(godcmd): answer when the plugin priority is not a number
+3619cd79 fix(dashscope): keep the system prompt a session is built with
+4f25aa96 fix(memory): index markdown preface text and stop duplicating skipped-level sections
+86718f99 fix: use the startup default agent name in the agents snapshot
+2e112da9 docs: credit #3300 in the 2.2.0 release notes
+2726f00f fix(feishu): cap total remote video download time and keep URLs out of the error log
+c3de3510 fix(channel): drop a plugin-discarded reply without crashing in voice-reply chats
+e0383b05 fix(channel): name the refused reply type in the unsupported-type error
+9abbf7ab fix(qq): cap attachment filename at 180 chars in safe_filename
+b3b0c7d9 Merge pull request #3300 from c020627/fix-feishu-bounded-video-download
+b7b7efeb feat: improve model routing in the image generation skill
+85c1d7ed docs: add 2.2.0 release notes (zh) and bump version to 2.2.0
+20f40bf3 fix(feishu): bound remote video download at MAX_FILE_BYTES
+6798c4ae Merge pull request #3296 from Lesereingrape/fix/role-empty-customize-argument
+812e4f06 Merge pull request #3297 from c020627/fix-wechat-kf-local-video
+bdcc7bfc Merge pull request #3299 from Lesereingrape/fix/video-reply-dispatch
+b2d2bb58 feat: add gpt-6-luna, gpt-6-sol and claude-opus-5-5 models
+59d5a5ce fix(feishu,dingtalk): upload local video replies instead of dropping them
+208db92f fix: make the load-order check see console scripts and isolate a test
+1f000fd2 fix(desktop): keep loaded history and stream state when following a run
+8b78c7b4 fix(mcp): keep servers configured in config.json when editing MCP
+3f0222e2 fix(web): redirect /chat with a relative location
+e8bd8a3c fix(update): refuse to update a modified checkout and recover stale runs
+0dbd8edc fix(dingtalk): only strip real HTML tags from card markdown
+ff4298ff fix: fall back to in-place writes when an atomic replace is not possible
+66cd2b7d fix(web): keep every file in folder uploads and knowledge imports
+d5334182 fix(wechat_kf): upload local video replies instead of dropping them
+dd2067f2 fix(role): answer when the customize command has no description
+ebf206bf Merge pull request #3293 from Lesereingrape/fix/dingtalk-richtext-without-images
+9adbafb0 fix(dingtalk): route text-only richText to the agent instead of dropping it
+5da52c87 Merge pull request #3291 from Lesereingrape/fix/midjourney-index-argument
+7a342d02 refactor: reuse shared download and atomic write helpers in new channel fixes
+f1e1b26e fix(linkai): reply when the midjourney image index is not a number
+03ebaa3a Merge pull request #3262 from c020627/fix-wechat-kf-file-reply
+c7ae3ba5 Merge pull request #3289 from Lesereingrape/fix/discord-video-reply
+67124764 Merge pull request #3263 from c020627/fix-linkai-voice-error-reply
+9142fd2b Merge pull request #3261 from rudycelekli/fix/subagent-timeout-test-cleanup
+473ac8d3 Merge pull request #3260 from rudycelekli/fix/scheduler-backup-recovery
+02daa542 Merge pull request #3259 from c020627/fix-env-config-atomic-write
+539c41f8 Merge pull request #3257 from rudycelekli/fix/wechat-kf-media-download-bounds
+18585ae3 Merge pull request #3256 from rudycelekli/fix/wechatmp-media-download-bounds
+6f38e4de Merge branch 'master' of https://github.com/zhayujie/CowAgent
+6c0579af feat: make desktop app name, menu links, default agent name and icon/title overrides configurable
+52d51afd fix(discord): upload local video replies instead of printing the file:// path
+c872f6f0 Merge pull request #3258 from rudycelekli/fix/wechat-kf-cursor-after-delivery
+9340abe5 refactor: share one atomic file write helper across stores
+93c00454 Merge pull request #3281 from c020627/fix-cow-cli-config-atomic-write
+e5c4f318 Merge pull request #3280 from c020627/fix-plugin-repair-atomic-write
+8ea5ea5f Merge pull request #3276 from c020627/fix-summarizer-atomic-memory-write
+c2dad489 Merge pull request #3275 from c020627/fix-xunfei-tts-stream-timeout
+977ffdfc Merge pull request #3279 from c020627/fix-skills-config-atomic-write
+62b9e229 Merge pull request #3274 from c020627/fix-plugin-save-config-atomic
+94f74960 Merge pull request #3273 from c020627/fix-team-legacy-retire-atomic
+a5f662bb Merge pull request #3287 from huiq777/fix/telegram-tilde-and-long-fences
+fd9a3b66 Merge pull request #3278 from c020627/fix-edge-elevenlabs-tts-failure
+4b73b5ad Merge pull request #3285 from aniruddhaadak80/fix/token-bucket-shutdown-and-zero-rate
+87312c32 Merge pull request #3282 from Lesereingrape/fix/dingtalk-reply-type-fallback
+a6da7afd Merge pull request #3255 from rudycelekli/fix/terminal-image-download
+c84725a6 Merge pull request #3254 from c020627/fix-voice-request-timeouts
+302a5648 Merge pull request #3286 from aniruddhaadak80/fix/audio-convert-close-wave-handle
+37da1a99 Merge pull request #3284 from Lesereingrape/fix/dingtalk-group-context-none-guard
+1f44b050 feat: configurable app name and skill hub toggle for commands, align suggestion cards
+b7967210 refactor: unify bounded media downloads into common/media_download
+1a2d7bf4 Merge pull request #3269 from rudycelekli/fix/bound-feishu-file-audio
+3e83cb21 Merge pull request #3272 from rudycelekli/fix/bound-feishu-outbound-media
+6c3ba82c Merge pull request #3271 from rudycelekli/fix/bound-wecom-outbound-media
+be0d2d78 Merge pull request #3267 from rudycelekli/fix/bound-dingtalk-downloads
+a0572700 Merge pull request #3270 from rudycelekli/fix/bound-wechatcom-image
+ca02a398 Merge pull request #3265 from rudycelekli/fix/slack-unique-inbound-download
+17c451b7 Merge pull request #3268 from rudycelekli/fix/bound-wecom-media-decrypt
+cac61536 Merge pull request #3266 from rudycelekli/fix/feishu-image-download-bounds
+db4c8223 Merge pull request #3264 from rudycelekli/fix/qq-bounded-attachment-download
+d08ad192 Merge branch 'master' of https://github.com/zhayujie/CowAgent
+95dcc717 feat(desktop): request mic access on first use and add extension points for skills and suggestions
+efdb9953 Merge pull request #3253 from c020627/fix-scheduler-file-reply
+5411361b fix(telegram): render ~~~ and longer code fences as code
+8b730184 fix(voice): close the wave handle get_pcm_from_wav opens
+84f09890 fix(common): stop the token generator from blocking shutdown or dying on a zero rate
+ae8c9a80 fix(dingtalk): skip group messages outside the whitelist instead of crashing
+a9eb3109 fix(dingtalk): deliver ERROR and INFO replies instead of dropping them
+d1836b76 fix(skills): name the replacement the way manager.py names its own
+63fd00bc fix(cow_cli): write config files through a sibling file
+abc44006 fix(plugins): write the repaired plugin config through a sibling file
+280fc23f fix(skills): write skills_config.json through a sibling file
+4deb1385 fix(voice): answer an Edge/ElevenLabs TTS failure instead of dropping the reply
+a574b5c7 fix(memory): write MEMORY.md and the dream diary through a sibling file
+9200b750 fix(voice): bound the Xunfei TTS stream so a silent provider cannot hang it
+4c00ca6d Merge pull request #3252 from c020627/fix-vision-redirect-ssrf
+1a99cd62 fix(plugins): write plugin config through a sibling file and swap it in
+83fafca5 fix(team): write config.json atomically when retiring the legacy roster
+405dd6dc fix: remove unused import and redundant f-string flagged by ruff
+7fe71635 feat: add open_ai_api_type to route OpenAI requests via Responses API
+59c0da12 Merge pull request #3249 from c020627/fix-wechatcom-file-reply
+f72cdd38 Merge branch 'master' of https://github.com/zhayujie/CowAgent
+14a35713 Merge branch 'pr-3250'
+7f64d5de fix: keep the date in the system prompt and rename the time tool
+16793999 fix: install web.py from PyPI instead of a git source
+19ba2027 Merge pull request #3248 from Lesereingrape/fix/wechat-kf-inbound-filename
+76bafbe7 Merge pull request #3247 from Lesereingrape/fix/telegram-inbound-filename-guard
+40a1e638 fix: detect onboarding completion by placeholders instead of exact template match
+c875fdcb feat(desktop): support extra query params on the update feed
+03a87777 fix(feishu): bound remote media before reply upload
+781bd712 fix(wecom_bot): bound outbound remote media downloads
+1ce6bc09 fix(wechatcom): bound outbound image URL downloads
+e4463e02 fix(feishu): tolerate temp cleanup failure
+76cbc514 fix(feishu): bound inbound file and audio downloads
+284cf16f fix(wecom_bot): bound encrypted media and validate padding
+6cf7173c fix(dingtalk): bound inbound media downloads
+a771bdf3 fix(feishu): bound inbound image downloads
+2ed10c40 fix(slack): keep same-named inbound files separate
+56eeac9b fix(qq): bound inbound attachment downloads
+dfbb8083 fix(linkai_voice): return an ERROR reply on ASR/TTS failure instead of None
+95729442 ci: retrigger flaky test_subagent run (unrelated to this change)
+c7a70692 fix(wechat_kf): read local file:// media and deliver a file reply's text
+0196d1c4 test(subagent): wait for timed-out worker teardown
+0ab0b730 test(scheduler): retain valid primary over older backup
+426e46c8 fix(scheduler): recover corrupt task store from backup
+b8b9326e fix(env_config): write the credentials file atomically, and owner-only
+613e7291 fix(wechat-kf): advance cursor after queueing messages
+a57146cf fix(wechat-kf): bound remote media replies
+8cc47a1a fix(wechatmp): bound remote media downloads
+c6c870aa fix(terminal): bound remote image downloads
+901c17df Merge branch 'master' of https://github.com/zhayujie/CowAgent
+4a84ac56 Merge branch 'pr-3236'
+9c396a2b Merge pull request #3241 from c020627/fix-plugin-config-atomic-write
+52e3fc1f fix: make the Agent Mail overlay fail-safe and move its docs to Extensions
+5907eb7c Merge pull request #3240 from c020627/fix-model-request-timeouts
+34d6a775 Merge branch 'pr-3239'
+a8538c83 fix(web): use a unique temp file for config.json saves and keep its mode
+57090972 Merge pull request #3230 from SummerCaptain/feat/memory-rerank
+49370b71 refactor(memory): make rerank a pluggable provider loaded on first use
+0a71f098 Merge branch 'master' into pr-3237
+403ac2e9 fix(knowledge): keep index consistent when a batch fails midway
+9688b5c4 fix(voice): bound every outbound request so a stalled provider cannot hang the turn
+bec2d433 fix(scheduler): deliver file replies from a scheduled skill instead of a path
+7e18eb00 fix(vision): re-validate redirect hops when downloading a remote image
+751d9c3a fix(memory): stop recounting session rows inside write transactions
+ca113882 fix(browser): keep serving after driver loss instead of exiting the thread
+b8f45060 fix(browser): stop calling Playwright after the driver connection drops
+01a89d1c Merge pull request #3228 from fuxicodex/fix/sanitize-channel-logs
+72faef0f fix(feishu): reject webhook callbacks when token is missing or unconfigured
+fdca9431 feat: show stopped and interrupted replies in the desktop client
+b6e3937b fix: clear ruff F-class warnings in bash tool and Feishu message
+ead19a60 Merge branch 'pr-3155'
+e7fe1f86 feat: rework the Capabilities page with previewed skill installs and MCP JSON config
+fd67e82a fix: issues with additional processes
+977bd07f fix(mcp): keep edited fields authoritative on save and polish the console UI
+7931d0ae Merge branch 'master' into pr-3155
+63485308 Merge branch 'master' of https://github.com/zhayujie/CowAgent
+af03db1a Merge branch 'pr-3246'
+5cf48641 fix(backup): keep atomic os.replace and fall back to shutil.move on EXDEV
+7a69eda6 Merge pull request #3243 from c020627/fix-ali-voice-tts-robustness
+8049d9c5 refactor(prompt): move current time from system prompt into a tool
+f4677cc9 fix(wechatcom): deliver file and video replies instead of dropping them
+66bbc4a0 fix(wechat_kf): keep a server-supplied file name inside the tmp dir
+c3071460 fix(telegram): keep a sender-chosen document name inside the tmp dir
+c8063cd2 Merge pull request #3242 from c020627/fix-model-catalog-atomic-write
+f959d7fd Merge pull request #3244 from SEVEN-us/fix/memory-md-byte-cap-keeps-newest-entries
+4ea7bdb4 Merge branch 'master' into pr-3191
+e58828da fix: persist run messages step by step and drop the unreachable resume path
+b43e9b41 Merge remote-tracking branch 'origin/master' into pr-3191
+e74fdacc test(backup): drop now-unused os import
+57b62ba5 test(backup): adapt replace tests to shutil.move fallback
+8c5b4692 fix(backup): use shutil.move for cross-filesystem output
+10f6de5b fix: keep recent tool calls when restoring conversation history
+9b407743 fix: keep an Agent's own tool calls when a team conversation is reloaded
+537dabca fix: multi-agent model set
+75ace0dd fix(prompt): keep MEMORY.md's newest entries when trimming it to the byte cap
+c57fa8a6 fix: distinguish the calling agent in LLM requests when multiple agents are used
+97c3a193 fix(voice): answer an Aliyun voice failure instead of dropping it
+ed18a6bc fix(models): write the catalog store atomically so a bad save cannot erase it
+d98bddd8 fix(plugins): write plugins.json atomically, and survive a damaged one
+27c4bac1 fix: scope skill requests to the addressed agent and accept repeated agent registration
+3ec17234 fix: clear F401 in files touched by the weixin roster fix
+566f4fc8 fix(models): bound every outbound request so a stalled backend cannot hang the turn
+dfafdfe2 fix: store an addressed turn's query as typed
+448dc08a fix: keep a delegated teammate's answer when it also sent a file
+513c891d fix(web): write config.json atomically so a failed save cannot wipe it
+20235ea9 fix: carry a legacy weixin channel into the roster file
+23aca65c test(knowledge): drop unused sqlite3 import flagged by the ruff F-class gate
+a6152715 fix(knowledge): keep index.md in sync after documents are removed or moved
+a4c9a8d6 fix: stop outside instances from taking over a local weixin login
+73f70504 fix(desktop): keep shortcuts from crashing Windows startup
+d3e2631f fix: reuse unchanged skill files across runs and write skills config atomically
+0a9c07dd fix: hold the memory write lock while clearing the index for a rebuild
+945a3f0a fix: keep memory database scans and index rebuilds off the session open path
+50ae6e9a fix: load console data after login and explain interrupted web replies
+d0473183 feat: add a message navigator to jump back to earlier questions
+b5dcb85f fix: always keep the previous turn when trimming context
+583e5bf5 fix: remove unused f-string prefixes and import flagged by ruff
+c5e06b81 fix: lower the knowledge index injection thresholds to 8K / 20K chars
+85e0feef fix: keep a large knowledge index from crowding out the conversation
+07128adf docs: clarify Agent Mail compose path semantics
+0b8fbcca fix(docker): preserve Agent Mail compose runtime
+38532210 fix(docker): verify Agent Mail CLI version
+eadf6aeb feat(docker): add optional Agent Mail compose profile
+84fa3c04 docs: plan optional Agent Mail compose profile
+5aa0e801 fix: offer the delegate tool when a live conversation gains a teammate
+e059a47f fix: keep a Weixin login when its channel gains an instance id
+f8ec9f58 feat: let a channel team include Agents hosted in another process
+f68e4611 fix: offer the conversation owner in the @ picker
+f991b877 fix: show a group chat's members in the session list before its first message
+a731ca8b fix(desktop): show an Agent's own avatar on its message bubbles
+9feb3ddd fix: settle a tool card when its own tool finishes
+79022713 style(dingtalk): clear ruff F-class errors on the changed file
+8f77db6e fix(feishu): redact the verification token in the request debug log
+b49ac325 fix: mask channel credentials in debug logs
+f3afbb45 fix: fail open when the peer lookup is unavailable in roster resolution
+07d81ef6 Merge pull request #3234 from Frank-zhu0404/fix/issue-3232-stale-members-roster
+ce48dfa0 fix: replay a delegated reply as the teammate's own turn
+13ab3111 fix: stop an Agent answering in a teammate's place
+984eafed feat(desktop): show a delegated teammate's reply in its own bubble
+1d3bc72a feat(web): show a delegated teammate's reply in its own bubble
+530120dd feat: stream a delegated teammate's turn as its own message
+eeabc10b fix: clear ruff F-class findings in the MCP console change
+c9d606c6 fix: adapt MCP console to split web frontend
+d8699da4 fix: thread agent_id through skill install instead of patching get_skills_dir
+cdf4b80f feat: add MCP and skill configuration in the web and desktop consoles
+f68c8859 fix: count transport peers when resolving shared-conversation roster (#3232)
+e453cdef fix: ignore ghost members when detecting shared conversations (#3232)
+92fe74d2 Merge remote-tracking branch 'origin/master' into feat/incremental-checkpoint
+b7401bcb fix(memory): drop unused datetime.timedelta import flagged by CI
+45ad8b7b feat(memory): add optional cross-encoder reranker for precision reordering
+4e4fde90 fix: qualify load_messages columns to avoid SQL ambiguity; pass ruff F-gate
+28f59b35 fix: declare default_agent_description so the env override applies
+62461079 feat: replace file-based checkpoint with incremental DB persistence
+e5882da5 docs: condense the static Bearer MCP section and add it to zh/ja
+198247c1 fix(plugins): keep a plugin running when its config cannot be written back
+4503ed20 fix(feishu): upload files from memory, stage videos under the managed tmp dir
+561e90e4 Merge pull request #3227 from ct-jaryn/docs/static-bearer-mcp
+92656b37 Merge pull request #3224 from c020627/fix-plugin-config-defaults
+2dfb68ca Merge pull request #3226 from c020627/fix-feishu-image-upload
+93ddf1cf Merge pull request #3225 from c020627/fix-keyword-file-reply-download
+0601cc5d Merge pull request #3223 from c020627/fix-task-store-atomic-save
+446b4ce6 Merge pull request #3222 from c020627/fix-context-shared-default-kwargs
+8aadd158 fix: give each agent its own websites dir and url prefix
+71a0f0b0 fix: offer agent_delegate whenever the conversation has teammates
+923e381f feat: clear context for every participant of a team conversation
+18dc3389 docs: clarify static Bearer MCP authentication
+f51cbc65 fix(feishu): upload image replies from memory, not a staged file
+026d7d5a fix(keyword): bound and check the keyword file download
+29cba15d fix(plugins): start a plugin whose config is empty or partial
+33556548 fix(scheduler): stop a failed save from wiping the stored tasks
+db05f2ec fix(context): give every Context its own kwargs dict
+e2a97497 Merge pull request #3217 from c020627/fix-openai-voice-request-hygiene
+3995358f Merge pull request #3220 from c020627/fix-baidu-translate-request-handling
+157b0c09 Merge pull request #3219 from c020627/fix-wechat-media-download-timeout
+6d5d6a8e Merge pull request #3218 from c020627/fix-file-cache-ttl-from-latest-file
+fea12621 Merge pull request #3216 from c020627/fix-project-store-agent-cleanup
+24ad4e22 fix(translate): bound the Baidu request and report HTTP failures clearly
+590bc2be fix(channel): bound the WeChat channels' media downloads
+9e755fca fix(channel): start the file-cache TTL at the most recent file, not the first
+b07d1f84 fix(voice): close the OpenAI upload handle and bound its requests
+aa1c8a17 fix(admin): sweep the project store when an Agent is deleted
+d1e89dca Merge pull request #3215 from c020627/fix-linkai-summary-file
+bc6badb6 Merge pull request #3214 from c020627/fix-wechatmp-imghdr-removed
+09843d11 Merge pull request #3213 from c020627/fix-voice-tts-tmp-dir
+01096a3e feat: let a teammate in another process answer the turn it was addressed
+0d91f84f Merge branch 'master' of https://github.com/zhayujie/CowAgent
+2c06bc98 fix(web): import the memory index check lazily in the save handler
+d51533a2 fix(linkai): name, close and classify the summary file correctly
+eaac8191 fix(wechatmp): drop the imghdr import, removed from the stdlib in Python 3.13
+c6cd8df8 Merge pull request #3212 from c020627/fix-weixin-inbound-filename-escape
+5ac6c202 fix(voice): synthesize TTS into the routed Agent's tmp dir, not a CWD tmp/
+a371f371 fix(weixin): keep a sender-chosen file name inside the agent tmp dir
+50564533 Merge branch 'pr-3206'
+bda1d907 Merge pull request #3209 from c020627/fix-qq-group-shared-session
+d73e4ebe Merge pull request #3208 from c020627/fix-transient-download-tmp-dir
+93df7525 Merge pull request #3207 from c020627/fix-weixin-channel-media-tmp-dir
+e8242227 style: drop unused locals, imports and empty f-string prefixes
+fb6aff2b fix(wecom_bot): keep transient media inside the agent tmp dir
+b285d761 feat: delegate to teammates hosted in other processes
+e5757588 fix: download reply attachments into the agent tmp dir, not a CWD tmp
+4b40c136 fix(qq): honour group_shared_session for group conversations
+25af4607 fix(weixin): keep downloaded media inside the agent tmp dir
+1e33f20c Merge pull request #3198 from c020627/fix-wecom-bot-media-tmp-dir
+9ac58ca8 Merge pull request #3205 from c020627/fix-default-alias-in-team-roster
+a577dc18 fix: resolve the default alias in the session team panel
+10389493 Merge pull request #3197 from yetuge/fix/plugin-desc-typo
+209116af fix(web): dirty the memory index when a console edit touches knowledge/
+3597c54b Merge pull request #3204 from liuns-yang/fix/due-aware-compare
+794995ba Merge pull request #3200 from zyc2022/fix/backup-cross-device-output
+8965836a Merge pull request #3201 from c020627/fix-windows-home-isolation-in-tests
+7d35e18b Merge branch 'integrate-3199'
+8d728e0a Merge pull request #3199 from Frank-zhu0404: token-budget-first trim (#3178)
+4e66c8fa Merge pull request #3196 from yetuge/fix/blacklist-log-typo
+347c64d0 fix: resolve the default alias when building a team roster
+6fdce39b Merge branch 'master' of https://github.com/zhayujie/CowAgent
+1a7d1eb7 Merge pull request #3185 from lorenzozanee: avoid summary calls for under-budget context
+b5f8fe98 test: redirect USERPROFILE alongside HOME so Windows isolation applies
+a23a94a3 Merge pull request #3193 from c020627/fix-wecom-bot-group-mention
+3a6cafc0 Merge pull request #3188 from liuns-yang: token-budget-first trimming
+6df8cca6 Merge pull request #3163 from WangPan59/feat/web-search-anysearch-zone-language
+dd5dce5c test: make overdue-assertion timezone-independent
+57a1e094 fix: compare reference_now (not naive now) for zoned task due-state
+d7ed2a36 Merge pull request #3194 from yetuge/docs/fix-readme-links
+2ccbc8f0 Merge branch 'pr-3190-review'
+28a93621 fix: keep the completed turn when a steer lands after the stream
+7c0cc052 Merge branch 'pr-3184-review'
+e2d284c7 fix: share the memory index dirty check, and cover MEMORY.md
+b4f58919 fix: resolve the default alias when cleaning a channel team
+cefaac48 Merge pull request #3189 from liuns-yang/fix/scheduler-utc-timezone
+54d824b2 Merge branch 'master' of https://github.com/zhayujie/CowAgent
+2e4cbf36 fix(channel): weixin multi channel instance management in multi-agent
+b64d2368 Merge pull request #3203 from fuxicodex/fix/ci-flaky-tests
+e3bb1e11 fix(ci): resolve the 17 test failures gating CI after #3166
+d57385a5 Merge pull request #3166 from fuxicodex/feat/ci-tests-and-lint
+0c376230 chore(ci): add trailing newline to test.yml
+19787d14 fix: preserve scheduler local time across DST
+9fa78097 fix: keep the context pie from blanking on hover
+55a739ba fix: drop index entries whose file left the scan set
+3611db8e feat(ci): add full test suite and ruff lint gate
+00f0b0e5 fix(test): scope the legacy-workspace assertions to their own warning
+6a2dc552 fix(read): retry a knowledge/ miss under the shared root
+aa60c851 fix(memory): tell the Agent the knowledge root its tools actually resolve
+74e95f58 fix(memory): let memory_get open the shared knowledge keys memory_search returns
+30c375e7 fix(memory): give scanned files a stable index key and never abort sync
+cbe2394d Merge PR #3183: map scanned files outside the workspace instead of crashing sync
+2e7983c3 Merge PR #3182: handle shared knowledge paths outside the agent workspace
+de723747 fix: unified token-budget-first trim for context (#3178)
+dc4b6fe2 fix(cli): allow backups on a different filesystem
+ba7813a9 fix: check token budget before turn-count trim (#3178)
+c33814a2 Merge pull request #3164 from SummerCaptain/fix/memory-hybrid-fusion
+14d8e974 Merge pull request #3159 from c020627/fix-wechatcomapp-callback-corp-id
+589bd277 fix(minimax): align vision auto-selection order and zh/ja docs with M3 routing
+86247909 Merge remote-tracking branch 'origin/master' into pr-3160-local
+ee8c0056 docs: mark voice support for QQ in channels overview
+074da10e Merge branch 'master' of https://github.com/zhayujie/CowAgent
+d15f6eba Merge branch 'feat/dingtalk-streaming-cards'
+6a0b4018 feat: reply with webhook markdown when DingTalk cards are off or fail
+3dd4b706 fix: finalize DingTalk card stream so the full reply renders
+66ceca30 Merge pull request #3195 from HnBigVolibear/master
+7d8071b4 fix(wecom_bot): keep transient media inside the agent tmp dir
+67564275 fix(memory): clamp non-finite fusion weights and document min_score rank semantics
+f1bdc7c5 fix: remove duplicated 的 in midjourney plugin description
+c97ef555 fix: correct duplicated "in" in blacklist log messages
+01efbe0b docs: fix broken CONTRIBUTING/LICENSE links in READMEs
+92979827 feat(qq): QQ channel add voice message auto-transcription and instant agent execution
+2b002b05 fix(wecom_bot): mark a group message as an @-mention so it reaches the agent
+7ade80c5 fix: probe steer inbox during LLM streaming
+678a5cf8 fix: merge turn-count and token-budget trimming into single budget-aware pass (#3178)
+fd9515e0 fix(dingtalk): fall back to text when card streaming fails
+4fb1d6ec fix: prioritize token budget before turn trimming
+167ae673 fix: mark memory index dirty for knowledge writes
+dd26c5ca fix(memory): map scanned files outside the workspace instead of crashing sync
+180a6d42 fix: handle shared knowledge paths outside agent workspace
+d2b61452 test(memory): add regression tests for hybrid fusion
+55a92087 fix(memory): rank-normalize hybrid fusion to fix zero-hit dilution and score scale mismatch
+bb22a5a8 feat(search): forward zone/language config to AnySearch
+c15ca24d feat(dingtalk): stream replies into AI markdown cards
+00d183cf feat(minimax): route native multimodal vision through M3
+661f67eb fix(wechatcom): reject a mismatched corp id on the app callback endpoint

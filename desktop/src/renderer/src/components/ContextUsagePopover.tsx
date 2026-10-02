@@ -135,6 +135,10 @@ const ContextUsagePopover: React.FC<ContextUsagePopoverProps> = ({
   pinnedRef.current = pinned
   const compactingRef = useRef(false)
   compactingRef.current = compacting
+  const usageRef = useRef<ContextUsage | null>(null)
+  usageRef.current = usage
+
+  const usageCaptureRef = useRef<UsageCapture | null>(null)
 
   const hasCtx = !!(usage && usage.available && usage.breakdown)
 
@@ -209,21 +213,29 @@ const ContextUsagePopover: React.FC<ContextUsagePopoverProps> = ({
       return null
     }
     const capture = captureFor()
+    if (!usageCaptureRef.current || !stillCurrent(usageCaptureRef.current)) {
+      usageRef.current = null
+      setUsage(null)
+    }
     setUsageState('loading')
     try {
       const res = await apiClient.getContextUsage(sessionId, capture.agentId || undefined)
       if (!stillCurrent(capture)) return null
       if (!res || res.status === 'error') {
-        setUsage(null)
         setUsageState('error')
-        return null
+        return usageRef.current
       }
       const next = res as ContextUsage
+      usageCaptureRef.current = capture
       setUsage(next)
       setUsageState(next.available ? 'ready' : 'empty')
       return next
     } catch (err) {
       if (!stillCurrent(capture)) return null
+      if (!(err instanceof ContextError) && !(err instanceof FeatureUnavailableError)) {
+        setUsageState('error')
+        return usageRef.current
+      }
       applyFailure(err)
       return null
     }
