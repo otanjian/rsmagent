@@ -464,6 +464,8 @@ class SchedulerUpdateHandler:
                 patch = {k: v for k, v in body.items()
                          if k not in ("task_id", "agent_id", "revision")}
                 if "schedule" in patch:
+                    if not isinstance(patch["schedule"], dict) or not patch["schedule"].get("type"):
+                        raise web.badrequest("schedule must be an object with a type")
                     # Recompute next_run_at for the merged task, and refuse a
                     # schedule that cannot produce one (an unparseable cron, or a
                     # one-off time already past) — the same check the editor has

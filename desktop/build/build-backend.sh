@@ -16,9 +16,7 @@ ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="$SCRIPT_DIR"
 VENV_DIR="$BUILD_DIR/.venv-build"
 
-# Prefer Python 3.11 when available: on 3.13+ web.py must be installed from a
-# GitHub git source (the PyPI build fails), which is flaky on some networks.
-# 3.11 installs web.py straight from PyPI and has the best PyInstaller support.
+# Prefer Python 3.11 when available: it has the best PyInstaller support.
 if [ -z "${PYTHON:-}" ]; then
   for cand in \
     "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11" \
@@ -31,8 +29,7 @@ if [ -z "${PYTHON:-}" ]; then
     fi
   done
 fi
-# Prefer Python 3.11: it installs web.py from PyPI (no GitHub clone) and avoids
-# 3.13's removed-cgi compatibility shims. Override with PYTHON=... if needed.
+# Prefer Python 3.11 for PyInstaller support. Override with PYTHON=... if needed.
 pick_python() {
   if [ -n "${PYTHON:-}" ]; then echo "$PYTHON"; return; fi
   for c in python3.11 python3.12 python3.10 python3; do
@@ -65,6 +62,26 @@ if ! pip install -q -r "$BUILD_DIR/requirements-desktop.txt"; then
 fi
 pip install -q pyinstaller
 
+# --- refuse a bundle that cannot satisfy its skills -----------------------
+# The skills declare what they need in their frontmatter; the file we just
+# installed is what the bundle ships. This is the comparison, and it runs here so
+# a declared-but-missing library fails the build instead of failing at output time
+# inside the sandbox (which is how `xlsxwriter` was missing while the
+# representative rfq-quote skill wrote every deliverable through it).
+# `--verify-imports` is meaningful only at this point: the isolated venv now has
+# the lock installed, so an import really is the last word.
+echo "==> Checking skill dependencies against $BUILD_DIR/requirements-desktop.txt"
+"$VENV_DIR/bin/python" "$BUILD_DIR/check-skill-dependencies.py" --verify-imports
+
+# --- refuse Python the bundled interpreter cannot read --------------------
+# The bundle ships Python 3.11 while a developer's venv is usually newer, so
+# syntax only 3.12+ accepts passes every local test and then makes the module
+# — or, for a file like agent/tools/bash/bash.py that agent.tools imports at
+# startup, the whole app — unimportable inside the shipped app. PyInstaller does
+# not fail on that: it warns in its warnfile and builds a bundle that starts and
+# cannot run a tool. Run with the *build* interpreter, which is the floor.
+"$VENV_DIR/bin/python" "$BUILD_DIR/check-python-syntax.py" "$ROOT"
+
 # --- run pyinstaller from repo root so relative datas resolve -------------
 cd "$ROOT"
 echo "==> Running PyInstaller (onedir)"
@@ -73,6 +90,9 @@ pyinstaller "$BUILD_DIR/cowagent-backend.spec" \
   --distpath "$BUILD_DIR/dist" \
   --workpath "$BUILD_DIR/build-work"
 
+echo ""
+echo "==> Verifying the bundle can actually run a tool"
+"$VENV_DIR/bin/python" "$BUILD_DIR/verify-backend-bundle.py"
 echo ""
 echo "==> Done. Bundle at: $BUILD_DIR/dist/cowagent-backend/"
 du -sh "$BUILD_DIR/dist/cowagent-backend/" 2>/dev/null || true

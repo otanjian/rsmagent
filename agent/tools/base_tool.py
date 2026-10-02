@@ -2,7 +2,6 @@ from enum import Enum
 import re
 from typing import Any, Optional
 from common.log import logger
-import copy
 
 
 #: The characters a tool name may contain on the wire.
@@ -208,10 +207,12 @@ class BaseTool:
         }
 
     def execute_tool(self, params: dict) -> ToolResult:
+        """Run the tool; an exception becomes a failed result, never None."""
         try:
             return self.execute(params)
         except Exception as e:
-            logger.error(e)
+            logger.error(f"[{self.name}] execution failed: {e}", exc_info=True)
+            return ToolResult.fail(f"Error: {type(e).__name__}: {e}")
 
     def execute(self, params: dict) -> ToolResult:
         """Specific logic to be implemented by subclasses"""

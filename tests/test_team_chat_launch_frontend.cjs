@@ -86,6 +86,7 @@ function teamHarness(agents, { responder = acceptance() } = {}) {
             leave: () => { calls.leaves += 1; return true; },
         }),
         renderComposerIdentity() { calls.identity = (calls.identity || 0) + 1; },
+        setSessionParticipants(sid, team) { calls.participants = {sid, team}; },
         _renderModelChip() {},
         resetWorkspaceToAgentRoot() {},
         closeSidebar() { calls.drawerClosed += 1; },
@@ -503,6 +504,7 @@ test('edit made while the roster saves gets its say before the view moves', asyn
     ctx.confirmGuard();
     assert.equal(calls.commits, 1);
     assert.equal(ctx.sessionId, 'prepared-session');
+    assert.equal(calls.participants.sid, 'prepared-session');
 });
 
 test('declining the coding leave guard keeps the coding conversation', async () => {

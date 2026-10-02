@@ -63,9 +63,14 @@ WS_PING_TIMEOUT = 10
 # reconnect path runs. Guards against a stall the transport ping alone can miss.
 HEARTBEAT_ACK_TIMEOUT_FACTOR = 3
 
+# QQ accepts passive replies to a message for at most an hour, so a msg_seq
+# counter has nothing left to order after that.
+_MSG_SEQ_TTL_SECONDS = 60 * 60
+
 
 @singleton
 class QQChannel(ChatChannel):
+    NOT_SUPPORT_REPLYTYPE = [ReplyType.VOICE]
 
     def __init__(self):
         super().__init__()
@@ -97,7 +102,7 @@ class QQChannel(ChatChannel):
         self._last_api_error = ""
 
         self.received_msgs = ExpiredDict(60 * 60 * 7.1)
-        self._msg_seq_counter = {}
+        self._msg_seq_counter = ExpiredDict(_MSG_SEQ_TTL_SECONDS)
 
         conf()["group_name_white_list"] = ["ALL_GROUP"]
         conf()["single_chat_prefix"] = [""]
@@ -447,10 +452,7 @@ class QQChannel(ChatChannel):
         from channel.file_cache import get_file_cache
         file_cache = get_file_cache()
 
-        if is_group:
-            session_id = qq_msg.other_user_id
-        else:
-            session_id = qq_msg.from_user_id
+        session_id = self._compute_session_id(qq_msg, is_group)
 
         if qq_msg.ctype == ContextType.IMAGE:
             if hasattr(qq_msg, "image_path") and qq_msg.image_path:
@@ -508,6 +510,24 @@ class QQChannel(ChatChannel):
     # _compose_context
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _compute_session_id(qq_msg, is_group: bool) -> str:
+        """The conversation key for an inbound message.
+
+        A group shares one session only when ``group_shared_session`` asks for
+        it; otherwise every member gets their own, which is the rule the base
+        ``chat_channel`` and the other group channels (dingtalk, discord,
+        feishu, slack, telegram, wecom_bot) already apply. QQ keyed a group on
+        the group id unconditionally, so the setting -- and its shipped default
+        of False -- was a silent no-op here, and every member of a QQ group
+        shared one conversation.
+        """
+        if not is_group:
+            return qq_msg.from_user_id
+        if conf().get("group_shared_session", True):
+            return qq_msg.other_user_id
+        return f"{qq_msg.from_user_id}:{qq_msg.other_user_id}"
+
     def _compose_context(self, ctype: ContextType, content, **kwargs):
         context = Context(ctype, content)
         context.kwargs = kwargs
@@ -515,14 +535,15 @@ class QQChannel(ChatChannel):
             context["channel_type"] = self.channel_type
         self.stamp_instance_context(context)
         if "origin_ctype" not in context:
-            context["origin_ctype"] = ctype
+            # A voice message promoted to TEXT via QQ's official ASR carries
+            # its VOICE origin on the message wrapper (QQMessage.origin_ctype);
+            # surface it here so downstream plugins can tell voice-origin
+            # messages apart, mirroring how other channels stamp origin_ctype.
+            context["origin_ctype"] = getattr(kwargs.get("msg"), "origin_ctype", None) or ctype
 
         cmsg = context["msg"]
 
-        if cmsg.is_group:
-            context["session_id"] = cmsg.other_user_id
-        else:
-            context["session_id"] = cmsg.from_user_id
+        context["session_id"] = self._compute_session_id(cmsg, cmsg.is_group)
 
         context["receiver"] = cmsg.other_user_id
 

@@ -7,6 +7,7 @@ import os
 from typing import Dict, Any
 
 from agent.tools.base_tool import BaseTool, ToolResult
+from common.atomic_write import write_text_atomic
 from common.utils import expand_path
 from agent.tools.utils.credentials import DENIED_MESSAGE, is_credential_path
 from agent.tools.utils.diff import (
@@ -21,6 +22,7 @@ from agent.tools.utils.diff import (
     strip_line_number_prefixes,
 )
 from agent.tools.utils.file_state import note_write, staleness_warning
+from agent.tools.utils.memory_path import feeds_memory_index
 from agent.tools.utils.syntax_check import review as syntax_review
 
 
@@ -76,6 +78,11 @@ class Edit(BaseTool):
         
         # Resolve path
         absolute_path = self._resolve_path(path)
+        from agent.memory.personal import personal_file, read_personal_file, write_personal_file
+        try:
+            personal = personal_file(absolute_path)
+        except Exception as error:
+            return ToolResult.fail(str(error))
 
         # Same guard the read tool applies. Editing is also a read: the success
         # result carries a diff whose context lines would expose the secrets.
@@ -83,17 +90,24 @@ class Edit(BaseTool):
             return ToolResult.fail(DENIED_MESSAGE)
 
         # Check if file exists
-        if not os.path.exists(absolute_path):
+        if not personal and not os.path.exists(absolute_path):
             return ToolResult.fail(f"Error: File not found: {path}")
         
         # Check if readable/writable
-        if not os.access(absolute_path, os.R_OK | os.W_OK):
+        if not personal and not os.access(absolute_path, os.R_OK | os.W_OK):
             return ToolResult.fail(f"Error: File is not readable/writable: {path}")
         
         try:
-            # Read file
-            with open(absolute_path, 'r', encoding='utf-8') as f:
-                raw_content = f.read()
+            # Read the file's bytes instead of opening it in text mode. A
+            # newline=None read translates every CRLF to LF before we ever see
+            # it, so the detect_line_ending() call below could only ever answer
+            # '\n' and restore_line_endings() was guaranteed to be a no-op.
+            # Decoding the bytes leaves the real ending intact for it to find.
+            if personal:
+                raw_content = read_personal_file(personal)
+            else:
+                with open(absolute_path, 'rb') as f:
+                    raw_content = f.read().decode('utf-8')
             
             # Remove BOM (LLM won't include invisible BOM in oldText)
             bom, content = strip_bom(raw_content)
@@ -191,9 +205,12 @@ class Edit(BaseTool):
             if blocking:
                 return ToolResult.fail(f"Error: {blocking}")
 
-            # Write file
-            with open(absolute_path, 'w', encoding='utf-8') as f:
-                f.write(final_content)
+            # newline='' writes final_content verbatim; text mode would turn
+            # every '\n' into os.linesep and undo the ending restored above.
+            if personal:
+                write_personal_file(personal, final_content, raw_content)
+            else:
+                write_text_atomic(absolute_path, final_content, newline='')
             note_write(absolute_path)
             
             # Generate diff
@@ -207,6 +224,10 @@ class Edit(BaseTool):
             result = {
                 "message": message,
                 "path": path,
+                # The resolved location, so a later replay does not have to guess
+                # which directory `path` was relative to (the session's working
+                # directory can change after the run, e.g. opening a project).
+                "abs_path": absolute_path,
                 "diff": diff_result['diff'],
                 "first_changed_line": diff_result['first_changed_line']
             }
@@ -217,10 +238,12 @@ class Edit(BaseTool):
                 result["warning"] = " ".join(warnings)
             
             # Notify memory manager if file is in memory directory
-            if self.memory_manager and "memory/" in path:
+            if self.memory_manager and feeds_memory_index(
+                absolute_path, self.memory_manager, self.cwd
+            ):
                 try:
                     self.memory_manager.mark_dirty()
-                except Exception as e:
+                except Exception:
                     # Don't fail the edit if memory notification fails
                     pass
             

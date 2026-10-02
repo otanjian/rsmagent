@@ -147,6 +147,16 @@ datas = [
     # sys.path, so `import cli.commands.*` resolves even if PyInstaller's
     # submodule collection misses the lazily-imported command modules.
     (rp('cli'), 'cli'),
+    # The desktop contracts are read at *import* time by auth/desktop_contracts.py
+    # (`load_contract()` runs at module scope) and auth/desktop_contracts_v2.py,
+    # which is imported by the /api/desktop/meta handler. They are data, not
+    # Python, so nothing else collects them: without this entry the frozen backend
+    # starts fine and then answers that endpoint with
+    #   FileNotFoundError: .../_internal/contracts/desktop/v1.json
+    # (found by booting the packaged .app, see evidence/packaged-bundle.md §4.4).
+    # `v2.json` and `samples/` travel with it so the contract the client is checked
+    # against is the same one the server enforces.
+    (rp('contracts'), 'contracts'),
     # Web console served on the backend port: ship chat.html plus its static
     # assets (~1.9MB) so the browser-based console works as a debug/fallback
     # entry alongside the Electron UI. chat.html is only a shell: channel/web/
@@ -195,7 +205,16 @@ excludes = [
     'lark_oapi',          # Feishu SDK — fetched on demand, NOT bundled (see above)
     'tests',
     'pip',
-    'wheel',
+    # NOTE: `wheel` is deliberately NOT excluded. Excluding it used to be a way to
+    # slim the bundle, but PyInstaller's setuptools hook now aliases the *vendored*
+    # `setuptools._vendor.wheel` onto the `wheel` name, and aliasing onto a name
+    # that is already in the graph as an ExcludedModule is a hard error:
+    #   ValueError: Target module "wheel" already imported as "ExcludedModule('wheel',)"
+    # (reproduced on PyInstaller 6.22.3, setuptools 79.0.1, Python 3.11 — i.e. what a
+    # fresh `pip install pyinstaller` gives you today, so the packaged build fails
+    # before it can produce anything). The alias is what makes the import resolve at
+    # all, so the exclusion cannot be kept: it is not a smaller bundle, it is no
+    # bundle. `pip` stays excluded — setuptools does not vendor it.
     'pytest',
     # NOTE: playwright is now BUNDLED (pure-Python package + Node driver, ~10-15MB)
     # so the browser tool works out of the box on desktop. The heavy Chromium

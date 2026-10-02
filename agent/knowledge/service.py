@@ -62,6 +62,10 @@ class KnowledgeService:
 
     PROTECTED_FILES = {"index.md", "log.md"}
     INVALID_NAME_RE = re.compile(r'[<>:"|?*\x00-\x1f]')
+    # An optional "— summary" suffix on an index line. Links are percent-encoded
+    # by _link(), so the path never contains ")", which lets the summary be
+    # matched non-greedily up to the end of the line.
+    INDEX_SUMMARY_RE = re.compile(r'\]\(([^)\s]+)\)\s*(?:—|–|--?)\s*(.+?)\s*$')
     IMPORT_EXTENSIONS = {".md", ".txt"}
     MAX_IMPORT_FILES = 100
     MAX_IMPORT_FILE_SIZE = 10 * 1024 * 1024
@@ -182,11 +186,14 @@ class KnowledgeService:
             pass
         return fallback
 
-    def rebuild_index_md(self) -> bool:
+    def rebuild_index_md(self, renamed: Optional[dict] = None) -> bool:
         """Regenerate knowledge/index.md from the actual directory tree.
 
         Keeps the index in sync with real files so it never drifts or loses
-        documents. Returns True when the file was (re)written.
+        documents. Summaries the model wrote on existing lines are carried over
+        by path (see _read_index_summaries) instead of being dropped;
+        ``renamed`` maps old -> new relative paths so a moved document keeps
+        its summary. Returns True when the file was (re)written.
         """
         root = Path(self.knowledge_dir)
         if not root.is_dir():
@@ -211,6 +218,10 @@ class KnowledgeService:
 
         scope = self._scope_instance()
         all_entries = collect(root)
+        summaries = self._read_index_summaries()
+        for old_rel, new_rel in (renamed or {}).items():
+            if old_rel in summaries:
+                summaries.setdefault(new_rel, summaries.pop(old_rel))
 
         def link(rel: str) -> str:
             # Encode each path segment so spaces / special chars stay valid in
@@ -218,11 +229,18 @@ class KnowledgeService:
             encoded = "/".join(quote(part) for part in rel.split("/"))
             return f"./{encoded}"
 
+        def entry_line(rel: str, title: str) -> str:
+            line = f"- [{title}]({link(rel)})"
+            summary = summaries.get(rel)
+            if summary:
+                line = f"{line} — {summary}"
+            return line
+
         lines = ["# 知识库目录", ""]
         # Root-level documents first (no category dir).
         root_docs = [(rel, title) for rel, title in all_entries if "/" not in rel]
         for rel, title in root_docs:
-            lines.append(f"- [{title}]({link(rel)})")
+            lines.append(entry_line(rel, title))
         if root_docs:
             lines.append("")
 
@@ -237,7 +255,7 @@ class KnowledgeService:
         for category in sorted(categories.keys()):
             lines.append(f"## {category}")
             for rel, title in categories[category]:
-                lines.append(f"- [{title}]({link(rel)})")
+                lines.append(entry_line(rel, title))
             lines.append("")
 
         content = "\n".join(lines).rstrip() + "\n"
@@ -248,6 +266,40 @@ class KnowledgeService:
         except Exception as exc:
             logger.warning(f"[KnowledgeService] Failed to rebuild index.md: {exc}")
             return False
+
+    def _read_index_summaries(self) -> dict:
+        """Map index entries to the one-line summaries already written there.
+
+        The model maintains index.md by hand (the knowledge-wiki skill asks for
+        ``[Title](path) — one-line summary``) while the console rebuilds the
+        file from the directory tree. Reading the old summaries back before the
+        rewrite is what keeps a rebuild from dropping them; a summary for a file
+        that no longer exists is simply not emitted, which also clears the stale
+        index lines an earlier rebuild left behind.
+        """
+        index_path = Path(self.knowledge_dir) / "index.md"
+        try:
+            text = index_path.read_text(encoding="utf-8")
+        except Exception:
+            return {}
+
+        summaries = {}
+        for line in text.splitlines():
+            match = self.INDEX_SUMMARY_RE.search(line)
+            if not match:
+                continue
+            target = unquote(match.group(1).strip())
+            if target.startswith("./"):
+                target = target[2:]
+            if target:
+                summaries[target] = match.group(2).strip()
+        return summaries
+
+    def _validate_document_paths(self, paths: Iterable[str]):
+        # Reject the whole batch up front so a bad entry cannot abort the loop
+        # after earlier entries were already deleted or moved.
+        for path in paths:
+            self._ensure_not_protected(self._resolve_path(path, kind="document")[0])
 
     def _sanitize_document_name(self, filename: str) -> str:
         name = os.path.basename((filename or "").replace("\\", "/")).strip()
@@ -387,8 +439,9 @@ class KnowledgeService:
             return {"old_path": old_rel, "path": new_rel, "moved": False, "reason": "not_found"}
         except FileExistsError:
             raise FileExistsError(f"target already exists: {new_rel}")
-        old_paths = [f"{old_rel}/{p}" for p in old_documents]
-        self._sync_index(old_paths)
+        renamed = {f"{old_rel}/{p}": f"{new_rel}/{p}" for p in old_documents}
+        self.rebuild_index_md(renamed=renamed)
+        self._sync_index(renamed.keys())
         return {"old_path": old_rel, "path": new_rel, "moved_documents": len(old_documents)}
 
     @_guarded
@@ -409,6 +462,7 @@ class KnowledgeService:
             shutil.rmtree(full_path)
         except FileNotFoundError:
             return {"path": rel_path, "deleted": False, "reason": "not_found"}
+        self.rebuild_index_md()
         self._sync_index(documents)
         return {"path": rel_path, "deleted": True, "deleted_documents": len(documents)}
 
@@ -416,60 +470,72 @@ class KnowledgeService:
     def delete_documents(self, paths: Iterable[str]) -> dict:
         if not isinstance(paths, list):
             raise ValueError("paths must be a list")
+        self._validate_document_paths(paths)
         results = []
         deleted = []
-        for path in paths:
-            rel_path, full_path = self._resolve_path(path, kind="document")
-            self._ensure_not_protected(rel_path)
-            if not full_path.exists():
-                deleted.append(rel_path)
-                results.append({"path": rel_path, "deleted": False, "reason": "not_found"})
-                continue
-            if not full_path.is_file():
-                raise ValueError(f"not a document: {rel_path}")
-            try:
-                full_path.unlink()
-                deleted.append(rel_path)
-                results.append({"path": rel_path, "deleted": True})
-            except FileNotFoundError:
-                deleted.append(rel_path)
-                results.append({"path": rel_path, "deleted": False, "reason": "not_found"})
-        self._sync_index(deleted)
+        removed_files = []
+        # Files removed before a mid-batch failure must still leave index.md
+        # and the search index consistent.
+        try:
+            for path in paths:
+                rel_path, full_path = self._resolve_path(path, kind="document")
+                if not full_path.exists():
+                    deleted.append(rel_path)
+                    results.append({"path": rel_path, "deleted": False, "reason": "not_found"})
+                    continue
+                if not full_path.is_file():
+                    raise ValueError(f"not a document: {rel_path}")
+                try:
+                    full_path.unlink()
+                    deleted.append(rel_path)
+                    removed_files.append(rel_path)
+                    results.append({"path": rel_path, "deleted": True})
+                except FileNotFoundError:
+                    deleted.append(rel_path)
+                    results.append({"path": rel_path, "deleted": False, "reason": "not_found"})
+        finally:
+            if removed_files:
+                self.rebuild_index_md()
+            self._sync_index(deleted)
         return {"results": results, "deleted": sum(1 for item in results if item["deleted"])}
 
     @_guarded
     def move_documents(self, paths: Iterable[str], target_category: str) -> dict:
         if not isinstance(paths, list):
             raise ValueError("paths must be a list")
+        self._validate_document_paths(paths)
         target_rel, target_full = self._resolve_path(target_category, kind="category")
         if not target_full.is_dir():
             raise FileNotFoundError(f"category not found: {target_rel}")
         results = []
-        moved_old_paths = []
-        for path in paths:
-            rel_path, full_path = self._resolve_path(path, kind="document")
-            self._ensure_not_protected(rel_path)
-            if not full_path.exists():
-                results.append({"path": rel_path, "moved": False, "reason": "not_found"})
-                continue
-            destination = target_full / full_path.name
-            new_rel = str(destination.relative_to(Path(self.knowledge_dir).resolve())).replace(os.sep, "/")
-            if destination.exists():
-                results.append({"path": rel_path, "moved": False, "reason": "target_exists",
-                                "target": new_rel})
-                continue
-            try:
-                os.link(full_path, destination)
-                full_path.unlink()
-                moved_old_paths.append(rel_path)
-                results.append({"path": rel_path, "moved": True, "target": new_rel})
-            except FileExistsError:
-                results.append({"path": rel_path, "moved": False, "reason": "target_exists",
-                                "target": new_rel})
-            except FileNotFoundError:
-                results.append({"path": rel_path, "moved": False, "reason": "not_found"})
-        self._sync_index(moved_old_paths)
-        return {"results": results, "moved": len(moved_old_paths)}
+        moved = {}
+        try:
+            for path in paths:
+                rel_path, full_path = self._resolve_path(path, kind="document")
+                if not full_path.exists():
+                    results.append({"path": rel_path, "moved": False, "reason": "not_found"})
+                    continue
+                destination = target_full / full_path.name
+                new_rel = str(destination.relative_to(Path(self.knowledge_dir).resolve())).replace(os.sep, "/")
+                if destination.exists():
+                    results.append({"path": rel_path, "moved": False, "reason": "target_exists",
+                                    "target": new_rel})
+                    continue
+                try:
+                    os.link(full_path, destination)
+                    full_path.unlink()
+                    moved[rel_path] = new_rel
+                    results.append({"path": rel_path, "moved": True, "target": new_rel})
+                except FileExistsError:
+                    results.append({"path": rel_path, "moved": False, "reason": "target_exists",
+                                    "target": new_rel})
+                except FileNotFoundError:
+                    results.append({"path": rel_path, "moved": False, "reason": "not_found"})
+        finally:
+            if moved:
+                self.rebuild_index_md(renamed=moved)
+            self._sync_index(moved.keys())
+        return {"results": results, "moved": len(moved)}
 
     # ------------------------------------------------------------------
     # list — directory tree with stats
@@ -611,7 +677,10 @@ class KnowledgeService:
         link_re = re.compile(r'\[([^\]]*)\]\(([^)#]+\.md)(?:#[^)]*)?\)')
 
         for md_file in knowledge_path.rglob("*.md"):
-            rel = str(md_file.relative_to(knowledge_path))
+            # as_posix() rather than str(): on Windows str() keeps the
+            # backslashes, and the console consumes these paths with "/"
+            # separators (category split, data-path match against the tree).
+            rel = md_file.relative_to(knowledge_path).as_posix()
             if rel in ("index.md", "log.md"):
                 continue
             if self._scope_instance().is_managed(md_file):
@@ -631,7 +700,7 @@ class KnowledgeService:
                     # they must be decoded to match a path on disk.
                     resolved = (md_file.parent / unquote(link_target)).resolve()
                     try:
-                        target_rel = str(resolved.relative_to(knowledge_path))
+                        target_rel = resolved.relative_to(knowledge_path).as_posix()
                     except ValueError:
                         continue
                     if target_rel != rel:

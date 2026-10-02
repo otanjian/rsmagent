@@ -144,11 +144,18 @@ jobs:
             desktop/build/requirements-desktop.txt > /tmp/requirements-win7.txt
           pip install -r /tmp/requirements-win7.txt
           pip install pyinstaller
+          # This pipeline ships the 3.8 interpreter (python-version: "3.8" above),
+          # the stricter of the two floors: syntax 3.8 cannot parse would ship as a
+          # module PyInstaller silently drops, and the bundle would start without
+          # its tools.
+          python desktop/build/check-python-syntax.py --floor 3.8
           # Run from repo root so the spec's relative datas resolve correctly.
           pyinstaller desktop/build/cowagent-backend.spec \
             --noconfirm \
             --distpath desktop/build/dist \
             --workpath desktop/build/build-work
+          # Start the frozen executable the way the app does and run a tool.
+          python desktop/build/verify-backend-bundle.py
 
       - name: Install desktop deps
         working-directory: desktop

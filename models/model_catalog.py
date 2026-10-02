@@ -38,6 +38,7 @@ simply its whole model list and ``hidden`` stays empty.
 import json
 import os
 
+from common.atomic_write import write_json_atomic
 from common.log import logger
 
 # Legacy: catalogs used to live under this key in config.json (pre-overlay),
@@ -182,8 +183,7 @@ def _strip_legacy_config_key() -> None:
         return
     if LEGACY_CATALOG_KEY in data:
         data.pop(LEGACY_CATALOG_KEY, None)
-        with open(cfg_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+        write_json_atomic(cfg_path, data)
 
 
 def _read_store() -> dict:
@@ -219,8 +219,7 @@ def _read_store() -> dict:
 def _write_store(store: dict) -> None:
     path = _store_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(store, f, indent=4, ensure_ascii=False)
+    write_json_atomic(path, store)
 
 
 # In-memory cache so the budget/request paths (called every LLM turn) don't hit

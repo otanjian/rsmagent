@@ -16,6 +16,7 @@ from agent.protocol import (
     get_steer_registry,
 )
 from agent.token_usage.instrument import meter_llm_call
+from agent.protocol.step_writer import StepWriter
 from bridge.agent_event_handler import AgentEventHandler
 from bridge.agent_initializer import AgentInitializer
 from bridge.bridge import Bridge
@@ -495,6 +496,11 @@ class AgentLLMModel(LLMModel):
                 session_id = getattr(self, 'session_id', None)
                 if session_id:
                     kwargs['session_id'] = session_id
+                # Only bots that declare it get the agent id: others may pass
+                # unknown kwargs straight through to their provider.
+                agent_id = getattr(self, 'agent_id', None)
+                if agent_id and getattr(self.bot, 'accepts_agent_id', False):
+                    kwargs['agent_id'] = agent_id
 
                 # Thinking mode is a global toggle independent of the channel.
                 # IM channels (WeChat/WeCom/DingTalk/Feishu) won't render the
@@ -567,6 +573,11 @@ class AgentLLMModel(LLMModel):
                 session_id = getattr(self, 'session_id', None)
                 if session_id:
                     kwargs['session_id'] = session_id
+                # Only bots that declare it get the agent id: others may pass
+                # unknown kwargs straight through to their provider.
+                agent_id = getattr(self, 'agent_id', None)
+                if agent_id and getattr(self.bot, 'accepts_agent_id', False):
+                    kwargs['agent_id'] = agent_id
 
                 # Thinking mode is a global toggle independent of the channel.
                 # IM channels (WeChat/WeCom/DingTalk/Feishu) won't render the
@@ -613,6 +624,33 @@ class AgentLLMModel(LLMModel):
         """Format Claude stream chunk to our expected format"""
         # This would need to be implemented based on Claude's stream format
         return chunk
+
+
+def _attach_desktop_context_to_tools(agent, context) -> None:
+    """Hand the server-verified local-directory reference to the tools.
+
+    Change ``fix-desktop-local-context-and-tool-calls`` (task 2.3): the
+    ``client_files`` tool must never trust a model-supplied binding. The
+    reference is injected per turn by the transport layer after it validated
+    the binding against the current ``(user, tenant, agent, session)`` tuple,
+    and it is reset to ``None`` on every turn so a stale reference from a
+    previous session/agent/device never leaks into a later run.
+    """
+    reference = (context or {}).get("desktop_context") or None
+    # The model needs the same per-turn source fact as the tool. Keep it even
+    # when client_files is unavailable, so that case is not mistaken for an
+    # empty server workspace. Never derive a server cwd from this reference.
+    agent.desktop_context = reference
+    tools = getattr(agent, "tools", None)
+    if not tools:
+        return
+    for tool in tools:
+        if getattr(tool, "name", "") != "client_files":
+            continue
+        try:
+            tool.desktop_context = reference
+        except Exception as e:
+            logger.warning(f"[AgentBridge] Failed to attach desktop context: {e}")
 
 
 class AgentBridge:
@@ -782,6 +820,22 @@ class AgentBridge:
         """
         if not session_id or not context:
             return
+        # A roster may name teammates that live in another process. Learn how to
+        # reach them before resolving the roster below, so a member reached
+        # through the transport is kept rather than dropped as unknown. Empty or
+        # no transport (a stand-alone install) makes this a no-op.
+        peers = context.get("peers")
+        if peers is None:
+            peers = context.kwargs.get("peers")
+        if peers:
+            try:
+                from agent.multiagent import get_transport
+
+                transport = get_transport()
+                if transport is not None:
+                    transport.register_peers(peers)
+            except Exception as e:
+                logger.debug(f"[AgentBridge] register_peers failed: {e}")
         # The channel path carries the roster under ``members`` and is
         # authoritative (it mirrors the instance's live team.json roster). A
         # delegated turn instead carries ``delegation_members`` and is seed-once.
@@ -816,6 +870,7 @@ class AgentBridge:
                         f"[AgentBridge] Cleared stale team roster from session "
                         f"'{session_id}' owned by {host_agent_id} (instance is single-Agent)"
                     )
+                self._retire_session_runtimes(session_id)
                 return
 
             # Delegation path: seed once, never clobber an existing roster.
@@ -828,22 +883,61 @@ class AgentBridge:
                     f"[AgentBridge] Seeded team roster {cleaned} onto session "
                     f"'{session_id}' owned by {host_agent_id}"
                 )
+                self._retire_session_runtimes(session_id)
         except Exception as e:
             logger.debug(f"[AgentBridge] _seed_team_members failed: {e}")
 
+    def _retire_session_runtimes(self, session_id: str) -> None:
+        """Drop the runtimes of *session_id* so the next turn rebuilds them.
+
+        A runtime fixes its tool list when it is built, and delegation is only
+        offered to a conversation that has teammates. A roster that changes
+        while the conversation is already live therefore has to retire what was
+        built under the old one: otherwise the team gains a member and the tool
+        to reach them only appears after a restart. Retiring costs a rebuild on
+        the next turn; the transcript is reloaded from the store either way.
+        """
+        with self._agents_lock:
+            retired = [key for key in self._agent_instances if key[1] == session_id]
+            for key in retired:
+                self._agent_instances.pop(key, None)
+            if retired:
+                self.agents.pop(session_id, None)
+        if retired:
+            logger.info(
+                f"[AgentBridge] Retired {len(retired)} runtime(s) of session "
+                f"'{session_id}' after its roster changed"
+            )
+
     def _clean_team_members(self, members, host_agent_id: str) -> list:
         """Normalize a roster: drop the owner, blanks, dupes and unknown/disabled
-        Agents, preserving order. Returns the teammates to store on a session."""
+        Agents, preserving order. Returns the teammates to store on a session.
+
+        Members arrive as ids a caller may address an Agent by, so the reserved
+        "default" alias is resolved here too; storing the resolved id keeps the
+        roster comparable with the owner and with an id sent the other way.
+
+        A member hosted in another process is kept under the id the installed
+        transport knows it by; without a transport such ids are unknown here
+        and dropped like any other stranger.
+        """
+        from agent.multiagent import peer as peer_of
+
         cleaned = []
         for mid in members or []:
             mid = str(mid or "").strip()
-            if not mid or mid == host_agent_id or mid in cleaned:
+            if not mid:
                 continue
             try:
-                self.agent_registry.get(mid, require_enabled=True)
+                resolved = self.agent_registry.get_addressed(mid, require_enabled=True).id
             except Exception:
-                continue  # skip unknown/disabled teammates
-            cleaned.append(mid)
+                found = peer_of(mid)
+                if found is None:
+                    continue  # skip unknown/disabled teammates
+                resolved = found.id
+            if resolved == host_agent_id or resolved in cleaned:
+                continue
+            cleaned.append(resolved)
         return cleaned
 
     def _resolve_speaker(self, host_agent_id: str, context: Context = None) -> str:
@@ -870,6 +964,145 @@ class AgentBridge:
             f"answering in {host_agent_id}'s conversation"
         )
         return profile.id
+
+    def _peer_speaker(self, named: str, host_agent_id: str):
+        """The teammate a turn names when it is hosted in another process.
+
+        None for an id that is empty, the owner's, a local Agent's, or that no
+        transport knows — every one of which the ordinary path already handles.
+        """
+        named = str(named or "").strip()
+        if not named or named == host_agent_id:
+            return None
+        try:
+            self.agent_registry.get_addressed(named, require_enabled=False)
+            return None  # local: answered here, as always
+        except Exception:
+            pass
+        try:
+            from agent.multiagent import get_transport, peer as peer_of
+
+            if get_transport() is None:
+                return None
+            return peer_of(named)
+        except Exception:
+            return None
+
+    def _speak_on_peer(self, query: str, session_id: str, host_agent_id: str, peer,
+                       channel_type: str = "") -> Reply:
+        """Let a teammate elsewhere answer this turn, as itself.
+
+        The conversation stays the owner's — same session, same transcript — and
+        only the voice changes, which is what addressing someone by name asks
+        for. The teammate is given the conversation so far so it answers in
+        context rather than cold.
+        """
+        from agent.multiagent import MODE_SPEAK, InvokeRequest, PeerAgent, get_transport, resolve_teammate
+
+        owner = self.agent_registry.get(host_agent_id, require_enabled=False)
+
+        members = [owner.id]
+        for member_id in self._session_members(session_id, host_agent_id):
+            if member_id not in (owner.id, peer.id) and member_id not in members:
+                members.append(member_id)
+        peers = []
+        for member_id in members:
+            found = resolve_teammate(member_id)
+            profile = PeerAgent.from_any(found) if found else None
+            if profile is not None:
+                peers.append(profile)
+
+        request = InvokeRequest(
+            request_id=uuid.uuid4().hex,
+            target_id=peer.id,
+            task=self._strip_peer_address(query, peer),
+            source_id=owner.id,
+            source_name=owner.name,
+            root_session_id=session_id,
+            trace=(owner.id,),
+            depth=0,
+            members=tuple(members),
+            peers=tuple(peers),
+            timeout_seconds=self._delegation_timeout(),
+            mode=MODE_SPEAK,
+            history=tuple(self._shared_history(session_id, owner.id)),
+        )
+        logger.info(
+            f"[AgentBridge] Turn addressed to peer {peer.id}; "
+            f"answering in {owner.id}'s conversation, session={session_id}"
+        )
+        result = get_transport().invoke(request)
+        if not result.ok:
+            return Reply(ReplyType.ERROR, f"{peer.name} could not answer: {result.error}")
+
+        content = result.content or ""
+        # The turn happened in this conversation, so it belongs in its record;
+        # nothing local ran to write it down.
+        turn = [
+            {"role": "user", "content": [{"type": "text", "text": query}]},
+            {"role": "assistant", "content": [{"type": "text", "text": content}]},
+        ]
+        self._persist_messages(
+            session_id, self._attribute_to_speaker(turn, peer.id), channel_type, owner.id
+        )
+        return Reply(ReplyType.TEXT, content)
+
+    @staticmethod
+    def _session_members(session_id: str, host_agent_id: str) -> list:
+        """Teammate ids recorded on the session, as stored."""
+        if not session_id:
+            return []
+        try:
+            from agent.workspace import session_prefs
+
+            return list(session_prefs.get_prefs(session_id, host_agent_id).get("members") or [])
+        except Exception:
+            return []
+
+    @staticmethod
+    def _strip_peer_address(query: str, peer) -> str:
+        """Drop the leading "@name" aimed at *peer*; see ``_strip_address``."""
+        if not query:
+            return query
+        labels = [label for label in (peer.name, peer.id) if label]
+        pattern = (
+            r"^\s*@(?:"
+            + "|".join(re.escape(label) for label in sorted(labels, key=len, reverse=True))
+            + r")[\s,，:：、]*"
+        )
+        stripped = re.sub(pattern, "", query, count=1, flags=re.IGNORECASE)
+        return stripped if stripped.strip() else query
+
+    @staticmethod
+    def _delegation_timeout() -> float:
+        try:
+            return float((conf().get("agent_delegation") or {}).get("timeout_seconds") or 600)
+        except Exception:
+            return 600.0
+
+    def _shared_history(self, session_id: str, owner_agent_id: str) -> list:
+        """Text-only history with authors, oldest first."""
+        try:
+            if not conf().get("conversation_persistence", True):
+                return []
+            max_turns = conf().get("agent_max_context_turns", 20)
+            saved = self.get_conversation_store(owner_agent_id).load_messages(
+                session_id, max_turns=max(3, max_turns // 2), with_authors=True
+            )
+        except Exception as e:
+            logger.warning(f"[AgentBridge] shared history unavailable for {session_id}: {e}")
+            return []
+        history = []
+        for message in AgentInitializer._filter_text_only_messages(saved or []):
+            blocks = message.get("content") or []
+            text = blocks[0].get("text", "") if blocks and isinstance(blocks[0], dict) else ""
+            if not text:
+                continue
+            entry = {"role": message["role"], "text": text}
+            if message["role"] == "assistant":
+                entry["agent_id"] = message.get("agent_id") or owner_agent_id
+            history.append(entry)
+        return history
 
     def _strip_address(self, query: str, speaker_agent_id: str) -> str:
         """Drop the leading "@name" now that it has been acted on.
@@ -1044,6 +1277,51 @@ class AgentBridge:
             if token is not None:
                 clear_agent_run_id(token)
 
+    def _session_has_local_project(self, session_id: Optional[str],
+                                   agent_id: Optional[str] = None) -> bool:
+        """Whether this session actually points at a local project right now.
+
+        The lookahead the non-interactive refusal needs (task 3.7): a scheduler
+        trigger or a background wake is only refused when there is a local
+        project it would otherwise have acted in. Refusing every background turn
+        would break the scheduler for every ordinary session, and refusing none
+        is what the requirement forbids. The ambient identity is consulted as
+        well, because a run can carry a target the store no longer holds.
+        """
+        from common.runtime_identity import current_identity
+
+        target = getattr(current_identity(), "execution_target", None)
+        if getattr(target, "is_desktop", False):
+            return True
+        if not session_id:
+            return False
+        try:
+            from agent.workspace import project_store
+
+            target = project_store.get_execution_target(session_id, agent_id)
+        except Exception:
+            return False
+        return bool(getattr(target, "is_desktop", False))
+
+    def _detach_cached_local_project(self, session_id: Optional[str],
+                                    agent_id: Optional[str], reason: str) -> None:
+        """Take the local project off the live Agent for this session.
+
+        A cached instance keeps the previous interactive turn's directory on its
+        tools; leaving it there would let the very next instrumented call (a
+        status surface, or the scheduled delivery that follows) act on it even
+        though the turn itself was refused (task 3.7).
+        """
+        from agent.desktop_local.run_authorization import detach_local_execution
+
+        try:
+            agent = self.get_cached_agent(session_id, agent_id=agent_id)
+        except Exception:
+            agent = None
+        if agent is None:
+            return
+        detach_local_execution(agent, reason)
+
     def peek_agent(self, session_id: str, agent_id: str = None) -> Optional[Agent]:
         """Return the session's live agent, or None if it has not been built.
 
@@ -1073,6 +1351,14 @@ class AgentBridge:
     def _cancel_key(agent_id: str, token: str, default_agent_id: str) -> str:
         """Keep legacy token keys for the default agent, namespace the rest."""
         return token if agent_id == default_agent_id else f"{agent_id}::{token}"
+
+    def _has_runtime(self, agent_id: str, session_id: str) -> bool:
+        """Whether ``get_agent`` would return a cached runtime rather than build one."""
+        if not session_id:
+            return False
+        with self._agents_lock:
+            key = self._runtime_key(self._resolve_agent_id(agent_id), session_id)
+            return key in self._agent_instances
 
     def get_agent(
         self,
@@ -1125,8 +1411,11 @@ class AgentBridge:
             # default — takes effect on the next message without rebuilding the
             # agent. Memory/skills stay anchored to the workspace regardless.
             # Project and per-session settings belong to the conversation, so a
-            # guest follows the host's, not its own unrelated ones.
-            self._apply_session_project(agent, session_id, host_id)
+            # guest follows the host's, not its own unrelated ones — except that
+            # a *local* project is only handed to an eligible executor, which is
+            # why the speaking Agent is named as well (task 3.7).
+            self._apply_session_project(agent, session_id, host_id,
+                                        actual_agent_id=resolved_agent_id)
             # Same idea for the session's permission mode, a per-conversation
             # override that falls back to the global config. The model is not
             # shared with a guest — see apply_session_prefs.
@@ -1146,9 +1435,9 @@ class AgentBridge:
         """Reload the host's transcript so every teammate sees the same history.
 
         Solo conversations keep their live in-memory list (including tool
-        chains). A team conversation is reread from the host store, with
-        colleagues' replies replayed as ``Name：`` user turns so ``assistant``
-        stays this speaker's own voice.
+        chains). A team conversation is reread from the host store: this
+        speaker's own turns keep their tool chains, and colleagues' replies are
+        replayed as ``Name：`` user turns so ``assistant`` stays its own voice.
         """
         if not session_id or not AgentInitializer._is_shared_conversation(
             session_id, host_agent_id
@@ -1163,20 +1452,147 @@ class AgentBridge:
             return
         restore(agent, session_id, host.workspace, host_agent_id)
 
-    def _apply_session_project(self, agent, session_id: str, agent_id: str) -> None:
+    def apply_session_workspace(self, agent, session_id: str,
+                                agent_id: str = None) -> None:
+        """Apply the session's effective working directory to a live agent.
+
+        The public form of :meth:`_apply_session_project` for the console's
+        project routes, which retarget the already-instantiated session agent so
+        a selection (or a clear) takes effect without waiting for the next
+        ``get_agent``. Clearing a project therefore lands on the same default
+        the runtime would use, not on the raw workspace root.
+        """
+        self._apply_session_project(agent, session_id, agent_id)
+
+    def _apply_session_project(self, agent, session_id: str, agent_id: str,
+                               actual_agent_id: str = None) -> None:
         """Retarget the agent's working directory to the session's project dir.
 
-        A no-op when the session has no project selected (clears any previous
-        override). Failures are swallowed: a bad project setting must not break
-        the chat, it just falls back to the default workspace.
+        With a project selected that is the working directory. Without one, a
+        tenant-shared Agent falls back to the caller's *own* directory
+        (``<agent workspace>/user/<user id>``, change
+        ``use-personal-workspace-for-shared-agents``) rather than to the shared
+        workspace root, which holds everyone's Agent configuration. Private
+        Agents, coding Agents and callers with no verified end user keep the
+        previous behaviour.
+
+        A bad project *setting* is swallowed — a corrupt binding must not break
+        the chat, it just falls back to the default. Preparing the personal
+        directory is not: an unusable directory is reported, because silently
+        continuing would write this user's work into the shared root.
+
+        ``agent_id`` is whose *conversation* this is; ``actual_agent_id`` is the
+        Agent that will execute the turn, when they differ (a teammate answering
+        in the host's transcript — task 3.7). A local project is only handed to
+        an eligible executor: the teammate may be disabled, or its tool/skill
+        selection may not cover project work, and in either case pointing its
+        tools at the host's directory would be the automatic grant the
+        requirement forbids. The refusal is recorded on the Agent so the local
+        tools refuse by name instead of acting on the server directory.
         """
+        from agent.workspace import project_store
+
+        # A local project outranks the server-side project setting: it is the
+        # session's explicit "run here" authorization, and the two cannot both
+        # be in force (opening a local project clears the server-side one).
         try:
-            from agent.workspace import project_store
+            target = project_store.get_execution_target(session_id, agent_id)
+        except Exception as e:
+            logger.debug(f"[AgentBridge] execution target lookup failed: {e}")
+            target = None
+        if target is not None:
+            executor = str(actual_agent_id or "").strip()
+            if executor and executor != str(agent_id or ""):
+                from agent.desktop_local.run_authorization import (
+                    agent_local_eligibility,
+                )
+
+                eligible, refusal = agent_local_eligibility(executor)
+                if not eligible:
+                    logger.info(
+                        f"[AgentBridge] local project refused for executor "
+                        f"'{executor}' in conversation '{agent_id}': {refusal}"
+                    )
+                    marker = getattr(agent, "mark_local_context_unavailable", None)
+                    if marker:
+                        marker(refusal)
+                    return
+            resolved = self._resolve_local_project(target)
+            if resolved is not None:
+                applier = getattr(agent, "apply_execution_target", None)
+                if applier:
+                    applier(target, resolved)
+                return
+            # The target is real but this backend cannot resolve it (the grant
+            # was revoked, or the directory is gone). Clear the override and
+            # record why, so local tools refuse instead of silently acting on a
+            # server directory the session never authorized.
+            marker = getattr(agent, "mark_local_context_unavailable", None)
+            if marker:
+                marker("local_context_unavailable")
+            else:  # pragma: no cover - a non-standard agent stub
+                agent.apply_project_dir(None)
+            return
+
+        # No local target (never opened, or just closed): the Agent must not keep
+        # a previous turn's local authorization as a half-stated fact. Clearing
+        # is idempotent, and a stale target would otherwise read (in the prompt
+        # or a status surface) as "this session still runs locally".
+        clear = getattr(agent, "clear_execution_target", None)
+        if callable(clear):
+            try:
+                clear()
+            except Exception as e:
+                logger.debug(f"[AgentBridge] clearing the local target failed: {e}")
+
+        try:
             project_dir = project_store.get_project_dir(session_id, agent_id)
-            if getattr(agent, "apply_project_dir", None):
-                agent.apply_project_dir(project_dir)
         except Exception as e:
             logger.debug(f"[AgentBridge] apply_session_project failed: {e}")
+            project_dir = None
+
+        scope = "project" if project_dir else None
+        if not project_dir:
+            # No project (never picked, cleared, or its folder is gone): use the
+            # caller's own directory when this Agent is tenant-shared.
+            from agent.workspace.personal_default import personal_default_dir
+
+            project_dir = personal_default_dir(agent_id, ensure=True)
+            scope = "personal" if project_dir else None
+
+        if getattr(agent, "apply_project_dir", None):
+            agent.apply_project_dir(project_dir, scope=scope)
+
+    @staticmethod
+    def _resolve_local_project(target) -> Optional[str]:
+        """The real directory for a desktop target on *this* backend, or None.
+
+        Only the trusted same-machine registry can answer this (see
+        ``agent.desktop_local``); there is deliberately no fallback that reads
+        the target's identifiers as a path. The directory is also re-checked on
+        disk, because the registry entry outlives a directory the user deleted.
+        """
+        from agent.desktop_local import registry
+        from common.runtime_identity import current_identity
+
+        ident = current_identity()
+        entry = registry().lookup(
+            user_id=ident.user_id or "",
+            tenant_id=ident.tenant_id or "",
+            device_id=target.device_id,
+            workspace_id=target.workspace_id,
+            binding_id=target.binding_id,
+            grant_version=target.grant_version,
+            require_mode=target.project_mode,
+        )
+        if entry is None:
+            return None
+        if not os.path.isdir(entry.absolute_path):
+            logger.info(
+                "[AgentBridge] local root for workspace %s is gone; "
+                "refusing local work", target.workspace_id)
+            return None
+        return entry.absolute_path
 
     def _apply_scene_context(self, agent, session_id: str) -> None:
         """Apply an activated scene's context to the session Agent.
@@ -1457,9 +1873,9 @@ class AgentBridge:
         as the database. The operation is a no-op when the agent has not been
         instantiated yet for the session.
 
-        Tool blocks are stripped exactly as on session restore. Deleting a
-        message can orphan a tool_use from its tool_result, and replaying that
-        pair would make the provider reject the next request.
+        History is rebuilt exactly as on session restore. Deleting a message
+        can orphan a tool_use from its tool_result; a turn left like that is
+        replayed as text, since the provider would reject the broken pair.
 
         Returns:
             Number of messages now held in the agent's memory. Returns -1 if
@@ -1482,7 +1898,14 @@ class AgentBridge:
                 f"[AgentBridge] Failed to load messages for sync (session={session_id}): {e}"
             )
             return -1
-        remaining = AgentInitializer._filter_text_only_messages(remaining)
+        try:
+            remaining = AgentInitializer._restored_history(remaining)
+        except Exception as e:
+            logger.warning(
+                f"[AgentBridge] Replaying tool calls failed for session={session_id}, "
+                f"syncing text only: {e}"
+            )
+            remaining = AgentInitializer._filter_text_only_messages(remaining)
         with agent.messages_lock:
             agent.messages.clear()
             for msg in remaining:
@@ -1511,7 +1934,6 @@ class AgentBridge:
             Reply object
         """
         session_id = None
-        agent_id = None
         agent = None
         request_id = None
         cancel_event = None
@@ -1522,6 +1944,7 @@ class AgentBridge:
         run_store = None
         run_status = "done"
         run_error = ""
+        local_identity_token = None
         try:
             # Extract session_id from context for user isolation
             if context:
@@ -1545,6 +1968,17 @@ class AgentBridge:
             # directly. The conversation still belongs to `resolved_agent_id`,
             # so the transcript, the run and the queue all stay in one place —
             # only the voice answering this turn changes.
+            #
+            # A teammate on the roster may be hosted in another process; it
+            # answers over the transport instead of here, and the turn is
+            # recorded in this conversation either way.
+            addressed = (context.get("speaker_agent_id") if context else "") or ""
+            remote_speaker = self._peer_speaker(addressed, resolved_agent_id)
+            if remote_speaker is not None:
+                return self._speak_on_peer(
+                    query, session_id, resolved_agent_id, remote_speaker,
+                    channel_type=(context.get("channel_type") or "") if context else "",
+                )
             speaker_agent_id = self._resolve_speaker(resolved_agent_id, context)
             # With multiple Agents (and especially several bound channel
             # instances) it isn't obvious from the logs which Agent a message
@@ -1585,6 +2019,48 @@ class AgentBridge:
                 else query
             )
 
+            # Re-verify the local project for the run that is actually about to
+            # happen (change task 3.7). Two things are decided here and nowhere
+            # else, because only this point knows both: **which Agent executes**
+            # (the speaker, not the transcript owner) and **what kind of turn
+            # this is** (a user message, or a scheduler/background/machine
+            # trigger). A non-interactive trigger that references a local project
+            # is refused outright -- no device is woken, no historical
+            # authorization is reused -- while an ineligible *executor* only
+            # narrows the run, so a teammate still answers with the tools it has.
+            try:
+                from agent.desktop_local.run_authorization import (
+                    authorize_local_run, narrow_local_execution,
+                    refusal_needs_interactive,
+                )
+                allowed, local_refusal = authorize_local_run(
+                    host_agent_id=resolved_agent_id,
+                    speaker_agent_id=speaker_agent_id,
+                    task_source=(context.get("task_source") if context else ""),
+                    scheduled=bool(context and context.get("is_scheduled_task")),
+                    background=bool(context and context.get("is_background_task")),
+                )
+                if not allowed and local_refusal:
+                    if refusal_needs_interactive(local_refusal):
+                        if self._session_has_local_project(session_id, resolved_agent_id):
+                            logger.info(
+                                f"[AgentBridge] local project refused for a "
+                                f"non-interactive turn: session={session_id} "
+                                f"source={context.get('task_source') if context else ''}"
+                            )
+                            self._detach_cached_local_project(
+                                session_id, resolved_agent_id, local_refusal)
+                            return Reply(ReplyType.ERROR, local_refusal)
+                    else:
+                        logger.info(
+                            f"[AgentBridge] local project narrowed for executor "
+                            f"'{speaker_agent_id}': {local_refusal}"
+                        )
+                        local_identity_token = narrow_local_execution(local_refusal)
+            except Exception as e:  # noqa: BLE001 - never break a reply on this seam
+                logger.warning(
+                    f"[AgentBridge] local run authorization failed: {e}")
+
             # Register a cancel token. Prefer per-turn request_id (web),
             # fall back to session_id (IM channels). The Event is polled by
             # AgentStreamExecutor at safe checkpoints.
@@ -1601,11 +2077,25 @@ class AgentBridge:
                     session_id,
                     self.agent_registry.default_agent_id,
                 )
+                # Tag the run with the local project it is about to act on
+                # (change task 3.5). Identifiers only, read from the frozen
+                # identity rather than from the live Agent, so a revocation can
+                # later cancel exactly the runs it invalidates instead of
+                # everything or nothing.
+                scope = None
+                try:
+                    from agent.desktop_local.run_context import local_run_scope
+                    from common.runtime_identity import current_identity
+
+                    scope = local_run_scope(current_identity())
+                except Exception as e:
+                    logger.debug(f"[AgentBridge] local run scope failed: {e}")
                 cancel_event = registry.register(
-                    token_key, session_id=scoped_session_id
+                    token_key, session_id=scoped_session_id, scope=scope
                 )
 
             # Get agent for this session (will auto-initialize if needed)
+            cached = self._has_runtime(speaker_agent_id, session_id)
             agent = self.get_agent(
                 session_id=session_id,
                 agent_id=speaker_agent_id,
@@ -1618,8 +2108,10 @@ class AgentBridge:
             # in-memory list and only restores it on first init, so a teammate
             # that already joined would miss later turns spoken by someone else
             # (and the host would miss guest replies). Reload the shared
-            # transcript with author labels before this turn is appended.
-            self._sync_shared_transcript(agent, session_id, resolved_agent_id)
+            # transcript with author labels before this turn is appended; a
+            # runtime built for this turn has only just restored it.
+            if cached:
+                self._sync_shared_transcript(agent, session_id, resolved_agent_id)
             
             # Create event handler for logging and channel communication
             event_handler = AgentEventHandler(context=context, original_callback=on_event)
@@ -1633,6 +2125,10 @@ class AgentBridge:
                 filtered_tools = [tool for tool in agent.tools if tool.name != "scheduler"]
                 agent.tools = filtered_tools
                 logger.info(f"[AgentBridge] Scheduled task execution: excluded scheduler tool ({len(filtered_tools)}/{len(original_tools)} tools)")
+
+            # Local-directory reference for *this* turn (change
+            # ``fix-desktop-local-context-and-tool-calls``, task 2.3).
+            _attach_desktop_context_to_tools(agent, context)
 
             if context and agent.tools:
                 for tool in agent.tools:
@@ -1683,11 +2179,39 @@ class AgentBridge:
             # Eagerly persist the user message BEFORE running the agent so the
             # session and the user's bubble are immediately visible — even if
             # the user switches away or refreshes before the reply finishes.
-            # The reply (assistant/tool messages) is appended once the run
-            # completes; the final persist skips this already-stored user turn.
+            # The reply (assistant/tool messages) is appended step by step as
+            # the run goes; later writes skip this already-stored user turn.
             pre_persisted = self._pre_persist_user_message(
                 session_id, query, context, clear_history, resolved_agent_id
             )
+
+            channel_type = (context.get("channel_type") or "") if context else ""
+
+            def write_reply(messages: list):
+                # Stamp every reply with its author, the owner's included. In a
+                # shared conversation a guest reconstructs "who said what" from
+                # this stamp; if the owner's turns went unstamped they would read
+                # as unattributed, and a guest would mistake the owner's persona
+                # ("I am Gray…") for its own and answer in that voice.
+                messages = self._attribute_to_speaker(messages, speaker_agent_id)
+                messages = self._strip_speaker_prefix_from_messages(messages)
+                if messages:
+                    self._persist_messages(
+                        session_id,
+                        list(messages),
+                        channel_type,
+                        resolved_agent_id,
+                        create_if_missing=not pre_persisted,
+                    )
+
+            writer = StepWriter(write_reply, skip_query=pre_persisted) if session_id else None
+
+            def on_run_event(event):
+                # Store the step before announcing it: a listener hearing
+                # turn_end may rely on the step being in the transcript.
+                if writer is not None and event.get("type") == "turn_end":
+                    writer.step()
+                event_handler.handle_event(event)
 
             # Mark this session as mid-run so the self-evolution idle scan does
             # not fire concurrently when a single turn runs longer than
@@ -1712,7 +2236,7 @@ class AgentBridge:
                     )
                 response = agent.run_stream(
                     user_message=model_query,
-                    on_event=event_handler.handle_event,
+                    on_event=on_run_event,
                     clear_history=clear_history,
                     cancel_event=cancel_event,
                     steer_inbox=steer_inbox,
@@ -1722,7 +2246,13 @@ class AgentBridge:
                     # waiting on this run, so an empty answer stays empty and
                     # the scheduler sends no message at all.
                     allow_empty_response=bool(context and context.get("is_scheduled_task")),
+                    on_executor=writer.bind if writer is not None else None,
                 )
+            except Exception:
+                # Keep the steps finished before the failure.
+                if writer is not None:
+                    writer.step()
+                raise
             finally:
                 # Clear the mid-run flag so idle scans can review this session.
                 try:
@@ -1753,31 +2283,14 @@ class AgentBridge:
             if cancel_event is not None and cancel_event.is_set():
                 run_status = "cancelled"
 
-            # Persist new messages generated during this run
-            if session_id:
-                channel_type = (context.get("channel_type") or "") if context else ""
+            # Persist what this run added beyond the steps already stored
+            if writer is not None:
                 new_messages = list(getattr(agent, '_last_run_new_messages', []))
                 # The leading user turn was already persisted eagerly above;
                 # drop it here so it isn't stored twice.
                 if pre_persisted and new_messages and new_messages[0].get("role") == "user":
                     new_messages = new_messages[1:]
-                # Stamp every reply with its author, the owner's included. In a
-                # shared conversation a guest reconstructs "who said what" from
-                # this stamp; if the owner's turns went unstamped they would read
-                # as unattributed, and a guest would mistake the owner's persona
-                # ("I am Gray…") for its own and answer in that voice.
-                new_messages = self._attribute_to_speaker(
-                    new_messages, speaker_agent_id
-                )
-                new_messages = self._strip_speaker_prefix_from_messages(new_messages)
-                if new_messages:
-                    self._persist_messages(
-                        session_id,
-                        list(new_messages),
-                        channel_type,
-                        resolved_agent_id,
-                        create_if_missing=not pre_persisted,
-                    )
+                writer.finish(new_messages)
             
             # Record this user turn for the self-evolution idle trigger. Skip
             # scheduler-injected / scheduled-task sessions so internal runs do
@@ -1857,6 +2370,13 @@ class AgentBridge:
             return Reply(ReplyType.ERROR, f"Agent error: {str(e)}")
 
         finally:
+            if local_identity_token is not None:
+                try:
+                    from common.runtime_identity import restore_identity
+
+                    restore_identity(local_identity_token)
+                except Exception:
+                    pass
             self._end_run(run_store, run_id, run_token, run_status, run_error)
     
     def _schedule_mcp_hot_reload(self, agent):
@@ -2014,7 +2534,7 @@ class AgentBridge:
                     for key, value in sorted(existing_env_vars.items()):
                         f.write(f'{key}={value}\n')
 
-                logger.info(f"[AgentBridge] Synced API keys from config.json to .env")
+                logger.info("[AgentBridge] Synced API keys from config.json to .env")
             except Exception as e:
                 logger.warning(f"[AgentBridge] Failed to sync API keys: {e}")
     

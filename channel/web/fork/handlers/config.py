@@ -18,6 +18,7 @@ from common import const
 from common import i18n
 from common.log import logger
 from models.reasoning_capabilities import provider_reasoning_metadata
+from channel.web.core._common import _write_config_file_for_write
 import json
 import os
 import web
@@ -386,8 +387,7 @@ class ConfigHandler:
                 file_cfg[section] = merged
                 local_config[section] = merged
                 applied[section] = merged
-            with open(config_path, "w", encoding="utf-8") as f:
-                json.dump(file_cfg, f, indent=4, ensure_ascii=False)
+            _write_config_file_for_write(config_path, file_cfg)
 
             logger.info(f"[WebChannel] Config updated: {list(applied.keys())}")
 

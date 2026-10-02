@@ -218,7 +218,7 @@ class SessionDetailHandler:
                 try:
                     from agent.protocol import get_cancel_registry
                     from bridge.bridge import Bridge
-                    scoped = Bridge().get_agent_bridge().scoped_session_key(session_id)
+                    scoped = Bridge().get_agent_bridge().scoped_session_key(session_id, agent_id)
                     cancelled = get_cancel_registry().cancel_session(scoped)
                     if cancelled:
                         logger.info(
@@ -254,7 +254,7 @@ class SessionDetailHandler:
                 # Drop messages still waiting in the channel queue: processing them
                 # after the delete would recreate the session from scratch.
                 try:
-                    channel.cancel_session(session_id)
+                    channel.cancel_session(session_id, agent_id=agent_id)
                 except Exception as e:
                     logger.warning(f"[WebChannel] Failed to drain queue on delete: {e}")
                 channel.session_queues.pop(
@@ -636,16 +636,14 @@ class SessionClearContextHandler:
                     _coding_unsupported(
                         "this session's context lives in the coding service")
 
-                new_seq = store.clear_context(session_id)
-
-                # Delete the agent instance so a fresh one is created on the next message
-                try:
-                    from bridge.bridge import Bridge
-                    bridge = Bridge()
-                    ab = bridge.get_agent_bridge()
-                    ab.clear_session(session_id, agent_id=agent_id)
-                except Exception:
-                    pass
+                from agent.chat.session_service import SessionService
+                service = SessionService(agent_id=agent_id)
+                # Upstream clears the whole team. Validate every transcript
+                # before the first write: a persisted roster may outlive a grant
+                # or mention a same-named session owned by another user.
+                for member_id in service._teammates(session_id, agent_id):
+                    _require_session_scope(ctx, session_id, member_id)
+                new_seq = service.clear_context(session_id, agent_id=agent_id)
 
                 return json.dumps({"status": "success", "context_start_seq": new_seq})
         except web.HTTPError:
@@ -670,7 +668,7 @@ class HistoryHandler:
         web.header('Content-Type', 'application/json; charset=utf-8')
         web.header('Access-Control-Allow-Origin', '*')
         try:
-            params = web.input(session_id='', page='1', page_size='20', agent_id='')
+            params = web.input(session_id='', page='1', page_size='20', agent_id='', until_seq='')
             session_id = params.session_id.strip()
             if not session_id:
                 return json.dumps({"status": "error", "message": "session_id required"})
@@ -687,12 +685,35 @@ class HistoryHandler:
                 store = get_conversation_store(
                     get_agent_registry().get(agent_id, require_enabled=False).workspace
                 )
+                until_seq = params.until_seq.strip()
+                page = int(params.page)
+                # A reply still streaming is shown as of its last stored point and
+                # followed live from there, so nothing appears twice or goes missing.
+                live = None
+                if page == 1 and not until_seq:
+                    try:
+                        live = WebChannel().resumable_stream(session_id, agent_id)
+                    except Exception as e:
+                        logger.debug(f"[WebChannel] resumable stream lookup skipped: {e}")
                 result = store.load_history_page(
                     session_id=session_id,
-                    page=int(params.page),
+                    page=page,
                     page_size=int(params.page_size),
+                    until_seq=int(until_seq) if until_seq.lstrip('-').isdigit() else None,
                     user_id=ctx.user_id if ctx else None,
+                    max_seq=live["stored_seq"] if live else None,
                 )
+                if live:
+                    messages = result.get("messages") or []
+                    last = messages[-1] if messages else {}
+                    running = last.get("role") == "assistant" and last.get("run_state") == "running"
+                    # Before the run starts there is nothing stored to line up
+                    # with; once it has, only its own unfinished turn is followed.
+                    if running or live["stored_seq"] is None:
+                        result["active_request"] = {
+                            "request_id": live["request_id"],
+                            "after_seq": live["after_seq"],
+                        }
                 for msg in result.get("messages") or []:
                     if msg.get("role") != "assistant":
                         continue
@@ -709,7 +730,7 @@ class HistoryHandler:
                             logger.debug(f"[WebChannel] history media rewrite skipped: {e}")
                     _add_subagent_displays(msg.get("steps"))
                     _add_delegate_displays(msg.get("steps"))
-                    artifacts = _artifacts_from_steps(msg.get("steps"), session_id)
+                    artifacts = _artifacts_from_steps(msg.get("steps"), session_id, agent_id)
                     if artifacts:
                         msg["artifacts"] = artifacts
                 return json.dumps({"status": "success", **result}, ensure_ascii=False)
@@ -772,3 +793,23 @@ class MessageDeleteHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
 
+
+
+class UserMessagesHandler:
+    """The upstream timeline index, scoped by the current database identity."""
+
+    def GET(self):
+        from channel.web.web_channel import (
+            _db_scope, _require_read_permission, _require_session_scope,
+            _request_agent_id,
+        )
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        params = web.input(session_id='', agent_id='')
+        session_id = params.session_id.strip()
+        if not session_id:
+            return json.dumps({"status": "error", "message": "session_id required"})
+        with _db_scope() as ctx:
+            _require_read_permission(ctx, "history.read")
+            agent_id = _require_session_scope(ctx, session_id, _request_agent_id(params))
+            result = _conversation_store_for(agent_id).list_user_messages(session_id)
+            return json.dumps({"status": "success", **result}, ensure_ascii=False)

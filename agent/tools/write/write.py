@@ -5,12 +5,13 @@ Creates or overwrites files, automatically creates parent directories
 
 import os
 from typing import Dict, Any
-from pathlib import Path
 
 from agent.tools.base_tool import BaseTool, ToolResult
+from common.atomic_write import write_text_atomic
 from agent.tools.utils.credentials import is_credential_path
 from agent.tools.utils.diff import looks_like_line_numbered_block
 from agent.tools.utils.file_state import note_write, staleness_warning
+from agent.tools.utils.memory_path import feeds_memory_index
 from agent.tools.utils.syntax_check import review as syntax_review
 from common.utils import expand_path
 
@@ -66,6 +67,13 @@ class Write(BaseTool):
         try:
             # Resolve path (may raise PermissionError for protected locations)
             absolute_path = self._resolve_path(path)
+            from agent.memory.personal import personal_file, write_personal_file
+            personal = personal_file(absolute_path)
+            if personal:
+                before = personal[0].read(personal[1])
+                result = write_personal_file(personal, content,
+                                             before['content'] if before['revision'] else None)
+                return ToolResult.success({'path': path, 'bytes': len(content.encode('utf-8')), **result})
 
             # Create parent directory (if needed)
             parent_dir = os.path.dirname(absolute_path)
@@ -86,21 +94,25 @@ class Write(BaseTool):
             if blocking:
                 return ToolResult.fail(f"Error: {blocking}")
 
-            # Write file
-            with open(absolute_path, 'w', encoding='utf-8') as f:
-                f.write(content)
+            write_text_atomic(absolute_path, content)
             note_write(absolute_path)
             
             # Get bytes written
             bytes_written = len(content.encode('utf-8'))
             
             # Auto-sync to memory database if this is a memory file
-            if self.memory_manager and 'memory/' in path:
+            if self.memory_manager and feeds_memory_index(
+                absolute_path, self.memory_manager, self.cwd
+            ):
                 self.memory_manager.mark_dirty()
             
             result = {
                 "message": f"Successfully wrote {bytes_written} bytes to {path}",
                 "path": path,
+                # The resolved location, so a later replay does not have to guess
+                # which directory `path` was relative to (the session's working
+                # directory can change after the run, e.g. opening a project).
+                "abs_path": absolute_path,
                 "bytes_written": bytes_written
             }
             warnings = [w for w in (warning, syntax_warning) if w]

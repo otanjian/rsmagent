@@ -1,7 +1,6 @@
 # encoding:utf-8
 
 import ast
-import copy
 import json
 import logging
 import os
@@ -16,6 +15,7 @@ from common import i18n
 # The values here are placeholders only; the program does NOT read them.
 # They merely document the expected format — put real values in config.json.
 available_setting = {
+    "image_input": {},
     # global UI language for CLI, startup logs, error messages, agent prompts
     # and channel replies. Options: "auto" (detect from system locale, default),
     # "zh" (Chinese) or "en" (English). An explicit value locks the language.
@@ -25,6 +25,8 @@ available_setting = {
     "open_ai_api_key": "",  # openai api key
     # openai api base; when use_azure_chatgpt is true, set the matching api base
     "open_ai_api_base": "https://api.openai.com/v1",
+    # openai api protocol: "auto" (Responses only for models that require it), "chat" (/chat/completions) or "responses" (/responses)
+    "open_ai_api_type": "auto",
     "claude_api_base": "https://api.anthropic.com/v1",  # claude api base
     "gemini_api_base": "https://generativelanguage.googleapis.com",  # gemini api base
     "custom_api_key": "",  # custom OpenAI-compatible provider api key (used when bot_type is "custom"); legacy single-provider field
@@ -142,6 +144,9 @@ available_setting = {
     "embedding_provider": "",  # explicitly set the provider: openai / linkai / dashscope / doubao / zhipu (aligned with bot_type naming)
     "embedding_model": "",     # leave empty to use the provider's default model
     "embedding_dimensions": 0, # leave empty/0 to use the provider's default dimension (1024 recommended for consistency)
+    # Memory rerank config (optional, off by default)
+    "rerank_provider": "",  # leave empty to disable; "local" runs a cross-encoder via sentence-transformers (install it yourself)
+    "rerank_model": "",     # leave empty to use the provider's default model (local: BAAI/bge-reranker-base)
     # voice config
     "speech_recognition": True,  # whether to enable speech recognition
     "group_speech_recognition": False,  # whether to enable group speech recognition
@@ -267,6 +272,9 @@ available_setting = {
     "cloud_host": "client.link-ai.tech",
     "cloud_port": None,
     "cloud_deployment_id": "",
+    # Cross-deployment peer trust: public keys, tenant/Agent routes and an env
+    # name for the local Ed25519 seed. Never put private key bytes in config.
+    "peer_identity": {},
     "minimax_api_key": "",
     "Minimax_group_id": "",
     "Minimax_base_url": "",
@@ -344,6 +352,9 @@ available_setting = {
     "default_agent_id": "",
     # Optional display name for the built-in single agent.
     "default_agent_name": "",
+    # Optional description for the built-in single agent. Teammates see it on
+    # the roster of a shared conversation and use it to route work.
+    "default_agent_description": "",
     # Routes inbound conversations to an agent. Each entry needs channel_type
     # and agent_id; add conversation_id to bind one chat rather than the whole
     # channel. Unbound conversations go to default_agent_id.
@@ -458,6 +469,22 @@ available_setting = {
     "mcp_tool_retrieval_enabled": False,    # switch for on-demand MCP tool retrieval
     "mcp_tool_retrieval_threshold": 20,     # only retrieve when MCP tool count exceeds this
     "mcp_tool_retrieval_top_k": 10,         # max relevant MCP tools injected per turn
+    # Desktop remote web workbench (change add-desktop-remote-web-workbench,
+    # design D12). Deployment switches narrow already-declared slices. Phase 1
+    # (remote web), phase 2 (local files) and phase 3A (notifications) are
+    # opened for local validation; phase 3B (local processing) stays off until
+    # the fixed parser worker exists. Handlers still re-authorize every request.
+    "desktop_remote_web_enabled": True,        # phase 1: carry the server Web in a container
+    "desktop_local_files_enabled": True,       # phase 2: read-only local directory access
+    "desktop_native_notifications_enabled": True,  # phase 3A: system notifications
+    "desktop_local_processing_enabled": False,     # phase 3B: fixed CSV/XLSX parsers (not yet)
+    # v2 project execution (change align-desktop-project-execution-with-master,
+    # tasks 6.1 / 11.2). Default OFF: the surfaces write into the user's own
+    # project directory, so an install that never opted in must not reach them,
+    # and the capability slices stay ``accepted=False`` until the evidence in
+    # ``openspec/changes/.../evidence/`` has been reproduced.
+    "desktop_project_execution_enabled": False,    # v2 file tools (read/write/edit/ls/search)
+    "desktop_project_scripts_enabled": False,      # v2 bash frames on the execution end
 }
 
 
@@ -488,7 +515,7 @@ class Config(dict):
         
         try:
             return self[key]
-        except KeyError as e:
+        except KeyError:
             return default
         except Exception as e:
             raise e
@@ -510,7 +537,7 @@ class Config(dict):
             with open(os.path.join(get_appdata_dir(), "user_datas.pkl"), "rb") as f:
                 self.user_datas = pickle.load(f)
                 logger.debug("[Config] User datas loaded.")
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             logger.debug("[Config] User datas file not found, ignore.")
         except Exception as e:
             logger.warning("[Config] User datas error: {}".format(e))
@@ -656,6 +683,22 @@ def load_config():
     # A backup model configured before the fallback chain must survive the
     # upgrade, so normalize it into the current shape before anything reads it.
     _migrate_chat_fallback(config)
+
+    # Desktop phase switches: fill missing keys from available_setting so an
+    # existing config.json that predates this change inherits the declaration
+    # defaults (currently open for remote web / local files / notifications;
+    # closed for local processing and the v2 project execution surfaces).
+    # Never overwrite a key the operator set.
+    for _desktop_key in (
+        "desktop_remote_web_enabled",
+        "desktop_local_files_enabled",
+        "desktop_native_notifications_enabled",
+        "desktop_local_processing_enabled",
+        "desktop_project_execution_enabled",
+        "desktop_project_scripts_enabled",
+    ):
+        if _desktop_key not in config:
+            config[_desktop_key] = available_setting[_desktop_key]
 
     # Fresh desktop installs default to the stricter "workspace-write"; every
     # other case keeps the template's "full-access". A packaged client only

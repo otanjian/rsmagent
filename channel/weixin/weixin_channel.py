@@ -5,6 +5,7 @@ Uses HTTP long-poll (getUpdates) to receive messages and sendMessage to reply.
 Login via QR code scan through the ilink bot API.
 """
 
+import glob
 import json
 import os
 import threading
@@ -16,14 +17,18 @@ import requests
 from bridge.context import Context, ContextType
 from bridge.reply import Reply, ReplyType
 from channel.chat_channel import ChatChannel, check_prefix
+from channel.channel_instances import is_local_instance_id
 from channel.weixin.weixin_api import (
     WeixinApi, upload_media_to_cdn,
     DEFAULT_BASE_URL, CDN_BASE_URL,
 )
 from channel.weixin.weixin_message import WeixinMessage
+from common import state_dir
 from common.expired_dict import ExpiredDict
 from common.log import logger
+from common.media_download import MAX_FILE_BYTES, save_response
 from common.singleton import singleton
+from common.utils import is_cloud_deployment
 from config import conf, get_weixin_credentials_path
 
 MAX_CONSECUTIVE_FAILURES = 3
@@ -37,6 +42,24 @@ PENDING_MEDIA_WAIT_S = 3.0
 PENDING_MEDIA_POLL_S = 0.1
 QR_LOGIN_TIMEOUT_S = 480
 QR_MAX_REFRESHES = 10
+# Serializes the "is this login free / take it" pair across instances.
+_ADOPT_LOCK = threading.Lock()
+# token -> instance of every Weixin channel logged in in this process. Guarded
+# by _ADOPT_LOCK.
+_ACTIVE_LOGINS = {}
+
+
+def _media_tmp_path(prefix: str, ext: str = "") -> str:
+    """Path for transient media this channel downloads or synthesizes.
+
+    Transient media belongs in the agent's managed tmp dir -- the convention
+    this channel already follows elsewhere through ``common.state_dir``. A bare
+    ``/tmp/...`` is not portable: on Windows it resolves against the *current
+    drive*, so the same process writes to a different disk depending on where it
+    was launched, and it sits outside the workspace the app manages (and cleans).
+    ``tmp_dir()`` also creates the directory, which ``/tmp`` does not guarantee.
+    """
+    return os.path.join(str(state_dir.tmp_dir()), f"{prefix}_{uuid.uuid4().hex[:8]}{ext}")
 
 
 def _load_credentials(cred_path: str) -> dict:
@@ -149,6 +172,7 @@ class WeixinChannel(ChatChannel):
             getattr(self, "instance_id", "") or "",
             declared_token=token, declared_base_url=base_url,
         )
+        creds = _load_credentials(self._credentials_path)
 
         # Restore persisted context_tokens so scheduler can deliver pushes
         # immediately after restart, without waiting for the user to ping
@@ -162,6 +186,7 @@ class WeixinChannel(ChatChannel):
                 return
 
         self.api = WeixinApi(base_url=base_url, token=token, cdn_base_url=cdn_base_url)
+        self._hold_login(token)
         self.login_status = self.LOGIN_STATUS_OK
 
         logger.info(f"[Weixin] 微信通道已启动，凭证保存在 {self._credentials_path}，"
@@ -191,6 +216,7 @@ class WeixinChannel(ChatChannel):
     def stop(self):
         logger.info("[Weixin] stop() called")
         self._stop_event.set()
+        self._hold_login("")
 
     def _relogin(self) -> bool:
         """Re-login after session expiry. Returns True on success."""
@@ -215,6 +241,7 @@ class WeixinChannel(ChatChannel):
             token=result["token"],
             cdn_base_url=self.api.cdn_base_url if self.api else CDN_BASE_URL,
         )
+        self._hold_login(result["token"])
         self.login_status = self.LOGIN_STATUS_OK
         return True
 
@@ -224,6 +251,95 @@ class WeixinChannel(ChatChannel):
     # credentials JSON so scheduled pushes survive process restarts.
     # All mutation + disk IO is serialized via _context_tokens_lock so that
     # concurrent updates can never lose each other's writes.
+
+    @staticmethod
+    def _may_adopt_default_login(instance_id: str) -> bool:
+        """Whether this instance may take over the login in the default file.
+
+        An id minted on this machine is the channel the local scan flow was
+        for. An id provided from outside stands for a separately provisioned
+        bot, which scans for its own account — except on a cloud deployment,
+        where it is the same channel that used to run without an id.
+        """
+        return is_local_instance_id(instance_id, "weixin") or is_cloud_deployment()
+
+    def _login_key(self) -> str:
+        return getattr(self, "instance_id", "") or "weixin"
+
+    def _hold_login(self, token: str) -> None:
+        """Record *token* as this instance's login in this process ("" to release)."""
+        key = self._login_key()
+        with _ADOPT_LOCK:
+            for held, owner in list(_ACTIVE_LOGINS.items()):
+                if owner == key:
+                    del _ACTIVE_LOGINS[held]
+            if token:
+                _ACTIVE_LOGINS[token] = key
+
+    def _configured_logins(self) -> set:
+        """Tokens other Weixin instances carry in their configured credentials.
+
+        A login scanned from the console lives there rather than in the
+        instance's own credentials file, so the files alone miss it.
+        """
+        from agent import team
+        from channel.channel_instances import resolve_channel_instances
+
+        own = self._login_key()
+        tokens = set()
+        for inst in resolve_channel_instances(team.resolve(conf())):
+            if inst.channel_type != "weixin" or inst.instance_id == own:
+                continue
+            token = (inst.credentials or {}).get("weixin_token")
+            if token:
+                tokens.add(token)
+        return tokens
+
+    def _login_unclaimed(self, token: str) -> bool:
+        """Whether no other instance already runs on *token*.
+
+        Caller holds _ADOPT_LOCK. A login is taken when another instance runs
+        on it in this process, carries it in its configured credentials, or has
+        copied it into its own credentials file. Unreadable surroundings count
+        as claimed: sharing one account between two instances costs a silent
+        misroute of every message, while the alternative is a scan the user can
+        repeat.
+        """
+        owner = _ACTIVE_LOGINS.get(token)
+        if owner and owner != self._login_key():
+            return False
+        try:
+            if token in self._configured_logins():
+                return False
+        except Exception:
+            return False
+        base = get_weixin_credentials_path()
+        root, ext = os.path.splitext(base)
+        try:
+            siblings = glob.glob(f"{root}.*{ext or '.json'}")
+        except Exception:
+            return False
+        for path in siblings:
+            if os.path.abspath(path) == os.path.abspath(self._credentials_path):
+                continue
+            if _load_credentials(path).get("token") == token:
+                return False
+        return True
+
+    def _adopt_credentials(self, source: dict, own: dict) -> dict:
+        """Copy a login adopted from *source* into this instance's own file.
+
+        Anything this instance already persisted wins over the source; the
+        merged result is returned so the caller can keep using it. Best-effort:
+        a failed write only costs a re-adopt on the next start.
+        """
+        merged = dict(source or {})
+        merged.update({k: v for k, v in (own or {}).items() if v})
+        try:
+            _save_credentials(self._credentials_path, merged)
+        except Exception as e:
+            logger.warning(f"[Weixin] Failed to persist adopted credentials: {e}")
+        return merged
 
     def _restore_context_tokens_from_creds(self, creds: dict) -> None:
         if not isinstance(creds, dict):
@@ -292,7 +408,7 @@ class WeixinChannel(ChatChannel):
                 print(buf.getvalue())
             except UnicodeEncodeError:
                 # Windows GBK terminals cannot render Unicode block characters
-                print(f"\n  (终端不支持显示二维码，请使用链接扫码)")
+                print("\n  (终端不支持显示二维码，请使用链接扫码)")
                 print(f"  二维码链接: {qrcode_url}\n")
         except ImportError:
             print(f"\n  二维码链接: {qrcode_url}")
@@ -865,7 +981,7 @@ class WeixinChannel(ChatChannel):
 
         if local_path.startswith(("http://", "https://")):
             try:
-                resp = requests.get(local_path, timeout=60)
+                resp = requests.get(local_path, timeout=60, stream=True)
                 resp.raise_for_status()
                 ct = resp.headers.get("Content-Type", "")
                 ext = ".bin"
@@ -882,9 +998,8 @@ class WeixinChannel(ChatChannel):
                 elif "pdf" in ct:
                     ext = ".pdf"
 
-                tmp_path = f"/tmp/wx_media_{uuid.uuid4().hex[:8]}{ext}"
-                with open(tmp_path, "wb") as f:
-                    f.write(resp.content)
+                tmp_path = _media_tmp_path("wx_media", ext)
+                save_response(resp, tmp_path, MAX_FILE_BYTES)
                 return tmp_path
             except Exception as e:
                 logger.error(f"[Weixin] Failed to download media: {e}")

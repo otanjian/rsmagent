@@ -153,7 +153,7 @@ test('chat.html pins admin entry above account footer', () => {
     assert.ok(workbenchIdx > navClose, 'workbench entry must be outside scrolling sidebar-nav');
 });
 
-test('chat.html pins recent sessions under scenes', () => {
+test('chat.html keeps the history panel entry below the workbench menus', () => {
     const htmlSource = fs.readFileSync(path.join(__dirname, '../channel/web/chat.html'), 'utf8');
     const scenesIdx = htmlSource.indexOf('data-view="scenes"');
     const recentIdx = htmlSource.indexOf('id="sidebar-recent"');
@@ -161,18 +161,18 @@ test('chat.html pins recent sessions under scenes', () => {
     assert.ok(scenesIdx > 0, 'scenes menu item exists');
     assert.ok(recentIdx > scenesIdx, 'sidebar-recent sits after scenes');
     assert.equal(historyItem, -1, 'top-level history menu item is removed');
-    assert.match(htmlSource, /id="sidebar-recent-list"/);
+    assert.doesNotMatch(htmlSource, /id="sidebar-recent-list"/);
+    assert.match(htmlSource, /onclick="toggleSessionPanel\(\)"/);
     assert.match(htmlSource, /id="sidebar-recent-label"/);
     assert.match(htmlSource, /fa-clock-rotate-left/);
-    assert.match(htmlSource, /会话历史/);
+    assert.match(htmlSource, /历史会话/);
 });
 
-test('sidebar recent sessions keep at most 10', () => {
+test('history permission still comes from the authoritative navigation grant', () => {
     const code = section('// === SIDEBAR_RECENT_BEGIN ===', '// === SIDEBAR_RECENT_END ===');
     const sandbox = {};
     vm.runInNewContext(code, sandbox);
-    const items = Array.from({ length: 15 }, (_, i) => ({ session_id: 's' + i, title: 't' + i }));
-    assert.equal(sandbox._sidebarRecentLimit(items).length, 10);
-    assert.equal(sandbox._sidebarRecentLimit(items)[0].session_id, 's0');
-    assert.equal(sandbox._sidebarRecentLimit(items.slice(0, 3)).length, 3);
+    assert.equal(sandbox._sidebarRecentDenied(), false);
+    sandbox._viewNavDenied = view => view === 'history';
+    assert.equal(sandbox._sidebarRecentDenied(), true);
 });

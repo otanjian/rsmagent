@@ -261,9 +261,15 @@ class _WorkspaceWriteGuard:
         if not path:
             return ToolResult.fail("Error: evolution write path is required.")
         try:
-            resolved = Path(self._inner._resolve_path(path)).resolve()
+            candidate = Path(self._inner._resolve_path(path))
         except Exception as e:
             return ToolResult.fail(f"Error: invalid evolution write path '{path}': {e}")
+        from agent.memory.personal import _personal_stage, personal_file
+        if _personal_stage.get() is not None and personal_file(candidate):
+            # Personal writes are staged and committed against the snapshot
+            # captured before this background pass, never rolled back raw.
+            return self._inner.execute(args)
+        resolved = candidate.resolve()
         if _denied_evolution_path(
             self._ws, resolved, self._protected_skills
         ):
@@ -305,6 +311,8 @@ _MEMORY_IGNORE = (".evolution_backups", "dreams", "evolution")
 # Files the skill subsystem maintains automatically (the enable/disable index).
 # Not an evolution result, so a rewrite must not count as a change signal.
 _WATCH_IGNORE_NAMES = ("skills_config.json",)
+# Its in-flight replacement, written next to it and renamed over it.
+_WATCH_IGNORE_PREFIXES = (".skills_config.json.",)
 
 
 def _workspace_snapshot(workspace_dir) -> dict:
@@ -325,7 +333,7 @@ def _workspace_snapshot(workspace_dir) -> dict:
         for p in root.rglob("*"):
             if not p.is_file():
                 continue
-            if p.name in _WATCH_IGNORE_NAMES:
+            if p.name in _WATCH_IGNORE_NAMES or p.name.startswith(_WATCH_IGNORE_PREFIXES):
                 continue
             try:
                 st = p.stat()
@@ -402,13 +410,36 @@ def run_evolution_for_session(
 
     transaction: Optional[_EvolutionWriteTransaction] = None
     workspace_lock: Optional[threading.Lock] = None
+    personal_stage_token = None
+    personal_stage = None
     try:
+        if user_id:
+            from agent.memory.personal import personal_service_for, _personal_stage
+            personal_service = personal_service_for(user_id)
+            personal_stage = {'root': personal_service.user_root(),
+                              'token': personal_service.scope_token(), 'changes': {}}
+            personal_stage_token = _personal_stage.set(personal_stage)
         if hasattr(agent_bridge, "get_cached_agent"):
             agent = agent_bridge.get_cached_agent(session_id, agent_id=agent_id)
         else:
             agent = agent_bridge.agents.get(session_id) or agent_bridge.default_agent
         if not agent:
             return False
+
+        # A cached Agent keeps the last interactive turn's local project on it
+        # (the directory on its tools, the target on ``execution_target``). This
+        # pass is a background wake, not an interactive authorization, so the
+        # local project is taken off the instance before any of it runs
+        # (change task 3.7): reusing the history's authorization is exactly what
+        # the requirement forbids.
+        try:
+            from agent.desktop_local.run_authorization import (
+                REFUSAL_BACKGROUND_CACHED, detach_local_execution,
+            )
+
+            detach_local_execution(agent, REFUSAL_BACKGROUND_CACHED)
+        except Exception as e:  # noqa: BLE001 - never disrupt the scan
+            logger.debug(f"[Evolution] local project detach failed: {e}")
 
         # Consume the trigger only after this pass has secured a concurrency
         # slot and resolved its session. Sessions rejected by the gate keep
@@ -490,7 +521,8 @@ def run_evolution_for_session(
                 if top in protected_names:
                     continue
                 backup_files.append(skill_md)
-        backup_id = create_backup(workspace_dir, backup_files)
+        backup_id = create_backup(workspace_dir, backup_files, **(
+            {'personal_service': personal_service} if personal_stage is not None else {}))
         _backup_n = sum(1 for f in backup_files if Path(f).exists())
 
         # Snapshot the whole workspace (path -> mtime/size) so we can reliably
@@ -554,6 +586,7 @@ def run_evolution_for_session(
         if not (
             transaction.has_changes()
             or _workspace_changed(workspace_dir, pre_snapshot)
+            or (personal_stage and personal_stage['changes'])
         ):
             logger.info(
                 f"[Evolution] ✗ session={session_id}: text produced but no file "
@@ -574,6 +607,11 @@ def run_evolution_for_session(
 
         logger.info(f"[Evolution] ✓ session={session_id} evolved:\n{result}")
         append_session_evolution(workspace_dir, result, backup_id=backup_id, user_id=user_id)
+        if personal_stage:
+            publish = personal_service.publish(personal_stage['changes'],
+                                               expected_scope=personal_stage['token'])
+            if publish['index_state'] != 'ok':
+                logger.warning('[Evolution] Personal files committed; index recovery pending')
         # Inject an [EVOLUTION] note so the main agent can honor "undo".
         _inject_evolution_record(
             agent_bridge, session_id, channel_type, result, backup_id, agent_id
@@ -600,6 +638,8 @@ def run_evolution_for_session(
         logger.warning(f"[Evolution] Run failed for session={session_id}: {e}")
         return False
     finally:
+        if personal_stage_token is not None:
+            _personal_stage.reset(personal_stage_token)
         try:
             if transaction is not None:
                 transaction.rollback()

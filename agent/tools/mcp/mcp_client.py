@@ -8,8 +8,10 @@ without any external MCP SDK dependency.
 import json
 import os
 import queue
+import shutil
 import subprocess
 import threading
+import time
 import urllib.request
 import urllib.error
 from typing import Optional
@@ -148,6 +150,16 @@ _STDIO_ENV_PASSTHROUGH = (
 )
 # Sensitive name patterns never forwarded, even under inherit_full_env.
 _STDIO_ENV_SENSITIVE = ("_KEY", "_SECRET", "_TOKEN", "_PASSWORD", "_PASSWD", "_CREDENTIAL")
+
+# Total time budget for reading the 'endpoint' event off a new SSE stream.
+# urlopen()'s timeout only bounds a single socket read and every arriving byte
+# resets it, so a server that holds the stream warm with keepalive comments
+# (": keepalive", which servers send every few seconds) would keep the
+# discovery loop alive forever. Because the loader walks its servers serially on
+# one background thread, that stalls every server queued behind it: they stay
+# "pending" and their tools are silently missing. Kept at the 10s this call
+# already used for connecting, since the endpoint event is due immediately.
+_SSE_DISCOVERY_TIMEOUT = 10
 
 
 # Optional callback invoked after an OAuth authorization completes, so the
@@ -310,7 +322,7 @@ class McpClient:
             raise McpTransportError(
                 f"tools/list returned an error: {_redact(resp.get('error'))}",
                 code="discovery_failed", stage="protocol")
-        tools = resp.get("result", {}).get("tools", [])
+        tools = (resp.get("result") or {}).get("tools", [])
         return [
             {
                 "name": t.get("name", ""),
@@ -324,8 +336,7 @@ class McpClient:
     def call_tool(self, name: str, arguments: dict) -> str:
         """Call a tool and return the result as a string."""
         try:
-            resp = self._send_request("tools/call", {"name": name, "arguments": arguments})
-            return self._text_result(resp)
+            return self.call_tool_strict(name, arguments)
         except Exception as e:
             self.last_error = _as_transport_error(e)
             logger.warning(f"[MCP:{self.name}] call_tool({name}) failed: {e}")
@@ -351,7 +362,7 @@ class McpClient:
 
     @staticmethod
     def _text_result(resp: dict) -> str:
-        content = resp.get("result", {}).get("content", [])
+        content = (resp.get("result") or {}).get("content", [])
         parts = [item.get("text", "") for item in content
                  if isinstance(item, dict) and item.get("type") == "text"]
         return "\n".join(parts)
@@ -459,9 +470,11 @@ class McpClient:
         args = self.config.get("args", [])
         env = self._build_stdio_env(self._stdio_extra_env())
 
+        executable = self._resolve_executable(command, env)
+
         try:
             self._proc = subprocess.Popen(
-                [command] + list(args),
+                [executable] + list(args),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -519,6 +532,23 @@ class McpClient:
                 "the env secret is not a JSON object of name/value pairs",
                 code="secret_invalid", stage="config")
         return {str(k): str(parsed[k]) for k in declared if k in parsed}
+
+    def _resolve_executable(self, command: str, env: dict) -> str:
+        """Resolve ``command`` to a full path using the subprocess PATH.
+
+        Popen without a shell does not apply PATHEXT on Windows, so shims like
+        ``npx`` / ``uvx`` (really ``npx.cmd``) fail with WinError 2 unless
+        resolved first.
+        """
+        path = env.get("PATH") or env.get("Path") or os.environ.get("PATH")
+        resolved = shutil.which(command, path=path)
+        if resolved:
+            return resolved
+        logger.warning(
+            f"[MCP:{self.name}] command '{command}' not found in PATH; "
+            f"make sure it is installed (e.g. Node.js for npx)"
+        )
+        return command
 
     def _command_allowed(self, command: str) -> bool:
         """Check the executable against an optional command allowlist.
@@ -716,8 +746,14 @@ class McpClient:
         headers.update(self._http_headers)
         req = urllib.request.Request(self._sse_url, headers=headers)
         endpoint = None
+        deadline = time.monotonic() + _SSE_DISCOVERY_TIMEOUT
         with self._open(req, timeout=10) as resp:
             for raw_line in resp:
+                if time.monotonic() > deadline:
+                    raise TimeoutError(
+                        f"[MCP:{self.name}] No endpoint event within "
+                        f"{_SSE_DISCOVERY_TIMEOUT}s of opening the SSE stream"
+                    )
                 line = raw_line.decode("utf-8").rstrip("\n\r")
                 if line.startswith("data:"):
                     data = line[len("data:"):].strip()

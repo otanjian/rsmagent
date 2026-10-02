@@ -20,11 +20,10 @@ first write migrates them and clears the old keys.
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping, Optional
 
+from common.atomic_write import write_text_atomic
 from common.log import logger
 from common.utils import expand_path
 
@@ -61,8 +60,6 @@ def read(settings: Mapping[str, Any]) -> Dict[str, Any]:
     """
     path = team_file(settings)
     try:
-        # utf-8-sig so a BOM (e.g. hand-edited on Windows) does not make an
-        # otherwise valid roster look like broken JSON and get discarded.
         raw = path.read_text(encoding="utf-8-sig")
     except FileNotFoundError:
         return _legacy(settings)
@@ -150,20 +147,7 @@ def write(settings: Mapping[str, Any], roster: Mapping[str, Any]) -> Path:
     )
     if bootstrapped:
         payload["channel_instances"] = bootstrapped
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{FILE_NAME}.", suffix=".tmp", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=4, ensure_ascii=False)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp_name, path)
-    except Exception:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
+    write_text_atomic(path, json.dumps(payload, indent=4, ensure_ascii=False) + "\n")
     return path
 
 
@@ -199,6 +183,40 @@ def migrate(settings: Mapping[str, Any], config_path: Optional[Any] = None) -> O
     return written
 
 
+def adopt_legacy_channels(settings: Mapping[str, Any]) -> Optional[Path]:
+    """Fold legacy channels into a roster file that already exists.
+
+    ``write`` carries them over, but only when something writes: a channel set
+    up in ``config.json`` after the file appeared (an older build run against
+    the same data) would otherwise run without a record, so the console cannot
+    show or manage it. Only ever adds records, and never touches a file it
+    cannot parse.
+    """
+    path = team_file(settings)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    roster = {key: data[key] for key in TEAM_KEYS if key in data}
+    existing = roster.get("channel_instances")
+    before = len(existing) if isinstance(existing, list) else 0
+    from channel.channel_instances import bootstrap_legacy_instances
+
+    after = bootstrap_legacy_instances(settings, roster, roster.get("default_agent_id") or "")
+    if len(after) <= before:
+        return None
+    roster["channel_instances"] = after
+    try:
+        written = write(settings, roster)
+    except OSError as e:
+        logger.warning(f"[Team] Could not add legacy channels to {path}: {e}")
+        return None
+    logger.info(f"[Team] Added legacy channels to {written}")
+    return written
+
+
 def retire_legacy(config_path: Optional[Path]) -> None:
     """Take the roster keys out of ``config.json``, once the file has them.
 
@@ -210,7 +228,6 @@ def retire_legacy(config_path: Optional[Path]) -> None:
         return
     path = Path(config_path)
     try:
-        # utf-8-sig tolerates a UTF-8 BOM on a hand-edited config.json.
         settings = json.loads(path.read_text(encoding="utf-8-sig"))
         if not isinstance(settings, dict):
             return
@@ -218,8 +235,8 @@ def retire_legacy(config_path: Optional[Path]) -> None:
             return
         for key in TEAM_KEYS:
             settings.pop(key, None)
-        path.write_text(
-            json.dumps(settings, indent=4, ensure_ascii=False) + "\n", encoding="utf-8"
+        write_text_atomic(
+            path, json.dumps(settings, indent=4, ensure_ascii=False) + "\n"
         )
     except (OSError, ValueError) as e:
         logger.warning(f"[Roster] Left the old roster in {config_path}: {e}")

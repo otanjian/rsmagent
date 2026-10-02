@@ -1,17 +1,18 @@
-import { app, BrowserWindow, session, shell, ipcMain, dialog, nativeImage, Notification, systemPreferences, crashReporter, Menu, clipboard, net } from 'electron'
+import { app, BrowserWindow, session, shell, ipcMain, dialog, nativeImage, Notification, systemPreferences, crashReporter, Menu, clipboard, net, powerMonitor } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
 import http from 'http'
 import { PythonBackend, BackendError } from './python-manager'
+import { resolveBackendPath } from './backend-path'
 import { buildAppMenu } from './menu'
 import { createTray, destroyTray, getTray } from './tray'
-import { initUpdater, checkForUpdates, startDownload, quitAndInstall, setUpdateLanguage } from './updater'
+import { initUpdater, checkForUpdates, startDownload, quitAndInstall, setUpdateLanguage, setUpdateFeedQuery } from './updater'
 import { setupThemeIPC, loadAppConfig } from './themes'
 import { setupHttpRelayIPC } from './http-relay'
 import {
+  announceLocalBackendOrigin,
   isTrustedWindowFrame,
-  setBackendOrigin,
   setTrustedSenderCheck,
   setupAssetProxy,
   setupAuthBrokerIPC,
@@ -23,6 +24,9 @@ import {
   repairWindowsShortcuts,
   getRuntimeAppIcon,
 } from './app-icon'
+import { setupRemoteConfigIPC, startupMode, syncBrokerOrigin } from './remote/config-ipc'
+import { detachRemoteContainer, setupRemoteContainerIPC } from './remote/remote-container-ipc'
+import { setLocalWebBindWindow, tryAutoBindLocalWeb } from './remote/local-web-bind'
 
 // Where the packaged backend keeps its writable data (config.json, run.log).
 // Kept in sync with COW_DATA_DIR in python-manager.ts so the desktop shell
@@ -123,7 +127,8 @@ if (/^cowagent$/i.test(app.name.trim())) app.setName('RongAI')
 // Windows shows notifications only when an AppUserModelID is set; without it
 // they are silently dropped. Harmless on macOS/Linux.
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.cowagent.desktop')
+  // Must match the installer's appId, which stamps it on the shortcuts.
+  app.setAppUserModelId(loadAppConfig()?.appUserModelId || 'com.cowagent.desktop')
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -354,7 +359,10 @@ function createWindow() {
       nodeIntegration: false,
     },
   })
+  setLocalWebBindWindow(mainWindow)
 
+  // The window title follows the app name, not the renderer's static <title>.
+  mainWindow.on('page-title-updated', (e) => e.preventDefault())
   const persist = () => saveWindowState()
   mainWindow.on('resize', persist)
   mainWindow.on('move', persist)
@@ -443,25 +451,32 @@ function createWindow() {
     menu.popup({ window: mainWindow ?? undefined })
   })
 
-  // Close-to-tray: hide the window instead of destroying it, so the tray's
-  // "Show" can bring it back. Only a real Quit (menu/tray/Cmd+Q) destroys it.
+  // Close-to-tray (task 13.1): hide unless the user opted into quit-on-close
+  // or an explicit Quit path set isQuitting. Default is tray (驻留).
   mainWindow.on('close', (e) => {
-    if (!isQuitting) {
+    const { shouldCloseToTray, DEFAULT_LIFECYCLE_PREFERENCES } = require('./remote/lifecycle') as typeof import('./remote/lifecycle')
+    const prefs = {
+      ...DEFAULT_LIFECYCLE_PREFERENCES,
+      closeBehavior: (global as { __cowCloseBehavior?: 'tray' | 'quit' }).__cowCloseBehavior || 'tray',
+    }
+    if (shouldCloseToTray(prefs, { isQuitting })) {
       e.preventDefault()
       mainWindow?.hide()
     }
   })
 
   mainWindow.on('closed', () => {
+    setLocalWebBindWindow(null)
     mainWindow = null
   })
 }
 
 function getBackendPath(): string {
-  if (isDev) {
-    return path.resolve(__dirname, '../../..')
-  }
-  return path.join(process.resourcesPath, 'backend')
+  return resolveBackendPath({
+    dev: isDev,
+    resourcesPath: process.resourcesPath,
+    moduleDir: __dirname,
+  })
 }
 
 /**
@@ -499,9 +514,18 @@ async function startBackend() {
     console.log(`[backend] ready on port ${port}`)
     // The broker learns the backend origin from here -- never from a renderer
     // argument -- so an authenticated request can only ever go to the backend
-    // this process actually started.
-    setBackendOrigin(`http://127.0.0.1:${port}`)
+    // this process actually started. The local origin is remembered separately
+    // from the active one, so a later mode/config change restores this rather
+    // than blanking it (see ``syncBrokerOrigin``).
+    // Prefer ``localhost`` over ``127.0.0.1`` so the system-browser authorize
+    // URL shares a Cookie jar with the Web console URL the backend prints
+    // ("Local access: http://localhost:<port>"). The two names are different
+    // browser origins; a session on one does not authorize the other.
+    announceLocalBackendOrigin(`http://localhost:${port}`)
     mainWindow?.webContents.send('backend-status', { status: 'ready', port })
+    // If a native session already exists (e.g. re-bind after a backend
+    // restart), attach the Web workbench to this registered origin.
+    void tryAutoBindLocalWeb()
   })
 
   // The port isn't a constant: pickPort() may land on a fallback when the
@@ -519,8 +543,9 @@ async function startBackend() {
   pythonBackend.on('lost', () => {
     console.warn('[backend] stopped responding')
     // Drop the backend origin: the native context belonged to that process and
-    // must not be replayed against whatever binds the port next.
-    setBackendOrigin('')
+    // must not be replayed against whatever binds the port next. The local
+    // origin goes with it, so a mode change cannot restore a dead backend.
+    announceLocalBackendOrigin('')
     mainWindow?.webContents.send('backend-status', { status: 'lost' })
   })
 
@@ -642,6 +667,14 @@ function setupIPC() {
     return false
   }
   ipcMain.handle('get-login-item', () => isLaunchAtLoginEnabled())
+  ipcMain.handle('get-close-behavior', () => {
+    return (global as { __cowCloseBehavior?: 'tray' | 'quit' }).__cowCloseBehavior || 'tray'
+  })
+  ipcMain.handle('set-close-behavior', (_event, behavior: string) => {
+    const next = behavior === 'quit' ? 'quit' : 'tray'
+    ;(global as { __cowCloseBehavior?: 'tray' | 'quit' }).__cowCloseBehavior = next
+    return { ok: true, closeBehavior: next }
+  })
   // Returns the real outcome so the UI never lies: { ok, enabled, error }.
   // - ok=false + error: writing the login item threw (surface it, don't swallow).
   // - ok=true but enabled!=requested: the OS/policy silently refused the change.
@@ -679,6 +712,9 @@ function setupIPC() {
   ipcMain.handle('update-download', (_event, lang?: string) => {
     setUpdateLanguage(lang)
     startDownload()
+  })
+  ipcMain.handle('update-feed-query', (_event, params: unknown) => {
+    setUpdateFeedQuery(params)
   })
   ipcMain.handle('update-install', () => {
     // Let the window actually close so the app can fully quit — otherwise the
@@ -786,19 +822,38 @@ app.whenReady().then(async () => {
 
   // On macOS the Chromium-layer handler above isn't enough: getUserMedia also
   // needs system-level (TCC) microphone authorization, which only the native
-  // askForMediaAccess prompt can grant. Request it up front so the first mic
-  // click surfaces the system dialog instead of failing with a denied error.
-  if (process.platform === 'darwin') {
-    const micStatus = systemPreferences.getMediaAccessStatus('microphone')
-    if (micStatus === 'not-determined') {
-      systemPreferences.askForMediaAccess('microphone').catch(() => {})
+  // askForMediaAccess prompt can grant. The renderer asks for it right before
+  // the first recording, so the system dialog only appears when mic is used.
+  ipcMain.handle('mic-request-access', async () => {
+    if (process.platform !== 'darwin') return true
+    try {
+      if (systemPreferences.getMediaAccessStatus('microphone') === 'granted') return true
+      return await systemPreferences.askForMediaAccess('microphone')
+    } catch {
+      return false
     }
-  }
+  })
 
   setupIPC()
   setupThemeIPC()
   setupHttpRelayIPC()
   setupAppIconIPC({ getWindow: () => mainWindow, getTray })
+  setupRemoteConfigIPC(() => mainWindow)
+  // The remote container's local channels (change add-desktop-remote-web-workbench,
+  // tasks 4.1/4.6). Attaching is done by the *local* shell document, so the
+  // sender check is the same trusted-window check the broker uses; the remote
+  // page itself never sees these channels.
+  setupRemoteContainerIPC(
+    (event) => isTrustedWindowFrame(event, mainWindow),
+    () => {
+      const current = startupMode()
+      if (!mainWindow || !current.profile) return null
+      // The shell's own entry paths come from the server's `/api/desktop/meta`
+      // when it was probed; the built-in route prefixes cover the shipped shell
+      // when it was not, and ``isShellDocument`` refuses anything else either way.
+      return { window: mainWindow, origin: current.profile.origin, entryPaths: [] }
+    },
+  )
   createWindow()
   buildAppMenu(() => mainWindow)
   // No menu-bar tray on macOS — the Dock + window controls are enough there.
@@ -813,11 +868,35 @@ app.whenReady().then(async () => {
       },
     })
   }
-  // Re-apply a previously set icon/title before the page loads.
+  // Apply a previously set icon/title before the page loads.
   applyCachedAppIcon()
   // Undo any damage the last update did to this app's shortcuts.
-  repairWindowsShortcuts()
-  await startBackend()
+  try {
+    repairWindowsShortcuts()
+  } catch (e) {
+    console.warn('[app-icon] shortcut repair failed:', (e as Error).message)
+  }
+
+  // Local vs remote (change add-desktop-remote-web-workbench, task 2.2).
+  //
+  // ``remote`` mode must NOT start the bundled Python business backend: the
+  // server owns the business runtime in that mode. The window still loads the
+  // local shell document, which renders the connection/settings surface until
+  // the remote container is attached (group 4). An install that has never been
+  // configured stays in ``local`` mode and behaves exactly as before -- the
+  // stored mode defaults to local and no upgrade ever flips it.
+  const startup = startupMode()
+  // Point the broker at the active server before anything can ask it to mint a
+  // session. In local mode this is a no-op (the bundled backend announces its
+  // own origin on ``ready``); in remote mode it is the only place the remote
+  // origin is installed, and an unconfigured remote mode leaves it empty so a
+  // sign-in attempt fails as ``backend_unavailable`` instead of guessing.
+  syncBrokerOrigin()
+  if (startup.mode === 'remote') {
+    console.log(`[remote] remote mode: local backend not started (server=${startup.profile ? startup.profile.origin : 'unconfigured'})`)
+  } else {
+    await startBackend()
+  }
 
   // Wire auto-update: a first silent check a few seconds after launch (so it
   // doesn't compete with backend startup), then poll every 4 hours so a
@@ -849,5 +928,39 @@ app.on('before-quit', () => {
   isQuitting = true
   saveWindowState()
   destroyTray()
+  // Release the remote container before the process goes: the view, its bridge
+  // and the in-memory partition holding the paired cookie all die with the app,
+  // which is why a restart must authorize again (task 4.1/4.6).
+  void detachRemoteContainer().catch(() => undefined)
+  // Drop in-memory directory grants so a quit never leaves an active grant
+  // for the next launch to inherit (task 13.1).
+  try {
+    const { remoteGrantRegistry } = require('./remote/local-files-bridge') as typeof import('./remote/local-files-bridge')
+    remoteGrantRegistry.clear()
+  } catch {
+    /* module may be absent in older builds */
+  }
   pythonBackend?.stop()
 })
+
+// Wake revalidation (task 13.2): on resume/unlock, tell the shell to re-check
+// session / lease / source version. Unknown business writes are never auto-resent.
+try {
+  const { wakePolicy } = require('./remote/lifecycle') as typeof import('./remote/lifecycle')
+  const emitWake = (event: 'resume' | 'unlock-screen') => {
+    const decision = wakePolicy(event)
+    if (decision.action !== 'revalidate') return
+    try {
+      mainWindow?.webContents.send('desktop:lifecycle', {
+        type: 'revalidate',
+        reason: decision.reason,
+      })
+    } catch {
+      /* window may already be gone */
+    }
+  }
+  powerMonitor.on('resume', () => emitWake('resume'))
+  powerMonitor.on('unlock-screen', () => emitWake('unlock-screen'))
+} catch {
+  /* powerMonitor unavailable in some test hosts */
+}

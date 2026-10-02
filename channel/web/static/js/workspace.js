@@ -29,6 +29,9 @@ let wsTurnArtifacts = [];
 // File manager state
 let wsCurrentDir = '';
 let wsCurrentRoot = '';   // absolute path of the workspace/project root
+// Which source the panel is showing: 'backend' (the server's own directory) or
+// 'desktop' (a project on this machine, reached through the local source).
+let wsCurrentSource = 'backend';
 let wsSearchMode = false;
 let wsSearchTimer = null;
 // Agent whose directory the panel browses. Normally the conversation's own
@@ -137,10 +140,196 @@ function wsOwnUserDirPath(agentId) {
 }
 
 /** The directory the panel opens on: the caller's own folder of a shared Agent,
- *  otherwise the Agent's own folder. */
+ *  otherwise the Agent's own folder -- or the project root, when the session's
+ *  files are a local project on this machine (task 9.2). A local project has no
+ *  `agents/<id>/` and no per-member subtree, so the Agent arithmetic must not run
+ *  against it: the user opened a directory and that directory is the root. */
 function wsAgentLandingPath() {
+    const localLanding = wsLocalLanding();
+    if (localLanding !== null) return localLanding;
     const agentId = wsScopedAgentId();
     return wsOwnUserDirPath(agentId) || wsAgentDirPath(agentId);
+}
+
+/** The local source's landing path, or null when the backend decides. */
+function wsLocalLanding() {
+    if (typeof CowProjectSource === 'undefined') return null;
+    try {
+        return CowProjectSource.landing();
+    } catch (_) {
+        return null;
+    }
+}
+
+/**
+ * The label to show for a local project's root.
+ *
+ * The project's *name*, never its directory: the shell keeps the absolute root
+ * to itself, and the console's selector is where the user chose it. Falls back to
+ * the generic label so the crumb is never blank.
+ */
+function wsLocalRootLabel() {
+    try {
+        if (typeof _wsSelState !== 'undefined' && _wsSelState && _wsSelState.current
+                && String(_wsSelState.current.path || '').indexOf('desktop:') === 0) {
+            return String(_wsSelState.current.name || '') || t('ws_sel_local_dir');
+        }
+    } catch (_) { /* the selector is not on this page */ }
+    return t('ws_sel_local_dir');
+}
+
+/**
+ * The session's file *source* changed (task 9.2): a local project was opened or
+ * closed.
+ *
+ * The panel must land on the new source's root and drop what it was showing --
+ * otherwise it would keep listing the previous project's files, or the server's,
+ * under the name of the one the user just opened. Only the panel's own state is
+ * touched: an in-flight listing is invalidated by the scope epoch rather than
+ * awaited, so the switch is immediate.
+ */
+function wsSourceChanged(opts) {
+    const { reveal = false } = opts || {};
+    wsNewScopeEpoch();
+    wsCurrentSource = 'backend';
+    wsCurrentRoot = '';
+    wsCurrentFile = null;
+    wsCurrentDir = wsAgentLandingPath();
+    // The panel follows the *source*, so the watch does too (task 9.3): a
+    // subscription that outlived the project it was about would keep refreshing
+    // a directory the user has already replaced.
+    wsWatchSource();
+    // Opening a local project is a deliberate act; showing the files it will be
+    // read from is the confirmation the other selection flows also give.
+    if (reveal && typeof openWorkspacePanel === 'function') {
+        wsAutoOpenSuppressed = false;
+        openWorkspacePanel('files');
+    }
+    if (wsPanelOpen) refreshWorkspaceTree();
+}
+
+// =====================================================================
+// Local project watching (task 9.3)
+// =====================================================================
+
+/** Unsubscribe from the host's project changes, when a watch is live. */
+let wsWatchOff = null;
+
+/**
+ * The file the panel has told the user about since it last read it, or `''`.
+ *
+ * Only the *notification* lives here: the editor keeps its own baseline, and the
+ * save path keeps its own conflict check. This is what the title's warning is
+ * drawn from, so a change reported twice does not nag twice.
+ */
+let wsStaleFile = '';
+
+/**
+ * Follow the current project for changes, or stop following it.
+ *
+ * Subscribed through the same source adapter the panel reads from, so a page
+ * with no desktop host (the browser) and a session with no local project both
+ * end up with no subscription at all -- rather than a timer that polls nothing.
+ */
+function wsWatchSource() {
+    wsWatchStop();
+    if (typeof CowProjectSource === 'undefined' || typeof CowProjectSource.watch !== 'function') return;
+    if (wsLocalLanding() === null) return;
+    try {
+        wsWatchOff = CowProjectSource.watch(wsOnProjectChanged);
+    } catch (_) {
+        wsWatchOff = null;
+    }
+}
+
+function wsWatchStop() {
+    const off = wsWatchOff;
+    wsWatchOff = null;
+    if (typeof off === 'function') {
+        try { off(); } catch (_) { /* the host is already gone */ }
+    }
+}
+
+/**
+ * One change report from the local project.
+ *
+ * Two different reactions, because the two panes can lose different things:
+ *
+ *  - the **file list** is a view of the directory, so it is re-listed -- from
+ *    the same local source, which re-verifies the authorization on the way;
+ *  - the **open file** may be something the user is typing into, so it is never
+ *    silently reloaded: the panel checks it and says that it changed on disk,
+ *    leaving the unsaved text (and the save path's own conflict check) alone.
+ */
+function wsOnProjectChanged(event) {
+    if (!event) return;
+    if (event.ended) {
+        // The authorization behind this project is gone (a revoke, a re-pick, a
+        // detached device). Re-verify instead of continuing to show a listing
+        // nobody can read: `_desktopLocalLost` drops the reference and has the
+        // selector re-read the *live* source, so the panel and the session's
+        // execution target describe the same project again (task 9.3).
+        wsWatchStop();
+        if (event.reason === 'stale_context' && typeof _desktopLocalLost === 'function') {
+            _desktopLocalLost(event.reason);
+            return;
+        }
+        if (typeof wsSourceChanged === 'function') wsSourceChanged();
+        return;
+    }
+    const touched = (event.changed || []).concat(event.removed || []);
+    if (wsPanelOpen && wsDirWasTouched(touched, wsCurrentDir)) refreshWorkspaceTree();
+    // A file the preview is showing may be the one that changed. `wsCurrentFile`
+    // is only ever a file (directories navigate instead of previewing).
+    if (wsCurrentFile) wsCheckOpenFile(touched);
+}
+
+/** Whether the directory on screen (or one of its parents) was reported. */
+function wsDirWasTouched(touched, dir) {
+    const current = dir || '';
+    let acc = current;
+    for (;;) {
+        if (touched.indexOf(acc) >= 0) return true;
+        if (!acc) return false;
+        const cut = acc.lastIndexOf('/');
+        acc = cut < 0 ? '' : acc.slice(0, cut);
+    }
+}
+
+/**
+ * Re-check the file in the preview against the disk, without discarding edits.
+ *
+ * The comparison is on the version the panel recorded when it opened the file,
+ * so a change that does not touch this file costs nothing; when it does, the
+ * user is told once, and the save button keeps working -- a save against a stale
+ * baseline comes back as `conflict`, which the panel already turns into an
+ * explicit overwrite confirmation.
+ */
+async function wsCheckOpenFile(touched) {
+    const target = wsCurrentFile;
+    if (!target) return;
+    const path = wsEditTargetPath(target);
+    if (!path) return;
+    const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+    if (!wsDirWasTouched(touched, dir)) return;
+    const epoch = wsScopeEpoch;
+    let meta = null;
+    try {
+        meta = (await wsApi(`/api/workspace/resolve?path=${encodeURIComponent(path)}`)).file;
+    } catch (e) {
+        if (wsScopeStale(epoch) || wsCurrentFile !== target) return;
+        wsStaleFile = path;
+        _wsToast(t('ws_local_file_gone'));
+        return;
+    }
+    if (wsScopeStale(epoch) || wsCurrentFile !== target) return;
+    const known = Number(target.mtime || 0);
+    const now = Number((meta && meta.mtime) || 0);
+    if (now && known && now === known) return;
+    if (wsStaleFile === path) return;
+    wsStaleFile = path;
+    _wsToast(t('ws_local_file_changed'));
+    wsRenderPreviewTitle();
 }
 
 // =====================================================================
@@ -212,7 +401,45 @@ function wsFormatSize(bytes) {
     return `${n.toFixed(1)}TB`;
 }
 
+// The local project source (task 9.2) reads the panel's own classifiers and the
+// binding the console already tracks, rather than keeping a second copy of
+// either: the icons, the preview, the editor's rules and the choice of source
+// must not be able to disagree. Configured once, at load, before any request.
+if (typeof CowProjectSource !== 'undefined') {
+    CowProjectSource.configure({
+        binding: () => (typeof _desktopContextForRequest === 'function'
+            ? _desktopContextForRequest() : null),
+        kindOf: (name) => wsKindOf(name),
+        editable: (kind) => WS_EDITABLE.has(kind),
+        previewable: (kind) => WS_PREVIEWABLE.has(kind),
+    });
+}
+
 async function wsApi(path) {
+    // The session's *source* decides where the panel reads from (task 9.2). A
+    // session bound to a project on this machine reads it through the local
+    // source -- the backend has no such path, and its answer would either 404 or
+    // describe a different file with the same name. `null` means "no local
+    // project here", and the original request is made untouched, so a backend
+    // source keeps its existing behaviour.
+    if (typeof CowProjectSource !== 'undefined') {
+        const local = await CowProjectSource.handle(path);
+        if (local) {
+            if (local.status === 'success') return local;
+            const err = new Error(local.message || 'request failed');
+            err.code = local.code;
+            err.local = true;
+            // A local read that comes back `stale_context` is the host saying the
+            // authorization behind this project is gone (task 9.3). Drop the
+            // reference and re-derive the source rather than leaving a chip and a
+            // panel pointed at a directory nothing can read; the refusal still
+            // reaches the caller, so the panel can say what happened.
+            if (local.code === 'stale_context' && typeof _desktopLocalLost === 'function') {
+                _desktopLocalLost(local.code);
+            }
+            throw err;
+        }
+    }
     // Scope workspace reads to the current session so the file panel / @ picker /
     // preview follow the session's opened project directory. `sessionId` and
     // `activeAgentId` are globals from console.js on the same page.
@@ -256,6 +483,13 @@ function wsErrorMessage(e) {
             || /unavailable in database identity mode/i.test(msg)) {
         return t('ws_unavailable');
     }
+    // A refusal from the *local* source (task 9.2). Each one is a different
+    // situation with a different fix, so they are told apart rather than
+    // collapsed into "the file could not be read".
+    if (code === 'source_read_only') return t('ws_local_read_only');
+    if (code === 'device_offline' || code === 'device_error') return t('ws_local_offline');
+    if (code === 'stale_context' || code === 'grant_revoked') return t('ws_local_stale');
+    if (e && e.local) return t('ws_local_unavailable');
     return msg || t('ws_preview_failed');
 }
 
@@ -350,11 +584,36 @@ function wsUpdateHeaderActions() {
     ['ws-btn-external', 'ws-btn-download', 'ws-btn-copy'].forEach(id => {
         document.getElementById(id)?.classList.toggle('hidden', !onFile || wsEditing);
     });
+    // The same three buttons mean something *else* for a file on this machine
+    // (task 9.4): there is no server URL to open or download, so they become
+    // "open with a system application", "save a copy as" and "copy the full
+    // local path". The labels say which, because a button whose behaviour
+    // changes silently is a button the user cannot trust.
+    const local = onFile && wsIsLocalFile(wsCurrentFile);
+    wsRetitle('ws-btn-external', local ? 'ws_open_system' : 'ws_open_external');
+    wsRetitle('ws-btn-download', local ? 'ws_save_as' : 'ws_download');
+    wsRetitle('ws-btn-copy', local ? 'ws_local_copy_path' : 'ws_copy_path');
+    document.getElementById('ws-btn-reveal')
+        ?.classList.toggle('hidden', !local || wsEditing);
     document.getElementById('ws-btn-edit')
         ?.classList.toggle('hidden', !onFile || wsEditing || !wsIsEditable(wsCurrentFile));
     ['ws-btn-save', 'ws-btn-edit-cancel'].forEach(id => {
         document.getElementById(id)?.classList.toggle('hidden', !onFile || !wsEditing);
     });
+}
+
+/**
+ * Point a header button's tooltip at a key, for the language in force *now*.
+ *
+ * `data-i18n-title` is what a later language switch reads, so both are set:
+ * setting only `title` would look right until the user changed language, and
+ * setting only the attribute would leave the old text until they did.
+ */
+function wsRetitle(id, key) {
+    const el = document.getElementById(id);
+    if (!el || el.dataset.i18nTitle === key) return;
+    el.dataset.i18nTitle = key;
+    el.title = t(key);
 }
 
 function initWorkspaceResizer() {
@@ -441,6 +700,7 @@ async function openInPreview(target) {
 
     wsCurrentFile = meta;
     wsEditing = false;
+    wsStaleFile = '';
     openWorkspacePanel('preview');
     switchWorkspaceTab('preview');
     wsRenderPreviewTitle();
@@ -456,8 +716,14 @@ function wsRenderPreviewTitle() {
         title.classList.add('hidden');
         return;
     }
+    const path = wsEditTargetPath(wsCurrentFile);
     const name = wsCurrentFile.path || wsCurrentFile.file_name || wsCurrentFile.name || '';
+    const stale = !!wsStaleFile && wsStaleFile === path;
     title.textContent = wsEditorDirty() ? `${name} •` : name;
+    // The disk changed under this file (task 9.3). A hover note rather than a
+    // second marker: the unsaved dot already means "there is something to
+    // resolve here", and the save path asks the real question on save.
+    title.title = stale ? t('ws_local_file_changed') : '';
     title.classList.remove('hidden');
 }
 
@@ -468,15 +734,91 @@ async function wsRenderPreview(meta) {
     const name = meta.file_name || meta.name || (meta.path || '').split('/').pop();
     const previewUrl = meta.preview_url;
     const rawUrl = meta.raw_url || previewUrl;
+    const local = wsIsLocalFile(meta);
 
     if (kind === 'html') {
         body.innerHTML = '';
         const frame = document.createElement('iframe');
-        // No allow-same-origin: the generated page runs in an opaque origin and
-        // cannot reach the console's storage or auth cookie.
-        frame.setAttribute('sandbox', 'allow-scripts allow-popups allow-forms allow-modals');
-        frame.src = previewUrl;
+        if (local) {
+            // No allow-same-origin: the generated page runs in an opaque origin
+            // and cannot reach the console's storage or auth cookie. No
+            // allow-popups either: a preview is not a place to launch things
+            // from (task 9.5).
+            frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals');
+            // The document is handed over as `srcdoc` in the same opaque origin
+            // the server's HTML preview already runs in -- but only when the
+            // host cannot serve it properly. A local file has no
+            // server URL to point a frame at, and one must not be invented, or
+            // the preview would show the *server's* file of the same name.
+            const epoch = wsScopeEpoch;
+            const ticket = await wsLocalPreviewTicket(meta);
+            if (wsScopeStale(epoch)) return;
+            if (ticket && ticket.ok) {
+                // The host's own answer: the response carries the sandbox and a
+                // `default-src 'none'` policy, so this frame cannot fetch, post,
+                // frame or object -- and the URL stops working when it expires.
+                frame.src = ticket.url;
+            } else if (ticket && !wsLocalPreviewUnsupported(ticket)) {
+                wsSetPreviewEmpty(wsLocalPreviewMessage(ticket), 'fa-triangle-exclamation');
+                return;
+            } else {
+                let page = null;
+                try {
+                    page = await wsLocalPreviewText(meta);
+                } catch (e) {
+                    if (wsScopeStale(epoch)) return;
+                    wsSetPreviewEmpty(wsErrorMessage(e), 'fa-triangle-exclamation');
+                    return;
+                }
+                if (wsScopeStale(epoch)) return;
+                frame.srcdoc = page.text;
+            }
+        } else {
+            // The server's own preview: unchanged sandbox flags, and unchanged
+            // behaviour -- the response it loads already carries its own policy.
+            frame.setAttribute('sandbox', 'allow-scripts allow-popups allow-forms allow-modals');
+            frame.src = previewUrl;
+        }
         body.appendChild(frame);
+        return;
+    }
+
+    if (local && (kind === 'image' || kind === 'video' || kind === 'audio' || kind === 'pdf')) {
+        // These need the file's *bytes*, which the panel's local read (a bounded
+        // text page) does not carry. The host reads them and answers with a
+        // short-lived protected URL for one file (task 9.5): the panel embeds
+        // it, and never receives the bytes or a path.
+        const epoch = wsScopeEpoch;
+        const ticket = await wsLocalPreviewTicket(meta);
+        if (wsScopeStale(epoch)) return;
+        if (ticket && ticket.ok) {
+            if (kind === 'image') {
+                wsRenderLocalMedia(body, 'img', ticket, name, epoch, meta);
+            } else if (kind === 'video') {
+                wsRenderLocalMedia(body, 'video', ticket, name, epoch, meta);
+            } else if (kind === 'audio') {
+                wsRenderLocalMedia(body, 'audio', ticket, name, epoch, meta);
+            } else {
+                // A PDF is served by the same scheme, but this shell has no
+                // PDF viewer, so the panel says so instead of drawing a blank
+                // frame -- and offers the system application, which can.
+                wsSetLocalPreviewFallback(body, name);
+            }
+            return;
+        }
+        if (ticket && !wsLocalPreviewUnsupported(ticket)) {
+            const refusal = ticket;
+            if (refusal.code === 'limit_exceeded' || refusal.code === 'unsupported_type') {
+                wsSetLocalPreviewFallback(body, name, wsLocalPreviewMessage(refusal));
+                return;
+            }
+            wsSetPreviewEmpty(wsLocalPreviewMessage(refusal), 'fa-triangle-exclamation');
+            return;
+        }
+        // No host, or a host that cannot preview: saying so is the honest
+        // answer; naming a server URL here would preview a different file with
+        // the same name.
+        wsSetLocalPreviewFallback(body, name);
         return;
     }
 
@@ -506,10 +848,21 @@ async function wsRenderPreview(meta) {
     if (kind === 'markdown' || kind === 'code' || kind === 'text' || kind === 'csv') {
         body.innerHTML = `<div class="workspace-empty"><i class="fas fa-spinner fa-spin"></i></div>`;
         const epoch = wsScopeEpoch;
+        let partial = false;
         try {
-            const res = await fetch(previewUrl);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const text = await res.text();
+            let text;
+            if (local) {
+                // Paged on purpose: a preview pulls at most one bounded page, and
+                // a partial page is labelled as one rather than passed off as the
+                // whole file.
+                const page = await wsLocalPreviewText(meta);
+                text = page.text;
+                partial = page.truncated;
+            } else {
+                const res = await fetch(previewUrl);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                text = await res.text();
+            }
             // The scope changed while the body was loading: this text belongs to
             // the file the reader has already navigated away from.
             if (wsScopeStale(epoch)) return;
@@ -522,31 +875,285 @@ async function wsRenderPreview(meta) {
                 body.innerHTML = `<pre><code class="language-${escapeHtml(lang)}">${escapeHtml(text)}</code></pre>`;
             }
             applyHighlighting(body);
+            if (partial) {
+                body.insertAdjacentHTML('beforeend', `<div class="workspace-empty" style="height:auto;padding:12px;">
+                    <span>${escapeHtml(t('ws_preview_partial'))}</span></div>`);
+            }
         } catch (e) {
+            if (wsScopeStale(epoch)) return;
             wsSetPreviewEmpty(wsErrorMessage(e), 'fa-triangle-exclamation');
         }
         return;
     }
 
     // Unsupported type: offer a download instead of a broken viewer.
+    const download = local
+        // A local file has nothing to download *from* the browser: the bytes are
+        // on this machine already, and a link with no href would be a broken
+        // button pretending to be an action.
+        ? ''
+        : `<a href="${escapeHtml(rawUrl)}" download="${escapeHtml(name)}"
+               class="file-card-btn" style="width:auto;padding:4px 12px;border:1px solid currentColor;">
+               <i class="fas fa-download"></i>&nbsp;${escapeHtml(t('ws_download'))}
+           </a>`;
     body.innerHTML = `<div class="workspace-empty">
         <i class="${wsIconClass(kind)}"></i>
         <span>${escapeHtml(name)}</span>
-        <span>${escapeHtml(t('ws_no_inline_preview'))}</span>
-        <a href="${escapeHtml(rawUrl)}" download="${escapeHtml(name)}"
-           class="file-card-btn" style="width:auto;padding:4px 12px;border:1px solid currentColor;">
-            <i class="fas fa-download"></i>&nbsp;${escapeHtml(t('ws_download'))}
-        </a>
+        <span>${escapeHtml(t(local ? 'ws_local_preview_binary' : 'ws_no_inline_preview'))}</span>
+        ${download}
+    </div>`;
+}
+
+/**
+ * Whether a file the panel is showing comes from the machine it is running on.
+ *
+ * Local entries are marked by the source adapter (`source: 'desktop'`,
+ * `local: true`) and deliberately carry no `raw_url` / `preview_url`: those are
+ * server URLs, and asking the server for a path that exists on the client would
+ * answer about a different file with the same name.
+ */
+function wsIsLocalFile(meta) {
+    return !!meta && (meta.local === true || meta.source === 'desktop');
+}
+
+/** One bounded page of a local file's text, through the local source. */
+async function wsLocalPreviewText(meta) {
+    const data = await wsApi(`/api/workspace/read?path=${encodeURIComponent(wsEditTargetPath(meta))}`);
+    return { text: String(data.content || ''), truncated: !!data.truncated };
+}
+
+/**
+ * The protected preview of one local file, or `null` when there is no host
+ * (task 9.5).
+ *
+ * `null` is not a refusal: it means "this environment cannot preview local
+ * content at all", which is the one case where the panel falls back to what it
+ * did before. Every other answer is the host's own -- `{ok:true, url, ...}` or
+ * `{ok:false, code, message}` -- and is reported, because a file that is gone
+ * and a project whose grant was revoked are different situations that would
+ * otherwise be shown as a blank frame.
+ */
+async function wsLocalPreviewTicket(meta) {
+    if (typeof CowProjectSource === 'undefined' || typeof CowProjectSource.preview !== 'function') return null;
+    if (wsLocalCardIsGone(meta)) return { ok: false, code: 'not_found', message: '' };
+    return CowProjectSource.preview(wsEditTargetPath(meta), wsLocalCardScope(meta));
+}
+
+/** True when a preview refusal means "this host cannot preview at all". */
+function wsLocalPreviewUnsupported(refusal) {
+    const code = (refusal && refusal.code) || '';
+    return code === 'feature_unavailable' || code === 'no_host';
+}
+
+/** Why a local file could not be previewed, in the user's language. */
+function wsLocalPreviewMessage(refusal) {
+    const code = (refusal && refusal.code) || '';
+    if (code === 'not_found') return t('ws_local_file_gone');
+    if (code === 'wrong_project') return t('ws_local_other_project');
+    if (code === 'stale_context' || code === 'grant_revoked') return t('ws_local_stale');
+    if (code === 'device_offline' || code === 'device_error') return t('ws_local_offline');
+    if (code === 'limit_exceeded') return t('ws_local_preview_too_large');
+    if (code === 'unsupported_type') return t('ws_local_preview_unsupported');
+    if (code === 'feature_unavailable' || code === 'no_host') return t('ws_local_action_unavailable');
+    return t('ws_local_preview_failed');
+}
+
+/**
+ * One local media element, pointed at a protected preview URL (task 9.5).
+ *
+ * The URL is short-lived by design, so an image that is still on screen when its
+ * ticket expires is re-minted **once** rather than left as a broken picture: the
+ * panel asks the host again, and reports the refusal if the second answer is no.
+ * A `<video>` or `<audio>` is deliberately not re-minted: the user is watching
+ * it, and swapping the source under them would be a stranger failure than an
+ * error they can refresh away.
+ */
+function wsRenderLocalMedia(body, tag, ticket, name, epoch, meta) {
+    body.innerHTML = '';
+    const pad = document.createElement('div');
+    pad.className = 'ws-pad';
+    const media = document.createElement(tag);
+    media.className = 'ws-media';
+    media.src = ticket.url;
+    if (tag === 'img') {
+        media.alt = name;
+    } else {
+        media.controls = true;
+        media.setAttribute('preload', 'metadata');
+    }
+    let retried = false;
+    media.addEventListener('error', async () => {
+        if (retried || tag !== 'img' || wsScopeStale(epoch)) return;
+        retried = true;
+        const again = await wsLocalPreviewTicket(meta);
+        if (wsScopeStale(epoch)) return;
+        if (again && again.ok) media.src = again.url;
+        else if (again) wsSetPreviewEmpty(wsLocalPreviewMessage(again), 'fa-triangle-exclamation');
+    });
+    pad.appendChild(media);
+    body.appendChild(pad);
+}
+
+/**
+ * The card shown when a local file has no inline preview here.
+ *
+ * It carries the one action that does work for a file that is on this machine:
+ * the system's own application (task 9.4). `message` says *why* the preview did
+ * not happen when the host gave a reason -- a kind this surface cannot render, or
+ * a file too large to pull into the main process -- and falls back to the
+ * general sentence otherwise.
+ */
+function wsSetLocalPreviewFallback(body, name, message) {
+    body.innerHTML = `<div class="workspace-empty">
+        <i class="${wsIconClass(wsKindOf(name))}"></i>
+        <span>${escapeHtml(name)}</span>
+        <span>${escapeHtml(message || t('ws_local_preview_binary'))}</span>
+        <button class="file-card-btn" style="width:auto;padding:4px 12px;border:1px solid currentColor;"
+                onclick="openPreviewExternally()">${escapeHtml(t('ws_open_system'))}</button>
     </div>`;
 }
 
 function openPreviewExternally() {
     if (!wsCurrentFile) return;
+    if (wsIsLocalFile(wsCurrentFile)) {
+        // There is no server URL for a local file, and opening `undefined` would
+        // navigate to the string "undefined". For a file that *is* on this
+        // machine the honest answer is the system's own application (task 9.4):
+        // the same button, the action that actually means "open it".
+        wsLocalAction(wsCurrentFile, 'open').then((outcome) => {
+            if (outcome.ok) _wsToast(t('ws_local_opened'));
+            else _wsToast(wsLocalActionMessage(outcome));
+        });
+        return;
+    }
     window.open(wsCurrentFile.preview_url || wsCurrentFile.raw_url, '_blank', 'noopener');
+}
+
+/**
+ * One system action on one local file (task 9.4).
+ *
+ * Every call re-verifies on the host side -- the live grant, the file itself,
+ * the real path inside the project -- so a file deleted or a project closed
+ * since the panel read it is refused with the reason it actually failed,
+ * rather than opening something stale or silently doing nothing.
+ *
+ * @param {object} meta - the entry the panel is showing or a card carries.
+ * @param {string} action - open | reveal | copyPath | saveAs
+ * @returns {Promise<{ok: boolean, code?: string, message?: string}>}
+ */
+async function wsLocalAction(meta, action, options) {
+    if (typeof CowProjectSource === 'undefined' || typeof CowProjectSource.act !== 'function') {
+        return { ok: false, code: 'feature_unavailable', message: '' };
+    }
+    // A card the server rebuilt from history already knows whether the file is
+    // still there (task 9.6). Asking the host anyway would report "not found"
+    // from a *different* project if one with a same-named file is open, which is
+    // a more confusing way to say the same thing.
+    if (wsLocalCardIsGone(meta)) return { ok: false, code: 'not_found', message: '' };
+    const path = wsEditTargetPath(meta);
+    if (!path) return { ok: false, code: 'invalid_request', message: '' };
+    try {
+        const reply = await CowProjectSource.act(action, path,
+            Object.assign({}, options || {}, wsLocalCardScope(meta)));
+        if (reply && reply.ok === false) return reply;
+        return Object.assign({ ok: true }, reply || {});
+    } catch (e) {
+        return { ok: false, code: (e && e.code) || 'device_error', message: String((e && e.message) || '') };
+    }
+}
+
+/** True when a replayed card already knows the file is no longer there. */
+function wsLocalCardIsGone(meta) {
+    return !!meta && meta.local === true && meta.resolution === 'missing';
+}
+
+/**
+ * The project a card belongs to, when it is a project other than any local one.
+ *
+ * Only a replayed card carries `workspace_id`; a live one has none and keeps the
+ * binding's own project, which is the project it was just produced in.
+ */
+function wsLocalCardScope(meta) {
+    return (meta && meta.workspace_id) ? { expectedWorkspaceId: String(meta.workspace_id) } : {};
+}
+
+/**
+ * Why a system action on a local file did not happen, in the user's language.
+ *
+ * Each refusal is a different situation with a different fix, so they are told
+ * apart: a file that is gone, a project whose authorization was revoked, a
+ * machine with nothing that opens this kind of file, and a build that cannot
+ * act on local files at all are four different sentences. The host's own words
+ * are appended when they add something the sentence does not have (the OS
+ * explaining *which* application is missing, for instance).
+ */
+function wsLocalActionMessage(refusal) {
+    const code = (refusal && refusal.code) || '';
+    const detail = String((refusal && refusal.message) || '').trim();
+    const suffix = detail && detail !== code ? ` (${detail})` : '';
+    if (code === 'not_found') return t('ws_local_file_gone');
+    if (code === 'wrong_project') return t('ws_local_other_project');
+    if (code === 'changed') return `${t('ws_local_file_changed')}${suffix}`;
+    if (code === 'stale_context' || code === 'grant_revoked') return t('ws_local_stale');
+    if (code === 'device_offline' || code === 'device_error') return t('ws_local_offline');
+    if (code === 'no_application') return `${t('ws_local_no_application')}${suffix}`;
+    if (code === 'feature_unavailable' || code === 'no_host') return t('ws_local_action_unavailable');
+    if (code === 'permission_denied') return `${t('ws_forbidden')}${suffix}`;
+    return `${t('ws_local_action_failed')}${suffix}`;
+}
+
+/** A "the file changed under you" question the user can answer. Browser modal. */
+function wsLocalConfirm(message) {
+    try {
+        return window.confirm(message);
+    } catch (_) {
+        // No dialog available (an exotic frame): refuse rather than copy a
+        // version the user has not agreed to.
+        return false;
+    }
+}
+
+/** One save-a-copy attempt. Returns `''` on success, else the refusal code. */
+async function wsSaveLocalCopyOnce(meta, expectedMtime, acceptCurrent) {
+    const outcome = await wsLocalAction(meta, 'saveAs', {
+        expectedMtime: expectedMtime,
+        acceptCurrent: acceptCurrent,
+    });
+    return outcome.ok ? '' : (outcome.code || 'device_error');
+}
+
+/**
+ * Write a copy of a local file where the user chooses (task 9.4).
+ *
+ * The version the panel read travels with the request. When the file changed
+ * on disk meanwhile the host refuses, and the user is asked -- copying a file
+ * they have not seen is the one thing "save a copy" must not do silently. A
+ * dismissed save dialog is not an error and gets no message: the user knows.
+ */
+async function wsSaveLocalCopy(meta) {
+    const expected = Number(meta.mtime || 0);
+    let code = await wsSaveLocalCopyOnce(meta, expected, false);
+    if (code === 'changed') {
+        if (!wsLocalConfirm(t('ws_local_save_as_changed'))) return;
+        code = await wsSaveLocalCopyOnce(meta, expected, true);
+    }
+    if (code === '') {
+        _wsToast(t('ws_local_saved_as'));
+        return;
+    }
+    if (code === 'cancelled') return;
+    _wsToast(wsLocalActionMessage({ code }));
 }
 
 function downloadPreviewFile() {
     if (!wsCurrentFile) return;
+    if (wsIsLocalFile(wsCurrentFile)) {
+        // The bytes are already on this machine: there is nothing to download
+        // from the browser. What the button means for a local file is "put a
+        // copy somewhere else", which is exactly what the host's save-as does.
+        wsSaveLocalCopy(wsCurrentFile);
+        return;
+    }
     const a = document.createElement('a');
     a.href = wsCurrentFile.raw_url || wsCurrentFile.preview_url;
     a.download = wsCurrentFile.file_name || wsCurrentFile.name || '';
@@ -555,8 +1162,29 @@ function downloadPreviewFile() {
     a.remove();
 }
 
+/** Show a local file in the system's file manager (task 9.4). */
+function revealPreviewFile() {
+    if (!wsCurrentFile) return;
+    if (!wsIsLocalFile(wsCurrentFile)) return;
+    wsLocalAction(wsCurrentFile, 'reveal').then((outcome) => {
+        if (outcome.ok) _wsToast(t('ws_local_revealed'));
+        else _wsToast(wsLocalActionMessage(outcome));
+    });
+}
+
 function copyPreviewPath() {
     if (!wsCurrentFile) return;
+    if (wsIsLocalFile(wsCurrentFile)) {
+        // The *full local path*, copied on this machine by the host: a local
+        // file's panel path is project-relative, and the user asking to copy a
+        // path wants the one their terminal and their editor understand. The
+        // path never travels through the page (task 9.4).
+        wsLocalAction(wsCurrentFile, 'copyPath').then((outcome) => {
+            if (outcome.ok) _wsToast(t('ws_local_copied'));
+            else _wsToast(wsLocalActionMessage(outcome));
+        });
+        return;
+    }
     const path = wsCurrentFile.abs_path || wsCurrentFile.path || '';
     copyToClipboard(path).then(() => {
         const btn = document.getElementById('ws-btn-copy');
@@ -734,17 +1362,30 @@ async function savePreviewEdit(opts) {
     wsSaving = true;
     btn?.classList.add('ws-btn-busy');
     try {
-        const res = await fetch('/api/workspace/write', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                path: wsEditTargetPath(target),
-                content: content,
-                session: (typeof sessionId !== 'undefined') ? sessionId : '',
-                expected_mtime: force ? null : wsEditBaseMtime,
-            }),
-        });
-        const data = await res.json();
+        const payload = {
+            path: wsEditTargetPath(target),
+            content: content,
+            session: (typeof sessionId !== 'undefined') ? sessionId : '',
+            expected_mtime: force ? null : wsEditBaseMtime,
+        };
+        // The session's source decides where the save lands (task 9.2). A local
+        // project saves through the local source -- authorized, serialised and
+        // journaled exactly like the model's own write -- while a backend project
+        // keeps the original endpoint. `null` means "no local project here".
+        const local = (typeof CowProjectSource !== 'undefined')
+            ? await CowProjectSource.write(payload)
+            : null;
+        let data;
+        if (local) {
+            data = local;
+        } else {
+            const res = await fetch('/api/workspace/write', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            data = await res.json();
+        }
         if (data.code === 'conflict') {
             showConfirmDialog({
                 title: t('ws_edit_conflict_title'),
@@ -760,6 +1401,9 @@ async function savePreviewEdit(opts) {
         wsEditBaseMtime = data.mtime;
         target.size = data.size;
         target.mtime = data.mtime;
+        // The version on disk is this save's own result, so the "changed under
+        // you" note is resolved by definition (task 9.3).
+        if (wsStaleFile === wsEditTargetPath(target)) wsStaleFile = '';
         _wsToast(t('ws_edit_saved'));
         if (keepEditing) {
             wsRenderPreviewTitle();
@@ -808,11 +1452,31 @@ function renderFileCard(meta) {
         abs_path: meta.abs_path || '',
         kind: kind,
         size: meta.size || 0,
+        mtime: meta.mtime || 0,
         raw_url: meta.raw_url || '',
         preview_url: meta.preview_url || '',
+        local: wsIsLocalFile(meta),
         previewable: meta.previewable !== false && WS_PREVIEWABLE.has(kind),
+        // Which project produced this file (task 9.6). A replayed card keeps the
+        // project it came from, and the panel refuses to act on it while a
+        // *different* project is open -- the relative path would otherwise be
+        // resolved against the project open now, which may hold a same-named
+        // file that is not the one the run produced.
+        workspace_id: meta.workspace_id || '',
+        resolution: meta.resolution || 'ok',
     }));
     const canPreview = meta.previewable !== false && WS_PREVIEWABLE.has(kind);
+    // A local card's "download" would fetch a server URL for a file that is on
+    // this machine -- there is no such URL. The card carries what actually
+    // works for a local file instead (task 9.4): open it with the system's
+    // application, show it in the file manager, copy its real path, or write a
+    // copy elsewhere.
+    const actions = wsIsLocalFile(meta)
+        ? `<div class="file-card-btn" data-action="local-open" title="${escapeHtml(t('ws_open_system'))}"><i class="fas fa-up-right-from-square"></i></div>
+            <div class="file-card-btn" data-action="local-reveal" title="${escapeHtml(t('ws_reveal_file'))}"><i class="fas fa-folder-open"></i></div>
+            <div class="file-card-btn" data-action="local-copy-path" title="${escapeHtml(t('ws_local_copy_path'))}"><i class="fas fa-link"></i></div>
+            <div class="file-card-btn" data-action="local-save-as" title="${escapeHtml(t('ws_save_as'))}"><i class="fas fa-download"></i></div>`
+        : `<div class="file-card-btn" data-action="download" title="${escapeHtml(t('ws_download'))}"><i class="fas fa-download"></i></div>`;
     return `<div class="file-card" data-file='${payload}'>
         <i class="file-card-icon ${wsIconClass(kind)}"></i>
         <div class="file-card-info">
@@ -821,7 +1485,7 @@ function renderFileCard(meta) {
         </div>
         <div class="file-card-actions">
             ${canPreview ? `<div class="file-card-btn" data-action="preview" title="${escapeHtml(t('ws_preview'))}"><i class="fas fa-eye"></i></div>` : ''}
-            <div class="file-card-btn" data-action="download" title="${escapeHtml(t('ws_download'))}"><i class="fas fa-download"></i></div>
+            ${actions}
         </div>
     </div>`;
 }
@@ -932,6 +1596,25 @@ document.addEventListener('click', async (e) => {
             const full = await wsResolveMeta(meta);
             if (full) wsTriggerDownload(full.raw_url, full.name);
         } catch (_) {}
+        return;
+    }
+    // The card of a file on this machine (task 9.4). Handled before the preview
+    // branch so a card action never opens the panel instead of acting.
+    if (action && action.indexOf('local-') === 0) {
+        if (action === 'local-save-as') {
+            await wsSaveLocalCopy(meta);
+            return;
+        }
+        const kind = { 'local-open': 'open', 'local-reveal': 'reveal', 'local-copy-path': 'copyPath' }[action];
+        if (!kind) return;
+        const outcome = await wsLocalAction(meta, kind);
+        if (!outcome.ok) {
+            _wsToast(wsLocalActionMessage(outcome));
+            return;
+        }
+        if (kind === 'open') _wsToast(t('ws_local_opened'));
+        else if (kind === 'reveal') _wsToast(t('ws_local_revealed'));
+        else _wsToast(t('ws_local_copied'));
         return;
     }
     openInPreview(meta.preview_url ? meta : (meta.abs_path || meta.rel_path));
@@ -1287,8 +1970,12 @@ async function loadWorkspaceDir(relPath) {
             <i class="fas fa-triangle-exclamation"></i><span>${escapeHtml(message)}</span></div>`;
         return;
     }
+    // The source the panel is currently showing (task 9.2). A local project has
+    // no absolute root to name: its location is the user's own business and the
+    // shell never hands it over, so the crumb shows the label they chose instead.
+    wsCurrentSource = data.source === 'desktop' ? 'desktop' : 'backend';
     wsCurrentDir = data.path || '';
-    wsCurrentRoot = data.root || wsCurrentRoot;
+    wsCurrentRoot = wsCurrentSource === 'desktop' ? '' : (data.root || wsCurrentRoot);
     wsSearchMode = false;
     // Browsing leaves search mode; drop the stale query from the box.
     const searchBox = document.getElementById('ws-search-input');
@@ -1305,10 +1992,19 @@ function renderWorkspaceBreadcrumb(relPath) {
     // knows which directory the panel is anchored to. When navigated inside,
     // the deeper crumbs already convey location, so the house stays icon-only.
     const atRoot = parts.length === 0;
-    const rootLabel = atRoot && wsCurrentRoot
-        ? ` <span class="crumb-root">${escapeHtml(wsCurrentRoot)}</span>`
+    const rootText = wsCurrentRoot || (wsCurrentSource === 'desktop' ? wsLocalRootLabel() : '');
+    const rootLabel = atRoot && rootText
+        ? ` <span class="crumb-root">${escapeHtml(rootText)}</span>`
         : '';
-    const crumbs = [`<span class="crumb" data-ws-dir="" data-tooltip="${escapeHtml(wsCurrentRoot || '')}"><i class="fas fa-house"></i>${rootLabel}</span>`];
+    // A local project is where the "does anything leave this machine?" question
+    // is actually asked, so the answer belongs on this crumb (task 9.7): files
+    // stay here, tool outputs/excerpts/errors/metadata go to the server, and a
+    // whole file goes up only on an explicit upload. The label alone would leave
+    // the user to guess.
+    const rootTooltip = wsCurrentSource === 'desktop'
+        ? `${rootText}${rootText ? ' — ' : ''}${t('ws_local_data_flow')}`
+        : rootText;
+    const crumbs = [`<span class="crumb" data-ws-dir="" data-tooltip="${escapeHtml(rootTooltip)}"><i class="fas fa-house"></i>${rootLabel}</span>`];
     let acc = '';
     parts.forEach((p) => {
         acc = acc ? `${acc}/${p}` : p;
@@ -1521,15 +2217,15 @@ function renderMentionMenu() {
 }
 
 function matchingAgentMentions(query) {
-    // @ addresses a teammate, which only exists once a conversation has more than
-    // its owner. A solo chat keeps @ as the file picker it always was.
+    // @ addresses one Agent in particular, which only means something once a
+    // conversation has more than its owner. A solo chat keeps @ as the file
+    // picker it always was.
     if (typeof sharedConversation !== 'function' || !sharedConversation()) return [];
     const q = String(query || '').toLowerCase();
-    // Only teammates are offered: @ hands the turn to someone else, so the
-    // owner (the one already replying) is filtered out of the picker.
-    const owner = typeof activeAgentId !== 'undefined' ? activeAgentId : '';
-    const roster = (typeof sessionRoster === 'function' ? sessionRoster() : [])
-        .filter(agent => agent.id !== owner);
+    // The owner is offered alongside its teammates: in a group chat it is one
+    // voice among several, and @ is how the user picks it back out after a
+    // teammate has been speaking. sessionRoster() already lists it first.
+    const roster = typeof sessionRoster === 'function' ? sessionRoster() : [];
     return roster
         .filter(agent => !q || agent.id.toLowerCase().includes(q) || String(agent.name).toLowerCase().includes(q))
         .slice(0, 6)

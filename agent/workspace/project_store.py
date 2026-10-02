@@ -107,15 +107,19 @@ _lock = threading.Lock()
 def _load() -> Dict:
     path = _store_file()
     if not os.path.isfile(path):
-        return {"sessions": {}, "recents": [], "meta": {}, "order": []}
+        return {"sessions": {}, "recents": [], "meta": {}, "order": [], "desktop_targets": {}}
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f) or {}
     except Exception as e:
         logger.warning(f"[ProjectStore] Could not read {path}: {e}")
-        return {"sessions": {}, "recents": [], "meta": {}, "order": []}
+        return {"sessions": {}, "recents": [], "meta": {}, "order": [], "desktop_targets": {}}
     data.setdefault("sessions", {})
     data.setdefault("recents", [])
+    # ``desktop_targets``: session -> desktop execution reference (identifiers
+    # only, never an absolute path). Absent on every pre-existing store, which
+    # is exactly "no session runs locally yet".
+    data.setdefault("desktop_targets", {})
     # ``meta``: path -> {"display_name": str}. A rename lives here, never on
     # disk, so the folder keeps its name and existing bindings stay valid.
     data.setdefault("meta", {})
@@ -145,6 +149,60 @@ def _normalize(path: str) -> str:
 def _session_key(session_id: str, agent_id: Optional[str]) -> str:
     """Namespace by agent so identical session ids across Agents don't collide."""
     return f"{agent_id or 'default'}::{session_id}"
+
+
+def get_execution_target(session_id: str, agent_id: Optional[str] = None):
+    """The session's desktop execution target, or None for the backend default.
+
+    Lives in a separate map from ``sessions`` on purpose: those paths are
+    confined to the caller's personal projects root, while a desktop target is a
+    reference to a directory on the *client* and must never be subject to (or
+    able to widen) that guard.
+    """
+    if not session_id:
+        return None
+    from agent.workspace.execution_target import ExecutionTarget, ExecutionTargetError
+    with _lock:
+        data = _load()
+        raw = (data.get("desktop_targets") or {}).get(_session_key(session_id, agent_id))
+    if not raw:
+        return None
+    try:
+        return ExecutionTarget.from_dict(raw)
+    except ExecutionTargetError as e:
+        # A record we can no longer understand must not be silently promoted to
+        # a working target; report nothing and let the caller fall back.
+        logger.warning(f"[ProjectStore] discarded invalid execution target: {e.code}")
+        return None
+
+
+def set_execution_target(session_id: str, target, agent_id: Optional[str] = None):
+    """Persist (or clear, with None) the session's desktop execution target.
+
+    Returns the stored target, or None when cleared. Only identifiers are
+    written — never an absolute path.
+    """
+    if not session_id:
+        raise ValueError("session_id is required")
+    from agent.workspace.execution_target import ExecutionTarget
+    key = _session_key(session_id, agent_id)
+    with _lock:
+        data = _load()
+        targets = data.setdefault("desktop_targets", {})
+        if target is None:
+            if targets.pop(key, None) is not None:
+                _save(data)
+            return None
+        if not isinstance(target, ExecutionTarget) or not target.is_desktop:
+            raise ValueError("execution target must be a desktop target")
+        targets[key] = target.to_dict()
+        _save(data)
+        return target
+
+
+def clear_execution_target(session_id: str, agent_id: Optional[str] = None) -> None:
+    """Drop the session's desktop target (closing the local project)."""
+    set_execution_target(session_id, None, agent_id)
 
 
 def get_project_dir(session_id: str, agent_id: Optional[str] = None) -> Optional[str]:
@@ -200,8 +258,39 @@ def forget_session(session_id: str, agent_id: Optional[str] = None) -> None:
     key = _session_key(session_id, agent_id)
     with _lock:
         data = _load()
-        if data["sessions"].pop(key, None) is not None:
+        removed = data["sessions"].pop(key, None) is not None
+        # A closed session must not leave a live local execution target behind:
+        # reopening the same id would otherwise inherit the old authorization.
+        removed = (data.get("desktop_targets") or {}).pop(key, None) is not None or removed
+        if removed:
             _save(data)
+
+
+def forget_agent(agent_id: str) -> None:
+    """Erase every trace of a deleted Agent from the project store.
+
+    A deleted Agent's sessions go away with its workspace, so the bindings they
+    left behind under ``{agent_id}::*`` can never be read again — they only sit
+    in ``projects.json`` forever, and an Agent later created with the same id
+    inherits them. Same sweep as :func:`session_prefs.forget_agent`, for the
+    sibling store.
+
+    ``recents``/``meta``/``order`` are deliberately left alone: a project is a
+    directory on the user's disk, not something the Agent owned, so it stays
+    reachable from the picker after the Agent is gone.
+    """
+    if not agent_id:
+        return
+    prefix = f"{agent_id}::"
+    with _lock:
+        data = _load()
+        sessions = data.get("sessions") or {}
+        stale = [key for key in sessions if str(key).startswith(prefix)]
+        if not stale:
+            return
+        for key in stale:
+            sessions.pop(key, None)
+        _save(data)
 
 
 def set_project_dir(

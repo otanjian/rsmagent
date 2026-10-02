@@ -11,14 +11,24 @@ outright would be worse than the problem: tests would inherit the developer's
 model, language and channel settings, and start passing or failing on them.
 """
 
+import atexit
 import os
 import re
+import shutil
 import sys
 import tempfile
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+# Redirecting agent_workspace is not enough: ~/.cow/.env, a restore target
+# without agent_workspace and every other "~" path resolve through the home
+# directory itself. Set before any test module is imported.
+_FAKE_HOME = tempfile.mkdtemp(prefix="cow-tests-home-")
+for _name in ("HOME", "USERPROFILE"):
+    os.environ[_name] = _FAKE_HOME
+atexit.register(shutil.rmtree, _FAKE_HOME, ignore_errors=True)
 
 _WEB_DIR = os.path.join(os.path.dirname(__file__), "..", "channel", "web")
 
@@ -38,7 +48,7 @@ def console_js():
     # Asset URLs are absolute so they resolve the same from every routed path,
     # and each carries a ?v= stamp, so the name sits between /assets/ and the
     # query rather than between /assets/ and the closing quote.
-    for src in re.findall(r'<script defer src="/assets/(js/[^"?]+)(?:\?[^"]*)?"', page):
+    for src in re.findall(r'<script defer src="/?assets/(js/[^"?]+)(?:\?[^"]*)?"', page):
         with open(os.path.join(_WEB_DIR, "static", src), encoding="utf-8") as f:
             parts.append(f.read())
     return "\n".join(parts)

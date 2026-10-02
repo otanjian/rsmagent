@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import threading
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Callable, Optional
 
 from agent.tools.base_tool import BaseTool, ToolResult
 from agent.tools.bash import background, exit_codes
@@ -28,6 +28,22 @@ class Bash(BaseTool):
     """Tool for executing bash commands"""
 
     _IS_WIN = sys.platform == "win32"
+    # The one platform claim this tool makes. Kept as its own constant, and
+    # outside the description template, so a caller whose commands run on a
+    # *different* machine can drop it instead of inheriting a statement about the
+    # wrong platform (task 8.7). Empty on POSIX: there is nothing to correct.
+    _WIN_PLATFORM_NOTE = (
+        "PLATFORM: Windows (cmd.exe), not Bash, WSL, PowerShell, or Windows Terminal. Use cmd.exe syntax: double quotes (single quotes are literal), `>nul 2>&1` instead of `/dev/null`, `&&` instead of `;`, and `findstr /I \"pattern\"` without grep-style `-i`/`-e` flags. Do not invoke `bash script.sh` or use Unix-only commands such as grep, head, tail, sed, or awk. Use the search_files tool for file/content search and Python for portable scripting."
+    )
+    platform_note: str = _WIN_PLATFORM_NOTE if _IS_WIN else ""
+    # Composed outside the description template on purpose. A backslash inside an
+    # f-string *expression* is a SyntaxError before Python 3.12 (PEP 701), and the
+    # shipped backend is built and run on 3.11 -- so writing `{'\n' + ...}` inline
+    # below did not merely make this one tool's description wrong: it made this
+    # module uncompilable, and `agent.tools` imports it, so the whole app failed to
+    # start on the interpreter we ship. Keeping the newline out of the expression
+    # is what makes the file importable on 3.11 and 3.12 alike.
+    _PLATFORM_LINE: str = f"\n{platform_note}\n" if _IS_WIN else ""
     _PROGRESS_MAX_BYTES = 4 * 1024
     _PROGRESS_INTERVAL = 0.5
     # cmd.exe command line limit is ~8191 chars; rewrite python -c above this.
@@ -41,9 +57,7 @@ class Bash(BaseTool):
 
     name: str = "bash"
     description: str = f"""Execute a {'command' if _IS_WIN else 'bash command'} in the current working directory. Returns stdout and stderr. Output is truncated to last {DEFAULT_MAX_LINES} lines or {DEFAULT_MAX_BYTES // 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file.
-{'''
-PLATFORM: Windows (cmd.exe), not Bash, WSL, PowerShell, or Windows Terminal. Use cmd.exe syntax: double quotes (single quotes are literal), `>nul 2>&1` instead of `/dev/null`, `&&` instead of `;`, and `findstr /I "pattern"` without grep-style `-i`/`-e` flags. Do not invoke `bash script.sh` or use Unix-only commands such as grep, head, tail, sed, or awk. Use the search_files tool for file/content search and Python for portable scripting.
-''' if _IS_WIN else ''}
+{_PLATFORM_LINE}
 ENVIRONMENT: All API keys from env_config are auto-injected. Use $VAR_NAME directly.
 
 SAFETY:
@@ -84,6 +98,17 @@ SAFETY:
         if not os.path.exists(self.cwd):
             os.makedirs(self.cwd, exist_ok=True)
         self.default_timeout = self.config.get("timeout", self.DEFAULT_TIMEOUT)
+        #: Called with the process-group id of every command this tool starts.
+        #:
+        #: A command is started in its own session (`start_new_session`), so its
+        #: group id is the handle to the *whole* tree it spawns -- including
+        #: anything it backgrounds, which outlives the shell that started it and
+        #: would otherwise be unreachable by whoever owns this tool.
+        #:
+        #: Injected by the caller (the desktop's headless worker does this), the
+        #: same way `cwd` is: the tool knows the id, the caller owns the policy of
+        #: when a tree must die. Left unset the tool behaves exactly as before.
+        self.process_group_hook: Optional[Callable[[int], None]] = None
         # Enable safety mode by default (can be disabled in config)
         self.safety_mode = self.config.get("safety_mode", True)
         # Keep the template with the {cwd} placeholder so the description can be
@@ -165,6 +190,12 @@ SAFETY:
         try:
             # Prepare environment with .env file variables
             env = os.environ.copy()
+
+            # The console connection belongs to this process. A child inheriting
+            # these would, if it started another instance, log in as the same
+            # client and take the connection over.
+            for _name in ("CLOUD_DEPLOYMENT_ID", "CLOUD_CLIENT_ID"):
+                env.pop(_name, None)
 
             # Anchor artifact outputs to the workspace/project dir regardless of
             # any `cd` inside the command, so tools (e.g. image-generation) can
@@ -259,7 +290,7 @@ SAFETY:
             
             # Workaround for exit code 126 with no output
             if result.returncode == 126 and not result.stdout and not result.stderr:
-                logger.warning(f"[Bash] Exit 126 with no output - trying alternative execution method")
+                logger.warning("[Bash] Exit 126 with no output - trying alternative execution method")
                 # Try using argument list instead of shell=True
                 import shlex
                 try:
@@ -295,7 +326,7 @@ SAFETY:
                                     stdout='{"error": "图片无法解析", "reason": "该图片格式可能不受支持，或图片文件存在问题", "suggestion": "请尝试其他图片"}',
                                     stderr=''
                                 )
-                                logger.info(f"[Bash] Converted exit 126 to user-friendly image error message for vision skill")
+                                logger.info("[Bash] Converted exit 126 to user-friendly image error message for vision skill")
                 except Exception as retry_err:
                     logger.warning(f"[Bash] Retry failed: {retry_err}")
 
@@ -430,6 +461,14 @@ SAFETY:
             env=env,
             start_new_session=not self._IS_WIN,
         )
+        # A new session means the group id is the pid, so this one integer is the
+        # handle to the command and everything it spawns. Reported before we wait,
+        # so a caller that must kill the tree never races the command's own exit.
+        if self.process_group_hook is not None and not self._IS_WIN:
+            try:
+                self.process_group_hook(process.pid)
+            except Exception:
+                pass
         stdout_chunks, stderr_chunks = [], []
         recent = bytearray()
         recent_lock = threading.Lock()

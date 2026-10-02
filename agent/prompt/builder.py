@@ -6,7 +6,8 @@ System Prompt Builder - 系统提示词构建器
 
 from __future__ import annotations
 import os
-from typing import List, Dict, Optional, Any
+import re
+from typing import List, Dict, Optional, Any, Tuple
 from dataclasses import dataclass
 
 from agent.prompt.shared_assets import (
@@ -49,6 +50,7 @@ class PromptBuilder:
         memory_manager: Any = None,
         runtime_info: Optional[Dict[str, Any]] = None,
         project_dir: Optional[str] = None,
+        workspace_scope: Optional[str] = None,
         permission_mode: Optional[str] = None,
         **kwargs
     ) -> str:
@@ -79,6 +81,7 @@ class PromptBuilder:
             memory_manager=memory_manager,
             runtime_info=runtime_info,
             project_dir=project_dir,
+            workspace_scope=workspace_scope,
             permission_mode=permission_mode,
             **kwargs
         )
@@ -95,6 +98,7 @@ def build_agent_system_prompt(
     memory_manager: Any = None,
     runtime_info: Optional[Dict[str, Any]] = None,
     project_dir: Optional[str] = None,
+    workspace_scope: Optional[str] = None,
     permission_mode: Optional[str] = None,
     **kwargs
 ) -> str:
@@ -156,11 +160,16 @@ def build_agent_system_prompt(
             _build_knowledge_section(workspace_dir, language, project_dir, asset_scope)
         )
 
-    # 4. Workspace (working environment description). Two of its blocks only
+    # 4. Workspace (working environment description). Two of those blocks only
     # hold when the context files were actually loaded, which sub agents skip.
     sections.extend(
         _build_workspace_section(
-            workspace_dir, language, bool(context_files), project_dir=project_dir
+            workspace_dir, language, bool(context_files), project_dir=project_dir,
+            workspace_scope=workspace_scope,
+            client_platform=(
+                str(kwargs.get("client_platform") or "").strip()
+                or _client_platform(tools)
+            ),
         )
     )
 
@@ -194,6 +203,13 @@ def build_agent_system_prompt(
         sections.extend(_build_runtime_section(runtime_info, language))
         sections.extend(_build_team_section(runtime_info, language))
 
+    # A selected desktop input is not the server workspace described above.
+    # Emit the verified per-turn fact explicitly; tool schemas alone do not
+    # tell the model that the user has actually selected a directory.
+    sections.extend(build_desktop_directory_guidance(
+        kwargs.get("desktop_context"), tools, language, workspace_scope,
+    ))
+
     # 8. Response language (always appended, independent of the skeleton language)
     sections.extend(_build_response_language_section(language))
 
@@ -206,6 +222,63 @@ def build_agent_system_prompt(
     )
 
     return "\n".join(sections)
+
+
+def build_desktop_directory_guidance(
+    reference: Optional[Dict[str, Any]], tools: Optional[List[Any]],
+    language: str, workspace_scope: Optional[str] = None,
+) -> List[str]:
+    """Describe a verified input selection without exposing ids or client paths.
+
+    Local execution projects already route their ordinary tools to the client
+    and have their own guidance. Read-only inputs use client_files instead.
+    Callers supply the same available tools that are offered to the model.
+    """
+    if not reference or not reference.get("binding_id") or workspace_scope == "local":
+        return []
+    available = any(getattr(tool, "name", "") == "client_files" for tool in tools or [])
+    if language == "en":
+        lines = [
+            "## Selected desktop input", "",
+            "The user has selected a desktop directory for this turn. Requests about "
+            "the current project's files or data refer to that directory.",
+            "The server workspace described above is not this selected directory. "
+            "An empty result from server bash/read/ls cannot establish that the "
+            "selected directory has no files; do not search other server directories as a substitute.",
+        ]
+        if available:
+            lines += [
+                'First list the selected input with client_files({"op":"list"}); '
+                'omit relative_path for the root (never use "" or "."), '
+                "then use search/stat/read_text to inspect relevant files.",
+                "For Excel, PDF or other binary files, use client_files with op=materialize "
+                "and a relative_path, then analyze the returned server path with existing tools. "
+                "Do not pass client paths or URIs to server tools.",
+                "Selection does not grant tool permissions. If reading fails, report the actual "
+                "permission/device/network error; do not call the directory empty or claim to have read it.",
+            ]
+        else:
+            lines.append("The client_files tool is currently unavailable. Explain that the selected "
+                         "input cannot currently be read; do not claim that it contains no data.")
+    else:
+        lines = [
+            "## 本轮桌面输入来源", "",
+            "本轮已选择客户端本地目录。用户所说的当前项目文件或数据，指该目录。",
+            "上述服务器工作区不是所选客户端目录。服务器 bash/read/ls 即使返回空，也不能据此判断所选目录没有文件；"
+            "不要继续扫描其他服务器目录来替代本地读取。",
+        ]
+        if available:
+            lines += [
+                '先调用 client_files({"op":"list"}) 列出所选目录；根目录须省略 relative_path，不能传空字符串或 "."。'
+                "再用 search/stat/read_text 查看相关文件。",
+                "Excel、PDF 等二进制文件先用 client_files 的 materialize 和 relative_path 导入，"
+                "再用现有工具分析返回的服务器文件路径；不要把客户端路径或 URI 当成服务器路径。",
+                "选择目录不等于授予工具权限。读取失败时如实说明权限、设备或网络错误，"
+                "不能声称目录为空或已经读取文件。",
+            ]
+        else:
+            lines.append("client_files 当前不可用，请明确说明暂时无法读取所选目录，不能声称其中没有数据。")
+    return lines + [""]
 
 
 def _build_response_language_section(language: str) -> List[str]:
@@ -248,6 +321,7 @@ def _build_tooling_section(tools: List[Any], language: str) -> List[str]:
             "ls": "list directory contents",
             "search_files": "search inside files by regex, or find files by name",
             "bash": "run shell commands",
+            "client_files": "read the selected desktop input directory; materialize files for server analysis",
             "terminal": "manage background processes",
             "web_search": "web search",
             "web_fetch": "fetch URL content",
@@ -255,6 +329,7 @@ def _build_tooling_section(tools: List[Any], language: str) -> List[str]:
             "memory_search": "search memory",
             "memory_get": "read memory content",
             "env_config": "manage API keys and skill config",
+            "time": "get the current date and time",
             "scheduler": "manage scheduled tasks and reminders",
             "send": "send a local file to the user (local files only; put URLs directly in the reply text)",
             "vision": "analyze images (recognition, description, OCR, etc.)",
@@ -268,6 +343,7 @@ def _build_tooling_section(tools: List[Any], language: str) -> List[str]:
             "ls": "列出目录内容",
             "search_files": "按正则搜索文件内容，或按文件名查找文件",
             "bash": "执行shell命令",
+            "client_files": "读取所选客户端目录，或导入文件供服务器分析",
             "terminal": "管理后台进程",
             "web_search": "网络搜索",
             "web_fetch": "获取URL内容",
@@ -275,6 +351,7 @@ def _build_tooling_section(tools: List[Any], language: str) -> List[str]:
             "memory_search": "搜索记忆",
             "memory_get": "读取记忆内容",
             "env_config": "管理API密钥和技能配置",
+            "time": "获取当前日期和时间",
             "scheduler": "管理定时任务和提醒",
             "send": "发送本地文件给用户（仅限本地文件，URL直接放在回复文本中）",
             "vision": "分析图片内容（识别、描述、OCR文字提取等）",
@@ -287,7 +364,7 @@ def _build_tooling_section(tools: List[Any], language: str) -> List[str]:
         "bash", "terminal",
         "web_search", "web_fetch", "browser",
         "memory_search", "memory_get",
-        "env_config", "scheduler", "send", "vision", "subagent",
+        "env_config", "time", "scheduler", "send", "vision", "subagent",
     ]
 
     # Build name -> summary mapping for available tools
@@ -443,6 +520,32 @@ def _state_path_prefix(workspace_dir: str, project_dir: Optional[str]) -> str:
     return workspace_dir.rstrip("/") + "/"
 
 
+def _knowledge_base_path(workspace_dir: str, project_dir: Optional[str] = None) -> str:
+    """Knowledge root spelled the way the file tools will actually resolve it.
+
+    ``state_dir`` sends an Agent with no ``knowledge/`` of its own to the shared
+    root, which does not sit under this workspace. Naming it as a bare
+    ``knowledge/`` then aims every ``read`` at the workspace, where none of the
+    pages are: the Agent is handed an index of pages it cannot open, and spends
+    its turns hunting for them instead of answering (#3175 follow-up).
+
+    On a single-Agent install the two are the same directory, so that case keeps
+    the relative spelling it has today, project-mode prefix included.
+    """
+    relative = f"{_state_path_prefix(workspace_dir, project_dir)}knowledge"
+    if not workspace_dir:
+        return relative
+    try:
+        from common import state_dir
+        root = str(state_dir.knowledge_dir(base=workspace_dir))
+        own = os.path.join(workspace_dir, "knowledge")
+        if os.path.realpath(root) == os.path.realpath(own):
+            return relative
+        return root
+    except Exception:
+        return relative
+
+
 def _build_memory_section(
     memory_manager: Any,
     tools: Optional[List[Any]],
@@ -462,7 +565,7 @@ def _build_memory_section(
     p = _state_path_prefix(workspace_dir, project_dir)
     mem_md = f"{p}MEMORY.md"
     mem_dir = f"{p}memory"
-    kb_dir = f"{p}knowledge"
+    kb_dir = _knowledge_base_path(workspace_dir, project_dir)
 
     has_memory_tools = False
     if tools:
@@ -555,6 +658,40 @@ def _build_memory_section(
     return lines
 
 
+# index.md grows by a line per knowledge page and is re-sent on every turn.
+# Past _INDEX_FULL_CHARS only the entry titles are injected, and past
+# _INDEX_MAX_CHARS the list is cut; the pages stay reachable through read and
+# memory_search, and the prompt says so.
+_INDEX_FULL_CHARS = 8000
+_INDEX_MAX_CHARS = 20000
+_INDEX_ENTRY_RE = re.compile(r"^\s*[-*]\s+\[[^\]]*\]\([^)]*\)")
+
+
+def _compact_knowledge_index(content: str) -> Tuple[str, int, bool]:
+    """Return (index text to inject, entries left out, whether it was compacted)."""
+    if len(content) <= _INDEX_FULL_CHARS:
+        return content, 0, False
+
+    kept: List[str] = []
+    size = 0
+    omitted = 0
+    full = False
+    for line in content.split("\n"):
+        entry = _INDEX_ENTRY_RE.match(line)
+        if entry:
+            line = entry.group(0).strip()
+        elif not line.lstrip().startswith("#"):
+            continue
+        if full or size + len(line) + 1 > _INDEX_MAX_CHARS:
+            full = True
+            if entry:
+                omitted += 1
+            continue
+        kept.append(line)
+        size += len(line) + 1
+    return "\n".join(kept), omitted, True
+
+
 def _build_knowledge_section(
     workspace_dir: str,
     language: str,
@@ -587,8 +724,9 @@ def _build_knowledge_section(
     except Exception:
         return []
 
-    # Anchor knowledge paths to ~/cow when a project cwd is active.
-    kb = f"{_state_path_prefix(workspace_dir, project_dir)}knowledge"
+    # Anchor knowledge paths to ~/cow when a project cwd is active, and to the
+    # shared root when this Agent reads the shared copy.
+    kb = _knowledge_base_path(workspace_dir, project_dir)
 
     if language == "en":
         if maintainable:
@@ -654,12 +792,22 @@ def _build_knowledge_section(
         ]
 
     if index_content:
+        index_text, omitted, compacted = _compact_knowledge_index(index_content)
         lines.extend([
             ("### Current knowledge index" if language == "en" else "### 当前知识索引"),
             "",
-            index_content,
-            "",
         ])
+        if compacted:
+            if language == "en":
+                more = f", {omitted} more entries are not listed" if omitted else ""
+                note = (f"The index is large, so only titles are listed here{more}. "
+                        f"`read` `{kb}/index.md` for the full index, or use `memory_search`.")
+            else:
+                more = f"，另有 {omitted} 条未列出" if omitted else ""
+                note = (f"索引较大，此处只列出标题{more}。"
+                        f"完整索引请 `read` `{kb}/index.md` 查看，或用 `memory_search` 检索。")
+            lines.extend([note, ""])
+        lines.extend([index_text, ""])
 
     lines.extend([
         ("**How to query**: use `read` to open a knowledge page, or `memory_search` (knowledge is in the vector index)."
@@ -702,9 +850,129 @@ def _build_docs_section(workspace_dir: str, language: str) -> List[str]:
     return []
 
 
+def _client_platform(tools: Optional[List[Any]]) -> str:
+    """The client's platform for this run, or ``""`` when there is no client.
+
+    Read from the run's script tool, which asks the *launcher* -- the only thing
+    that can actually know, since the command runs on the user's machine. A tool
+    that offers no hint is not an error: a server-side run has no client, and an
+    unknown platform must stay unknown (see ``_local_execution_notes``).
+
+    The first non-empty answer wins. Two script tools in one view are the same
+    platform by construction -- ``tool_view_for_run`` builds them together -- so
+    there is no conflict to resolve.
+    """
+    for tool in tools or []:
+        hint = getattr(tool, "platform_hint", None)
+        if not callable(hint):
+            continue
+        try:
+            value = str(hint() or "").strip()
+        except Exception as e:  # noqa: BLE001 - a failed hint is simply no hint
+            logger.debug(f"Client platform hint skipped: {e}")
+            continue
+        if value:
+            return value
+    return ""
+
+
+def _local_execution_notes(language: str, client_platform: str = "") -> List[str]:
+    """What the model must not get wrong about a local project (task 8.7).
+
+    Three corrections, each of them a natural misreading:
+
+    * ``cwd`` names a directory on the *user's* machine, not a server directory;
+    * the project grant covers the project, and does **not** extend to skill or
+      memory maintenance -- those keep their original authorization and service
+      ownership (``desktop-project-execution``: memory, knowledge, remote APIs
+      and MCP keep their existing service ownership, and must not be handed
+      client paths they cannot resolve);
+    * the platform is the *client's*. The server's own platform is not evidence
+      about a command that runs on the user's machine, so the real platform and
+      the real missing pieces are read from this run's script tool.
+
+    ``client_platform`` is the launcher-reported platform, or ``""`` when it
+    cannot be determined. An unknown platform is said to be unknown rather than
+    quietly filled in with the server's -- that substitution is the exact
+    mistake these notes exist to prevent.
+    """
+    if language == "en":
+        lines = [
+            "",
+            "**This project is on the user's own computer.**",
+            "",
+            "- The working directory above is a directory on the user's machine,",
+            "  reached through their desktop client; it is not on the server.",
+            "- Work in it with the ordinary file and shell tools. Do not ask the",
+            "  user to copy files out, and do not assume `~` means this directory.",
+            "- Deliver what the user asked for *into this project*: write outputs,",
+            "  reports and generated files under the project directory (a relative",
+            "  path already means that). Do not leave a deliverable in a scratch or",
+            "  temporary directory, and do not send the user hunting for it.",
+            "- This project's permission is a permission on **this directory**. It",
+            "  does not extend to maintaining skills or memory: those keep their",
+            "  original authority and live in the system directory above. Never",
+            "  write them through the project, and never pass a client path to a",
+            "  tool that resolves its paths on the server (memory, knowledge,",
+            "  MCP, remote APIs) -- tell the user the tool cannot take that path",
+            "  instead of inventing one.",
+            "- Whether this session may *change* the project (not just read it) is",
+            "  decided per tool call, not by this section. If a tool is refused,",
+            "  report the refusal instead of retrying with another path.",
+        ]
+        if client_platform:
+            lines.append(
+                f"- Commands here run on the client's platform (**{client_platform}**),"
+                " not on the server's. Use the shell semantics of this run's script"
+                " tool, which also names any missing runtime; do not assume the"
+                " server's operating system or Unix-only commands."
+            )
+        else:
+            lines.append(
+                "- Commands here run on the client's platform, which this run could"
+                " not determine; do not assume it is the server's. The run's script"
+                " tool description states the real platform, the shell and any"
+                " missing runtime -- read it before writing platform-specific"
+                " commands, and do not fall back to Unix-only commands."
+            )
+        lines.append("")
+        return lines
+    lines = [
+        "",
+        "**该项目位于用户自己的电脑上。**",
+        "",
+        "- 上面的工作目录是用户本机的目录，通过其桌面客户端访问，不在服务器上。",
+        "- 用常规的文件与命令工具在其中工作；不要让用户把文件拷出来，也不要把 `~`",
+        "  当作该目录。",
+        "- 用户要的成果要落进**这个项目**：输出、报告与生成的文件都写在项目目录下",
+        "  （相对路径本来就是这个意思）。不要把成果留在临时目录里，也不要让用户自己去找。",
+        "- 该项目授予的是**这个目录**上的权限，不延伸到技能与记忆维护：二者仍遵循原有权限，",
+        "  仍在上面那个系统目录中。不要经由项目去写它们；也不要把客户端路径交给",
+        "  在服务端解析路径的工具（记忆、知识、MCP、远程业务 API）——工具无法接受该路径时",
+        "  应如实说明，而不是自己编一个。",
+        "- 本次会话能否*修改*该项目（而非仅读取）由每次工具调用决定，本段不作判定。",
+        "  工具被拒绝时应如实说明，不要换路径重试。",
+    ]
+    if client_platform:
+        lines.append(
+            f"- 这里的命令运行在**客户端**平台（`{client_platform}`）上，不是服务器平台。"
+            "请按本轮脚本工具描述的 Shell 语义来写，其中也列出了缺失的运行时；不要假设"
+            "服务器的操作系统，也不要用仅 Unix 可用的命令。"
+        )
+    else:
+        lines.append(
+            "- 这里的命令运行在**客户端**平台上，而本轮未能确定该平台；不要假设它就是"
+            "服务器的平台。本轮脚本工具的描述里写明了真实平台、Shell 与缺失的运行时，"
+            "写平台相关命令前请先读它，不要退回到仅 Unix 可用的命令。"
+        )
+    lines.append("")
+    return lines
+
+
 def _build_workspace_section(
     workspace_dir: str, language: str, context_files_loaded: bool = True,
-    project_dir: Optional[str] = None,
+    project_dir: Optional[str] = None, workspace_scope: Optional[str] = None,
+    client_platform: str = "",
 ) -> List[str]:
     """Build the workspace section.
 
@@ -714,9 +982,21 @@ def _build_workspace_section(
     both misinform it and talk it out of reading the workspace rules itself.
 
     ``project_dir`` switches the section to the dual-directory layout used when
-    the user has pointed the session at a project: the *project* is the working
-    directory (relative paths, artifacts) while the Agent's workspace stays the
-    *system* directory (memory/skills), reached with absolute paths.
+    the session's working directory is not the Agent's own workspace: the
+    working directory holds relative paths and artifacts while the Agent's
+    workspace stays the *system* directory (memory/skills), reached with
+    absolute paths.
+
+    ``workspace_scope`` says which of the two that override is, so the wording
+    does not lie: ``"project"`` is a directory the user picked, ``"personal"``
+    is the caller's own directory inside a tenant-shared Agent (change
+    ``use-personal-workspace-for-shared-agents``), which nobody selected and
+    which no other member shares, and ``"local"`` is a directory the user
+    picked on their *own machine*.
+
+    ``client_platform`` is the platform a local run's commands execute on, as
+    the client reported it (task 8.7). ``""`` means unknown, which is stated as
+    unknown rather than replaced with this server's platform.
     """
     normalized_project = None
     if project_dir:
@@ -727,6 +1007,21 @@ def _build_workspace_section(
             normalized_project = project_dir
 
     if normalized_project:
+        if workspace_scope == "personal":
+            return _build_personal_workspace_section(
+                workspace_dir, normalized_project, language, context_files_loaded
+            )
+        if workspace_scope == "local":
+            # The working directory is on the *user's own machine*, reached
+            # through the desktop client rather than the server's filesystem.
+            # The layout is the project one, so reuse it; the extra lines say
+            # where the directory actually is, because "the working directory"
+            # would otherwise read as a server path.
+            lines = _build_project_workspace_section(
+                workspace_dir, normalized_project, language, context_files_loaded
+            )
+            lines += _local_execution_notes(language, client_platform)
+            return lines
         return _build_project_workspace_section(
             workspace_dir, normalized_project, language, context_files_loaded
         )
@@ -783,16 +1078,16 @@ def _build_workspace_section(
             "**路径使用规则** (非常重要):",
             "",
             f"1. **相对路径的基准目录**: 所有相对路径都是相对于 `{workspace_dir}` 而言的",
-            f"   - ✅ 正确: 访问工作空间内的文件用相对路径，如 `AGENT.md`",
+            "   - ✅ 正确: 访问工作空间内的文件用相对路径，如 `AGENT.md`",
             f"   - ❌ 错误: 用相对路径访问其他目录的文件 (如果它不在 `{workspace_dir}` 内)",
             "",
             "2. **访问其他目录**: 如果要访问工作空间之外的目录（如项目代码、系统文件），**必须使用绝对路径**",
-            f"   - ✅ 正确: 例如 `~/chatgpt-on-wechat`、`/usr/local/`",
-            f"   - ❌ 错误: 假设相对路径会指向其他目录",
+            "   - ✅ 正确: 例如 `~/chatgpt-on-wechat`、`/usr/local/`",
+            "   - ❌ 错误: 假设相对路径会指向其他目录",
             "",
             "3. **路径解析示例**:",
             f"   - 相对路径 `memory/` → 实际路径 `{workspace_dir}/memory/`",
-            f"   - 绝对路径 `~/chatgpt-on-wechat/docs/` → 实际路径 `~/chatgpt-on-wechat/docs/`",
+            "   - 绝对路径 `~/chatgpt-on-wechat/docs/` → 实际路径 `~/chatgpt-on-wechat/docs/`",
             "",
             "4. **不确定时**: 先用 `bash pwd` 确认当前目录，或用 `ls .` 查看当前位置",
             "",
@@ -826,6 +1121,95 @@ def _build_workspace_section(
     return lines
 
 
+def _build_personal_workspace_section(
+    workspace_dir: str, personal_dir: str, language: str, context_files_loaded: bool
+) -> List[str]:
+    """Workspace section for a shared Agent's caller working in their own folder.
+
+    Same two-directory layout as a project, different fact: nobody selected this
+    directory. It is the caller's own business folder inside a tenant-shared
+    Agent, which is why it is *not* called a project and why the section says
+    where it comes from. Calling it a project would invite the model to treat a
+    picker selection as in force, and would misdescribe a directory the user
+    cannot share with the other members of the Agent.
+    """
+    if language == "en":
+        lines = [
+            "## 📂 Workspace",
+            "",
+            "This Agent is **shared** with other members. With no project selected,"
+            " your working directory is **your own folder** inside it — everything"
+            " you write with a relative path stays there and is not shared.",
+            "",
+            f"- **Current working directory (your own folder)**: `{personal_dir}`",
+            f"- **System directory (memory & skills)**: `{workspace_dir}`",
+            "",
+            "**Path rules** (very important):",
+            "",
+            f"1. **Relative paths are based on your working directory** `{personal_dir}`."
+            " Put your work products here (documents, code, generated files, etc.).",
+            f"   - ✅ relative `output/report.html` → `{personal_dir}/output/report.html`",
+            "",
+            f"2. **Memory and skills stay in the system directory** `{workspace_dir}`."
+            " Never write them into your folder. Memory tools handle this for you;"
+            " if you ever touch these files directly, use **absolute paths** under"
+            " the system directory.",
+            f"   - ✅ absolute `{workspace_dir}/MEMORY.md`",
+            f"   - ❌ relative `MEMORY.md` (that would land in your folder, which is wrong)",
+            "",
+            "3. **Accessing any other directory**: use absolute paths.",
+            "",
+            "4. **When unsure**: run `bash pwd` to confirm the current directory.",
+            "",
+            "If the user later selects a project, the working directory switches to"
+            " it; clearing the project brings it back here.",
+            "",
+        ]
+    else:
+        lines = [
+            "## 📂 工作空间",
+            "",
+            "该智能体由**多人共享**。未选择项目时，你的工作目录是你在其中的**个人目录**——"
+            "用相对路径生成的内容都落在这里，不会与其他人共享。",
+            "",
+            f"- **当前工作目录（你的个人目录）**: `{personal_dir}`",
+            f"- **系统目录（记忆与技能）**: `{workspace_dir}`",
+            "",
+            "**路径使用规则** (非常重要):",
+            "",
+            f"1. **相对路径基于当前工作目录** `{personal_dir}`。你的工作产物（文档、代码、生成的文件等）都放在这里。",
+            f"   - ✅ 相对路径 `output/report.html` → `{personal_dir}/output/report.html`",
+            "",
+            f"2. **记忆和技能仍在系统目录** `{workspace_dir}`，不要写入个人目录。记忆操作由记忆工具自动完成；若确需直接访问这些文件，请使用系统目录下的**绝对路径**。",
+            f"   - ✅ 绝对路径 `{workspace_dir}/MEMORY.md`",
+            f"   - ❌ 相对路径 `MEMORY.md`（那会落到你的个人目录里，是错误的）",
+            "",
+            "3. **访问其他任意目录**：使用绝对路径。",
+            "",
+            "4. **不确定时**：用 `bash pwd` 确认当前目录。",
+            "",
+            "用户后续选择项目时会切换到该项目；清除项目后回到这个个人目录。",
+            "",
+        ]
+
+    if context_files_loaded:
+        if language == "en":
+            lines += [
+                "**Files already auto-loaded** (no need to `read` again): `AGENT.md`, `USER.md`, `RULE.md`, `MEMORY.md` (from the system directory).",
+                "",
+            ]
+        else:
+            lines += [
+                "**已自动加载的文件**（无需再次 `read`）：`AGENT.md`、`USER.md`、`RULE.md`、`MEMORY.md`（来自系统目录）。",
+                "",
+            ]
+
+    cloud_website_lines = _build_cloud_website_section(workspace_dir)
+    if cloud_website_lines:
+        lines.extend(cloud_website_lines)
+    return lines
+
+
 def _build_project_workspace_section(
     workspace_dir: str, project_dir: str, language: str, context_files_loaded: bool
 ) -> List[str]:
@@ -853,7 +1237,7 @@ def _build_project_workspace_section(
             "",
             f"2. **Memory and skills stay in the system directory** `{workspace_dir}`. Never write them into the project. Memory tools handle this for you; if you ever touch these files directly, use **absolute paths** under the system directory.",
             f"   - ✅ absolute `{workspace_dir}/MEMORY.md`",
-            f"   - ❌ relative `MEMORY.md` (that would land in the project, which is wrong)",
+            "   - ❌ relative `MEMORY.md` (that would land in the project, which is wrong)",
             "",
             "3. **Accessing any other directory**: use absolute paths.",
             "",
@@ -876,7 +1260,7 @@ def _build_project_workspace_section(
             "",
             f"2. **记忆和技能仍在系统目录** `{workspace_dir}`，不要写入项目目录。记忆操作由记忆工具自动完成；若确需直接访问这些文件，请使用系统目录下的**绝对路径**。",
             f"   - ✅ 绝对路径 `{workspace_dir}/MEMORY.md`",
-            f"   - ❌ 相对路径 `MEMORY.md`（那会落到项目目录里，是错误的）",
+            "   - ❌ 相对路径 `MEMORY.md`（那会落到项目目录里，是错误的）",
             "",
             "3. **访问其他任意目录**：使用绝对路径。",
             "",
@@ -1015,7 +1399,10 @@ def _build_team_section(runtime_info: Dict[str, Any], language: str) -> List[str
             "Use agent_delegate for work that belongs to a teammate, passing "
             "their id above as agent_id (without the @), and say who you handed "
             "it to and what you asked for. Refer to teammates by name to the "
-            "user, without the @id — the id is internal.",
+            "user and keep the @id out of your reply — the id is internal. "
+            "Never answer in a teammate's place: hand any question or task "
+            "that is theirs straight over, and do not report their words or "
+            "actions without a hand-off.",
             "",
         ]
     return [
@@ -1033,47 +1420,37 @@ def _build_team_section(runtime_info: Dict[str, Any], language: str) -> List[str
         "",
         "该由某位同事做的事，用 agent_delegate 交出去：把那位同事上面的 id "
         "作为 agent_id 传入 (不含@符号)，并说明交给了谁、交办了什么。对用户提到同事时只用名字，"
-        "不要带 @id，id 只用于内部。",
+        "回复内容不要带 @id，id 只用于内部。不要替同事回答：该由某位成员回答的问题或执行的任务直接转交，"
+        "未经转交不得转述其言行。",
         "",
     ]
 
 
 def _build_runtime_section(runtime_info: Dict[str, Any], language: str) -> List[str]:
-    """Build the runtime info section - supports dynamic time."""
+    """Build the runtime info section.
+
+    Only the date goes here: the system prompt heads every request, so a
+    clock in it would change on every turn and void the provider's prefix
+    cache for the whole history. The exact time is served on demand by the
+    ``time`` tool.
+    """
     if not runtime_info:
         return []
-    
+
     is_en = language == "en"
-    time_label = "Current time" if is_en else "当前时间"
     lines = [
         ("## ⚙️ Runtime info" if is_en else "## ⚙️ 运行时信息"),
         "",
     ]
 
-    # Add current time if available
-    # Support dynamic time via callable function
     if callable(runtime_info.get("_get_current_time")):
         try:
             time_info = runtime_info["_get_current_time"]()
-            time_line = f"{time_label}: {time_info['time']} {time_info['weekday']} ({time_info['timezone']})"
-            lines.append(time_line)
+            date_label = "Current date" if is_en else "当前日期"
+            lines.append(f"{date_label}: {time_info['date']} {time_info['weekday']} ({time_info['timezone']})")
             lines.append("")
         except Exception as e:
             logger.warning(f"[PromptBuilder] Failed to get dynamic time: {e}")
-    elif runtime_info.get("current_time"):
-        # Fallback to static time for backward compatibility
-        time_str = runtime_info["current_time"]
-        weekday = runtime_info.get("weekday", "")
-        timezone = runtime_info.get("timezone", "")
-
-        time_line = f"{time_label}: {time_str}"
-        if weekday:
-            time_line += f" {weekday}"
-        if timezone:
-            time_line += f" ({timezone})"
-
-        lines.append(time_line)
-        lines.append("")
 
     # Add other runtime info
     model_label = "model" if is_en else "模型"

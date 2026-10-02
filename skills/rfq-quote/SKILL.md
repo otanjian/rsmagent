@@ -1,6 +1,15 @@
 ---
 name: rfq-quote
 description: 图纸询价智能报价。处理钣金、机柜、焊接结构件的客户询价，提取图纸参数、核对历史实际成本、生成成本核算与常规/加急/批量报价 Excel，并标记待确认风险。适用于图纸报价、询价成本分析和报价复核，不适用于采购比价或注塑模具成本模型。
+metadata:
+  cowagent:
+    requires:
+      python:
+        - xlsxwriter
+    install:
+      - kind: pip
+        package: xlsxwriter
+        label: 生成报价 Excel（scripts/quote.py 的 Report 写入器）
 ---
 
 # 图纸询价智能报价

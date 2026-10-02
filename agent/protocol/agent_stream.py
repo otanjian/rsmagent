@@ -6,6 +6,7 @@ Provides streaming output, event system, and complete tool-call loop
 import contextvars
 import copy
 import json
+import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -13,6 +14,10 @@ from typing import List, Dict, Any, Optional, Callable, Tuple
 
 from agent.protocol.cancel import AgentCancelledError
 from agent.protocol.models import LLMRequest, LLMModel
+from agent.protocol.tool_protocol import (
+    ToolProtocolError,
+    is_text_tool_call_anomaly,
+)
 from agent.protocol.message_utils import (
     sanitize_claude_messages,
     compress_turn_to_text_only,
@@ -112,6 +117,26 @@ def _truncate_reasoning_for_storage(text: str) -> str:
     tail = text[-half:]
     omitted = len(text) - len(head) - len(tail)
     return head + _REASONING_TRUNCATE_MARKER.format(omitted=omitted) + tail
+
+
+def _cache_hit_tokens(usage: Dict[str, Any]) -> int:
+    """Prompt tokens served from the provider's prefix cache.
+
+    DeepSeek reports ``prompt_cache_hit_tokens``, OpenAI-style endpoints
+    ``prompt_tokens_details.cached_tokens`` and Claude-style ones
+    ``cache_read_input_tokens``.
+    """
+    details = usage.get("prompt_tokens_details")
+    cached = details.get("cached_tokens") if isinstance(details, dict) else None
+    try:
+        return int(
+            usage.get("prompt_cache_hit_tokens")
+            or cached
+            or usage.get("cache_read_input_tokens")
+            or 0
+        )
+    except (TypeError, ValueError):
+        return 0
 
 
 # Cap for the 429 incremental backoff. The base curve is 30 + retry_count*15,
@@ -297,6 +322,9 @@ class AgentStreamExecutor:
 
         # Message history - use provided messages or create new list
         self.messages = messages if messages is not None else []
+        # This run's user query, the anchor callers use to find the messages
+        # the run added (see run_start_index).
+        self.run_user_message = None
         
         # Tool failure tracking for retry protection
         self.tool_failure_history = []  # List of (tool_name, args_hash, success) tuples
@@ -307,6 +335,317 @@ class AgentStreamExecutor:
         # Absolute paths already reported as artifacts, so a write-then-edit
         # sequence on the same file only surfaces one card in the UI.
         self._emitted_artifacts = set()
+
+        # This run's local (desktop) tool view, built lazily the first time a
+        # tool call resolves to a local project (task 3.5). ``None`` until then,
+        # which is also the state for every run that has no local project -- the
+        # pre-existing behaviour, byte for byte.
+        self._local_tools: Optional[Dict[str, Any]] = None
+        self._local_tools_cwd: Optional[str] = None
+
+    def _run_tool(self, tool_name: str, arguments: Optional[Dict] = None):
+        """``(tool, refusal, kind)`` for this call's dispatch.
+
+        ``(shared_instance, None, "")`` when the ambient identity carries no
+        desktop target: nothing about the server-side path changes. For a desktop
+        run the tool comes from a view built for *this run* and pinned to the
+        directory frozen at message entry, so a concurrent turn retargeting the
+        Agent's shared tools cannot move an in-flight run. A refusal is returned
+        instead when the target no longer resolves (revoked grant, disconnected
+        device, re-picked directory, deleted folder) -- but only for a call that
+        would actually act in that directory, so a memory or knowledge lookup in
+        the same session keeps working.
+
+        ``kind`` says which limit refused, so the caller can report it honestly:
+        ``""`` nothing to refuse, ``"unavailable"`` the directory/grant is gone,
+        ``"capability"`` the call is not allowed *in* a local project (a script
+        with no launcher, a write under a read-only grant, a mode that forbids
+        it). Both are refusals -- nothing ran and nothing fell back to a server
+        directory -- but only the second one is the user's to change.
+        """
+        shared = self.tools.get(tool_name)
+        if shared is None:
+            # Nothing to gate: the caller's own "no such tool" error is more
+            # accurate than a refusal about a project.
+            return None, None, ""
+        try:
+            from agent.desktop_local.capabilities import local_call_refusal
+            from agent.desktop_local.run_context import (
+                needs_local_directory, run_local_cwd, tool_view_for_run,
+            )
+            from agent.desktop_local.tool_disposition import (
+                unclassified_writer_refusal,
+            )
+            from common.runtime_identity import current_identity
+
+            identity = current_identity()
+            cwd, refusal = run_local_cwd(identity)
+        except Exception:
+            # A broken resolver must not take the tool call down with it, and it
+            # must not invent a directory either: keep the existing behaviour.
+            return shared, None, ""
+        if refusal:
+            return ((None, refusal, "unavailable")
+                    if needs_local_directory(shared, tool_name)
+                    else (shared, None, ""))
+        if not cwd:
+            return shared, None, ""
+        # What this run may do *in* the project (task 5.2): a read-only input
+        # grant does not write, a script needs the platform launcher, and the
+        # session's own mode is still a ceiling.
+        capability_refusal = local_call_refusal(
+            identity, tool_name, shared, arguments, agent=self.agent)
+        if capability_refusal:
+            return None, capability_refusal, "capability"
+        # A36 (task 8.6). A tool that can write files and has no disposition for a
+        # local project must not run: it would write wherever its own default cwd
+        # points -- the server -- and nothing would report it. The known writers are
+        # all classified, so this refuses only a tool nobody has classified yet,
+        # which is exactly the omission the acceptance line is about.
+        disposition_refusal = unclassified_writer_refusal(tool_name)
+        if disposition_refusal:
+            return None, disposition_refusal, "capability"
+        if self._local_tools is None or self._local_tools_cwd != cwd:
+            # The run's pinned skill directories travel with the view (task 8.8):
+            # a script the model runs from the skill cache must be readable by the
+            # sandbox, and only the run that authorized the pin may grant them.
+            self._local_tools = tool_view_for_run(
+                self.tools, cwd, identity=identity,
+                target=getattr(identity, "execution_target", None),
+                skill_roots=self._local_skill_roots())
+            self._local_tools_cwd = cwd
+        return self._local_tools.get(tool_name) or shared, None, ""
+
+    def _remote_call(self, tool_name: str, arguments: Optional[Dict] = None):
+        """``Plan`` for this call's device delegation, or ``None``.
+
+        The other half of ``_run_tool`` (task 6.3). ``None`` means "not a remote
+        call": no desktop target, a read-only reference, a server-side tool
+        (memory, knowledge, an API client), the local mode, or a deployment that
+        has not opened the switch. In every one of those cases the caller's
+        pre-existing decision stands unchanged -- this seam only ever *adds* the
+        device branch for a run that explicitly authorized project execution on
+        a machine this process cannot reach.
+
+        A returned ``Plan`` is either a refusal (reported by the caller exactly
+        like a local refusal, with the device's own code) or the proxy tool. The
+        plan is decided here, *after* the permission gate, so a delegated call
+        passes the same tool table, allow/deny policy and mode checks as a local
+        one.
+        """
+        if self.tools.get(tool_name) is None:
+            return None
+        try:
+            from agent.desktop_remote.dispatch import plan
+            from agent.desktop_remote.mode import remote_mode_for
+            from common.runtime_identity import current_identity
+
+            identity = current_identity()
+            if not remote_mode_for(identity):
+                return None
+            planned = plan(
+                identity=identity, tool_name=tool_name,
+                tool=self.tools.get(tool_name), arguments=arguments,
+                agent=self.agent,
+                # The run's pinned skill versions travel with the plan (task
+                # 8.9), exactly as its skill directories travel with the local
+                # view. The device is told which versions to run and refuses any
+                # other, so a stale snapshot cannot be run in their place.
+                skill_pins=self._local_skill_pins())
+        except Exception:
+            # A broken planner must not take the tool call down with it, and it
+            # must not invent a device either: keep the existing behaviour.
+            logger.warning("🖥️ Remote execution planning failed", exc_info=True)
+            return None
+        return planned if (planned.tool is not None or planned.refusal) else None
+
+    def _stage_local_inputs(self, tool: Any, tool_name: str, arguments: Any):
+        """``(arguments, refusal)``: this call's inputs, resolved to one source.
+
+        The third surface of task 3.6. A local run's arguments are resolved
+        against the *same* source the file panel and `@` references use, so a
+        path the session can see in the panel is the path the tool reads, and a
+        server-side path this machine cannot see is refused by name instead of
+        being passed to a local tool as if the file were there. Nothing is
+        uploaded here: landing a remote input is an explicit transport the
+        executor does not have yet, so the honest answer is the refusal.
+
+        Task 8.4 adds the *typed* forms on top: a ``skill:`` reference resolves
+        into the read-only version pinned for this run, and a ``backend:``
+        reference is refused. Both come from :meth:`_local_skills`, which deploys
+        the skills the run is already authorized for -- so a skill reference
+        cannot reach a directory this run was not granted.
+
+        ``server_root`` is deliberately not passed for the server branch: the
+        pre-existing server resolution is the caller's (the tool's own cwd and
+        permission gates), and this seam must not become a second copy of it.
+        """
+        if not arguments:
+            return arguments, None
+        try:
+            from agent.desktop_local.run_context import needs_local_directory
+            from agent.desktop_local.source_resolver import (
+                source_for_identity, prepare_tool_inputs,
+            )
+            from common.runtime_identity import current_identity
+
+            if not needs_local_directory(tool, tool_name):
+                # A server-side tool (memory, knowledge, an API client) is not
+                # made collateral damage of a local project, and its arguments
+                # are not reinterpreted as local paths.
+                return arguments, None
+            source = source_for_identity(current_identity())
+            if not source.is_desktop:
+                return arguments, None
+            if source.refusal:
+                return arguments, source.refusal
+            staged = prepare_tool_inputs(
+                source, tool_name, arguments, skills=self._local_skills(),
+                landing=self._local_landing())
+        except Exception as e:  # noqa: BLE001 - never fail a call on this seam
+            logger.warning(f"🖥️ Local input staging failed for {tool_name}: {e}")
+            return arguments, None
+        if not staged.ok:
+            return arguments, staged.message()
+        if staged.rewrites:
+            logger.info(
+                f"🖥️ Local input rewritten for {tool_name}: "
+                f"{len(staged.rewrites)} path(s) resolved into the local project")
+        return staged.arguments, None
+
+    def _local_landing(self):
+        """The verified landing a ``resource:`` reference is staged through (8.6).
+
+        Lazy and per stream, like :meth:`_local_skills`, and for the same reason:
+        a run that never receives a server attachment pays nothing -- no directory
+        is created in the project until something is actually landed, because
+        ``RunLanding`` only provisions the run's input directory on first use.
+
+        Returns the run's landing object rather than a directory, so the caller
+        cannot mistake "where it would go" for "it is there". A run with no local
+        project never reaches this method at all (``_stage_local_inputs`` returns
+        early for a server source).
+        """
+        if getattr(self, "_local_landing_engine", "unset") != "unset":
+            return self._local_landing_engine
+        self._local_landing_engine = None
+        try:
+            from agent.desktop_local.run_inputs import landing_for_identity
+            from common.runtime_identity import current_identity
+
+            self._local_landing_engine = landing_for_identity(current_identity())
+        except Exception as e:  # noqa: BLE001 - no landing means an honest refusal
+            logger.warning(f"🖥️ Local landing unavailable: {e}")
+        return self._local_landing_engine
+
+    def _local_skills(self):
+        """This stream's deployed skill set, built once and reused.
+        Lazy on purpose: a run without a local project never builds it, so the
+        existing server behaviour pays nothing. Built once per stream rather than
+        once per call because deploying re-verifies and re-hashes every skill
+        resource, and a run that calls five tools should not do that five times.
+
+        Returns ``None`` when there is nothing to deploy, a manager is missing, or
+        deployment fails -- and ``prepare_tool_inputs`` treats "no skills" as
+        "refuse a skill reference by name", never as "read it from the project".
+        """
+        if getattr(self, "_local_skill_runtime", "unset") != "unset":
+            return self._local_skill_runtime
+        self._local_skill_runtime = None
+        try:
+            manager = getattr(self.agent, "skill_manager", None)
+            if manager is None:
+                return None
+            from agent.desktop_local.skill_runtime import runtime_for_identity
+            from common.runtime_identity import current_identity
+
+            # The *device's* platform, not the server's: the worker runs here, so
+            # a skill that only supports another platform must be refused now
+            # rather than producing a call that assumes the wrong paths.
+            platform = "win32" if os.name == "nt" else "posix"
+            runtime = runtime_for_identity(
+                manager, identity=current_identity(), platform=platform)
+            runtime.prepare()
+            self._local_skill_runtime = runtime
+            if runtime.problems:
+                logger.info(
+                    "🖥️ Skills not deployed for this run: "
+                    + ", ".join(f"{p.skill_id}({p.code})" for p in runtime.problems))
+        except Exception as e:  # noqa: BLE001 - a skill that cannot deploy is a refusal
+            logger.warning(f"🖥️ Local skill deployment failed: {e}")
+            self._local_skill_runtime = None
+        return self._local_skill_runtime
+
+    def _local_skill_roots(self) -> List[str]:
+        """The read-only directories this run's pinned skills live in (8.8).
+
+        Empty when nothing was deployed -- the ordinary case for a run with no
+        skills, and the value that leaves the sandbox exactly as it was before.
+
+        An undeployed skill is *not* an error here: ``prepare`` reports one broken
+        skill through ``problems`` instead of raising, and a run that can still do
+        useful work must not be turned into a refusal by a skill it never used.
+        """
+        runtime = self._local_skills()
+        if runtime is None:
+            return []
+        try:
+            return [str(root) for root in runtime.roots()]
+        except Exception as e:  # noqa: BLE001 - unreadable roots mean "grant none"
+            logger.warning(f"🖥️ Reading local skill roots failed: {e}")
+            return []
+
+    def _local_skill_pins(self) -> List[Dict[str, str]]:
+        """The versions this run pinned, in the portable form (task 8.9).
+
+        :meth:`_local_skill_roots` answers "which directories may the sandbox
+        read"; this answers the question the *remote* half has to ask, because a
+        device has neither this cache nor these paths. Same source, one
+        definition of "what this run is pinned to": the two cannot disagree.
+
+        Empty when nothing is pinned -- a run with no skills is the ordinary case
+        and must leave the device command exactly as it was.
+        """
+        runtime = self._local_skills()
+        if runtime is None:
+            return []
+        try:
+            return [dict(entry) for entry in runtime.pins()]
+        except Exception as e:  # noqa: BLE001 - unreadable pins mean "require none"
+            logger.warning(f"🖥️ Reading local skill pins failed: {e}")
+            return []
+
+    def _release_local_skills(self) -> None:
+        """Drop this stream's skill pins. Called when the run ends.
+
+        The pin is what keeps a deployed version alive against garbage
+        collection, so a run that never releases leaks one version per run.
+        """
+        runtime = getattr(self, "_local_skill_runtime", None)
+        if runtime is None:
+            return
+        try:
+            runtime.release()
+        except Exception as e:  # noqa: BLE001 - releasing must not fail a run
+            logger.warning(f"🖥️ Releasing local skills failed: {e}")
+        self._local_skill_runtime = None
+
+    def _run_cwd(self, fallback: Optional[str]) -> Optional[str]:
+        """The directory this run acts in: the frozen local root, else ``fallback``.
+
+        Used for decisions that need the working directory but do not own it (the
+        tenant-isolation scope). A run whose local project is unavailable keeps
+        the fallback here only because its tool calls are refused before they can
+        use it.
+        """
+        try:
+            from agent.desktop_local.run_context import run_local_cwd
+            from common.runtime_identity import current_identity
+
+            cwd, _refusal = run_local_cwd(current_identity())
+        except Exception:
+            return fallback
+        return cwd or fallback
 
     def _check_cancelled(self) -> None:
         """Raise AgentCancelledError if the user requested cancellation.
@@ -507,16 +846,32 @@ class AgentStreamExecutor:
     _ARTIFACT_TOOLS = ("write", "edit")
 
     def _maybe_emit_artifact(self, tool_call: dict, result: dict) -> None:
-        """Report a file written by `write`/`edit` so clients can preview it."""
-        if not self.on_event:
+        """Report a file written by `write`/`edit` so clients can preview it.
+
+        Reporting is a *projection*, not part of the tool's outcome. This runs
+        in the streaming loop, outside any handler that could turn a raise into
+        a readable tool error, so anything escaping here would abort the turn
+        over a card. Every failure below therefore degrades to "no card", and
+        the guard reads the sink defensively because the dispatch seam is also
+        driven by minimally built executors.
+        """
+        if not getattr(self, "on_event", None):
             return
         if tool_call.get("name") not in self._ARTIFACT_TOOLS:
             return
         if result.get("status") != "success":
             return
 
+        try:
+            self._publish_artifact(tool_call, result)
+        except Exception as e:  # noqa: BLE001 - a card must not fail the turn
+            logger.warning(f"🗂  Artifact reporting failed: {e}")
+
+    def _publish_artifact(self, tool_call: dict, result: dict) -> None:
         data = result.get("result")
-        path = data.get("path") if isinstance(data, dict) else None
+        path = data.get("abs_path") if isinstance(data, dict) else None
+        if not path:
+            path = data.get("path") if isinstance(data, dict) else None
         if not path:
             path = (tool_call.get("arguments") or {}).get("path")
         if not path:
@@ -526,22 +881,134 @@ class AgentStreamExecutor:
 
         # Anchor artifact detection to the session's working dir. In project mode
         # this is the project dir, so files written there surface as cards; the
-        # default state_root is used when no project is open.
+        # default state_root is used when no project is open. A desktop run is
+        # anchored to the local directory it actually writes in (task 3.5), or a
+        # file written there would be dropped as outside the anchor.
         art_root = None
         try:
             eff = getattr(self.agent, "effective_cwd", None)
             if callable(eff):
-                art_root = eff()
+                art_root = self._run_cwd(eff())
         except Exception:
             art_root = None
-        artifact = safe_build_artifact(path, art_root)
+        # A file written into a local project also records *which* device and run
+        # produced it (task 9.1), so its card can stay pointed at the machine
+        # that holds the bytes. A server-side write gets no origin at all, which
+        # is what keeps the pre-existing artifact shape untouched.
+        origin = self._local_artifact_origin(tool_call.get("id") or "")
+        artifact = safe_build_artifact(path, art_root, origin)
         if not artifact:
+            # Nothing verifiable was written -- not "the model says it wrote it".
+            # A remote (device) write lands here too: this process has no such
+            # file, and inventing a card from the model's prose is exactly what
+            # A35 refuses.
             return
         if artifact["path"] in self._emitted_artifacts:
             return
         self._emitted_artifacts.add(artifact["path"])
         logger.info(f"🗂  Artifact: {artifact['rel_path']} ({artifact['kind']})")
         self._emit_event("artifact", artifact)
+
+    def _local_artifact_origin(self, tool_call_id: str):
+        """The device/project/run identity a locally written file must carry.
+
+        ``None`` unless this run really is acting in a local project this
+        process resolved: a target whose directory is not registered here (a
+        remote device, or a revoked grant) has no file this process can vouch
+        for, so it must not stamp a desktop origin onto whatever path happens to
+        exist in the server workspace.
+        """
+        try:
+            from agent.desktop_local.run_context import run_local_cwd
+            from agent.protocol.artifact import desktop_origin
+            from common.runtime_identity import current_identity
+            from common.utils import current_agent_run_id
+
+            identity = current_identity()
+            target = getattr(identity, "execution_target", None)
+            if target is None or not getattr(target, "is_desktop", False):
+                return None
+            cwd, _refusal = run_local_cwd(identity)
+            if not cwd:
+                return None
+            return desktop_origin(
+                target,
+                run_id=current_agent_run_id() or (identity.run_id or ""),
+                tool_call_id=tool_call_id,
+                owner=identity.user_id or "",
+                tenant_id=identity.tenant_id or "",
+            )
+        except Exception as e:  # noqa: BLE001 - metadata must not fail the turn
+            logger.debug(f"🖥️ Local artifact origin unavailable: {e}")
+            return None
+
+    def _maybe_emit_remote_artifacts(self, result: Any, tool_call_id: str) -> None:
+        """Publish cards for files a *device* reported it produced (task 9.1).
+
+        The other half of :meth:`_maybe_emit_artifact`, for the case where the
+        bytes are on another machine. This process never stats those paths --
+        doing so would stat a same-named *server* file and report it as the
+        device's output, which is exactly the mistake the local-source rules
+        exist to prevent. What makes the report publishable is that it arrived
+        inside a verified terminal result of a run this server authorized, and
+        that every reference satisfies the v2 artifact contract (relative path,
+        known kind, a version). A report that fails any of those is dropped
+        whole: a card the client cannot resolve is worse than no card.
+        """
+        if not getattr(self, "on_event", None) or getattr(result, "status", "") != "success":
+            return
+        ext = getattr(result, "ext_data", None)
+        reported = ext.get("desktop_artifacts") if isinstance(ext, dict) else None
+        if not reported:
+            return
+        try:
+            from agent.protocol.artifact import desktop_origin
+            from auth.desktop_contracts_v2 import validate_artifact
+            from common.runtime_identity import current_identity
+            from common.utils import current_agent_run_id
+
+            identity = current_identity()
+            target = getattr(identity, "execution_target", None)
+            base = desktop_origin(
+                target,
+                run_id=current_agent_run_id() or (identity.run_id or ""),
+                tool_call_id=tool_call_id,
+                owner=identity.user_id or "",
+                tenant_id=identity.tenant_id or "",
+            )
+            if base is None:
+                return
+            workspace_id = str(getattr(target, "workspace_id", "") or "")
+            for entry in reported if isinstance(reported, list) else []:
+                if not isinstance(entry, dict):
+                    continue
+                problems = validate_artifact(entry, workspace_id=workspace_id)
+                if problems:
+                    logger.warning(
+                        "🖥️ Dropped an unverifiable device artifact for %s: %s",
+                        tool_call_id, "; ".join(problems))
+                    continue
+                origin = dict(base)
+                origin.update({
+                    "artifact_id": entry.get("artifact_id"),
+                    "artifact_protocol": "local-artifact-v1",
+                    "relative_path": entry["relative_path"],
+                    "file_name": entry["file_name"],
+                    "kind": entry["kind"],
+                    "size": entry["size"],
+                    "source_version": entry["source_version"],
+                })
+                if origin["artifact_id"] in self._emitted_artifacts:
+                    continue
+                self._emitted_artifacts.add(origin["artifact_id"])
+                logger.info(
+                    "🗂  Artifact (device %s): %s (%s)",
+                    origin.get("device_id"), origin["relative_path"],
+                    origin["kind"])
+                self._emit_event("artifact", {"type": "artifact",
+                                              "origin": origin})
+        except Exception as e:  # noqa: BLE001 - metadata must not fail the turn
+            logger.warning(f"🖥️ Device artifact reporting failed: {e}")
 
     def _is_thinking_enabled(self) -> bool:
         """Whether deep-thinking mode is on at the model layer.
@@ -757,10 +1224,11 @@ class AgentStreamExecutor:
         )
         if image_notices:
             logger.info(f"[Agent] image attachments not delivered: {image_notices}")
-        self.messages.append({
+        self.run_user_message = {
             "role": "user",
             "content": blocks,
-        })
+        }
+        self.messages.append(self.run_user_message)
 
         # Trim context ONCE before the agent loop starts, not during tool steps.
         # This ensures tool_use/tool_result chains created during the current run
@@ -815,6 +1283,8 @@ class AgentStreamExecutor:
         self._reset_model_fallback(nested_run=_nested_run)
 
         cancelled = False
+        # An answer on the last allowed turn also leaves turn == max_turns.
+        finished_with_answer = False
         try:
             while turn < self.max_turns:
                 # Check at the very top of every turn so a cancel arriving
@@ -856,12 +1326,12 @@ class AgentStreamExecutor:
                 if not tool_calls:
                     # 检查是否返回了空响应
                     if not assistant_msg:
-                        logger.warning(f"[Agent] LLM returned empty response after retry (no content and no tool calls)")
-                        logger.info(f"[Agent] This usually happens when LLM thinks the task is complete after tool execution")
+                        logger.warning("[Agent] LLM returned empty response after retry (no content and no tool calls)")
+                        logger.info("[Agent] This usually happens when LLM thinks the task is complete after tool execution")
                         
                         # 如果之前有工具调用，强制要求 LLM 生成文本回复
                         if turn > 1:
-                            logger.info(f"[Agent] Requesting explicit response from LLM...")
+                            logger.info("[Agent] Requesting explicit response from LLM...")
                             
                             # Remember position so we can remove the injected prompt later
                             prompt_insert_idx = len(self.messages)
@@ -892,12 +1362,12 @@ class AgentStreamExecutor:
                             # to the tool execution path below (don't break the loop).
                             if tool_calls:
                                 logger.info(
-                                    f"[Agent] LLM returned tool_calls in explicit-response retry, "
-                                    f"continuing to execute tools instead of breaking"
+                                    "[Agent] LLM returned tool_calls in explicit-response retry, "
+                                    "continuing to execute tools instead of breaking"
                                 )
                             elif not assistant_msg:
                                 # Still empty (no text and no tool_calls): use fallback
-                                logger.warning(f"[Agent] Still empty after explicit request")
+                                logger.warning("[Agent] Still empty after explicit request")
                                 final_response = self._empty_response_fallback()
                         else:
                             # First-turn empty reply, fall back directly
@@ -932,6 +1402,7 @@ class AgentStreamExecutor:
                             "has_tool_calls": False,
                             "stop_reason": stop_reason
                         })
+                        finished_with_answer = True
                         break
 
                 # Log tool calls with arguments (truncate long values like base64)
@@ -1003,7 +1474,7 @@ class AgentStreamExecutor:
                         
                         # Check for critical error - abort entire conversation
                         if result.get("status") == "critical_error":
-                            logger.error(f"💥 Fatal error detected, aborting conversation")
+                            logger.error("💥 Fatal error detected, aborting conversation")
                             final_response = result.get('result') or _t("任务执行失败", "Task execution failed")
                             return final_response
                         
@@ -1115,12 +1586,12 @@ class AgentStreamExecutor:
                     "stop_reason": stop_reason
                 })
 
-            if turn >= self.max_turns:
+            if turn >= self.max_turns and not finished_with_answer:
                 logger.warning(f"⚠️  Reached max decision step limit: {self.max_turns}")
                 self._drain_and_close_steering()
                 
                 # Force model to summarize without tool calls
-                logger.info(f"[Agent] Requesting summary from LLM after reaching max steps...")
+                logger.info("[Agent] Requesting summary from LLM after reaching max steps...")
                 
                 # Remember position before injecting the prompt so we can remove it later
                 prompt_insert_idx = len(self.messages)
@@ -1535,6 +2006,20 @@ class AgentStreamExecutor:
                             "cancelled": True,
                         })
                         raise AgentCancelledError("cancelled during LLM streaming")
+                    steer_inbox = getattr(self, "steer_inbox", None)
+                    if steer_inbox is not None and steer_inbox.has_pending():
+                        logger.info("[Agent] steer detected mid-stream, aborting LLM call")
+                        if full_content:
+                            self.messages.append({
+                                "role": "assistant",
+                                "content": [{"type": "text", "text": full_content}],
+                            })
+                        self._emit_event("message_end", {
+                            "content": full_content,
+                            "tool_calls": [],
+                            "steered": True,
+                        })
+                        return full_content, [], "steered"
 
                 # Check for errors
                 if isinstance(chunk, dict) and chunk.get("error"):
@@ -1552,7 +2037,7 @@ class AgentStreamExecutor:
                     status_code = chunk.get("status_code", "N/A")
                     
                     # Log error with all available information
-                    logger.error(f"🔴 Stream API Error:")
+                    logger.error("🔴 Stream API Error:")
                     logger.error(f"   Message: {error_msg}")
                     logger.error(f"   Status Code: {status_code}")
                     logger.error(f"   Error Code: {error_code}")
@@ -1840,6 +2325,9 @@ class AgentStreamExecutor:
                     "prompt_tokens": int(stream_usage.get("prompt_tokens") or 0),
                     "completion_tokens": int(stream_usage.get("completion_tokens") or 0),
                     "total_tokens": int(stream_usage.get("total_tokens") or 0),
+                    # Server-side prefix cache hits; providers that don't
+                    # report it leave this at 0, which reads as "unknown".
+                    "prompt_cache_hit_tokens": _cache_hit_tokens(stream_usage),
                     # History estimate at capture time (freshness fingerprint).
                     "_est_history": est_history,
                 }
@@ -1852,6 +2340,7 @@ class AgentStreamExecutor:
             if self.agent.last_usage:
                 real_in = self.agent.last_usage.get("prompt_tokens", 0)
                 real_out = self.agent.last_usage.get("completion_tokens", 0)
+                cache_hit = self.agent.last_usage.get("prompt_cache_hit_tokens", 0)
                 # Rough estimate of what we sent this turn (system + tools +
                 # history), the same numbers the usage chart shows.
                 est_sys = self.agent._estimate_text_tokens(self.system_prompt or "")
@@ -1860,8 +2349,10 @@ class AgentStreamExecutor:
                 )
                 est_in = est_sys + est_hist
                 ratio = (est_in / real_in) if real_in else 0
+                hit_ratio = (cache_hit / real_in) if real_in else 0
                 logger.info(
                     f"[Usage] real input={real_in} output={real_out} | "
+                    f"cache_hit={cache_hit} ({hit_ratio:.0%}) | "
                     f"estimate input~={est_in} (sys~={est_sys} hist~={est_hist}) | "
                     f"est/real={ratio:.2f}"
                 )
@@ -1909,6 +2400,10 @@ class AgentStreamExecutor:
 
         # Check for empty response and retry once if enabled
         if retry_on_empty and not full_content and not tool_calls:
+            steer_inbox = getattr(self, "steer_inbox", None)
+            if steer_inbox is not None and steer_inbox.has_pending():
+                logger.info("[Agent] steer pending after stream, skipping empty retry")
+                return full_content, [], "steered"
             logger.warning(f"⚠️  LLM returned empty response (stop_reason: {stop_reason}), retrying once...")
             self._emit_event("message_end", {
                 "content": "",
@@ -1928,7 +2423,23 @@ class AgentStreamExecutor:
 
         # Filter full_content one more time (in case tags were split across chunks)
         full_content = self._filter_think_tags(full_content)
-        
+
+        # Known anomaly (change ``fix-desktop-local-context-and-tool-calls``,
+        # task 3.2): the model put a DSML tool-call wrapper in its prose instead
+        # of returning a structured call. Fire only when this turn produced NO
+        # structured call at all -- a real call batch is always the source of
+        # truth and a marker beside it must never discard it. Raised here,
+        # after the retry/fallback seam, so it is not auto-retried, and before
+        # the assistant message is appended, so no success history/persist/
+        # completion happens. The generic ``except`` in ``run_stream`` turns it
+        # into the existing ``error`` event.
+        if not tool_calls and is_text_tool_call_anomaly(full_content):
+            logger.error(
+                "[Agent] tool protocol error: model returned a DSML text "
+                "tool-call wrapper with no structured tool_calls"
+            )
+            raise ToolProtocolError()
+
         # Add assistant message to history (Claude format uses content blocks)
         assistant_msg = {"role": "assistant", "content": []}
 
@@ -2102,6 +2613,102 @@ class AgentStreamExecutor:
             # failure limit that aborts the conversation.
             return result
 
+        # Remote execution boundary (change ``align-desktop-project-execution-with-master``,
+        # task 6.3). The same authorization, the other machine: the session's
+        # project is not reachable from *this* process, so the call is planned
+        # against the bound device instead of being refused. A refusal here comes
+        # from the device's own declaration or from the run's own grant/mode
+        # rules, carries its own code (``device_offline``, ``protocol_incompatible``,
+        # ``permission_denied``, ...), and never falls back to the server.
+        remote_plan = self._remote_call(tool_name, arguments)
+        remote_tool = None
+        if remote_plan is not None and remote_plan.refusal:
+            logger.info(f"🖥️ Remote project unavailable for tool {tool_name}: "
+                        f"{remote_plan.code or remote_plan.kind}")
+            # The gate charged this call before the device was consulted; the
+            # plan just proved it will not run anywhere, so the charge is
+            # released against the same meter the gate wrote (task 6.7).
+            self._release_unspent_tool_call(remote_plan.code or remote_plan.kind,
+                                            tool_id)
+            result = {"status": "error", "result": remote_plan.refusal,
+                      "execution_time": 0}
+            self._emit_event("tool_execution_start", {
+                "tool_call_id": tool_id,
+                "tool_name": tool_name,
+                "arguments": arguments,
+            })
+            self._emit_event("tool_execution_end", {
+                "tool_call_id": tool_id,
+                "tool_name": tool_name,
+                ("remote_capability_denied" if remote_plan.kind == "capability"
+                 else "remote_context_unavailable"): True,
+                "remote_error_code": remote_plan.code,
+                **result,
+            })
+            # Not a tool failure: the tool did not run, and a refusal must not
+            # count toward the consecutive-failure limit that aborts the chat.
+            return result
+        if remote_plan is not None:
+            remote_tool = remote_plan.tool
+
+        # Local execution boundary (change ``align-desktop-project-execution-with-master``,
+        # task 3.5). A desktop run acts in the directory frozen for it at message
+        # entry, and only for as long as the authorization behind that directory
+        # still resolves. Anything else is a refusal reported as a normal tool
+        # error: silently falling back to the Agent's own directory would run the
+        # work somewhere the session never authorized, and a *changed* directory
+        # would move an already-started run. A delegated (remote) call has no
+        # local directory to resolve, so this branch is skipped for it -- the two
+        # modes are decided once, above, and never both applied to one call.
+        if remote_tool is None:
+            local_tool, local_refusal, refusal_kind = self._run_tool(tool_name, arguments)
+        else:
+            local_tool, local_refusal, refusal_kind = None, None, ""
+        if local_refusal:
+            logger.info(f"🖥️ Local project unavailable for tool {tool_name}: {local_refusal}")
+            result = {"status": "error", "result": local_refusal, "execution_time": 0}
+            self._emit_event("tool_execution_start", {
+                "tool_call_id": tool_id,
+                "tool_name": tool_name,
+                "arguments": arguments,
+            })
+            self._emit_event("tool_execution_end", {
+                "tool_call_id": tool_id,
+                "tool_name": tool_name,
+                ("local_capability_denied" if refusal_kind == "capability"
+                 else "local_context_unavailable"): True,
+                **result,
+            })
+            # Not a tool failure: the tool did not run, and a refusal must not
+            # count toward the consecutive-failure limit that aborts the chat.
+            return result
+
+        # Local input staging (task 3.6). The same source the file panel and `@`
+        # references resolve through decides whether this call's path arguments
+        # are reachable here: a path inside the local project is used as-is (or
+        # rewritten to its project-relative form), and a server-side path this
+        # machine cannot see is refused by name rather than handed to the local
+        # tool. Nothing is uploaded -- landing is a separate, explicit transport.
+        if local_tool is not None:
+            staged_arguments, input_refusal = self._stage_local_inputs(
+                local_tool, tool_name, arguments)
+            if input_refusal:
+                logger.info(f"🖥️ Local input unavailable for {tool_name}: {input_refusal}")
+                result = {"status": "error", "result": input_refusal, "execution_time": 0}
+                self._emit_event("tool_execution_start", {
+                    "tool_call_id": tool_id,
+                    "tool_name": tool_name,
+                    "arguments": arguments,
+                })
+                self._emit_event("tool_execution_end", {
+                    "tool_call_id": tool_id,
+                    "tool_name": tool_name,
+                    "local_input_unavailable": True,
+                    **result,
+                })
+                return result
+            arguments = staged_arguments
+
         # Check for consecutive failures (retry protection)
         should_stop, stop_reason, is_critical = self._check_consecutive_failures(tool_name, arguments)
         if should_stop:
@@ -2124,7 +2731,7 @@ class AgentStreamExecutor:
                 }
             return result
 
-        tool = tool_override or self.tools.get(tool_name)
+        tool = tool_override or remote_tool or local_tool or self.tools.get(tool_name)
         start_event = {
             "tool_call_id": tool_id,
             "tool_name": tool_name,
@@ -2194,6 +2801,10 @@ class AgentStreamExecutor:
             # Record tool result for failure tracking
             success = result.status == "success"
             self._record_tool_result(tool_name, arguments, success)
+            # A device's own report of what it wrote (task 9.1). Emitted from the
+            # real terminal result, never from the model's prose, and never by
+            # stat-ing the device's path from here.
+            self._maybe_emit_remote_artifacts(result, tool_id)
 
             # Auto-refresh skills after skill creation
             if tool_name == "bash" and result.status == "success":
@@ -2260,7 +2871,7 @@ class AgentStreamExecutor:
             # the tenant roots. This runs before every other check so nothing
             # can cross tenants.
             isolation = isolation_decision(
-                tool_name, arguments, cwd=agent.effective_cwd()
+                tool_name, arguments, cwd=self._run_cwd(agent.effective_cwd())
             )
             if not isolation.allowed:
                 self._last_denial_kind = "isolation"
@@ -2330,6 +2941,25 @@ class AgentStreamExecutor:
             arguments.clear()
             arguments.update(decision.parameters)
         return None if decision.allowed else decision.reason
+
+    def _release_unspent_tool_call(self, reason: str, tool_call_id: str) -> None:
+        """Give back the quota charge for a delegated call that did not run.
+
+        A thin pass-through on purpose: the release belongs to the desktop layer
+        (``agent.desktop_remote.dispatch``), which owns the meter's twin call and
+        the whole set of "this never executed" branches. This method only carries
+        the *current* identity there, because the executor is the side that knows
+        the refusal just happened.
+        """
+        try:
+            from agent.desktop_remote.dispatch import release_tool_call_quota
+            from common.runtime_identity import current_identity
+
+            release_tool_call_quota(current_identity(), reason=reason,
+                                    reference=str(tool_call_id or ""))
+        except Exception:
+            logger.warning("🖥️ Releasing an unspent tool-call quota failed",
+                           exc_info=True)
 
     def _quota_tool_denial(self, tool_name: str) -> Optional[str]:
         """Charge one tool call against the current identity's ``tool_calls``
@@ -2765,6 +3395,29 @@ class AgentStreamExecutor:
 
         return _on_summary_ready
 
+    def _token_budget_trim(self, turns: List[Dict], budget: int) -> Tuple[List[Dict], List[Dict]]:
+        """
+        Walk turns from newest to oldest, accumulating estimated tokens.
+        Keep the longest suffix that fits within the budget.
+
+        Always keeps at least the newest turn (even if it alone exceeds
+        the budget) so the agent never loses the current exchange.
+
+        Returns:
+            (kept_turns, discarded_turns)
+        """
+        kept_turns = []
+        accumulated = 0
+        for turn in reversed(turns):
+            turn_tokens = self._estimate_turn_tokens(turn)
+            if accumulated + turn_tokens > budget and kept_turns:
+                break  # Budget exhausted; keep only what we have
+            kept_turns.append(turn)
+            accumulated += turn_tokens
+        kept_turns.reverse()
+        discarded_turns = turns[:len(turns) - len(kept_turns)]
+        return kept_turns, discarded_turns
+
     def _trim_messages(self):
         """
         智能清理消息历史，保持对话完整性
@@ -2785,35 +3438,8 @@ class AgentStreamExecutor:
         
         if not turns:
             return
-        
-        # Step 2: 轮次限制 - 超出时移除前一半，保留后一半
-        if len(turns) > self.max_context_turns:
-            removed_count = len(turns) // 2
-            keep_count = len(turns) - removed_count
-            
-            discarded_turns = turns[:removed_count]
-            turns = turns[-keep_count:]
 
-            logger.info(
-                f"💾 Context turns exceeded: {keep_count + removed_count} > {self.max_context_turns}, "
-                f"trimmed to {keep_count} turns (removed {removed_count})"
-            )
-
-            # Flush to daily memory + inject context summary (single async LLM call)
-            if self.agent.memory_manager:
-                discarded_messages = []
-                for turn in discarded_turns:
-                    discarded_messages.extend(turn["messages"])
-                if discarded_messages:
-                    user_id = current_user_id()
-                    cb = self._build_context_summary_callback(discarded_turns, turns)
-                    self.agent.memory_manager.flush_memory(
-                        messages=discarded_messages, user_id=user_id,
-                        reason="trim", max_messages=0,
-                        context_summary_callback=cb,
-                    )
-
-        # Step 3: Token 限制 - 保留完整轮次
+        # Step 2: Calculate the token budget (context window - output reserve - system prompt)
         # Get context window from agent (based on model)
         context_window = self.agent._get_model_context_window()
 
@@ -2833,78 +3459,98 @@ class AgentStreamExecutor:
         else:
             max_tokens = input_ceiling
 
-        # Estimate system prompt tokens
         system_tokens = self.agent._estimate_message_tokens({"role": "system", "content": self.system_prompt})
-        available_tokens = max_tokens - system_tokens
-
-        # Calculate current tokens
+        budget = max_tokens - system_tokens
         current_tokens = sum(self._estimate_turn_tokens(turn) for turn in turns)
-        
-        # If under limit, reconstruct messages and return
-        if current_tokens + system_tokens <= max_tokens:
-            # Reconstruct message list from turns
+
+        # Step 3: Trim to satisfy BOTH constraints (AND):
+        #   1) token budget  — the hard safety limit so the prompt never
+        #      overflows the model context window;
+        #   2) max_context_turns — an explicit cost/latency cap.
+        # History is only kept when it fits within the token budget AND the
+        # turn cap. If both are already satisfied, keep everything untouched
+        # (no trimming, no summary LLM call).
+        if current_tokens + system_tokens <= max_tokens and len(turns) <= self.max_context_turns:
             new_messages = []
             for turn in turns:
                 new_messages.extend(turn['messages'])
-            
+
             old_count = len(self.messages)
             self.messages = new_messages
-            
-            # Log if we removed messages due to turn limit
             if old_count > len(self.messages):
                 logger.info(f"   Rebuilt message list: {old_count} -> {len(self.messages)} messages")
             return
 
-        # Token limit exceeded — tiered strategy based on turn count:
-        #
-        #   Few turns (<5):  Compress ALL turns to text-only (strip tool chains,
-        #                    keep user query + final reply).  Never discard turns
-        #                    — losing even one is too painful when context is thin.
-        #
-        #   Many turns (>=5): Directly discard the first half of turns.
-        #                     With enough turns the oldest ones are less
-        #                     critical, and keeping the recent half intact
-        #                     (with full tool chains) is more useful.
+        # Primary: token-budget-first trim. Walk turns newest -> oldest and keep
+        # the longest suffix that fits the budget (removes only the minimum
+        # turns needed, not a blind "remove half").
+        kept_turns, discarded_turns = self._token_budget_trim(turns, budget)
 
+        if budget <= 0:
+            logger.warning(
+                f"[Agent] System prompt (~{system_tokens} tok) alone exceeds the "
+                f"context budget ({max_tokens} tok); keeping only the previous turn. "
+                f"Shrink the injected workspace files or raise agent_max_context_tokens."
+            )
+
+        # However tight the budget, keep the previous turn beside the current
+        # one, reduced to text: a reply to the last exchange must still make
+        # sense, and context can build back up from there turn by turn. The
+        # current turn is left intact (it may carry images or files).
+        kept_previous = False
+        if len(kept_turns) < 2 and len(turns) > 1:
+            previous = compress_turn_to_text_only(turns[-2])
+            if previous["messages"]:
+                kept_turns = [previous] + kept_turns
+                kept_previous = True
+            discarded_turns = turns[:-2]
+
+        # Secondary: turn-count cap acts as an explicit cost safety net. Even
+        # when the kept turns fit the token budget, never keep more than
+        # max_context_turns of them.
+        if len(kept_turns) > self.max_context_turns:
+            extra = kept_turns[:len(kept_turns) - self.max_context_turns]
+            discarded_turns = extra + discarded_turns
+            kept_turns = kept_turns[-self.max_context_turns:]
+
+        if not discarded_turns and not kept_previous:
+            # Nothing needed discarding (a single oversized newest turn is kept
+            # as-is and handled by the reactive _smart_compact_to_budget path).
+            return
+
+        kept_tokens = sum(self._estimate_turn_tokens(t) for t in kept_turns)
+
+        # Few-turn fallback: when only a handful of turns remain but they still
+        # exceed the token budget, compressing them to plain text is preferable
+        # to discarding — losing even one turn is too painful when context is
+        # already thin. This keeps the user query + final reply of each turn.
         COMPRESS_THRESHOLD = 5
-
-        if len(turns) < COMPRESS_THRESHOLD:
-            # --- Few turns: compress ALL turns to text-only, never discard ---
+        if (not kept_previous and len(kept_turns) < COMPRESS_THRESHOLD
+                and kept_tokens + system_tokens > max_tokens):
             compressed_turns = []
-            for t in turns:
+            for t in kept_turns:
                 compressed = compress_turn_to_text_only(t)
                 if compressed["messages"]:
                     compressed_turns.append(compressed)
 
-            new_messages = []
-            for turn in compressed_turns:
-                new_messages.extend(turn["messages"])
-
+            # Still flush the discarded older turns (if any) to memory below,
+            # then rebuild from the compressed survivors.
             new_tokens = sum(self._estimate_turn_tokens(t) for t in compressed_turns)
-            old_count = len(self.messages)
-            self.messages = new_messages
-
             logger.info(
                 f"📦 Context tokens exceeded (turns<{COMPRESS_THRESHOLD}): "
-                f"~{current_tokens + system_tokens} > {max_tokens}, "
-                f"compressed all {len(turns)} turns to plain text "
-                f"({old_count} -> {len(self.messages)} messages, "
-                f"~{current_tokens + system_tokens} -> ~{new_tokens + system_tokens} tokens)"
+                f"~{kept_tokens + system_tokens} > {max_tokens}, "
+                f"compressed {len(kept_turns)} turns to plain text "
+                f"(~{kept_tokens + system_tokens} -> ~{new_tokens + system_tokens} tokens)"
             )
-            return
-
-        # --- Many turns (>=5): discard the older half, keep the newer half ---
-        removed_count = len(turns) // 2
-        keep_count = len(turns) - removed_count
-        discarded_turns = turns[:removed_count]
-        kept_turns = turns[-keep_count:]
-        kept_tokens = sum(self._estimate_turn_tokens(t) for t in kept_turns)
+            kept_turns = compressed_turns
 
         logger.info(
-            f"🔄 Context tokens exceeded: ~{current_tokens + system_tokens} > {max_tokens}, "
-            f"trimmed to {keep_count} turns (removed {removed_count})"
+            f"💾 Context trim: {len(turns)} turns (~{current_tokens + system_tokens} tok)"
+            f" -> {len(kept_turns)} turns (budget {budget + system_tokens} tok, turn cap {self.max_context_turns})"
         )
 
+        # Flush discarded turns to daily memory + inject context summary
+        # (single async LLM call). Only fires because we truly discarded turns.
         if self.agent.memory_manager:
             discarded_messages = []
             for turn in discarded_turns:
@@ -2918,18 +3564,27 @@ class AgentStreamExecutor:
                     context_summary_callback=cb,
                 )
 
+        # Reconstruct message list from kept turns
         new_messages = []
         for turn in kept_turns:
             new_messages.extend(turn['messages'])
 
-        old_count = len(self.messages)
         self.messages = new_messages
 
-        logger.info(
-            f"   Removed {removed_count} turns "
-            f"({old_count} -> {len(self.messages)} messages, "
-            f"~{current_tokens + system_tokens} -> ~{kept_tokens + system_tokens} tokens)"
-        )
+    def run_start_index(self) -> Optional[int]:
+        """Index in ``self.messages`` where this run's messages begin.
+
+        Trimming rewrites the history before the run and the run then grows it
+        again, so neither the old length nor the last user-text message (steer
+        and hint messages are user text too) marks the start reliably. None when
+        compaction replaced the query itself.
+        """
+        if self.run_user_message is None:
+            return None
+        for idx in range(len(self.messages) - 1, -1, -1):
+            if self.messages[idx] is self.run_user_message:
+                return idx
+        return None
 
     def _prepare_messages(self) -> List[Dict[str, Any]]:
         """

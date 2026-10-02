@@ -527,6 +527,11 @@ def test_stdio_spawn_passes_only_the_declared_environment(monkeypatch):
 
     monkeypatch.setenv("COW_LEAKED_API_KEY", "must-not-reach-the-child")
     monkeypatch.setattr(mcp_client.subprocess, "Popen", _popen)
+    def _which(command, *, path):
+        captured["resolved_command"] = command
+        captured["resolved_path"] = path
+        return "/test/toolchain/npx"
+    monkeypatch.setattr(mcp_client.shutil, "which", _which)
 
     ctx = _ctx(STDIO_CONFIG, limits={"uninterruptible_ok": True})
     client = mcp_client.McpClient({
@@ -537,7 +542,9 @@ def test_stdio_spawn_passes_only_the_declared_environment(monkeypatch):
 
     assert error.value.stage == STAGE_DEPENDENCY
     assert error.value.code == "dependency_unavailable"
-    assert captured["argv"] == ["npx", "-y", "x"]
+    assert captured["argv"] == ["/test/toolchain/npx", "-y", "x"]
+    assert captured["resolved_command"] == "npx"
+    assert captured["resolved_path"] == captured["env"]["PATH"]
     assert captured["env"]["DEMO_API_KEY"] == "env-secret-1"
     assert "COW_LEAKED_API_KEY" not in captured["env"]
 

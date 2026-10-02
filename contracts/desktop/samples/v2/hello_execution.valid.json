@@ -1,0 +1,19 @@
+{
+  "protocol_major": 2,
+  "protocol_minor": 0,
+  "tools": ["read", "write", "edit", "ls", "search_files", "bash"],
+  "tool_schema_version": 1,
+  "limits": {
+    "script_timeout_default_seconds": 120,
+    "script_timeout_max_seconds": 600,
+    "start_permit_ttl_seconds": 10,
+    "effectful_per_project": 1,
+    "readonly_parallel_per_project": 4,
+    "pending_queue": 32,
+    "offline_wait_seconds": 30
+  },
+  "surfaces": {
+    "files": {"available": true, "reason": "available"},
+    "scripts": {"available": true, "reason": "available"}
+  }
+}

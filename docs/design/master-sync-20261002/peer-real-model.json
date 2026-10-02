@@ -1,0 +1,76 @@
+{
+  "run_kind": "two local processes; real DeepSeek model; file-based relay (no hosted LinkAI connection)",
+  "model": "deepseek-v4-flash",
+  "results": [
+    {
+      "mode": "delegate",
+      "status": "done",
+      "error": "",
+      "marker_seen": true,
+      "returned_agent": "agent-target",
+      "reply_sha256": "9bd1bbe001d6e56c4b59a006018661005bc48ab75743a5f30bd24c6bd536fa8f"
+    },
+    {
+      "mode": "speak",
+      "status": "done",
+      "error": "",
+      "marker_seen": true,
+      "returned_agent": "agent-target",
+      "reply_sha256": "d87401432a6316d136513961772651f428753e811f969b565ba31cf7426502c5"
+    },
+    {
+      "mode": "clear",
+      "status": "done",
+      "error": "",
+      "marker_seen": null,
+      "returned_agent": "agent-target",
+      "reply_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "sessions": [
+    {
+      "agent_id": "",
+      "session_id": "delegate_agent-source_agent-target_4ccad8c5e9726f50",
+      "owner": "usr_pEA1FWvd7lwRqbg2",
+      "tenant_id": "tnt_bEPKh5EgWXf2Z7II",
+      "context_start_seq": 0,
+      "msg_count": 4
+    },
+    {
+      "agent_id": "",
+      "session_id": "session_team_4ccad8c5e9726f50",
+      "owner": "usr_pEA1FWvd7lwRqbg2",
+      "tenant_id": "tnt_bEPKh5EgWXf2Z7II",
+      "context_start_seq": 4,
+      "msg_count": 4
+    }
+  ],
+  "nonces": [
+    {
+      "issuer": "source",
+      "tenant_id": "tnt_bEPKh5EgWXf2Z7II",
+      "user_id": "usr_pEA1FWvd7lwRqbg2",
+      "request_id": "5e89843e7559436b93b3990365e166f2"
+    },
+    {
+      "issuer": "source",
+      "tenant_id": "tnt_bEPKh5EgWXf2Z7II",
+      "user_id": "usr_pEA1FWvd7lwRqbg2",
+      "request_id": "4b8b166b140747fda937678c6e69fb28"
+    },
+    {
+      "issuer": "source",
+      "tenant_id": "tnt_bEPKh5EgWXf2Z7II",
+      "user_id": "usr_pEA1FWvd7lwRqbg2",
+      "request_id": "c4f490f17ec6499cab616686079a3b1e"
+    }
+  ],
+  "source_sha256": {
+    "auth/peer_identity.py": "de33a404ddb39fbe586397792a3d6e768cc2314ef351ac4a60fb4e6d06033280",
+    "common/cloud_client.py": "3b46b69d4cfdc1c06068f08865dca3e825c390301ac8a277677b0bf8a7681e2f",
+    "agent/multiagent/inbound.py": "96445809f1382b49e9cca32dbab28438d55a6240fc44dc66ae3ef55213deefc3"
+  },
+  "tested_code_tree": "23b4a1150badb457c4c60c53c922cc1cc439ba33",
+  "result_log": "peer-real-model-final.log",
+  "result_log_sha256": "d221716952194792f9a10550f5d4fa9f2195ab4d263beab70e8780ed5ed18780"
+}

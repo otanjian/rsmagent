@@ -123,7 +123,7 @@ CATEGORIES = (CATEGORY_MEMORY, CATEGORY_DREAM, CATEGORY_EVOLUTION)
 #: dream diaries and evolution logs are Agent artefacts, not the member's own
 #: memory, and answering the personal scope from an Agent's directory is the
 #: scope widening this surface exists to prevent.
-PERSONAL_CATEGORIES = (CATEGORY_MEMORY,)
+PERSONAL_CATEGORIES = (CATEGORY_MEMORY, CATEGORY_EVOLUTION, CATEGORY_DREAM)
 
 MAIN_ENTRY = "MEMORY.md"
 
@@ -411,8 +411,8 @@ def list_response(ctx, params) -> str:
     target = resolve_target(ctx, params)
     if target.scope == SCOPE_PERSONAL:
         service = _personal_service(ctx)
-        payload = _personal_list(service, target.page, target.page_size)
-        payload["read_only"] = True
+        payload = _personal_list(service, target.page, target.page_size, target.category)
+        payload["read_only"] = not service.write_enabled()
     else:
         payload = _agent_list(ctx, target)
     # Sent with every list so the page can build its target picker from the same
@@ -464,14 +464,26 @@ def target_list(ctx) -> List[Dict[str, Any]]:
     return targets
 
 
-def _personal_list(service, page: int, page_size: int) -> Dict[str, Any]:
-    entries = service.list_entries()
+def _personal_list(service, page: int, page_size: int, category="memory") -> Dict[str, Any]:
+    from agent.memory.personal import scope_transaction
+    with scope_transaction(service.user_root()):
+        entries = service.list_entries(category)
+        all_entries = service.list_entries('all')
+        collection_revision = service._collection_revision(all_entries)
+        state = service.scope_status()
     start = (page - 1) * page_size
     return {
         "page": page,
         "page_size": page_size,
         "total": len(entries),
         "list": [_personal_row(entry) for entry in entries[start:start + page_size]],
+        "collection_revision": collection_revision,
+        "counts": {kind: sum(e['type'] == kind for e in all_entries)
+                   for kind in ('global', 'daily', 'dream', 'evolution')},
+        "actions": {"edit": service.write_enabled(), "delete": True, "clear": True},
+        "index_state": 'pending' if state['pending'] else 'ok',
+        "owner": {"user_id": service._require_scope().user_id,
+                  "tenant_id": service._require_scope().tenant_id},
     }
 
 
@@ -487,12 +499,12 @@ def _personal_row(entry: Dict[str, Any]) -> Dict[str, Any]:
     entry_id = str(entry.get("id") or "")
     return {
         "filename": entry_id,
-        "type": "global" if entry_id == MAIN_ENTRY else "daily",
+        "type": entry.get('type', "global" if entry_id == MAIN_ENTRY else "daily"),
         "size": entry.get("size", 0),
         "updated_at": entry.get("updated_at", ""),
         "id": entry_id,
         "revision": entry.get("revision"),
-        "actions": {"edit": False, "delete": False},
+        "actions": entry.get('actions', {}),
     }
 
 
@@ -641,7 +653,8 @@ def content_response(ctx, params) -> str:
             "content": read.get("content") or "",
             "id": target.entry,
             "revision": read.get("revision"),
-            "read_only": True,
+            "read_only": not service.write_enabled(),
+            "actions": {"edit": service.write_enabled(), "delete": read.get('revision') is not None},
         }
     else:
         payload = _agent_content(ctx, target)
@@ -661,27 +674,30 @@ def write_response(ctx, params, action: str) -> str:
     publish intent, tombstone masking, retry — inherited by ``MemoryService``
     for the Agent root; nothing here re-implements it.
     """
-    target = resolve_target(ctx, params, entry=(action != "clear"))
+    target = resolve_target(ctx, params, entry=(action not in ("clear", "retry_index")))
     if target.scope == SCOPE_PERSONAL:
-        raise MemoryScopeError(
-            CODE_PERSONAL_WRITE_ENDPOINT,
-            "本人记忆的写入请使用 /api/memory/personal", status=400)
-    if target.category != CATEGORY_MEMORY:
+        service = _personal_service(ctx)
+        entry = target.entry
+    else:
+        service = _agent_service(ctx, target)
+        entry = _entry_relative(target.category, target.entry) if action != 'clear' else ''
+    if target.scope != SCOPE_PERSONAL and target.category != CATEGORY_MEMORY:
         # Dream diaries and evolution logs are written by the Agent itself; a
         # manual edit is overwritten by the next consolidation run. Both roles
         # are refused, so the read-only state does not depend on who asks.
         raise MemoryScopeError(
             CODE_READ_ONLY_CATEGORY,
             "该分类由智能体自己写入，不支持手工修改", status=403)
-    _require_root_writable(ctx, target)
+    if target.scope != SCOPE_PERSONAL:
+        _require_root_writable(ctx, target)
 
     # The read surface's own convention is a bare ``filename`` plus
     # ``category``; ``_entry_relative`` is the one place that converts the two
     # into the workspace-relative path the write flow addresses, so a row the
     # page has just listed can be edited without re-deriving its layout.
-    entry = _entry_relative(target.category, target.entry) if action != "clear" else ""
     revision = _raw_param(params, "revision")
-    service = _agent_service(ctx, target)
+    if action in ('save', 'delete') and target.scope == SCOPE_PERSONAL and not revision:
+        raise MemoryScopeError('revision_required', '修改需要当前版本', status=409)
     try:
         if action == "save":
             result = service.save(entry, _raw_param(params, "content"),
@@ -689,7 +705,15 @@ def write_response(ctx, params, action: str) -> str:
         elif action == "delete":
             result = service.delete(entry, expected_revision=revision)
         elif action == "clear":
-            result = service.clear(expected_revision=revision)
+            clear_scope = _text_param(params, 'clear_scope') or 'memory'
+            if target.scope == SCOPE_PERSONAL:
+                if clear_scope == 'all_personal' and not revision:
+                    raise MemoryScopeError('revision_required', '清空需要当前集合版本', status=409)
+                result = service.clear(expected_revision=revision, clear_scope=clear_scope)
+            else:
+                result = service.clear(expected_revision=revision)
+        elif action == 'retry_index' and target.scope == SCOPE_PERSONAL:
+            result = service.retry_pending_index()
         else:
             raise MemoryScopeError(CODE_UNKNOWN_ACTION,
                                    "未知的记忆操作: %s" % action, status=400)

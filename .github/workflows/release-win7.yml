@@ -71,11 +71,23 @@ jobs:
             desktop/build/requirements-desktop.txt > /tmp/requirements-win7.txt
           pip install -r /tmp/requirements-win7.txt
           pip install pyinstaller
+          # Refuse a bundle that cannot satisfy its skills' declared dependencies.
+          # The lock here is the relaxed Win7 copy, so the check runs against what
+          # this line actually ships rather than the main pipeline's pins.
+          python desktop/build/check-skill-dependencies.py \
+            --lock /tmp/requirements-win7.txt --verify-imports
+          # This pipeline ships the 3.8 interpreter (python-version: "3.8" above),
+          # which is older than the standard bundle's 3.11 — so it is the stricter
+          # floor of the two. Without this, syntax that 3.8 cannot parse ships as a
+          # bundle that starts and cannot import its tools.
+          python desktop/build/check-python-syntax.py --floor 3.8
           # Run from repo root so the spec's relative datas resolve correctly.
           pyinstaller desktop/build/cowagent-backend.spec \
             --noconfirm \
             --distpath desktop/build/dist \
             --workpath desktop/build/build-work
+          # Start the frozen executable the way the app does and run a tool.
+          python desktop/build/verify-backend-bundle.py
 
       - name: Install desktop deps
         working-directory: desktop

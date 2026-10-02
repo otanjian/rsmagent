@@ -1,0 +1,20 @@
+{
+  "fork/views/memory.js": {
+    "upstream_path": "channel/web/static/js/views/memory.js",
+    "upstream_commit": "48c0d79c36146950667f8d1884ab823deae62305",
+    "upstream_sha256": "15855c79685ca0f1b324279368b0bcfbdf9f8dd956264c1f4746d41a012e2707",
+    "additional_source": {
+      "path": "channel/web/static/js/views/doc-viewers.js",
+      "sha256": "21e6f570e130bccf46e298f5e532e81bf5ddd649cffc5d7125577a82e52150bb"
+    },
+    "entrypoint": "channel/web/chat.html",
+    "load_after": "assets/js/doc-editor.js",
+    "load_before": "assets/js/console.js",
+    "mapping_evidence": "openspec/changes/fix-account-memory-management/evidence/implementation.md"
+  },
+  "fork/views/sessions.js": {
+    "upstream_path": "channel/web/static/js/views/sessions.js",
+    "upstream_commit": "48c0d79c36146950667f8d1884ab823deae62305",
+    "upstream_sha256": "8a54b38ba7a8d81c3d88181249071fd5649a47514a2300e9071f670a342ac2ad"
+  }
+}

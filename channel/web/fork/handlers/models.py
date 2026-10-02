@@ -18,6 +18,7 @@ from config import (
     read_config_template,
     sync_image_generation_custom_provider_env,
 )
+from channel.web.core._common import _write_config_file_for_write
 import json
 import os
 import web
@@ -358,11 +359,10 @@ class ModelsHandler:
     # Anything not listed here intentionally hides the model dropdown so
     # users cannot pin a chat-only model and silently get a 4xx at runtime.
     _VISION_PROVIDER_MODELS = {
-        # DeepSeek 视觉模型：V4 Flash vision（experimental, multimodal）。
-        # Placed first so it's the default image-understanding vendor —
-        # deepseek-v4-flash is the project's default main model, so a single
-        # DeepSeek key covers both chat and vision.
-        "deepseek":  [const.DEEPSEEK_V4_FLASH_VISION_EXP],
+        # DeepSeek 视觉模型：deepseek-flash（V4.1，原生多模态），其次是
+        # deepseek-v4-flash-vision-exp。deepseek-flash 是项目默认主模型，一把
+        # DeepSeek key 即可同时覆盖对话与视觉。
+        "deepseek":  [const.DEEPSEEK_FLASH, const.DEEPSEEK_V4_FLASH_VISION_EXP],
         # OpenAI ordering puts the GPT-5.6 family first, then GPT-5.5/5.4,
         # GPT-5 and the GPT-4.1/4o backstops.
         "openai":    [
@@ -384,18 +384,17 @@ class ModelsHandler:
         # claude-sonnet-5 stays first here (unlike the chat lists): the first
         # entry is the auto-picked vision model, and image understanding does
         # not justify the Opus price.
-        "claudeAPI": [const.CLAUDE_SONNET_5, const.CLAUDE_OPUS_5, const.CLAUDE_FABLE_5_1, const.CLAUDE_FABLE_5, const.CLAUDE_4_8_OPUS, const.CLAUDE_4_7_OPUS, const.CLAUDE_4_6_SONNET, const.CLAUDE_4_6_OPUS],
-        "gemini":    [const.GEMINI_37_FLASH, const.GEMINI_36_FLASH, const.GEMINI_35_FLASH, const.GEMINI_31_FLASH_LITE_PRE, const.GEMINI_31_PRO_PRE, const.GEMINI_3_FLASH_PRE],
+        "claudeAPI": [const.CLAUDE_SONNET_5, const.CLAUDE_OPUS_5_5, const.CLAUDE_OPUS_5, const.CLAUDE_FABLE_5_1, const.CLAUDE_FABLE_5, const.CLAUDE_4_8_OPUS, const.CLAUDE_4_7_OPUS, const.CLAUDE_4_6_SONNET, const.CLAUDE_4_6_OPUS],
+        "gemini":    [const.GEMINI_38_FLASH, const.GEMINI_37_FLASH, const.GEMINI_36_FLASH, const.GEMINI_35_FLASH, const.GEMINI_31_FLASH_LITE_PRE, const.GEMINI_31_PRO_PRE, const.GEMINI_3_FLASH_PRE],
         "qianfan":   [const.ERNIE_45_TURBO_VL],
         # glm-5.3-flash is natively multimodal and dispatched as-is; the
         # text-only chat models (glm-5.2, glm-5-turbo, etc.) fall back to the
         # dedicated glm-5v-turbo vision model (see
         # models/zhipuai/zhipuai_bot.py::call_vision).
         "zhipu":     [const.GLM_5_3_FLASH, const.GLM_5V_TURBO],
-        # MiniMax's vision endpoint is similarly hard-coded to MiniMax-Text-01
-        # (see models/minimax/minimax_bot.py::call_vision); the M2.x chat
-        # family is text-only.
-        "minimax":   [const.MINIMAX_TEXT_01],
+        # MiniMax-M3 natively accepts text, image, and video input. The M2.x
+        # chat family remains text-only and is not offered for vision.
+        "minimax":   [const.MINIMAX_M3],
         # MiMo 原生全模态模型：v2.5-pro / v2.5 支持图像/音频/视频输入
         "mimo":      [const.MIMO_V2_5_PRO, const.MIMO_V2_5],
         # LinkAI proxies the underlying vendor; surface a curated set of
@@ -463,8 +462,7 @@ class ModelsHandler:
 
     @classmethod
     def _write_file_config(cls, data: dict) -> None:
-        with open(cls._config_path(), "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+        _write_config_file_for_write(cls._config_path(), data)
 
     @staticmethod
     def _is_real_key(value: str) -> bool:
@@ -591,12 +589,16 @@ class ModelsHandler:
         "ernie-4.5-turbo-128k": {"context_window": 128000, "max_output_tokens": 16000},
         "ernie-4.5-turbo-32k": {"context_window": 32000, "max_output_tokens": 16000},
         "ernie-4.5-turbo-vl": {"capabilities": ["text", "vision"], "context_window": 128000, "max_output_tokens": 16000},
-        "MiniMax-M3": {"capabilities": ["text", "vision"], "context_window": 1000000, "max_output_tokens": 512000},
-        "MiniMax-M2.7": {"capabilities": ["text", "vision"], "context_window": 204800, "max_output_tokens": 196608},
-        "MiniMax-M2.7-highspeed": {"capabilities": ["text", "vision"], "context_window": 204800, "max_output_tokens": 196608},
+        "MiniMax-M3": {"capabilities": ["text", "vision", "video"], "context_window": 1000000, "max_output_tokens": 512000},
+        "MiniMax-M2.7": {"context_window": 204800, "max_output_tokens": 196608},
+        "MiniMax-M2.7-highspeed": {"context_window": 204800, "max_output_tokens": 196608},
         "MiniMax-Text-01": {"context_window": 1000000},
         "mimo-v2.5-pro": {"context_window": 1000000, "max_output_tokens": 131072},
         "mimo-v2.5": {"context_window": 1000000, "max_output_tokens": 131072},
+        "gpt-6.1-sol": {"context_window": 1000000, "max_output_tokens": 128000},
+        "gpt-6-luna": {"context_window": 1000000, "max_output_tokens": 128000},
+        "gpt-6-sol": {"context_window": 1000000, "max_output_tokens": 128000},
+        "gpt-6-astra": {"context_window": 1000000, "max_output_tokens": 128000},
         "gpt-5.6-luna": {"context_window": 1050000, "max_output_tokens": 128000},
         "gpt-5.6-terra": {"context_window": 1050000, "max_output_tokens": 128000},
         "gpt-5.6-sol": {"context_window": 1050000, "max_output_tokens": 128000},
@@ -608,6 +610,7 @@ class ModelsHandler:
         "gpt-4.1": {"context_window": 1047576, "max_output_tokens": 32768},
         "gpt-4.1-mini": {"context_window": 1047576, "max_output_tokens": 32768},
         "gpt-4o": {"context_window": 128000, "max_output_tokens": 16384},
+        "claude-opus-5-5": {"context_window": 1000000, "max_output_tokens": 128000},
         "claude-opus-5": {"context_window": 1000000, "max_output_tokens": 128000},
         "claude-sonnet-5": {"context_window": 1000000, "max_output_tokens": 128000},
         "claude-fable-5": {"context_window": 1000000, "max_output_tokens": 128000},
@@ -1013,10 +1016,10 @@ class ModelsHandler:
         ("doubao",    "ark_api_key",       const.DOUBAO_SEED_2_PRO),
         ("dashscope", "dashscope_api_key", const.QWEN37_PLUS),
         ("claudeAPI", "claude_api_key",    const.CLAUDE_SONNET_5),
-        ("gemini",    "gemini_api_key",    const.GEMINI_37_FLASH),
+        ("gemini",    "gemini_api_key",    const.GEMINI_38_FLASH),
         ("qianfan",   "qianfan_api_key",   const.ERNIE_45_TURBO_VL),
         ("zhipu",     "zhipu_ai_api_key",  const.GLM_5V_TURBO),
-        ("minimax",   "minimax_api_key",   const.MINIMAX_TEXT_01),
+        ("minimax",   "minimax_api_key",   const.MINIMAX_M3),
         ("mimo",      "mimo_api_key",      const.MIMO_V2_5_PRO),
     ]
 

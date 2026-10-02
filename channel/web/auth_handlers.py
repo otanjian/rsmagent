@@ -870,7 +870,10 @@ def _html(body: str, status: Optional[str] = None) -> str:
 
 def _desktop_error(e: Exception) -> str:
     from auth.desktop_auth import DesktopAuthError
+    from auth.desktop_web_session import DesktopWebSessionError
 
+    if isinstance(e, DesktopWebSessionError):
+        return _error(e.args[0], e.status, e.code)
     if isinstance(e, DesktopAuthError):
         return _error(e.args[0], e.status, e.code)
     return _error("internal error", 500, "internal")
@@ -891,6 +894,7 @@ class DesktopAuthorizeHandler:
     def GET(self):
         from auth.desktop_auth import (
             DesktopAuthError, render_consent_page, render_notice_page,
+            render_sign_in_page,
         )
 
         params = _request_params()
@@ -908,21 +912,13 @@ class DesktopAuthorizeHandler:
 
         session_token = _session_token()
         if not session_token:
-            return _html(render_notice_page(
-                title="Sign in to continue",
-                message="Sign in to the Web console first, then start the Desktop "
-                        "authorization again.",
-            ), "401 Unauthorized")
+            return _html(render_sign_in_page(), "401 Unauthorized")
         try:
             session = _get_service().verify_session(session_token)
         except (IdentityStoreError, Exception):
             return _identity_unavailable()
         if not session:
-            return _html(render_notice_page(
-                title="Sign in to continue",
-                message="This session is no longer valid. Sign in again, then "
-                        "start the Desktop authorization again.",
-            ), "401 Unauthorized")
+            return _html(render_sign_in_page(), "401 Unauthorized")
         user = session["user"]
         if user.get("must_change_password") or session["session"]["restricted"]:
             return _html(render_notice_page(
@@ -954,7 +950,13 @@ class DesktopAuthorizeHandler:
     def POST(self):
         from auth.desktop_auth import DesktopAuthError, with_query
 
-        if not _csrf_ok():
+        # Consent pages ship ``Referrer-Policy: same-origin`` / historically
+        # ``no-referrer``. A cookie write normally demands Origin/Referer via
+        # ``_csrf_ok``, but a browser form POST under a tight referrer policy
+        # may omit both and then surface as ``cross_origin`` even though the
+        # one-time form ``csrf`` (validated below) is the CSRF proof. Reject
+        # only a *mismatched* Origin/Referer; a missing source is allowed.
+        if not _origin_ok():
             return _error("cross-origin request rejected", 403, "cross_origin")
         params = _request_params()
         request_id = params.get("request_id", "")
@@ -997,10 +999,126 @@ class DesktopTokenHandler:
                 verifier=params.get("code_verifier", ""),
                 client_id=params.get("client_id", ""),
                 redirect_uri=params.get("redirect_uri", ""),
+                # Task 3.2: stamp the exact origin this exchange was served at,
+                # in the same transaction that mints the native session.
+                origin=_request_origin_exact(),
             )
         except Exception as e:
             return _desktop_error(e)
         return _json(result)
+
+
+def _request_origin_exact() -> str:
+    """The exact origin a desktop request was served at (scheme + Host).
+
+    Used both when a native session is minted (``/auth/desktop/token``) and when
+    it later bootstraps a Web child (``/auth/desktop/web-session``). Both go
+    through this one function so the two values agree by construction; the
+    scheme honours a trusted reverse proxy's ``X-Forwarded-Proto`` and otherwise
+    reports the transport actually used, and never a client-supplied header.
+    """
+    env = web.ctx.env
+    host = env.get("HTTP_HOST", "") or env.get("SERVER_NAME", "") or ""
+    forwarded = (env.get("HTTP_X_FORWARDED_PROTO", "") or "").split(",")[0].strip().lower()
+    if forwarded in ("http", "https"):
+        scheme = forwarded
+    else:
+        scheme = "https" if env.get("HTTPS") else "http"
+    return "%s://%s" % (scheme, host)
+
+
+class DesktopWebSessionHandler:
+    """``/auth/desktop/web-session`` — the native parent's Web child session.
+
+    Change ``add-desktop-remote-web-workbench`` (tasks 3.3/3.4). Bearer-only: a
+    Cookie session must never be able to ask for a child, and the pair can only
+    be created from a native session whose origin was registered at mint time
+    (``desktop_native_origins``), so an ordinary login Bearer is refused.
+
+    The child secret leaves in a ``Set-Cookie`` and *only* there: it is popped
+    out of the service result before the body is serialized, so no code path can
+    accidentally include it in JSON. Every response is ``no-store``.
+    """
+
+    def _guard_enabled(self):
+        from auth import capability_matrix
+        # The capability is closed until its acceptance evidence exists; the
+        # endpoint answers "why" instead of pretending to work.
+        if not capability_matrix.slice_for("desktop_remote_web").enabled:
+            return _error("desktop remote web is not available", 503,
+                          "feature_unavailable")
+
+    def _native_bearer(self) -> str:
+        selection = _select_credential()
+        if selection.mixed:
+            return _error("conflicting credentials", 400, "invalid_request")
+        if selection.source != "bearer" or not selection.token:
+            # A Cookie (or nothing) is not a native session.
+            return _error("a native bearer session is required", 401,
+                          "auth_required")
+        return selection.token
+
+    def POST(self):
+        self._guard_enabled()
+        token = self._native_bearer()
+        params = _request_params()
+        try:
+            result = _desktop_web_service().bootstrap(
+                native_token=token,
+                bootstrap_id=params.get("bootstrap_id", ""),
+                instance_id=params.get("instance_id", ""),
+                web_protocol=_as_int(params.get("web_protocol")),
+                origin=_request_origin_exact(),
+            )
+        except Exception as e:
+            return _desktop_error(e)
+        secret = result.pop("web_token", "")
+        # ``expires_at`` is *read* for the cookie's Max-Age, not removed: it is a
+        # deadline, not a secret, and the desktop client requires it in the body
+        # (``remote/web-session.ts`` refuses an answer without it). Popping it
+        # here made every attach fail with "the bootstrap answer carried no
+        # expiry" after the server had already minted the link.
+        _set_web_session_cookie(secret, result.get("expires_at", 0))
+        return _json({"status": "success", "data": result})
+
+    def GET(self):
+        self._guard_enabled()
+        token = self._native_bearer()
+        try:
+            data = _desktop_web_service().status(native_token=token)
+        except Exception as e:
+            return _desktop_error(e)
+        return _json({"status": "success", "data": data})
+
+
+def _as_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _set_web_session_cookie(token: str, expires_at: int) -> None:
+    """Deliver the Web child secret as a host-only, HttpOnly session Cookie.
+
+    Built by hand rather than through ``web.setcookie`` so the attributes the
+    contract fixes are guaranteed: no ``Domain`` (host-only), ``HttpOnly``,
+    ``Secure``, ``SameSite=Lax`` and ``Path=/``. A response header is not a
+    place secrets may be logged, and this function never logs.
+    """
+    import time as _time
+    from auth.desktop_web_session import COOKIE_ATTRIBUTES, WEB_SESSION_COOKIE
+    max_age = max(0, int(expires_at) - int(_time.time()))
+    web.header(
+        "Set-Cookie",
+        "%s=%s; %s; Max-Age=%d"
+        % (WEB_SESSION_COOKIE, token, COOKIE_ATTRIBUTES, max_age),
+    )
+
+
+def _desktop_web_service():
+    from auth.desktop_web_session import service_for
+    return service_for(_get_service())
 
 
 def _request_origin() -> str:

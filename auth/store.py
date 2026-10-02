@@ -49,6 +49,81 @@ def _new_migration_id() -> str:
     return "mig-%s" % secrets.token_hex(12)
 
 
+def _add_missing_column(con: sqlite3.Connection, table: str, column: str,
+                        declaration: str) -> None:
+    """``ALTER TABLE ... ADD COLUMN`` that tolerates the column already existing.
+
+    SQLite has no ``ADD COLUMN IF NOT EXISTS``, and a migration body is not
+    always the first thing to have run: a build that died between a body and its
+    ``schema_migrations`` marker left the column present and the marker missing
+    (see :class:`_MigrationConnection` for the mechanism and the fix). The next
+    open replays the body -- and a bare ``ADD COLUMN`` then fails with "duplicate
+    column name", permanently, because the marker is still missing. This
+    function makes the replay a no-op instead, so a store left in that state by
+    an older build heals.
+
+    New bodies get atomicity from ``_migrate``; this is the belt to that pair of
+    braces, and it is what makes a body safe to run twice.
+    """
+    existing = {row[1] for row in con.execute("PRAGMA table_info(%s)" % table)}
+    if column not in existing:
+        con.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, declaration))
+
+
+def _split_sql_script(script: str) -> List[str]:
+    """Split a SQL script into complete statements.
+
+    ``sqlite3.complete_statement`` is the authority on where a statement ends --
+    a naive split on ``;`` would cut ``CREATE TRIGGER ... BEGIN ... END;`` in
+    half, and these migrations do create triggers.
+    """
+    statements: List[str] = []
+    buffer = ""
+    for line in script.splitlines(True):
+        buffer += line
+        if sqlite3.complete_statement(buffer):
+            text = buffer.strip()
+            if text:
+                statements.append(text)
+            buffer = ""
+    tail = buffer.strip()
+    if tail:
+        statements.append(tail)
+    return statements
+
+
+class _MigrationConnection:
+    """The connection a migration body is handed, with ``executescript`` contained.
+
+    Why this exists. ``sqlite3.Connection.executescript`` **commits any pending
+    transaction before it runs the script**, so a body written as
+    ``con.executescript(...)`` -- which is how most of these migrations are
+    written -- had its DDL land in its own transaction while the framework's
+    ``schema_migrations`` marker landed in a second one. A process killed in
+    between left a store whose schema was half-applied with no record of it; the
+    next open replayed the body, hit "duplicate column name" (or "table already
+    exists"), and could never open again.
+
+    So the wrapper runs the script one complete statement at a time on the same
+    connection. Same SQL, same order, same transaction -- without the implicit
+    commit. ``autocommit = False`` would also do it, but that attribute only
+    exists on Python 3.12+ and this project installs Python 3.11 on the desktop.
+
+    Everything else delegates to the real connection, so a body that calls
+    ``execute``/``executemany``/``fetchall`` is unaffected.
+    """
+
+    def __init__(self, con: sqlite3.Connection) -> None:
+        self._con = con
+
+    def __getattr__(self, name):
+        return getattr(self._con, name)
+
+    def executescript(self, script: str) -> None:
+        for statement in _split_sql_script(str(script)):
+            self._con.execute(statement)
+
+
 def has_migration_signature(db_path: str) -> bool:
     """Return True when ``db_path`` already carries a valid IAM migration marker.
 
@@ -2153,6 +2228,704 @@ def _migration_35(con: sqlite3.Connection) -> None:
 _migrations.append(_migration_35)
 
 
+def _migration_36(con: sqlite3.Connection) -> None:
+    """Desktop native origin registration + parent/child web session links.
+
+    Change ``add-desktop-remote-web-workbench`` (task 3.1). Two shapes:
+
+    ``desktop_native_origins`` records, per native ``AuthSession``, the exact
+    origin that session was minted at by the PKCE exchange (task 3.2). It is
+    stamped in the same transaction that creates the native session, and is
+    *derived from the request the token endpoint actually served* -- never
+    inferred from a stored User-Agent, which would let any client claim another
+    install's origin.
+
+    ``desktop_web_links`` binds one native parent session to one Web child
+    session. The child is an ordinary ``auth_sessions`` row (an independent
+    session, resolved by the normal seam) plus this link, which is what makes
+    the child's lifetime follow the parent's (task 3.5) and what the mutual
+    revocation in task 3.6 tears down.
+
+    Constraints:
+
+    * A partial unique index allows at most **one active child per parent**
+      across workers, so "a new bootstrap id revokes the previous child"
+      (task 3.4) is enforced by the database, not by a check-then-insert race.
+      It is also what settles two concurrent bootstraps: the loser's INSERT is
+      refused instead of leaving two live children.
+    * ``bootstrap_id`` single-use (task 3.3) is enforced in
+      ``auth/desktop_web_session.py::bootstrap`` by a lookup that includes
+      revoked rows, so replaying a consumed id is answered ``bootstrap_consumed``
+      (409) rather than as a constraint violation. There is deliberately no
+      ``UNIQUE(native_session_id, bootstrap_id)`` here: a constraint could only
+      report a generic integrity error, and the table must keep the consumed row
+      for that lookup to find.
+    * Both session references cascade on delete, and the owner is stored
+      explicitly so a query never has to infer it.
+    """
+    con.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS desktop_native_origins (
+            id                  TEXT PRIMARY KEY,
+            session_id          TEXT NOT NULL UNIQUE
+                                REFERENCES auth_sessions(id) ON DELETE CASCADE,
+            native_session_hash TEXT NOT NULL,
+            origin              TEXT NOT NULL,
+            created_at          INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+
+        CREATE TABLE IF NOT EXISTS desktop_web_links (
+            id                 TEXT PRIMARY KEY,
+            native_session_id  TEXT NOT NULL
+                               REFERENCES auth_sessions(id) ON DELETE CASCADE,
+            native_session_hash TEXT NOT NULL,
+            user_id            TEXT NOT NULL
+                               REFERENCES users(id) ON DELETE CASCADE,
+            web_session_id     TEXT NOT NULL UNIQUE
+                               REFERENCES auth_sessions(id) ON DELETE CASCADE,
+            web_session_hash   TEXT NOT NULL,
+            bootstrap_id       TEXT NOT NULL,
+            instance_id        TEXT NOT NULL,
+            origin             TEXT NOT NULL,
+            created_at         INTEGER NOT NULL DEFAULT (unixepoch()),
+            revoked_at         INTEGER,
+            revoked_reason     TEXT
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_desktop_web_links_active
+            ON desktop_web_links(native_session_id)
+            WHERE revoked_at IS NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_web_links_web
+            ON desktop_web_links(web_session_id);
+        """
+    )
+
+
+_migrations.append(_migration_36)
+
+
+def _migration_37(con: sqlite3.Connection) -> None:
+    """Desktop devices, business bindings, workspaces and workspace grants.
+
+    Change ``add-desktop-remote-web-workbench`` (task 8.1). Four new tables; no
+    existing table is touched, so an upgraded install behaves exactly as before
+    until a capability is switched on.
+
+    Two rules shape the schema, both from the spec rather than from taste:
+
+    * **The server never learns a client path.** There is deliberately no
+      absolute-path, root-path or "local path" column in any of these tables,
+      and ``label`` is a display name the user typed, not a path. The desktop
+      keeps the absolute root locally (task 8.5); the server addresses a
+      directory only as *(workspace_id, relative_path)*. A test asserts the
+      absence, because "we don't store it" is a property worth failing a build
+      over -- a path cannot leak from a column that does not exist.
+    * **Ownership is explicit, not inferred.** Every row carries ``user_id``
+      (and ``tenant_id`` where the resource is tenant-scoped) instead of being
+      joined back to an owner at read time. That is what lets task 8.2 refuse a
+      device that belongs to somebody else without trusting anything the caller
+      sent -- including for a tenant or platform admin.
+
+    Constraints worth naming:
+
+    * ``desktop_devices`` is unique per ``(user_id, installation_id)``: one
+      install registers one device per user. Re-registering the same install
+      updates the display name/version rather than accumulating rows.
+    * ``idx_desktop_bindings_active`` allows one live binding per
+      ``(business_session_id, device_id)``. Re-creating a binding replaces it;
+      the partial index is what settles two concurrent creates.
+    * ``idx_desktop_bw_active`` allows one live workspace grant per
+      ``workspace_id`` at a time, so the same directory is never simultaneously
+      live for two business sessions. Two sessions of the same user bind two
+      *different* workspaces (task 8.6).
+    * ``desktop_binding_workspaces`` keeps revoked rows *and* their
+      ``grant_version``. Task 8.4 requires that a duplicate or late message
+      cannot re-activate a revoked version, and the service can only compare
+      against the old version if the row is still there -- so revocation is a
+      terminal state recorded inline, never a ``DELETE``.
+    """
+    con.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS desktop_devices (
+            id              TEXT PRIMARY KEY,
+            user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            installation_id TEXT NOT NULL,
+            display_name    TEXT NOT NULL,
+            platform        TEXT NOT NULL,
+            client_version  TEXT NOT NULL,
+            created_at      INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at      INTEGER NOT NULL DEFAULT (unixepoch()),
+            disabled_at     INTEGER,
+            disabled_reason TEXT
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_desktop_devices_install
+            ON desktop_devices(user_id, installation_id);
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_devices_user
+            ON desktop_devices(user_id);
+
+        CREATE TABLE IF NOT EXISTS desktop_bindings (
+            id                  TEXT PRIMARY KEY,
+            user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tenant_id           TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            device_id           TEXT NOT NULL
+                                REFERENCES desktop_devices(id) ON DELETE CASCADE,
+            agent_id            TEXT NOT NULL,
+            business_session_id TEXT NOT NULL,
+            web_session_id      TEXT,
+            native_session_id   TEXT REFERENCES auth_sessions(id) ON DELETE CASCADE,
+            context_nonce       TEXT NOT NULL,
+            generation          INTEGER NOT NULL DEFAULT 1,
+            created_at          INTEGER NOT NULL DEFAULT (unixepoch()),
+            revoked_at          INTEGER,
+            revoked_reason      TEXT
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_desktop_bindings_active
+            ON desktop_bindings(business_session_id, device_id)
+            WHERE revoked_at IS NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_bindings_device
+            ON desktop_bindings(device_id);
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_bindings_tenant
+            ON desktop_bindings(tenant_id);
+
+        CREATE TABLE IF NOT EXISTS desktop_workspaces (
+            id             TEXT PRIMARY KEY,
+            user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tenant_id      TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            device_id      TEXT NOT NULL REFERENCES desktop_devices(id) ON DELETE CASCADE,
+            label          TEXT NOT NULL,
+            grant_version  INTEGER NOT NULL,
+            created_at     INTEGER NOT NULL DEFAULT (unixepoch()),
+            revoked_at     INTEGER,
+            revoked_reason TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_workspaces_device
+            ON desktop_workspaces(device_id);
+
+        CREATE TABLE IF NOT EXISTS desktop_binding_workspaces (
+            id             TEXT PRIMARY KEY,
+            binding_id     TEXT NOT NULL
+                           REFERENCES desktop_bindings(id) ON DELETE CASCADE,
+            workspace_id   TEXT NOT NULL
+                           REFERENCES desktop_workspaces(id) ON DELETE CASCADE,
+            grant_version  INTEGER NOT NULL,
+            created_at     INTEGER NOT NULL DEFAULT (unixepoch()),
+            revoked_at     INTEGER,
+            revoked_reason TEXT
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_desktop_bw_active
+            ON desktop_binding_workspaces(workspace_id)
+            WHERE revoked_at IS NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_bw_binding
+            ON desktop_binding_workspaces(binding_id);
+        """
+    )
+
+
+_migrations.append(_migration_37)
+
+
+def _migration_38(con: sqlite3.Connection) -> None:
+    """Desktop device connection leases, durable commands and outbox.
+
+    Change ``add-desktop-remote-web-workbench`` (task 9.1). Three new tables:
+
+    * ``desktop_connection_leases`` -- at most one *live* lease per device
+      (partial unique on ``device_id WHERE revoked_at IS NULL``). A new hello
+      atomically replaces the previous lease; an old gateway writing under a
+      fenced epoch is refused by comparing ``epoch`` on every CAS.
+    * ``desktop_commands`` -- the durable command record. Terminal states are
+      unique and irreversible: a CAS update that would leave a terminal row
+      and then set another terminal state is refused. ``dedupe_key`` is the
+      idempotency key for client retries (same request_id).
+    * ``desktop_command_outbox`` -- the per-device queue the gateway drains.
+      Claiming a row is a CAS on ``lease_epoch`` + ``state``; a timed-out claim
+      can be re-queued under the *same* command id (task 9.4: never mint a new
+      business ExecutionRun on gateway fault).
+
+    Queue bounds (pending ≤ 32, parallel ≤ 4) are enforced in the service, not
+    by a CHECK constraint, so a refused enqueue can return ``queue_full`` with
+    a stable code rather than a generic integrity error.
+    """
+    con.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS desktop_connection_leases (
+            id              TEXT PRIMARY KEY,
+            device_id       TEXT NOT NULL
+                            REFERENCES desktop_devices(id) ON DELETE CASCADE,
+            user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            epoch           TEXT NOT NULL UNIQUE,
+            gateway_id      TEXT NOT NULL,
+            protocol_major  INTEGER NOT NULL,
+            capabilities_json TEXT NOT NULL DEFAULT '{}',
+            created_at      INTEGER NOT NULL DEFAULT (unixepoch()),
+            renewed_at      INTEGER NOT NULL DEFAULT (unixepoch()),
+            expires_at      INTEGER NOT NULL,
+            revoked_at      INTEGER,
+            revoked_reason  TEXT
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_desktop_leases_active
+            ON desktop_connection_leases(device_id)
+            WHERE revoked_at IS NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_leases_epoch
+            ON desktop_connection_leases(epoch);
+
+        CREATE TABLE IF NOT EXISTS desktop_commands (
+            id                  TEXT PRIMARY KEY,
+            request_id          TEXT NOT NULL,
+            user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tenant_id           TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            device_id           TEXT NOT NULL
+                                REFERENCES desktop_devices(id) ON DELETE CASCADE,
+            binding_id          TEXT NOT NULL
+                                REFERENCES desktop_bindings(id) ON DELETE CASCADE,
+            workspace_id        TEXT,
+            grant_version       INTEGER,
+            agent_id            TEXT NOT NULL,
+            business_session_id TEXT NOT NULL,
+            op                  TEXT NOT NULL,
+            params_json         TEXT NOT NULL,
+            params_sha256       TEXT NOT NULL,
+            dedupe_key          TEXT NOT NULL,
+            state               TEXT NOT NULL,
+            connection_epoch    TEXT,
+            deadline_at         INTEGER NOT NULL,
+            result_json         TEXT,
+            error_code          TEXT,
+            error_message       TEXT,
+            created_at          INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at          INTEGER NOT NULL DEFAULT (unixepoch()),
+            terminal_at         INTEGER
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_desktop_commands_dedupe
+            ON desktop_commands(dedupe_key);
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_commands_device_state
+            ON desktop_commands(device_id, state);
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_commands_binding
+            ON desktop_commands(binding_id);
+
+        CREATE TABLE IF NOT EXISTS desktop_command_outbox (
+            id               TEXT PRIMARY KEY,
+            command_id       TEXT NOT NULL UNIQUE
+                             REFERENCES desktop_commands(id) ON DELETE CASCADE,
+            device_id        TEXT NOT NULL
+                             REFERENCES desktop_devices(id) ON DELETE CASCADE,
+            state            TEXT NOT NULL,
+            lease_epoch      TEXT,
+            claimed_at       INTEGER,
+            claim_expires_at INTEGER,
+            attempts         INTEGER NOT NULL DEFAULT 0,
+            created_at       INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at       INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_outbox_device_state
+            ON desktop_command_outbox(device_id, state, created_at);
+        """
+    )
+
+
+_migrations.append(_migration_38)
+
+
+def _migration_39(con: sqlite3.Connection) -> None:
+    """Desktop transfers, chunk ledger and storage reservations.
+
+    Change ``add-desktop-remote-web-workbench`` (task 10.1). Three new tables:
+
+    * ``desktop_transfers`` -- durable upload record. Absolute client paths are
+      never stored; ``storage_rel`` is a server-constructed relative staging
+      (and later publish) path. Terminal states are irreversible.
+    * ``desktop_transfer_chunks`` -- per-offset length/sha256 ledger. Same
+      offset with a different digest is a conflict (task 10.3); same digest is
+      idempotent.
+    * ``desktop_storage_reservations`` -- in-flight and committed byte stock
+      keyed by transfer. Occupancy is the sum of live reservations, adapted
+      against ``quota_limits.storage_bytes`` in the *same* transaction. This
+      deliberately does **not** reuse ``quota_usage`` day/month windows that
+      auto-clear (contracts §6 / task 10.1).
+    """
+    con.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS desktop_transfers (
+            id                  TEXT PRIMARY KEY,
+            request_id          TEXT NOT NULL,
+            command_id          TEXT NOT NULL
+                                REFERENCES desktop_commands(id) ON DELETE CASCADE,
+            tenant_id           TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            device_id           TEXT NOT NULL
+                                REFERENCES desktop_devices(id) ON DELETE CASCADE,
+            binding_id          TEXT NOT NULL
+                                REFERENCES desktop_bindings(id) ON DELETE CASCADE,
+            workspace_id        TEXT,
+            grant_version       INTEGER,
+            agent_id            TEXT NOT NULL,
+            business_session_id TEXT NOT NULL,
+            run_id              TEXT,
+            source_ref          TEXT NOT NULL,
+            source_version      TEXT NOT NULL,
+            total_bytes         INTEGER NOT NULL,
+            received_bytes      INTEGER NOT NULL DEFAULT 0,
+            sha256              TEXT,
+            filename            TEXT NOT NULL,
+            state               TEXT NOT NULL,
+            reservation_id      TEXT,
+            storage_rel         TEXT NOT NULL,
+            artifact_ref        TEXT,
+            expires_at          INTEGER NOT NULL,
+            created_at          INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at          INTEGER NOT NULL DEFAULT (unixepoch()),
+            terminal_at         INTEGER,
+            error_code          TEXT,
+            error_message       TEXT
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_desktop_transfers_idempotency
+            ON desktop_transfers(command_id, source_version);
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_transfers_device_state
+            ON desktop_transfers(device_id, state);
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_transfers_user_state
+            ON desktop_transfers(user_id, tenant_id, state);
+
+        CREATE TABLE IF NOT EXISTS desktop_transfer_chunks (
+            transfer_id TEXT NOT NULL
+                        REFERENCES desktop_transfers(id) ON DELETE CASCADE,
+            offset      INTEGER NOT NULL,
+            length      INTEGER NOT NULL,
+            sha256      TEXT NOT NULL,
+            created_at  INTEGER NOT NULL DEFAULT (unixepoch()),
+            PRIMARY KEY (transfer_id, offset)
+        );
+
+        CREATE TABLE IF NOT EXISTS desktop_storage_reservations (
+            id              TEXT PRIMARY KEY,
+            tenant_id       TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            transfer_id     TEXT NOT NULL UNIQUE
+                            REFERENCES desktop_transfers(id) ON DELETE CASCADE,
+            reserved_bytes  INTEGER NOT NULL,
+            state           TEXT NOT NULL,
+            created_at      INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at      INTEGER NOT NULL DEFAULT (unixepoch()),
+            released_at     INTEGER
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_reservations_stock
+            ON desktop_storage_reservations(tenant_id, user_id, state);
+        """
+    )
+
+
+_migrations.append(_migration_39)
+
+
+def _migration_40(con: sqlite3.Connection) -> None:
+    """Durable publish ledger for desktop transfers (task 11.1).
+
+    Separates the three recoverable steps of a commit:
+
+    * ``intent`` -- verifying started (digest accepted, rename not yet done)
+    * ``renamed`` -- file is at the publish path, DB not yet committed
+    * ``committed`` -- directory record + reservation + audit finished
+
+    A crash between any two steps leaves a ledger row the reconciler can finish
+    or isolate without inventing a second occupancy truth.
+    """
+    con.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS desktop_publish_ledger (
+            id              TEXT PRIMARY KEY,
+            transfer_id     TEXT NOT NULL UNIQUE
+                            REFERENCES desktop_transfers(id) ON DELETE CASCADE,
+            tenant_id       TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            sha256          TEXT NOT NULL,
+            staging_rel     TEXT NOT NULL,
+            artifact_rel    TEXT NOT NULL,
+            step            TEXT NOT NULL,
+            audit_ok        INTEGER NOT NULL DEFAULT 0,
+            reservation_ok  INTEGER NOT NULL DEFAULT 0,
+            created_at      INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at      INTEGER NOT NULL DEFAULT (unixepoch()),
+            finished_at     INTEGER,
+            isolate_reason  TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_publish_step
+            ON desktop_publish_ledger(step, updated_at);
+
+        CREATE TABLE IF NOT EXISTS desktop_run_inputs (
+            id              TEXT PRIMARY KEY,
+            transfer_id     TEXT NOT NULL
+                            REFERENCES desktop_transfers(id) ON DELETE CASCADE,
+            tenant_id       TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            agent_id        TEXT NOT NULL,
+            run_id          TEXT NOT NULL,
+            artifact_rel    TEXT NOT NULL,
+            source_version  TEXT NOT NULL,
+            retained_until  INTEGER NOT NULL,
+            deleted_at      INTEGER,
+            created_at      INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_run_inputs_run
+            ON desktop_run_inputs(run_id, user_id);
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_run_inputs_retain
+            ON desktop_run_inputs(retained_until, deleted_at);
+        """
+    )
+
+
+_migrations.append(_migration_40)
+
+
+def _migration_41(con: sqlite3.Connection) -> None:
+    """Remember what a desktop workspace grant was authorized *for* (task 3.1).
+
+    A workspace row previously recorded only "the native picker approved this
+    root". Opening a local project adds a second, stronger purpose
+    (``project-execution``: run project tools and Skill scripts there), so the
+    purpose has to be stored at grant time. Without the column a re-registration
+    could silently promote a read-only file reference into an execution grant,
+    and a session that reconnected later would have no way to tell which one it
+    was relying on.
+
+    The default is the weaker purpose, so every row written before this change
+    keeps exactly the authority it had.
+    """
+    _add_missing_column(con, "desktop_workspaces", "project_mode",
+                        "TEXT NOT NULL DEFAULT 'readonly-input'")
+
+
+_migrations.append(_migration_41)
+
+
+def _migration_42(con: sqlite3.Connection) -> None:
+    """v2 project-execution fields on the existing command record (task 6.2).
+
+    The v2 channel reuses ``desktop_commands`` and its outbox rather than
+    minting a second business task: the state machine (queued, dispatched,
+    acknowledged, running, terminal) and every CAS stay exactly as they are, and
+    a v1 row is simply one that never carried the new columns.
+
+    What is added, and why each one cannot be derived later:
+
+    * ``protocol_major`` -- which envelope the device must be handed. Default 1,
+      so every existing row keeps the read-only frame it was created for.
+    * ``tool_name`` / ``tool_schema_version`` -- the *master* tool this command
+      proxies. v1's ``op`` is a contract op; a v2 command must keep the tool the
+      model actually called, or the result could be attributed to a different
+      tool than the one that ran.
+    * ``run_id`` / ``tool_call_id`` / ``selection_generation`` -- the binding
+      back to the original ExecutionRun and tool call, and the selection the
+      user approved. A redelivery after reconnect must land on the *same* run.
+    * ``origin`` -- the first field of the dedup identity
+      ``(origin, user, tenant, device, command_id)``; without it stored at
+      creation the identity cannot be recomputed on a redelivery.
+    * ``params_digest`` -- the canonical envelope digest the device verifies and
+      the start permit is bound to. Same id with a different digest is a
+      conflict, never a silent re-execution.
+    * ``execution_phase`` / ``effects`` / ``cancel_requested`` -- the v2
+      *projection* of the state (cancelling is "running + requested"; an unknown
+      outcome is "failed + code"). They are stored so a later reader (and the
+      audit trail) sees what the run actually claimed, while the state enum
+      itself stays the v1 set.
+    * ``journal_id`` / ``started_at`` / ``heartbeat_at`` / ``permit_id`` -- the
+      local start intent, the last heartbeat and the permit that authorized the
+      start. A row that is ``running`` with a ``journal_id`` is evidence of
+      side effects; a row with neither is not evidence of the opposite.
+    * ``approval_id`` / ``permission_mode`` -- the governance inputs in force at
+      creation, so the second validation at start can compare against the same
+      ones instead of re-deriving them from a changed session.
+
+    ``desktop_execution_permits`` is the durable single-use start permit. It
+    lives here because "single use" has to survive a restart: consume-by-CAS is
+    the only way a permit cannot be replayed, and the row keeps the digest and
+    grant version the permit was issued against for the audit trail.
+    """
+    for column, declaration in (
+        ("protocol_major", "INTEGER NOT NULL DEFAULT 1"),
+        ("tool_name", "TEXT"),
+        ("tool_schema_version", "INTEGER"),
+        ("run_id", "TEXT"),
+        ("tool_call_id", "TEXT"),
+        ("selection_generation", "INTEGER"),
+        ("origin", "TEXT"),
+        ("params_digest", "TEXT"),
+        ("execution_phase", "TEXT"),
+        ("effects", "TEXT"),
+        ("cancel_requested", "INTEGER NOT NULL DEFAULT 0"),
+        ("journal_id", "TEXT"),
+        ("permit_id", "TEXT"),
+        ("started_at", "INTEGER"),
+        ("heartbeat_at", "INTEGER"),
+        ("approval_id", "TEXT"),
+        ("permission_mode", "TEXT"),
+    ):
+        _add_missing_column(con, "desktop_commands", column, declaration)
+    con.executescript(
+        """
+        CREATE INDEX IF NOT EXISTS idx_desktop_commands_protocol
+            ON desktop_commands(protocol_major, state);
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_commands_run
+            ON desktop_commands(run_id, tool_call_id);
+
+        CREATE TABLE IF NOT EXISTS desktop_execution_permits (
+            id              TEXT PRIMARY KEY,
+            command_id      TEXT NOT NULL
+                            REFERENCES desktop_commands(id) ON DELETE CASCADE,
+            device_id       TEXT NOT NULL
+                            REFERENCES desktop_devices(id) ON DELETE CASCADE,
+            workspace_id    TEXT,
+            grant_version   INTEGER,
+            params_digest   TEXT NOT NULL,
+            issued_at       INTEGER NOT NULL,
+            expires_at      INTEGER NOT NULL,
+            used_at         INTEGER,
+            used_by_epoch   TEXT,
+            created_at      INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_permits_command
+            ON desktop_execution_permits(command_id, used_at);
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_permits_expiry
+            ON desktop_execution_permits(expires_at, used_at);
+        """
+    )
+
+
+_migrations.append(_migration_42)
+
+
+def _migration_43(con: sqlite3.Connection) -> None:
+    """The device-scoped handle for a background command (task 6.6).
+
+    A long-running script started with ``run_in_background`` keeps running on
+    the *device* after its command row is terminal, and the model then reads its
+    output or stops it with a follow-up call carrying ``bash_id``. That follow-up
+    is a new command, so the two facts the server has to establish before it can
+    be routed are "which device/project/run owns this handle" and "is the caller
+    still inside that scope".
+
+    Why a table rather than a field on ``desktop_commands``:
+
+    * the handle outlives the command that created it (that command is
+      ``succeeded`` as soon as the job started), so it cannot live on a terminal
+      row that a later writer is no longer allowed to touch;
+    * the read/stop scope is the *device + project + run* of the creator, and
+      the refusal for a foreign session has to be a lookup, not a guess;
+    * the handle is an opaque device-side job id. It is deliberately **not** a
+      server process id and never becomes one: the server stores it to route the
+      follow-up back to the machine that owns the process, and a device that
+      restarted simply no longer has the job (the row is marked expired rather
+      than resurrecting anything).
+
+    ``expires_at`` is what makes an old handle answer "已失效" instead of being
+    tried forever; ``terminated_at``/``terminate_requested_at`` record a stop
+    that was asked for and, once the device confirms, one that happened.
+    """
+    con.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS desktop_process_handles (
+            id                    TEXT PRIMARY KEY,
+            tenant_id             TEXT NOT NULL,
+            user_id               TEXT NOT NULL,
+            agent_id              TEXT NOT NULL DEFAULT '',
+            session_id            TEXT NOT NULL DEFAULT '',
+            binding_id            TEXT NOT NULL,
+            workspace_id          TEXT NOT NULL,
+            device_id             TEXT NOT NULL
+                                  REFERENCES desktop_devices(id) ON DELETE CASCADE,
+            run_id                TEXT NOT NULL,
+            tool_call_id          TEXT NOT NULL,
+            command_id            TEXT NOT NULL,
+            tool                  TEXT NOT NULL,
+            grant_version         INTEGER NOT NULL DEFAULT 0,
+            created_at            INTEGER NOT NULL,
+            last_seen_at          INTEGER,
+            expires_at            INTEGER NOT NULL,
+            terminate_requested_at INTEGER,
+            terminated_at         INTEGER,
+            state                 TEXT NOT NULL DEFAULT 'live'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_handles_scope
+            ON desktop_process_handles(tenant_id, user_id, device_id, state);
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_handles_call
+            ON desktop_process_handles(run_id, tool_call_id);
+
+        CREATE INDEX IF NOT EXISTS idx_desktop_handles_expiry
+            ON desktop_process_handles(expires_at, state);
+        """
+    )
+
+
+_migrations.append(_migration_43)
+
+
+def _migration_44(con: sqlite3.Connection) -> None:
+    """The skill set a run was authorized with, on the command row (task 8.9).
+
+    Task 8.8 found remote mode could not run a skill script at all, and one of
+    the three missing pieces was here: the set was *checked* but never *stored*.
+    ``params_digest`` covers the skill set, so a device declaring a set the
+    command was not authorized with already produced a conflict -- but because
+    every stored digest had been computed over an *empty* set, the check only
+    ever ran in one direction. A device declaring **nothing** was accepted.
+
+    That asymmetry is the part worth being precise about, because it read as
+    "working". It meant a run could not be *required* to use a particular
+    version: a device holding a stale snapshot would declare no skills, be
+    accepted, and quietly run whatever it had. So the column is not a
+    convenience copy of the digest input -- it is what lets the other direction
+    be checked, and what the ``execute_tool`` frame is built from so the device
+    is told which versions the run expects.
+
+    Stored as canonical JSON (normalised and sorted by ``skill_id``, the same
+    form the digest uses) or NULL for a command that needs no skills. NULL is
+    the honest value for "this run has no skill requirements" and is what every
+    existing row and every skill-less v2 tool keeps; an empty list would be a
+    different claim and would make the two indistinguishable.
+    """
+    _add_missing_column(con, "desktop_commands", "skill_resources", "TEXT")
+
+
+_migrations.append(_migration_44)
+
+
+def _migration_45(con: sqlite3.Connection) -> None:
+    """One-time signed cross-deployment requests, without prompt/credential data."""
+    con.execute("""CREATE TABLE IF NOT EXISTS peer_identity_nonces(
+        issuer TEXT NOT NULL, nonce TEXT NOT NULL, expires_at INTEGER NOT NULL,
+        tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, request_id TEXT NOT NULL,
+        PRIMARY KEY (issuer, nonce))""")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_peer_identity_nonce_expiry ON peer_identity_nonces(expires_at)")
+
+
+_migrations.append(_migration_45)
+
+
 class IdentityStoreError(RuntimeError):
     """Raised when the identity store cannot be opened or migrated."""
 
@@ -2224,6 +2997,23 @@ class IdentityStore:
         return self._db_path
 
     def _migrate(self) -> None:
+        """Bring the database up to ``migration_versions()``, atomically.
+
+        A body and the ``schema_migrations`` marker that records it have to
+        commit **together**. They did not: the framework opened a transaction
+        with ``BEGIN``, but most bodies are written as ``con.executescript(...)``,
+        and sqlite3 commits a pending transaction before it runs a script -- so
+        the DDL landed in its own transaction and the marker in a second one. A
+        process killed in between left a store whose schema was half-applied with
+        no record of it; the next open replayed the body, hit "duplicate column
+        name" (or "table already exists"), and could never open again.
+
+        Bodies are therefore handed a :class:`_MigrationConnection`, whose
+        ``executescript`` runs the script statement by statement inside this
+        transaction instead of committing it. (PEP 249 ``autocommit = False``
+        would also work, but it exists only on Python 3.12+ and the desktop
+        build installs Python 3.11.)
+        """
         if not self._db_path:
             raise IdentityStoreError("identity.db path is empty")
         parent = os.path.dirname(os.path.abspath(self._db_path))
@@ -2235,7 +3025,7 @@ class IdentityStore:
             )
             exists = {row["name"] for row in cursor.fetchall()}
             if "schema_migrations" not in exists:
-                con.executescript(
+                con.execute(
                     "CREATE TABLE schema_migrations("
                     " version INTEGER NOT NULL,"
                     " applied_at INTEGER NOT NULL DEFAULT (unixepoch()))"
@@ -2249,11 +3039,12 @@ class IdentityStore:
             for version in migration_versions():
                 if version not in applied:
                     con.execute("BEGIN")
-                    _migrations[version - 1](con)
+                    _migrations[version - 1](_MigrationConnection(con))
                     con.execute(
                         "INSERT INTO schema_migrations(version) VALUES (?)",
                         (version,),
                     )
+                    # One commit for the schema change and the record of it.
                     con.commit()
 
     def connect(self) -> "ConnGuard":

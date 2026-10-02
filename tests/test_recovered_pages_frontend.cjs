@@ -41,6 +41,26 @@ const chatHtml = read('channel/web/chat.html');
 // against the real upstream scripts.
 const tasksPage = read('channel/web/static/js/fork/tasks-console.js');
 
+test('live skill upload preview renders metadata and markdown using its loaded dependencies', () => {
+    const sandbox = {
+        t: key => key,
+        escapeHtml: value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;'),
+        renderMarkdown: value => `<p>${value.trim()}</p>`,
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(fnSource('parseSkillFrontmatter') + '\n' + fnSource('renderSkillPreviewMd'), sandbox);
+    const html = sandbox.renderSkillPreviewMd({
+        has_skill_md: true,
+        skill_md: '---\nname: "merge-preview"\ndescription: <unsafe>\n---\nPreview body',
+        skill_md_truncated: true,
+    });
+    assert.match(html, /merge-preview/);
+    assert.match(html, /&lt;unsafe&gt;/);
+    assert.match(html, /<p>Preview body<\/p>/);
+    assert.match(html, /skill_preview_truncated/);
+    assert.doesNotMatch(html, /<unsafe>/);
+});
+
 // The view ids the recovered pages are reached through, and the page key the
 // server signs for each. The page keys are asserted *through the product code*
 // below, so this list only names the views.
@@ -217,7 +237,7 @@ test('a refusal is rendered from the server reason payload, never as a shipped f
     assert.match(show, /nav_unavailable/, 'the not-open copy must stay for the rest');
     // The gate hands its own reason to the surface (`deny.reason`), so the
     // dispatch cannot silently substitute a literal string.
-    const navigation = consoleJs.slice(consoleJs.indexOf('function navigateTo(viewId)'));
+    const navigation = consoleJs.slice(consoleJs.indexOf('function navigateTo(viewId,'));
     assert.match(navigation, /const deny = _viewNavDenied\(viewId\);/);
     assert.match(navigation, /showUnavailableView\(viewId, deny\.reason\);/);
 });
@@ -361,6 +381,7 @@ function bootWeixinQr(payload) {
     vm.createContext(ctx);
     vm.runInContext(
         ['let _weixinQrPollTimer = null;', fnSource('stopWeixinQrPoll'),
+         fnSource('isWeixinInstanceCard'), fnSource('weixinQrPanelId'),
          fnSource('startWeixinQrLogin')].join('\n'), ctx);
     return { ctx, panel, seen };
 }

@@ -3081,10 +3081,54 @@ class IdentityService:
         # even if the session's own TTL has not yet elapsed.
         if user["must_change_password"] and self._unusable_temp(user):
             return None
+        # Desktop Web child sessions follow their native parent (task 3.5). This
+        # is deliberately the *generic* seam -- the console gate, the CSRF check,
+        # the desktop flow and every business handler resolve identity here -- so
+        # a revoked parent stops the child everywhere, not just at /auth/check.
+        # A session with no link is unaffected: the lookup returns nothing and
+        # the ordinary path is byte-identical to before.
+        if not self._desktop_child_parent_live(row):
+            return None
         return {"user": user, "session": row}
 
+    def _desktop_child_parent_live(self, session_row) -> bool:
+        """True unless this session is a Web child whose parent is no longer live."""
+        try:
+            rows = self._store.execute(
+                "SELECT * FROM desktop_web_links"
+                " WHERE web_session_id=? AND revoked_at IS NULL",
+                (session_row["id"],))
+        except Exception:  # pragma: no cover - the table ships with migration 36
+            logging.getLogger(__name__).warning(
+                "desktop web-link lookup failed; parent check skipped")
+            return True
+        if not rows:
+            return True
+        from auth.desktop_web_session import service_for
+        return service_for(self).parent_is_live(dict(rows[0]))
+
     def revoke_session(self, token: str) -> None:
+        row = self._sessions.get_by_token(token)
         self._sessions.revoke(token)
+        if not row:
+            return
+        # Mutual revocation (task 3.6): revoking either half of a desktop pair
+        # tears the pair down. Both calls are idempotent and only touch links
+        # that exist, so an ordinary Web logout is unchanged.
+        from auth.desktop_web_session import service_for
+        service = service_for(self)
+        service.revoke_for_native(row["id"], reason="native_logout")
+        service.revoke_for_web_session(row["id"], reason="web_logout")
+        # Task 8.7: a logout also stops every live file binding / workspace of
+        # the same user. Best-effort -- a missing table on a pre-migration
+        # store must not break logout.
+        try:
+            from integrations.desktop.devices import service_for as devices_for
+            devices_for(self).revoke_for_user(
+                row["user_id"], reason="session_revoked")
+        except Exception:  # pragma: no cover - pre-migration / best-effort
+            logging.getLogger(__name__).warning(
+                "desktop binding revoke on logout failed", exc_info=True)
 
     def audit_denied_login(self, account: str, source: str,
                            category: str, retry_after: Optional[int]) -> None:
@@ -6770,6 +6814,17 @@ class IdentityService:
             for instance_id in self._member_personal_instance_ids(
                     tenant_id, membership["user_id"]):
                 self._reconcile_personal_runtime(instance_id)
+            # Task 8.7: Membership stop also stops desktop file bindings for
+            # this tenant. Best-effort; the membership write already committed.
+            try:
+                from integrations.desktop.devices import service_for as devices_for
+                devices_for(self).revoke_for_membership(
+                    membership["user_id"], tenant_id,
+                    reason="membership_revoked")
+            except Exception:  # pragma: no cover - pre-migration / best-effort
+                logging.getLogger(__name__).warning(
+                    "desktop binding revoke on membership disable failed",
+                    exc_info=True)
         return {"id": member_id, "active": active, "version": membership["version"] + 1}
 
     def member_is_active(self, user_id: str, tenant_id: str) -> bool:
@@ -11302,6 +11357,151 @@ class IdentityService:
                 return True
             logger.error(f"[quota] consume failed for {tenant_id}/{user_id}/{metric}: {error}")
             raise IdentityServiceError("quota meter failed", code="quota_error", status=500) from error
+
+    def refund_quota(
+        self, *, user_id: str, tenant_id: str, metric: str, amount: int = 1,
+        reference: Optional[str] = None, reason: str = "",
+    ) -> int:
+        """Give back ``amount`` of ``metric`` a charge that produced no work.
+
+        The release half of the reservation :meth:`consume_quota` makes, and
+        deliberately on the *same* two tables: a separate "reserved" ledger would
+        be a second quota truth that drifts from the meter the gate charges, and
+        the change that added this (``align-desktop-project-execution-with-
+        master``, task 6.7) explicitly forbids that.
+
+        It is used for the one case where the charge is provably undeserved: a
+        call that was charged at the tool gate and then never executed on the
+        target machine. A *started* run is never refunded, whatever its terminal
+        state -- real machine time was spent and, for ``outcome_unknown``, files
+        may have been written.
+
+        ``used`` is floored at zero (a refund can never hand out budget that was
+        never charged) and only the amount actually returned is audited, so the
+        log answers "what did this call cost, net". Returns that amount; a
+        storage failure returns 0 and is logged rather than raised: the caller
+        is already reporting a refusal to the user, and a failed bookkeeping
+        detail must not replace it with a different error.
+        """
+        from common.log import logger
+        import calendar
+        import time as _time
+        if metric not in self._QUOTA_METRICS:
+            raise IdentityServiceError(f"unknown quota metric: {metric}", code="invalid", status=400)
+        if not user_id or not tenant_id:
+            return 0
+        amount = max(1, int(amount or 1))
+        window = calendar.timegm(_time.gmtime())
+        try:
+            with self._tx() as con:
+                buckets = [
+                    row["user_id"] for row in con.execute(
+                        "SELECT user_id FROM quota_usage WHERE tenant_id=?"
+                        " AND metric=? AND window_start=? AND used>0"
+                        " AND user_id IN ('', ?)", (tenant_id, metric, window,
+                                                    user_id)).fetchall()
+                ]
+                returned = 0
+                for bucket in buckets:
+                    row = con.execute(
+                        "SELECT used FROM quota_usage WHERE tenant_id=? AND user_id=?"
+                        " AND metric=? AND window_start=?",
+                        (tenant_id, bucket, metric, window)).fetchone()
+                    if not row or int(row["used"] or 0) <= 0:
+                        continue
+                    give_back = min(amount, int(row["used"]))
+                    con.execute(
+                        "UPDATE quota_usage SET used=used-? WHERE tenant_id=?"
+                        " AND user_id=? AND metric=? AND window_start=?",
+                        (give_back, tenant_id, bucket, metric, window))
+                    returned = max(returned, give_back)
+                if returned:
+                    self._audit_in_tx(
+                        con, actor_user_id=user_id, tenant_id=tenant_id,
+                        target_tenant_id=tenant_id, action="quota.refund",
+                        target="quota:%s:::%s" % (tenant_id, metric),
+                        redacted_changes={"amount": returned, "reason": reason,
+                                          "reference": reference or ""},
+                        result="success")
+                con.commit()
+            return returned
+        except Exception as error:  # noqa: BLE001 - the release must not raise
+            logger.error(
+                f"[quota] refund failed for {tenant_id}/{user_id}/{metric}: {error}")
+            return 0
+
+    def quota_available(
+        self, *, user_id: str, tenant_id: str, metric: str, amount: int = 1,
+    ) -> bool:
+        """Whether ``amount`` more of ``metric`` still fits, *without* counting.
+
+        The read-only twin of :meth:`consume_quota`, next to it on purpose: a
+        second place that decided "within limit" from the same two tables would
+        drift, and a re-validation at execution start (change
+        ``align-desktop-project-execution-with-master``, task 6.5) must agree
+        with the consumption that follows it. Same metrics, same window, same
+        fail-closed rule on a meter fault -- an unreadable meter answers
+        "unknown", which is not "within limit".
+        """
+        if metric not in self._QUOTA_METRICS:
+            raise IdentityServiceError(f"unknown quota metric: {metric}",
+                                       code="invalid", status=400)
+        amount = max(1, int(amount or 1))
+        if not self._member_active(user_id, tenant_id):
+            return False
+        import calendar
+        import time as _time
+        window = calendar.timegm(_time.gmtime())
+        try:
+            limits = self._store.execute(
+                "SELECT user_id, hard_limit FROM quota_limits"
+                " WHERE tenant_id=? AND metric=? AND hard_limit>0",
+                (tenant_id, metric),
+            )
+            tenant_limit = 0
+            user_limit = 0
+            for row in limits:
+                if row["user_id"] == "":
+                    tenant_limit = int(row["hard_limit"] or 0)
+                elif row["user_id"] == user_id:
+                    user_limit = int(row["hard_limit"] or 0)
+            if not tenant_limit and not user_limit:
+                # Nothing configured: the meter is not in force for this metric.
+                return True
+            usage = self._store.execute(
+                "SELECT user_id, SUM(used) used FROM quota_usage"
+                " WHERE tenant_id=? AND metric=? AND window_start=?"
+                " GROUP BY user_id",
+                (tenant_id, metric, window),
+            )
+            used_tenant = 0
+            used_user = 0
+            for row in usage:
+                if row["user_id"] == "":
+                    used_tenant = int(row["used"] or 0)
+                elif row["user_id"] == user_id:
+                    used_user = int(row["used"] or 0)
+            if tenant_limit and used_tenant + amount > tenant_limit:
+                return False
+            if user_limit and used_user + amount > user_limit:
+                return False
+            return True
+        except IdentityServiceError:
+            raise
+        except Exception as error:  # noqa: BLE001 - see consume_quota's rule
+            from common.log import logger
+            if self._quota_fail_open():
+                logger.warning(
+                    f"[quota] FAIL-OPEN (quota_fail_open=true): allowing"
+                    f" {amount} {metric} for tenant={tenant_id} user={user_id}"
+                    f" despite meter error: {error}"
+                )
+                return True
+            logger.error(
+                f"[quota] availability check failed for {tenant_id}/{user_id}/{metric}:"
+                f" {error}")
+            raise IdentityServiceError("quota meter failed", code="quota_error",
+                                       status=500) from error
 
     def check_scheduled_task_quota(
         self, *, user_id: str, tenant_id: str, would_be_count: int,

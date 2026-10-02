@@ -597,6 +597,107 @@ SLICES: Tuple[Slice, ...] = (
         reason="",
         policy=DEFAULT_POLICY,
     ),
+    # ------------------------------------------------------------------ #
+    # Desktop remote web workbench (change add-desktop-remote-web-workbench)
+    # ------------------------------------------------------------------ #
+    # Four phase switches (design D12). Phase 1–2 and 3A are opened so a local
+    # deployment can exercise the surfaces; phase 3B stays closed until the
+    # fixed parser worker lands. ``open`` non-empty is what ``Slice.enabled``
+    # (and therefore the handler gates) read; ``implemented``/``accepted`` feed
+    # ``availability()`` for ``GET /api/desktop/meta``. Deployment switches in
+    # ``config.py`` still narrow ``available`` without reopening a closed slice.
+    #
+    # The public ``GET /api/desktop/meta`` endpoint is registered with a
+    # literal ``public`` policy rather than through a slice action: it must be
+    # reachable even when features are closed, so that a client can learn *why*.
+    Slice(
+        "desktop_remote_web",
+        capability="desktop-remote-web-workbench",
+        consumer="desktop_remote_web",
+        page=None,
+        scope=frozenset({"personal"}),
+        open={"session": ACCESS_EXECUTE},
+        implemented=True,
+        accepted=True,
+        reason="",
+        policy=DEFAULT_PERSONAL_POLICY,
+    ),
+    Slice(
+        "desktop_local_files",
+        capability="desktop-local-file-access",
+        consumer="desktop_local_files",
+        page=None,
+        scope=frozenset({"personal"}),
+        open={
+            "read": ACCESS_READ,
+            "transfer": ACCESS_EXECUTE,
+            "publish": ACCESS_EXECUTE,
+        },
+        implemented=True,
+        accepted=True,
+        reason="",
+        policy=DEFAULT_PERSONAL_POLICY,
+    ),
+    Slice(
+        "desktop_local_processing",
+        capability="desktop-local-processing",
+        consumer="desktop_local_processing",
+        page=None,
+        scope=frozenset({"personal"}),
+        open={},
+        implemented=False,
+        accepted=False,
+        reason="",
+        policy=DEFAULT_PERSONAL_POLICY,
+    ),
+    Slice(
+        "desktop_native_notifications",
+        capability="desktop-runtime-lifecycle",
+        consumer="desktop_native_notifications",
+        page=None,
+        scope=frozenset({"personal"}),
+        open={"notify": ACCESS_READ},
+        implemented=True,
+        accepted=True,
+        reason="",
+        policy=DEFAULT_PERSONAL_POLICY,
+    ),
+    # ------------------------------------------------------------------ #
+    # Desktop project execution, v2 protocol (change
+    # align-desktop-project-execution-with-master)
+    # ------------------------------------------------------------------ #
+    # Two slices, deliberately closed while the capability is
+    # ``accepted=False``: the v2 entry point writes into the user's own project
+    # directory, so "implemented" must not be reported as "available" before the
+    # acceptance suites in ``evidence/`` have run. The deployment switches
+    # (``desktop_project_execution_enabled`` / ``desktop_project_scripts_enabled``)
+    # default off as well, so a fresh install cannot reach either surface by
+    # accident. Handlers re-authorize every request; this is a report, not a
+    # grant.
+    Slice(
+        "desktop_project_execution",
+        capability="desktop-project-execution",
+        consumer="desktop_project_execution",
+        page=None,
+        scope=frozenset({"personal"}),
+        open={},
+        implemented=True,
+        accepted=False,
+        reason="",
+        policy=DEFAULT_PERSONAL_POLICY,
+    ),
+    Slice(
+        "desktop_project_scripts",
+        capability="desktop-skill-runtime",
+        consumer="desktop_project_scripts",
+        page=None,
+        scope=frozenset({"personal"}),
+        open={},
+        implemented=True,
+        accepted=False,
+        reason="",
+        policy=DEFAULT_PERSONAL_POLICY,
+    ),
 )
 
 #: The per-action features projected through ``/auth/context.feature_actions``.
@@ -694,6 +795,35 @@ def feature_action_availability() -> Dict[str, Dict[str, Any]]:
         reason = _action_reason(spec, action)
         out[key] = {"available": reason == "", "reason": reason}
     return out
+
+
+def availability(slice_id: str, *, configured: bool = True) -> Dict[str, Any]:
+    """One capability's composed state for the desktop meta projection.
+
+    ``implemented``/``accepted`` come from the declaration; ``configured`` is the
+    deployment switch (``desktop_*_enabled`` in ``config.py``). ``available`` is
+    the conjunction, and ``reason`` names the *first* unmet condition in the same
+    precedence ``_action_reason`` uses -- a feature whose code is missing must not
+    be reported as "switched off", and one awaiting acceptance must not be
+    reported as "not implemented". This is a *report*, never a grant: the handler
+    still authorizes every request.
+    """
+    spec = slice_for(slice_id)
+    if not spec.implemented:
+        reason = "not_implemented"
+    elif not spec.accepted:
+        reason = "not_accepted"
+    elif not configured:
+        reason = "disabled_by_deployment"
+    else:
+        reason = ""
+    return {
+        "implemented": spec.implemented,
+        "accepted": spec.accepted,
+        "configured": bool(configured),
+        "available": reason == "",
+        "reason": reason,
+    }
 
 
 finalize(parse_disabled_actions(os.environ.get(DISABLED_ACTIONS_ENV)))

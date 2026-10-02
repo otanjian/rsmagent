@@ -41,6 +41,8 @@ import base64
 import datetime
 import hashlib
 import hmac
+from common.utils import constant_time_equals
+from channel.web.core._common import _multipart_lists, _first_value
 import json
 import logging
 import os
@@ -92,6 +94,8 @@ class SSEStreamState:
     stream_complete: bool = False
     completed_at: Optional[float] = None
     closed: bool = False
+    stored_seq: Optional[int] = None
+    stored_event_seq: int = 0
 
 
 def _parse_sse_cursor(*values) -> int:
@@ -115,7 +119,7 @@ def _read_config_file_for_write() -> dict:
     from channel.web.web_channel import get_data_root
     config_path = os.path.join(get_data_root(), "config.json")
     if os.path.exists(config_path):
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, "r", encoding="utf-8-sig") as f:
             return json.load(f)
     return read_config_template()
 
@@ -345,7 +349,7 @@ def _decode_dir_token(token: str) -> str:
     except Exception:
         raise ValueError("Malformed preview token")
     expected = hmac.new(_get_preview_secret(), real.encode("utf-8"), hashlib.sha256).hexdigest()[:16]
-    if not hmac.compare_digest(sig, expected):
+    if not constant_time_equals(sig, expected):
         raise ValueError("Bad preview token signature")
     return real
 
@@ -425,8 +429,25 @@ def _build_preview_url(abs_path: str) -> str:
 
 
 def _build_artifact_payload(data: dict) -> dict:
-    """Turn an agent `artifact` event into an SSE payload for the web clients."""
+    """Turn an agent `artifact` event into an SSE payload for the web clients.
+
+    Two shapes, decided by the artifact's origin (task 9.1). A server artifact is
+    unchanged: it gets the server ``abs_path`` and the URLs this process can
+    actually serve. A **local** artifact gets no absolute path and no server URL
+    at all -- minting ``/api/file?path=/Users/...`` for a file on the user's own
+    machine would advertise a fetch that either 404s or, worse, works on a
+    single-machine deployment and teaches the client to expect a copy. It carries
+    the device/project/run identity and the relative path instead, so the client
+    resolves it through the local project it already has open.
+
+    A local artifact may arrive with no server-side path at all (a device's own
+    report, which this process is not allowed to stat), so the origin is checked
+    *before* the path.
+    """
     from channel.web.web_channel import _build_preview_url
+    origin = data.get("origin")
+    if isinstance(origin, dict) and origin.get("source") == "desktop":
+        return _local_artifact_payload(data, origin)
     file_path = data.get("path", "")
     if not file_path:
         return None
@@ -443,15 +464,156 @@ def _build_artifact_payload(data: dict) -> dict:
     }
 
 
+def _local_artifact_payload(data: dict, origin: dict) -> dict:
+    """The device-facing shape: identifiers and a relative id, no server URL."""
+    from agent.protocol.artifact import classify_kind, is_previewable
+
+    relative = origin.get("relative_path") or ""
+    name = origin.get("file_name") or os.path.basename(relative)
+    # The *display* kind stays the panel's vocabulary (markdown/code/...) so the
+    # existing renderer keeps choosing the right icon and editor; the contract's
+    # own bucket travels separately as ``artifact_kind``.
+    kind = data.get("kind") or classify_kind(name) or "file"
+    size = data.get("size")
+    if size in (None, ""):
+        size = origin.get("size", 0)
+    return {
+        "type": "artifact",
+        "source": "desktop",
+        "local": True,
+        "artifact_id": origin.get("artifact_id") or "",
+        "artifact_kind": origin.get("kind") or "binary",
+        "artifact_protocol": origin.get("artifact_protocol") or "",
+        "device_id": origin.get("device_id") or "",
+        "workspace_id": origin.get("workspace_id") or "",
+        "binding_id": origin.get("binding_id") or "",
+        "project_mode": origin.get("project_mode") or "",
+        "run_id": origin.get("run_id") or "",
+        "tool_call_id": origin.get("tool_call_id") or "",
+        "relative_path": relative,
+        # Display/legacy alias: the renderer reads `rel_path`, and the relative
+        # id is the honest thing to show for a local file.
+        "rel_path": relative,
+        "file_name": name,
+        "kind": kind,
+        "size": size,
+        "source_version": origin.get("source_version") or "",
+        "previewable": bool(data.get("previewable",
+                                    is_previewable(classify_kind(name)))),
+        "revalidate": True,
+        # Whether the reference can be followed *here* (task 9.6). A replayed
+        # card is a record of what a run produced, so it survives the file being
+        # moved away -- but it must say so instead of offering an action that
+        # would resolve to whatever same-named file is open now.
+        "resolution": origin.get("resolution") or "ok",
+    }
+
+
+def _project_holding(path: str, identity: Any = None):
+    """The live local registration that holds ``path``, or None (task 9.6).
+
+    History replay has to answer *which* project produced a file. The registered
+    roots are the only thing that knows: they are what this process can actually
+    read, and they are live, so a revoked grant or a re-picked directory answers
+    None instead of being resurrected from "recently used". See
+    ``LocalRootRegistry.entry_for_path`` for the three properties.
+    """
+    if not path or not os.path.isabs(str(path)):
+        return None
+    try:
+        from agent.desktop_local import registry as local_registry
+
+        if identity is None:
+            from common.runtime_identity import current_identity
+
+            identity = current_identity()
+        if identity is None:
+            return None
+        return local_registry().entry_for_path(
+            path,
+            user_id=str(getattr(identity, "user_id", "") or ""),
+            tenant_id=str(getattr(identity, "tenant_id", "") or ""),
+        )
+    except Exception as e:  # noqa: BLE001 - an unanswerable lookup is "no project"
+        logger.debug(f"[WebChannel] local project lookup failed: {e}")
+        return None
+
+
+def _origin_for_entry(entry: Any, step: dict) -> Optional[dict]:
+    """The artifact origin of a file produced under one registration (9.6).
+
+    Built from the *registration* rather than from the session's current
+    target, so the card keeps the device/workspace/binding the run really had.
+    """
+    from agent.protocol.artifact import desktop_origin
+    from agent.workspace.execution_target import desktop_target
+
+    try:
+        target = desktop_target(
+            device_id=entry.device_id, workspace_id=entry.workspace_id,
+            binding_id=entry.binding_id, grant_version=entry.grant_version,
+            project_mode=entry.project_mode,
+        )
+    except Exception as e:  # noqa: BLE001 - a bad registration names no project
+        logger.debug(f"[WebChannel] artifact origin refused: {e}")
+        return None
+    return desktop_origin(
+        target,
+        run_id=str(step.get("run_id") or ""),
+        tool_call_id=str(step.get("id") or step.get("tool_call_id") or ""),
+    )
+
+
+def _missing_local_card(path: str, root: str, origin: dict) -> Optional[dict]:
+    """The card for a recorded local file that is no longer there (task 9.6).
+
+    Live emission *drops* an artifact whose file is missing, because that card
+    is a promise about a file the user can open right now. A history card is a
+    different claim -- "this run produced this file" -- so dropping it would
+    erase the only trace of the work, and turning it into a server reference
+    would point at a file this process never had. It is rendered, marked
+    ``resolution: missing``, and carries no version it could not read.
+    """
+    from agent.protocol.artifact import artifact_id, protocol_kind
+
+    try:
+        relative = os.path.relpath(path, root)
+    except (TypeError, ValueError):
+        return None
+    if os.path.isabs(relative) or relative.startswith(".."):
+        return None
+    complete = dict(origin)
+    complete.update({
+        "artifact_id": artifact_id(complete.get("run_id", ""),
+                                   complete.get("tool_call_id", ""), relative),
+        "relative_path": relative,
+        "file_name": os.path.basename(path),
+        "kind": protocol_kind(path),
+        "size": 0,
+        "source_version": "",
+        "resolution": "missing",
+    })
+    return _local_artifact_payload({"previewable": False}, complete)
+
+
 def _paths_written_by_step(step: dict) -> list:
     """Files a persisted tool step produced, if any.
 
     `write`/`edit` name theirs in the arguments. A `subagent` step lists the
     ones its sub agents wrote in its result: those files never passed through
     a tool call of this agent's own, so nothing else records them.
+
+    A saved absolute location is preferred over the raw argument, because the
+    argument may be relative to a working directory that has since changed
+    (change ``use-personal-workspace-for-shared-agents``: opening a project
+    after the run must not re-point a file that was written in the caller's own
+    directory). Steps recorded before that field existed keep the old behaviour.
     """
     name = step.get("name")
     if name in ("write", "edit"):
+        recorded = _recorded_abs_path(step)
+        if recorded:
+            return [recorded]
         args = step.get("arguments")
         path = str((args or {}).get("path") or "").strip() if isinstance(args, dict) else ""
         return [path] if path else []
@@ -468,6 +630,74 @@ def _paths_written_by_step(step: dict) -> list:
     ]
 
 
+def _recorded_abs_path(step: dict) -> Optional[str]:
+    """The absolute location a `write`/`edit` step recorded, if it recorded one."""
+    raw = step.get("result")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (ValueError, TypeError):
+            return None
+    if not isinstance(raw, dict):
+        return None
+    path = raw.get("abs_path")
+    return path if isinstance(path, str) and os.path.isabs(path) else None
+
+
+def _session_workspace_root(session_id: Optional[str] = None,
+                            agent_id: Optional[str] = None) -> str:
+    """The directory a session's relative business paths are resolved against.
+
+    The live agent knows its own ``effective_cwd`` — the project it has open, or
+    a shared Agent's ``user/<user id>`` default — so asking it first keeps the
+    media/artifact rewrite anchored to where the run actually wrote (the agent
+    stream reports artifacts with the same root). None of these fallbacks can
+    invent a directory: a session with no live instance and no project resolves
+    its shared-Agent default read-only, and a private Agent stays on its
+    workspace.
+
+    Deliberately separate from ``_get_workspace_root``: that one is also the
+    *file service* root (the console's tree/search and the tenant browse scope),
+    whose broader reach is by design and must not be narrowed here.
+    """
+    if session_id:
+        try:
+            from bridge.bridge import Bridge
+
+            live = Bridge().get_agent_bridge().peek_agent(session_id, agent_id)
+        except Exception as e:  # noqa: BLE001 - fall back to the configured root
+            logger.debug(f"[WebChannel] live cwd lookup skipped: {e}")
+            live = None
+        if live is not None and callable(getattr(live, "effective_cwd", None)):
+            try:
+                cwd = live.effective_cwd()
+            except Exception:
+                cwd = None
+            if cwd:
+                return cwd
+        try:
+            from agent.workspace import project_store
+
+            project = project_store.get_project_dir(session_id, agent_id)
+        except Exception:
+            project = None
+        if project:
+            return project
+
+    try:
+        from agent.workspace.personal_default import personal_default_dir
+
+        personal = personal_default_dir(agent_id)
+    except Exception:
+        personal = None
+    if personal:
+        return personal
+
+    from channel.web.web_channel import _get_workspace_root
+
+    return _get_workspace_root(session_id, agent_id)
+
+
 def _artifacts_from_steps(steps, session_id: str = None, agent_id: str = None) -> list:
     """
     Rebuild the artifact cards of a persisted assistant message.
@@ -478,21 +708,59 @@ def _artifacts_from_steps(steps, session_id: str = None, agent_id: str = None) -
     a client mirroring the rules can't do.
 
     ``session_id`` anchors detection to the session's working dir (the project
-    dir when one is open), matching the live SSE path; otherwise state_root.
+    dir when one is open, a shared Agent's per-user dir otherwise), matching the
+    live SSE path; otherwise state_root. A step that saved its own absolute
+    location keeps that file reachable even when the session's directory has
+    moved since (change ``use-personal-workspace-for-shared-agents``).
     """
-    from channel.web.web_channel import _get_workspace_root
     from agent.protocol.artifact import get_workspace_root, safe_build_artifact
 
     out = []
     seen = set()
     root = None
+    workspace_root = None
+    # Which project produced each file (task 9.6). Answered per path from the
+    # **live** registrations that really hold it, not from the session's current
+    # target: a run may have happened in a project the session has since
+    # switched away from, and re-deriving from "what is open now" would either
+    # lose the card or re-file it under a project that happens to hold a file of
+    # the same name. A revoked grant or another machine answers None, and then
+    # the path is treated as a server file at most -- never claimed as local.
+    from common.runtime_identity import current_identity
+
+    identity = current_identity()
     for step in steps or []:
         if not isinstance(step, dict) or step.get("type") != "tool" or step.get("is_error"):
             continue
         for path in _paths_written_by_step(step):
             if root is None:
-                root = _get_workspace_root(session_id, agent_id) if session_id else get_workspace_root()
-            info = safe_build_artifact(path, root)
+                root = (_session_workspace_root(session_id, agent_id)
+                        if session_id else get_workspace_root())
+            step_root = root
+            origin = None
+            entry = _project_holding(path, identity) if os.path.isabs(path) else None
+            if entry is not None:
+                # This machine really holds the file, inside a project this user
+                # still has open, so the card names that device and project.
+                step_root = entry.absolute_path
+                origin = _origin_for_entry(entry, step)
+                if origin is not None and not os.path.isfile(path):
+                    missing = _missing_local_card(path, step_root, origin)
+                    if missing is not None and missing["relative_path"] not in seen:
+                        seen.add(missing["relative_path"])
+                        out.append(missing)
+                    continue
+            elif os.path.isabs(path) and not _under(path, step_root):
+                # The saved location outlives the session's directory. The
+                # Agent's own workspace still contains a member's own folder
+                # (``<workspace>/user/<id>``), so measuring against it keeps the
+                # file openable instead of re-pointing it into the project the
+                # user opened afterwards.
+                if workspace_root is None:
+                    workspace_root = get_workspace_root()
+                if _under(path, workspace_root):
+                    step_root = workspace_root
+            info = safe_build_artifact(path, step_root, origin)
             if not info or info["path"] in seen:
                 continue
             seen.add(info["path"])
@@ -500,6 +768,18 @@ def _artifacts_from_steps(steps, session_id: str = None, agent_id: str = None) -
             if payload:
                 out.append(payload)
     return out
+
+
+def _under(path: str, root: str) -> bool:
+    """Whether ``path`` resolves inside ``root`` (realpath, so symlinks agree)."""
+    try:
+        real_path = os.path.realpath(os.path.expanduser(path))
+        real_root = os.path.realpath(root)
+    except (TypeError, ValueError, OSError):
+        return False
+    if not real_root:
+        return False
+    return real_path == real_root or real_path.startswith(real_root + os.sep)
 
 
 def _add_subagent_displays(steps) -> None:
@@ -705,6 +985,7 @@ class WebChannel(ChatChannel):
     SSE_POST_DONE_TAIL_SECONDS = 60
     SSE_COMPLETED_TTL_SECONDS = 60
     SSE_IDLE_TIMEOUT_SECONDS = 1800
+    MAX_UPLOAD_PARTS = 20000
 
     # def __new__(cls):
     #     if cls._instance is None:
@@ -898,7 +1179,7 @@ class WebChannel(ChatChannel):
                 if reply.type == ReplyType.TEXT and content:
                     try:
                         display_content = _rewrite_relative_media(
-                            content, _get_workspace_root(session_id, context.get("agent_id"))
+                            content, _session_workspace_root(session_id, context.get("agent_id"))
                         )
                     except Exception as e:
                         logger.debug(f"[WebChannel] media rewrite skipped: {e}")
@@ -954,7 +1235,7 @@ class WebChannel(ChatChannel):
                     try:
                         content = _rewrite_relative_media(
                             content,
-                            _get_workspace_root(session_id, context.get("agent_id")),
+                            _session_workspace_root(session_id, context.get("agent_id")),
                         )
                     except Exception as e:
                         logger.debug(f"[WebChannel] media rewrite skipped: {e}")
@@ -1022,6 +1303,27 @@ class WebChannel(ChatChannel):
                 delta = data.get("delta", "")
                 if delta:
                     publish({"type": "delta", "content": delta})
+
+            elif event_type == "peer_message_start":
+                # A teammate takes over for a stretch of this turn. What follows
+                # is its reply, in the same event types as any other, until the
+                # matching end marker hands the floor back.
+                publish({
+                    "type": "peer_start",
+                    "card_id": data.get("card_id"),
+                    "agent_id": data.get("agent_id"),
+                    "agent_name": data.get("agent_name"),
+                    "source_id": data.get("source_id"),
+                    "source_name": data.get("source_name"),
+                })
+
+            elif event_type == "peer_message_end":
+                publish({
+                    "type": "peer_end",
+                    "card_id": data.get("card_id"),
+                    "agent_id": data.get("agent_id"),
+                    "status": data.get("status", "done"),
+                })
 
             elif event_type == "tool_retrieval":
                 # Additive MCP retrieval diagnostics. Forward only the
@@ -1198,6 +1500,9 @@ class WebChannel(ChatChannel):
                 payload = _build_artifact_payload(data)
                 if payload:
                     publish(payload)
+
+            elif event_type in ("agent_start", "turn_end"):
+                self._mark_stored_point(request_id, advance_only=event_type == "turn_end")
 
         return on_event
 
@@ -1391,22 +1696,21 @@ class WebChannel(ChatChannel):
                 web.ctx.env.get("CONTENT_LENGTH") or "?",
                 web.ctx.env.get("CONTENT_TYPE") or "?",
             )
-            params = _raw_web_input()
-            file_obj = params.get("file")
-            file_objs = params.get("files")
-            session_id = params.get("session_id", "")
-            relative_path = params.get("relative_path", "")
-            relative_paths = params.get("relative_paths")
-            upload_id = params.get("upload_id", "")
+            # Every file of a folder upload repeats `files` and `relative_paths`;
+            # read them as lists, since newer web.py keeps only the last value.
+            params = _multipart_lists(self.MAX_UPLOAD_PARTS)
+            file_obj = _first_value(params, "file")
+            relative_path = _first_value(params, "relative_path", "")
+            upload_id = _first_value(params, "upload_id", "")
 
-            directory_files = _ensure_list(file_objs)
+            directory_files = list(params.get("files") or [])
 
             # NOTE: cgi.FieldStorage raises TypeError on truthy checks for single-file
             # uploads (Python 3.9+). Always use `is not None` instead of `if file_obj`.
             if not directory_files and file_obj is not None and relative_path:
                 directory_files = [file_obj]
 
-            directory_rel_paths = _ensure_list(relative_paths)
+            directory_rel_paths = list(params.get("relative_paths") or [])
 
             if not directory_rel_paths and relative_path:
                 directory_rel_paths = [relative_path]
@@ -1615,6 +1919,43 @@ class WebChannel(ChatChannel):
                     "inline_reply": msg_text,
                 }, ensure_ascii=False)
 
+            # Optional local-directory reference from the composer. It is only
+            # a *target reference*: resolve it against this identity, Agent and
+            # business session before it becomes a run context. An invalid
+            # reference fails the turn explicitly rather than silently falling
+            # back to the server workspace (change
+            # ``fix-desktop-local-context-and-tool-calls``, task 2.3).
+            desktop_context = None
+            raw_desktop_context = json_data.get("desktop_context")
+            if raw_desktop_context:
+                from integrations.desktop.errors import DesktopAccessError
+                from integrations.desktop.session_context import (
+                    parse_reference, verify_reference)
+                from channel.web.auth_handlers import _get_service
+                try:
+                    reference = parse_reference(raw_desktop_context)
+                    if reference is not None:
+                        if auth_context is None:
+                            raise DesktopAccessError(
+                                "a signed-in identity is required",
+                                "auth_required", 401)
+                        desktop_context = verify_reference(
+                            service=_get_service(),
+                            user_id=auth_context.user_id,
+                            tenant_id=auth_context.tenant_id,
+                            agent_id=resolved_agent_id,
+                            session_id=session_id,
+                            reference=reference,
+                        )
+                except DesktopAccessError as exc:
+                    logger.info(
+                        "[WebChannel] desktop_context rejected: %s", exc.code)
+                    return json.dumps({
+                        "status": "error",
+                        "code": getattr(exc, "code", "invalid_request"),
+                        "message": str(exc),
+                    }, ensure_ascii=False)
+
             # Append file references to the prompt (same format as QQ channel)
             context_attachments = []
             if attachments:
@@ -1625,22 +1966,30 @@ class WebChannel(ChatChannel):
                     if not fpath:
                         continue
                     if ftype == "workspace_ref":
-                        # Already lives in the workspace (dragged from the file panel
-                        # or picked with @); reference it in place so the agent opens
-                        # the original instead of an uploaded copy. Naming the kind
-                        # tells the agent whether to `read` it or `ls` into it.
-                        # Resolve relative to the session's working root (project
-                        # dir when opened, else the workspace).
-                        is_dir = os.path.isdir(
-                            os.path.join(
-                                _get_workspace_root(session_id, resolved_agent_id), fpath
-                            )
+                        # Already lives in the session's project (dragged from the
+                        # file panel or picked with @); reference it in place so the
+                        # agent opens the original instead of an uploaded copy.
+                        # Naming the kind tells the agent whether to `read` it or
+                        # `ls` into it.
+                        #
+                        # The reference is resolved through the same source the file
+                        # panel uses (task 3.6). For a local project that is the
+                        # local one: the marker says so, so the model reads it with
+                        # the local tools rather than asking the server for a
+                        # same-named file -- and a reference that cannot be resolved
+                        # is reported instead of silently dropped. Nothing is ever
+                        # uploaded from here.
+                        from agent.desktop_local.source_resolver import (
+                            reference_line, source_for_session,
                         )
-                        label = (
-                            i18n.t('工作空间目录', 'Workspace directory') if is_dir
-                            else i18n.t('工作空间文件', 'Workspace file')
-                        )
-                        file_refs.append(f"[{label}: {fpath}]")
+                        from common.runtime_identity import current_identity
+
+                        source = source_for_session(
+                            session_id, resolved_agent_id,
+                            server_root=_get_workspace_root(
+                                session_id, resolved_agent_id),
+                            identity=current_identity())
+                        file_refs.append(reference_line(source, fpath))
                     elif ftype == "image":
                         file_refs.append(f"[{i18n.t('图片', 'Image')}: {fpath}]")
                         # The path marker above stays (it is what history shows
@@ -1734,6 +2083,11 @@ class WebChannel(ChatChannel):
             # separate thread where ContextVars don't carry, so snapshot the
             # identity onto the context here and let _identity_for rebuild it.
             context["runtime_identity"] = _web_runtime_identity_snapshot()
+            if desktop_context is not None:
+                # The verified local-directory reference for this turn, consumed
+                # by the client_files tool via the bridge (task 2.3). Never the
+                # client's absolute path.
+                context["desktop_context"] = desktop_context
 
             threading.Thread(target=self.produce, args=(context,)).start()
 
@@ -1843,7 +2197,13 @@ class WebChannel(ChatChannel):
         with self._sse_streams_lock:
             state = self.sse_streams.get(request_id)
         if state is None:
-            yield b"data: {\"type\": \"error\", \"message\": \"invalid request_id\"}\n\n"
+            # Logs live in memory only, so a restart forgets every request the
+            # previous process was streaming. The reason lets the client say so
+            # instead of reporting a generic send failure.
+            yield (
+                b"data: {\"type\": \"error\", \"message\": \"invalid request_id\", "
+                b"\"reason\": \"unknown_request\"}\n\n"
+            )
             return
         try:
             cursor = max(0, int(after_seq))
@@ -2222,14 +2582,26 @@ class WebChannel(ChatChannel):
         except OSError as e:
             _log_bind_failure(host, port, e)
             raise
+        # WSGI cannot upgrade /api/desktop/connect. The bundled desktop has no
+        # reverse proxy, so run the existing gateway on a private loopback port.
+        if os.environ.get("COW_DESKTOP") == "1":
+            from channel.web.auth_handlers import _get_service
+            from integrations.desktop.local_gateway import local_gateway
+            try:
+                local_gateway.start(_get_service())
+            except Exception:
+                server.stop()
+                raise
         SERVING.set()
         _log_startup_banner()
         try:
             server.serve()
         except (KeyboardInterrupt, SystemExit):
-            server.stop()
+            self.stop()
 
     def stop(self):
+        from integrations.desktop.local_gateway import local_gateway
+        local_gateway.stop()
         if self._http_server:
             try:
                 self._http_server.stop()
@@ -2237,6 +2609,77 @@ class WebChannel(ChatChannel):
             except Exception as e:
                 logger.warning(f"[WebChannel] Error stopping HTTP server: {e}")
             self._http_server = None
+
+
+    def resumable_stream(self, session_id: str, agent_id: str = None) -> Optional[dict]:
+        """The unfinished reply a session is streaming, for a page loaded mid-reply.
+
+        Returns ``{"request_id", "stored_seq", "after_seq"}``: render the
+        transcript up to ``stored_seq`` and follow the stream after
+        ``after_seq``. ``stored_seq`` is None before the run has started, when
+        nothing of the reply is stored and the whole stream is to follow.
+        None when nothing is in flight.
+        """
+        try:
+            from agent.registry import get_agent_registry
+            owner = get_agent_registry().get(agent_id).id
+        except Exception:
+            owner = agent_id
+        for request_id, sid in reversed(list(self.request_to_session.items())):
+            if sid != session_id or self.request_to_agent.get(request_id) != owner:
+                continue
+            from common.runtime_identity import current_identity
+            identity = current_identity()
+            if identity.user_id and getattr(self, "request_owners", {}).get(request_id) != (
+                identity.tenant_id, identity.user_id, owner, session_id,
+            ):
+                continue
+            with self._sse_streams_lock:
+                state = self.sse_streams.get(request_id)
+            if state is None:
+                continue
+            with state.condition:
+                if state.closed or state.main_done or state.stream_complete:
+                    return None
+                return {
+                    "request_id": request_id,
+                    "stored_seq": state.stored_seq,
+                    "after_seq": state.stored_event_seq,
+                }
+        return None
+
+
+
+    def _mark_stored_point(self, request_id: str, advance_only: bool) -> None:
+        """Record where the stored transcript and the event log line up.
+
+        The run starts after its query is stored, and each step is stored
+        before turn_end is announced, so at either moment the newest stored
+        message and the newest event describe the same point. A step that did
+        not get stored leaves the transcript where it was; the earlier mark
+        then stays, rather than one that would skip the missing step.
+        """
+        with self._sse_streams_lock:
+            state = self.sse_streams.get(request_id)
+        session_id = self.request_to_session.get(request_id)
+        if state is None or not session_id:
+            return
+        try:
+            from agent.registry import get_agent_registry
+            from agent.memory import get_conversation_store
+            profile = get_agent_registry().get(self.request_to_agent.get(request_id))
+            stored_seq = get_conversation_store(profile.workspace).latest_seq(session_id)
+        except Exception as e:
+            logger.debug(f"[WebChannel] stored point skipped for {request_id}: {e}")
+            return
+        if stored_seq is None:
+            return
+        with state.condition:
+            if advance_only and state.stored_seq is not None and stored_seq <= state.stored_seq:
+                return
+            state.stored_seq = stored_seq
+            state.stored_event_seq = state.next_seq - 1
+
 
 
 _NAVIGATION_MODES = ("classic", "split")
@@ -2365,6 +2808,17 @@ def _skill_service(agent_id: str = ''):
     from agent.skills.service import SkillService
     from common import state_dir
     workspace_root = _get_workspace_root(agent_id=agent_id or None)
+    if agent_id:
+        from common.runtime_identity import current_identity
+        from agent.registry import get_agent_registry
+        ident = current_identity()
+        if ident.tenant_id:
+            from channel.web.auth_handlers import _require_context
+            from channel.web.web_channel import _require_tenant_agent_binding, _require_private_owner
+            ctx = _require_context(require_tenant=True)
+            _require_tenant_agent_binding(ctx, agent_id)
+            _require_private_owner(ctx, agent_id)
+        workspace_root = get_agent_registry().get(agent_id, require_enabled=False).workspace
     custom_dir = str(state_dir.skills_dir(base=workspace_root))
     return SkillService(SkillManager(custom_dir=custom_dir))
 
@@ -2427,6 +2881,7 @@ def _bind_channel_instance(channel_type: str, instance_id: str = "", agent_id: s
             # "follow the default Agent". No restart: this only changes routing.
             channel.bound_agent_id = agent_id
             channel.members = list(inst.members or [])
+            channel.peers = [dict(peer) for peer in (inst.peers or [])]
             logger.info(
                 f"[WebChannel] Channel '{target_id}' rebound to "
                 f"'{agent_id or 'default'}' with team {inst.members or []} (no restart)"
@@ -2553,10 +3008,18 @@ def _annotate_sessions_with_projects(store, result: dict, agent_id: Optional[str
                   users can find a conversation by where it belongs.
     """
     from agent.workspace import project_store
-    from common.state_dir import state_root_str
 
     project_map = project_store.get_project_map(agent_id)
-    default_workspace = state_root_str()
+    # The default space this Agent's project-less sessions sit in. Only the
+    # shared-Agent case moves: the caller's own `user/<user id>` directory
+    # (change ``use-personal-workspace-for-shared-agents``); every other shape
+    # keeps the pre-existing value.
+    from agent.workspace.personal_default import personal_default_dir
+    from common.runtime_identity import current_identity
+    from common.state_dir import state_root_str
+
+    default_workspace = (personal_default_dir(agent_id, current_identity())
+                         or state_root_str())
 
     for session in result.get("sessions") or []:
         path = project_map.get(session["session_id"])
@@ -2632,20 +3095,35 @@ def _agent_badge(profile) -> dict:
 
 
 def _roster_from_members(host_agent_id: str, members) -> List[dict]:
-    """Badge every reachable member of a conversation, host first."""
+    """Badge every reachable member of a conversation, host first.
+
+    Same rule as ``agent.team_addressing.roster_from_members``, reserved
+    "default" alias included: the browser and an IM group have to agree on who
+    is reachable. Deduped on the resolved id, because an alias and the id it
+    resolves to name one teammate.
+    """
+    from agent.multiagent import peer as peer_of
     from agent.registry import get_agent_registry
 
     if not members:
         return []
     registry = get_agent_registry()
     roster: List[dict] = []
+    seen: set = set()
     for agent_id in [host_agent_id, *members]:
-        if any(item["id"] == agent_id for item in roster):
-            continue
         try:
-            roster.append(_agent_badge(registry.get(agent_id)))
+            badge = _agent_badge(registry.get_addressed(agent_id))
         except Exception:
+            # A teammate hosted elsewhere: it has no local profile, but it is on
+            # the team and must be listed. It carries no avatar of its own here.
+            found = peer_of(agent_id)
+            if found is None:
+                continue
+            badge = {"id": found.id, "name": found.name or found.id, "avatar": ""}
+        if badge["id"] in seen:
             continue
+        seen.add(badge["id"])
+        roster.append(badge)
     return roster
 
 
@@ -3239,38 +3717,62 @@ def _mark_memory_dirty(agent_id: str = None) -> None:
         logger.warning(f"[WebChannel] Failed to mark memory index dirty: {e}")
 
 
+def _default_workspace(agent_id: Optional[str] = None, identity=None) -> str:
+    """The directory a session falls back to when no project is selected.
+
+    A tenant-shared Agent's members work inside their own
+    ``user/<user id>`` subtree (change
+    ``use-personal-workspace-for-shared-agents``), so that is the value that
+    matches the file panel's landing and the tools' cwd. A private Agent, an
+    Agent with no tenant binding, a coding Agent and a caller with no verified
+    end user all keep the pre-existing value — the installed default, or the
+    caller's tenant shared root in database mode.
+
+    Read-only: this never materializes the directory. An unsafe ``user``
+    container still raises, so a projection cannot quietly present the shared
+    root as if it were the member's own.
+    """
+    from common import state_dir
+    from common.runtime_identity import current_identity
+
+    ident = (identity if identity is not None else current_identity())
+    scoped = ident.derive(agent_id=agent_id)
+
+    from agent.workspace.personal_default import personal_default_dir
+
+    personal = personal_default_dir(agent_id, scoped)
+    if personal:
+        return personal
+    if scoped.user_id and scoped.tenant_id:
+        from auth.service import get_identity_service
+
+        shared = get_identity_service().tenant_shared_root(scoped.tenant_id)
+        return shared or state_dir.state_root_str(scoped)
+    return state_dir.state_root_str(scoped)
+
+
 def _project_state(session_id: str, agent_id: str = None) -> dict:
     """Assemble the project picker state: current selection + recents + root."""
     from agent.workspace import project_store
-    from common.runtime_identity import RuntimeIdentity, current_identity
-    from common import state_dir
+    from common.runtime_identity import current_identity
 
     current = project_store.get_project_dir(session_id, agent_id) if session_id else None
     ident = current_identity()
     if ident.user_id and ident.tenant_id:
-        # Database mode: resolve against the tenant's trusted shared root (same
-        # rule as _get_workspace_root), so the hint points at the caller's
-        # tenant root rather than a bare agent id (or host default workspace).
-        from auth.service import get_identity_service
-        shared = get_identity_service().tenant_shared_root(ident.tenant_id)
-        default_workspace = shared or state_dir.state_root_str(ident)
-        projects_root = project_store.user_projects_root() or project_store.projects_root()
+        projects_root = (project_store.user_projects_root()
+                         or project_store.projects_root())
     else:
-        # Legacy mode: default to the Agent this session belongs to so the
-        # selector hint matches the file panel's real root in multi-Agent setups.
-        default_workspace = state_dir.state_root_str(RuntimeIdentity(agent_id=agent_id))
         projects_root = project_store.projects_root()
     return {
         "current": (
             {"path": current, "name": os.path.basename(current) or current}
             if current else None
         ),
-        "default_workspace": default_workspace,
+        "default_workspace": _default_workspace(agent_id, ident),
         "projects_root": projects_root,
         "recents": project_store.list_recents(),
     }
 
 
 _DRIVES_SENTINEL = "__DRIVES__"
-
 

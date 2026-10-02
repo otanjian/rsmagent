@@ -14,8 +14,8 @@ Differences from `channel/wechatcom/` (企微自建应用):
        no native helper, so we call the HTTP endpoint directly.
 """
 import io
-import json
 import os
+import re
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -37,6 +37,7 @@ from channel.file_cache import get_file_cache
 from channel.wechat_kf.wechat_kf_cursor_store import CursorStore
 from channel.wechat_kf.wechat_kf_message import WechatKfMessage
 from common.log import logger
+from common.media_download import download_bytes
 from common.singleton import singleton
 from common.utils import (
     compress_imgfile,
@@ -56,6 +57,21 @@ except ImportError as e:  # voice features optional
 MAX_UTF8_LEN = 2048
 KF_API_BASE = "https://qyapi.weixin.qq.com/cgi-bin/kf"
 SYNC_MSG_LIMIT = 1000
+_MAX_REMOTE_IMAGE_BYTES = 20 * 1024 * 1024
+_MAX_REMOTE_VIDEO_BYTES = 10 * 1024 * 1024
+_MAX_REMOTE_MEDIA_SECONDS = 60
+
+# Both kf endpoints carry the token in the query string, and requests puts the
+# full URL -- query included -- into the message of the exception it raises
+# when a call fails ("Max retries exceeded with url: ..."). Logging that raw
+# writes a live credential into run.log, which the web console serves as a
+# complete file download.
+_TOKEN_QUERY_RE = re.compile(r"(access_token=)[^&\s\"')\]]+")
+
+
+def _scrub_secrets(text) -> str:
+    """Replace any ``access_token=...`` value in *text* before it is logged."""
+    return _TOKEN_QUERY_RE.sub(r"\1***", str(text))
 
 
 @singleton
@@ -137,6 +153,25 @@ class WechatKfChannel(ChatChannel):
     # ------------------------------------------------------------------
     # Outbound — implementing the abstract `send` contract
     # ------------------------------------------------------------------
+    @staticmethod
+    def _read_media(path_or_url: str, max_bytes: int) -> Optional[io.BytesIO]:
+        """Load media from a local ``file://`` path, or download a bounded http(s) URL.
+
+        The agent bridge delivers local files as ``file://`` URLs (see
+        ``bridge/agent_bridge.py::_create_file_reply``), which ``requests``
+        cannot fetch.
+        """
+        try:
+            if path_or_url.startswith("file://"):
+                with open(path_or_url[7:], "rb") as f:
+                    return io.BytesIO(f.read())
+            return io.BytesIO(download_bytes(
+                path_or_url, max_bytes, timeout=(5, 30), max_seconds=_MAX_REMOTE_MEDIA_SECONDS,
+            ))
+        except (requests.RequestException, OSError, ValueError) as e:
+            logger.warning("[wechat_kf] cannot load media: {}".format(type(e).__name__))
+            return None
+
     def send(self, reply: Reply, context: Context):
         receiver = context["receiver"]
         msg = context.kwargs.get("msg")
@@ -203,10 +238,9 @@ class WechatKfChannel(ChatChannel):
 
         elif reply.type == ReplyType.IMAGE_URL:
             img_url = reply.content
-            pic_res = requests.get(img_url, stream=True)
-            image_storage = io.BytesIO()
-            for block in pic_res.iter_content(1024):
-                image_storage.write(block)
+            image_storage = self._read_media(img_url, _MAX_REMOTE_IMAGE_BYTES)
+            if image_storage is None:
+                return
             sz = fsize(image_storage)
             if sz >= 10 * 1024 * 1024:
                 logger.info("[wechat_kf] image too large, compressing, sz={}".format(sz))
@@ -235,12 +269,17 @@ class WechatKfChannel(ChatChannel):
             self._send_image(external_userid, open_kfid, response["media_id"])
             logger.info("[wechat_kf] sendImage, receiver={}".format(receiver))
 
-        elif reply.type == ReplyType.VIDEO_URL:
+        # VIDEO is how ChatChannel hands over a locally generated video
+        # (channel/chat_channel.py: Reply(ReplyType.VIDEO, "file://" + path)),
+        # VIDEO_URL a remote one. `_read_media` takes both: it reads file://
+        # paths from disk and size-caps http(s) downloads.
+        elif reply.type in (ReplyType.VIDEO_URL, ReplyType.VIDEO):
             video_url = reply.content
+            video_storage = self._read_media(video_url, _MAX_REMOTE_VIDEO_BYTES)
+            if video_storage is None:
+                return
             try:
-                response = self.client.media.upload(
-                    "video", requests.get(video_url, stream=True).content
-                )
+                response = self.client.media.upload("video", video_storage)
             except WeChatClientException as e:
                 logger.error("[wechat_kf] upload video failed: {}".format(e))
                 return
@@ -249,12 +288,19 @@ class WechatKfChannel(ChatChannel):
 
         elif reply.type == ReplyType.FILE:
             file_path = reply.content
+            # The agent bridge may attach a summary of the file
+            # (bridge/agent_bridge.py::_create_file_reply); deliver it as a
+            # text bubble so the user sees the description, not just a file.
+            text_content = getattr(reply, "text_content", "") or ""
+            if text_content:
+                self._send_text(external_userid, open_kfid, text_content)
+                time.sleep(0.3)
+            local_path = file_path[7:] if file_path.startswith("file://") else file_path
             try:
-                with open(file_path, "rb") as f:
-                    response = self.client.media.upload(
-                        "file", (os.path.basename(file_path), f.read())
-                    )
-            except WeChatClientException as e:
+                with open(local_path, "rb") as f:
+                    data = f.read()
+                response = self.client.media.upload("file", (os.path.basename(local_path), data))
+            except (OSError, WeChatClientException) as e:
                 logger.error("[wechat_kf] upload file failed: {}".format(e))
                 return
             self._send_file(external_userid, open_kfid, response["media_id"])
@@ -312,8 +358,10 @@ class WechatKfChannel(ChatChannel):
             self._initialize_cursor(token, open_kfid)
             return
 
-        msgs = self._pull_messages(token, open_kfid, existing_cursor)
+        msgs, next_cursor = self._pull_messages(token, open_kfid, existing_cursor)
         if not msgs:
+            if next_cursor != existing_cursor:
+                self.cursor_store.set(open_kfid, next_cursor)
             return
         file_cache = get_file_cache()
         for raw in msgs:
@@ -346,6 +394,7 @@ class WechatKfChannel(ChatChannel):
             # so the downstream agent can pick them up via the text content.
             # Paths are already under agent_workspace/tmp (see
             # WechatKfMessage._get_tmp_dir), so a relative ref also works.
+            clear_cached_files = False
             if kf_msg.ctype == ContextType.TEXT:
                 cached_files = file_cache.get(session_id)
                 if cached_files:
@@ -357,7 +406,7 @@ class WechatKfChannel(ChatChannel):
                         else:
                             refs.append(f"[文件: {fpath}]")
                     kf_msg.content = kf_msg.content + "\n" + "\n".join(refs)
-                    file_cache.clear(session_id)
+                    clear_cached_files = True
 
             context = self._compose_context(
                 kf_msg.ctype,
@@ -367,7 +416,13 @@ class WechatKfChannel(ChatChannel):
             )
             if context:
                 self.produce(context)
+                if clear_cached_files:
+                    file_cache.clear(session_id)
             time.sleep(0.05)  # tiny gap between messages of the same batch
+        # A failed produce() must leave the cursor unchanged so the next
+        # callback can retry the batch instead of silently losing messages.
+        if next_cursor != existing_cursor:
+            self.cursor_store.set(open_kfid, next_cursor)
 
     def _initialize_cursor(self, token: str, open_kfid: str):
         """
@@ -396,10 +451,11 @@ class WechatKfChannel(ChatChannel):
             "skipped {} historical messages".format(open_kfid, total_skipped)
         )
 
-    def _pull_messages(self, token: str, open_kfid: str, next_cursor: Optional[str]) -> list:
-        """Loop sync_msg until `has_more` is false. Returns raw msg dicts."""
+    def _pull_messages(self, token: str, open_kfid: str, next_cursor: Optional[str]) -> tuple:
+        """Pull raw messages and return the last successful page's cursor."""
         collected = []
         cursor = next_cursor or ""
+        last_cursor = cursor
         while True:
             data = self._call_sync_msg(token, open_kfid, cursor)
             if data is None:
@@ -414,7 +470,7 @@ class WechatKfChannel(ChatChannel):
                     collected.append(item)
             cursor_after = data.get("next_cursor") or ""
             if cursor_after:
-                self.cursor_store.set(open_kfid, cursor_after)
+                last_cursor = cursor_after
             if not data.get("has_more"):
                 break
             if not cursor_after or cursor_after == cursor:
@@ -426,7 +482,7 @@ class WechatKfChannel(ChatChannel):
         logger.info(
             "[wechat_kf] pulled {} messages for open_kfid={}".format(len(collected), open_kfid)
         )
-        return collected
+        return collected, last_cursor
 
     def _call_sync_msg(self, token: str, open_kfid: str, cursor: str) -> Optional[dict]:
         # `client.access_token` is the cached string property; do not use
@@ -443,7 +499,7 @@ class WechatKfChannel(ChatChannel):
         try:
             resp = requests.post(url, json=payload, timeout=10).json()
         except Exception as e:
-            logger.error(f"[wechat_kf] sync_msg request failed: {e}")
+            logger.error(f"[wechat_kf] sync_msg request failed: {_scrub_secrets(e)}")
             return None
 
         if resp.get("errcode") != 0:
@@ -462,8 +518,8 @@ class WechatKfChannel(ChatChannel):
         try:
             resp = requests.post(url, json=payload, timeout=10).json()
         except Exception as e:
-            logger.error(f"[wechat_kf] send_msg request failed: {e}")
-            return {"errcode": -1, "errmsg": str(e)}
+            logger.error(f"[wechat_kf] send_msg request failed: {_scrub_secrets(e)}")
+            return {"errcode": -1, "errmsg": _scrub_secrets(e)}
         if resp.get("errcode") != 0:
             logger.error(f"[wechat_kf] send_msg failed, payload={payload}, resp={resp}")
         return resp

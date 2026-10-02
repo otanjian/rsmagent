@@ -720,6 +720,16 @@ html[data-web-palette] #main-content > .workbench-header {
     min-height: 64px;
     gap: 16px;
     padding: 0 28px;
+    /* Electron: empty header space can drag the window; interactive chips keep
+       no-drag so bell / tenant / workspace stay clickable under a covering
+       WebContentsView (shell-covering clears the parent titlebar drag). */
+    -webkit-app-region: drag;
+}
+html[data-web-palette] #main-content > .workbench-header :is(
+    button, a, input, select, textarea, [role='button'],
+    #tenant-selector, #todo-bell-btn, #workspace-toggle-btn
+) {
+    -webkit-app-region: no-drag;
 }
 .workbench-context { display: flex; align-items: center; gap: 16px; min-width: 0; }
 .workbench-page-title { flex-shrink: 0; }
@@ -927,15 +937,20 @@ html[data-web-palette] #composer-card .composer-hint { margin: 0; padding: 0 4px
 }
 #chat-main.chat-home .composer-toolbar { gap: 10px; }
 #chat-main.chat-home .composer-send-btn { width: 36px; height: 36px; border-radius: 11px; }
-/* Empty-home popovers open below the composer: long command/model lists must
-   not be clipped against the top of the scrollable welcome area. Because the
-   hero is centred, the room left above and below it is the same, roughly
-   (viewport - header - hero) / 2, so cap the list there and let it scroll
-   inside rather than be cut off by the container's overflow. The floor only
-   applies once the window is too short to honour the exact value. */
-#chat-main.chat-home :is(#attach-menu, #slash-menu, #mention-menu, #workspace-selector-menu, #model-selector-menu, #composer-agent-menu) {
+/* Empty-home: long command/model lists open below the composer so they are not
+   clipped against the top of the scrollable welcome area. Cap height to the
+   room left under the centred hero and scroll inside the menu. Toolbar chip
+   menus (attach / workspace / agent) stay above the composer instead — the
+   hero sits low in the viewport, so opening those downward clips against
+   #chat-main's overflow edge. */
+#chat-main.chat-home :is(#slash-menu, #mention-menu, #model-selector-menu) {
     top: calc(100% + 8px);
     bottom: auto;
+    max-height: max(96px, calc(100dvh - var(--home-header-h) - var(--home-hero-offset) - var(--home-hero-h) - 24px));
+}
+#chat-main.chat-home :is(#attach-menu, #workspace-selector-menu, #composer-agent-menu) {
+    top: auto;
+    bottom: calc(100% + 8px);
     max-height: max(96px, calc(100dvh - var(--home-header-h) - var(--home-hero-offset) - var(--home-hero-h) - 24px));
 }
 #chat-main.chat-home .home-suggestions { order: 3; margin-top: clamp(32px, 4.4vh, 52px); }

@@ -107,6 +107,98 @@ def _workspace_path_allowed(ctx, roots: list):
     return allowed
 
 
+def _panel_source(ctx, session_id, agent_id, *, server_root=None):
+    """The one source the file panel is allowed to show (task 3.6).
+
+    A session bound to a local project must be served *that* project: reading
+    the server's workspace instead would show a file tree the session's tools
+    will never touch, and a refused local project must be reported rather than
+    papered over with server files. A session with no desktop target keeps the
+    pre-existing server root untouched.
+
+    The returned :class:`Source` is internal -- ``root`` is an absolute local
+    directory and never goes into a response (see ``Source.describe``).
+    """
+    from agent.desktop_local.source_resolver import source_for_session
+    from common.runtime_identity import current_identity
+
+    if server_root is None:
+        from channel.web.web_channel import _get_workspace_root
+
+        server_root = _get_workspace_root(session_id, agent_id)
+    return source_for_session(session_id, agent_id,
+                              server_root=server_root,
+                              identity=current_identity())
+
+
+def _panel_service(ctx, session_id, agent_id):
+    """``(service, source)`` for the panel, or a refusal the caller must report.
+
+    Raises ``web.HTTPError`` (503, JSON body) for a desktop session whose local
+    project is not available here. That is the point of the shared resolver: the
+    panel says "the local project is unavailable" instead of silently listing
+    the server directory, which is the "回落默认目录" the requirement forbids.
+    """
+    from agent.workspace.service import WorkspaceService
+    from channel.web.web_channel import _workspace_service
+
+    source = _panel_source(ctx, session_id, agent_id)
+    if source.is_desktop:
+        if not source.available:
+            raise web.HTTPError(
+                "503 Service Unavailable",
+                {"Content-Type": "application/json"},
+                json.dumps({
+                    "status": "error",
+                    "code": "local_project_unavailable",
+                    "message": source.refusal,
+                    "source": source.describe(),
+                }, ensure_ascii=False),
+            )
+        return WorkspaceService(source.root), source
+    return _workspace_service(session_id, agent_id), source
+
+
+def _panel_relative(source, raw, *, allow_root: bool = False):
+    """``(relative, refusal)`` for a path the panel/editor addressed.
+
+    Goes through the shared resolver so a local path is normalized and
+    containment-checked exactly like an `@` reference or a tool argument; a
+    local project never falls back to the server's path rules.
+    """
+    from agent.desktop_local.source_resolver import resolve_reference
+
+    if source.is_desktop:
+        resolved = resolve_reference(source, raw, allow_root=allow_root)
+        if resolved.refusal:
+            return None, resolved.refusal
+        return resolved.relative, None
+    if allow_root and not str(raw or "").strip():
+        return "", None
+    return str(raw or ""), None
+
+
+def _panel_reference(source, raw) -> Any:
+    """One resolved reference for the panel/editor, through the shared resolver."""
+    from agent.desktop_local.source_resolver import resolve_reference
+
+    return resolve_reference(source, raw)
+
+
+def _panel_entry(source, entry: dict) -> dict:
+    """Mark an entry with the source it came from.
+
+    A desktop entry is a *local* reference: it gets no server ``raw_url`` /
+    ``preview_url`` (the server cannot serve a device file, and minting one would
+    invite the client to fetch a copy) and carries ``source: "desktop"`` so the
+    client resolves it through the local project instead of ``@``-uploading it.
+    """
+    entry["source"] = source.kind
+    if source.is_desktop:
+        entry["local"] = True
+    return entry
+
+
 def _visible_entries(ctx, svc, entries: list) -> list:
     """Drop entries the caller may not read (private-Agent / user-subtree).
 
@@ -131,14 +223,32 @@ class WorkspaceTreeHandler:
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _decorate_entry
         from channel.web.web_channel import _visible_entries
-        from channel.web.web_channel import _workspace_service
         web.header('Content-Type', 'application/json; charset=utf-8')
         with _db_scope() as ctx:
             try:
                 params = web.input(path='', show_hidden='', session='', agent='')
                 agent_id = _workspace_request_scope(
                     ctx, params.session or None, params.agent or None)
-                svc = _workspace_service(params.session or None, agent_id)
+                # One source for the whole panel (task 3.6): the local project
+                # when the session opened one, the server root otherwise. A local
+                # project that cannot be honoured refuses here rather than
+                # listing the server directory.
+                svc, source = _panel_service(
+                    ctx, params.session or None, agent_id)
+                if source.is_desktop:
+                    relative, refusal = _panel_relative(
+                        source, params.path, allow_root=True)
+                    if refusal:
+                        return json.dumps({"status": "error", "code": "invalid_reference",
+                                           "message": refusal}, ensure_ascii=False)
+                    result = svc.list_dir(relative,
+                                          show_hidden=params.show_hidden == '1')
+                    result["entries"] = [
+                        _panel_entry(source, e) for e in result["entries"]
+                    ]
+                    result["source"] = source.describe()
+                    return json.dumps({"status": "success", **result},
+                                      ensure_ascii=False)
                 # Filter inside the listing (before the entry cap) so another
                 # member's user/<id> neither appears nor crowds out the
                 # caller's own entries; the post-filter below is the same rule
@@ -155,7 +265,7 @@ class WorkspaceTreeHandler:
                                       show_hidden=params.show_hidden == '1',
                                       allow_entry=allowed)
                 result["entries"] = [
-                    _decorate_entry(svc, e)
+                    _panel_entry(source, _decorate_entry(svc, e))
                     for e in _visible_entries(ctx, svc, result["entries"])
                 ]
                 return json.dumps({"status": "success", **result}, ensure_ascii=False)
@@ -174,7 +284,6 @@ class WorkspaceSearchHandler:
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _decorate_entry
         from channel.web.web_channel import _visible_entries
-        from channel.web.web_channel import _workspace_service
         web.header('Content-Type', 'application/json; charset=utf-8')
         with _db_scope() as ctx:
             try:
@@ -185,7 +294,16 @@ class WorkspaceSearchHandler:
                     limit = 30
                 agent_id = _workspace_request_scope(
                     ctx, params.session or None, params.agent or None)
-                svc = _workspace_service(params.session or None, agent_id)
+                svc, source = _panel_service(
+                    ctx, params.session or None, agent_id)
+                if source.is_desktop:
+                    result = svc.search(params.q, limit=limit)
+                    result["results"] = [
+                        _panel_entry(source, e) for e in result["results"]
+                    ]
+                    result["source"] = source.describe()
+                    return json.dumps({"status": "success", **result},
+                                      ensure_ascii=False)
                 # Prune before descending: another member's user/<id> must not
                 # contribute results or consume the search budget.
                 result = svc.search(
@@ -193,7 +311,7 @@ class WorkspaceSearchHandler:
                     allow_dir=_workspace_path_allowed(
                         ctx, _db_file_root_owners(ctx)))
                 result["results"] = [
-                    _decorate_entry(svc, e)
+                    _panel_entry(source, _decorate_entry(svc, e))
                     for e in _visible_entries(ctx, svc, result["results"])
                 ]
                 return json.dumps({"status": "success", **result}, ensure_ascii=False)
@@ -230,7 +348,27 @@ class WorkspaceResolveHandler:
 
                 agent_id = _workspace_request_scope(
                     ctx, params.session or None, params.agent or None)
-                svc = _workspace_service(params.session or None, agent_id)
+                svc, source = _panel_service(
+                    ctx, params.session or None, agent_id)
+                if source.is_desktop:
+                    # A local project is addressed by relative id only: an
+                    # absolute path here is refused instead of being authorized
+                    # against server roots, because the two sources are not
+                    # interchangeable (task 3.6).
+                    resolved = _panel_reference(source, raw_path)
+                    if resolved.refusal:
+                        return json.dumps({"status": "error", "code": "invalid_reference",
+                                           "message": resolved.refusal},
+                                          ensure_ascii=False)
+                    entry = svc.stat_file(resolved.relative)
+                    entry = _panel_entry(source, entry)
+                    entry["kind"] = ("directory" if entry["is_dir"]
+                                     else classify_kind(resolved.absolute))
+                    entry["previewable"] = bool(
+                        not entry["is_dir"] and is_previewable(entry["kind"]))
+                    return json.dumps({"status": "success", "file": entry,
+                                       "source": source.describe()},
+                                      ensure_ascii=False)
                 if os.path.isabs(os.path.expanduser(raw_path)):
                     abs_path = os.path.realpath(os.path.expanduser(raw_path))
                     # Absolute paths are authorized against the *caller's*
@@ -289,15 +427,17 @@ class WorkspaceResolveHandler:
 class WorkspaceMetaHandler:
     def GET(self):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _workspace_service
         web.header('Content-Type', 'application/json; charset=utf-8')
         with _db_scope() as ctx:
             try:
                 params = web.input(session='', agent='')
                 agent_id = _workspace_request_scope(
                     ctx, params.session or None, params.agent or None)
-                svc = _workspace_service(params.session or None, agent_id)
-                return json.dumps({"status": "success", **svc.meta()}, ensure_ascii=False)
+                svc, source = _panel_service(
+                    ctx, params.session or None, agent_id)
+                return json.dumps({"status": "success", **svc.meta(),
+                                   "source": source.describe()},
+                                  ensure_ascii=False)
             except web.HTTPError:
                 raise
             except Exception as e:
@@ -316,6 +456,7 @@ class WorkspaceReadHandler:
     def GET(self):
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _editable_target
+        from channel.web.web_channel import _is_system_asset_rel
         web.header('Content-Type', 'application/json; charset=utf-8')
         with _db_scope() as ctx:
             try:
@@ -325,6 +466,21 @@ class WorkspaceReadHandler:
                     return json.dumps({"status": "error", "message": "path is required"})
                 agent_id = _workspace_request_scope(
                     ctx, params.session or None, params.agent or None)
+                svc, source = _panel_service(
+                    ctx, params.session or None, agent_id)
+                if source.is_desktop and not _is_system_asset_rel(raw_path):
+                    # The editor must read the file the panel showed, on the same
+                    # source: `_editable_target` resolves against server roots and
+                    # would silently open a same-named server file instead. Memory
+                    # and knowledge assets keep their server-side home.
+                    resolved = _panel_reference(source, raw_path)
+                    if resolved.refusal:
+                        return json.dumps({"status": "error", "code": "invalid_reference",
+                                           "message": resolved.refusal},
+                                          ensure_ascii=False)
+                    return json.dumps({"status": "success",
+                                       **svc.read_text(resolved.relative)},
+                                      ensure_ascii=False)
                 svc, rel = _editable_target(
                     raw_path, params.session or None, agent_id, ctx=ctx)
                 return json.dumps({"status": "success", **svc.read_text(rel)}, ensure_ascii=False)
@@ -354,7 +510,8 @@ class WorkspaceWriteHandler:
     def POST(self):
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _editable_target
-        from channel.web.web_channel import _is_memory_rel
+        from agent.tools.utils.memory_path import indexes_rel_path
+        from channel.web.web_channel import _is_system_asset_rel
         from channel.web.web_channel import _mark_memory_dirty
         web.header('Content-Type', 'application/json; charset=utf-8')
         with _db_scope() as ctx:
@@ -375,8 +532,25 @@ class WorkspaceWriteHandler:
 
                 agent_id = _workspace_request_scope(
                     ctx, body.get("session") or None, body.get("agent") or None)
-                svc, rel = _editable_target(
-                    raw_path, body.get("session") or None, agent_id, ctx=ctx)
+                # The session's own source decides, not the body (task 3.6): a
+                # desktop session must save the file the panel showed -- the same
+                # source it read from -- while memory / knowledge maintenance keeps
+                # its original server-side home and permissions.
+                svc, source = _panel_service(
+                    ctx, body.get("session") or None, agent_id)
+                if source.is_desktop and not _is_system_asset_rel(raw_path):
+                    resolved = _panel_reference(source, raw_path)
+                    if resolved.refusal:
+                        return json.dumps({"status": "error", "code": "invalid_reference",
+                                           "message": resolved.refusal},
+                                          ensure_ascii=False)
+                    rel = resolved.relative
+                elif source.is_desktop:
+                    svc, rel = _editable_target(
+                        raw_path, body.get("session") or None, agent_id, ctx=ctx)
+                else:
+                    svc, rel = _editable_target(
+                        raw_path, body.get("session") or None, agent_id, ctx=ctx)
                 try:
                     result = svc.write_text(rel, content, expected_mtime=body.get("expected_mtime"))
                 except WorkspaceConflictError as e:
@@ -384,7 +558,7 @@ class WorkspaceWriteHandler:
 
                 # A memory file feeds the vector index; re-embed it on edit so search
                 # doesn't keep returning the stale pre-edit text.
-                if _is_memory_rel(rel):
+                if indexes_rel_path(rel):
                     _mark_memory_dirty(agent_id)
 
                 logger.info(f"[WebChannel] Workspace file saved: {result['path']} ({result['size']} bytes)")
@@ -537,12 +711,14 @@ class ProjectSelectHandler:
                     )
                 # Retarget an already-instantiated session agent immediately, so the
                 # change takes effect on the next message without a fresh get_agent.
+                # A cleared project resolves to the session default (the caller's
+                # own directory for a shared Agent), not to the shared root.
                 try:
                     from bridge.bridge import Bridge
                     ab = Bridge().get_agent_bridge()
                     agent = ab.get_cached_agent(session_id, agent_id)
-                    if agent is not None and getattr(agent, "apply_project_dir", None):
-                        agent.apply_project_dir(applied)
+                    if agent is not None:
+                        ab.apply_session_workspace(agent, session_id, agent_id)
                 except Exception as e:
                     logger.debug(f"[WebChannel] project apply-to-agent skipped: {e}")
                 state = _project_state(session_id, agent_id)
@@ -582,8 +758,8 @@ class ProjectCreateHandler:
                         from bridge.bridge import Bridge
                         ab = Bridge().get_agent_bridge()
                         agent = ab.get_cached_agent(session_id, agent_id)
-                        if agent is not None and getattr(agent, "apply_project_dir", None):
-                            agent.apply_project_dir(path)
+                        if agent is not None:
+                            ab.apply_session_workspace(agent, session_id, agent_id)
                     except Exception as e:
                         logger.debug(f"[WebChannel] project apply-to-agent skipped: {e}")
                 state = _project_state(session_id or None, agent_id)

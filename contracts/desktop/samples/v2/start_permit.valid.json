@@ -1,0 +1,11 @@
+{
+  "permit_id": "permit_example",
+  "command_id": "cmd_example",
+  "run_id": "run_example",
+  "workspace_id": "ws_example",
+  "params_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "grant_version": 3,
+  "server_time": 1780000000,
+  "expires_at": 1780000010,
+  "permission_mode": "workspace-write"
+}

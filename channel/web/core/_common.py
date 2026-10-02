@@ -11,11 +11,13 @@ before, the handlers and the channel had to share a module to share a helper.
 """
 
 import base64
+import errno
 import hashlib
 import hmac
 import json
 import os
 import re
+import tempfile
 import threading
 import time
 import uuid
@@ -30,6 +32,7 @@ from bridge.context import ContextType
 from channel.chat_message import ChatMessage
 from common.channel_registry import get_channel_manager
 from common.log import logger
+from common.utils import constant_time_equals
 from config import conf, get_data_root, read_config_template
 
 
@@ -68,7 +71,7 @@ def _desktop_token_matches() -> bool:
         return False
     env = getattr(web.ctx, "env", {}) or {}
     provided = env.get("HTTP_X_COW_DESKTOP_TOKEN", "")
-    return bool(provided) and hmac.compare_digest(provided, expected)
+    return bool(provided) and constant_time_equals(provided, expected)
 
 
 @dataclass
@@ -85,6 +88,10 @@ class SSEStreamState:
     stream_complete: bool = False
     completed_at: Optional[float] = None
     closed: bool = False
+    # Where the stored transcript and this log last lined up: messages up to
+    # ``stored_seq`` hold exactly what events up to ``stored_event_seq`` showed.
+    stored_seq: Optional[int] = None
+    stored_event_seq: int = 0
 
 
 def _read_config_file_for_write() -> dict:
@@ -97,12 +104,81 @@ def _read_config_file_for_write() -> dict:
     """
     config_path = os.path.join(get_data_root(), "config.json")
     if os.path.exists(config_path):
-        # utf-8-sig tolerates a UTF-8 BOM (common when the file was edited with
-        # Windows Notepad / PowerShell). Plain utf-8 would raise "Unexpected
-        # UTF-8 BOM" here and fail every config write from the web console.
         with open(config_path, "r", encoding="utf-8-sig") as f:
             return json.load(f)
     return read_config_template()
+
+
+def _write_config_file_for_write(config_path: str, data: dict) -> None:
+    """Write ``data`` to ``config_path`` without truncating the old file first.
+
+    Every console save reads config.json, changes a few keys and writes the whole
+    dict back. Writing straight into ``config_path`` truncates it before the new
+    bytes are there, so anything that fails while serialising -- a value json
+    cannot encode, a full disk, the process being killed -- leaves a half-written
+    file. That is worse here than for a cache: ``load_config`` treats an
+    unparseable user config as corruption, and on the desktop client the self-heal
+    path quarantines the file and replaces it with config-template.json, so every
+    API key, channel credential and custom provider goes with it. A source
+    deployment instead raises and never starts. Building the result beside the
+    file and replacing it means a failed save leaves whatever was there before.
+    """
+    # Write through a symlinked config.json rather than replacing the link.
+    config_path = os.path.realpath(config_path)
+    # A unique temp name per save: the console handlers run on a thread pool
+    # without a lock, and a shared name would let two overlapping saves truncate
+    # and rename each other's file.
+    try:
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=".config.", suffix=".tmp", dir=os.path.dirname(config_path) or "."
+        )
+    except PermissionError as e:
+        # A writable config.json in a directory that is not: nothing to rename
+        # beside it, so serialise fully first and write in place.
+        if not os.path.isfile(config_path):
+            raise
+        text = json.dumps(data, indent=4, ensure_ascii=False)
+        logger.warning(f"[WebChannel] Cannot create a temp file beside config.json ({e}), writing in place")
+        with open(config_path, "w", encoding="utf-8") as dst:
+            dst.write(text)
+            dst.flush()
+            os.fsync(dst.fileno())
+        return
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        # mkstemp creates the file 0600 and os.replace swaps the inode, so carry
+        # over the mode config.json already had (e.g. a user-tightened 0600).
+        try:
+            os.chmod(tmp_path, os.stat(config_path).st_mode & 0o7777)
+        except OSError:
+            pass
+        try:
+            os.replace(tmp_path, config_path)
+        except OSError as e:
+            # Some targets cannot be renamed over even though they can be
+            # written: a single-file bind mount (EBUSY / EXDEV), or on Windows a
+            # file another handle still has open (PermissionError). The document
+            # is already fully serialised, so writing it in place can no longer
+            # leave a half-encoded file behind.
+            if not (isinstance(e, PermissionError) or e.errno in (errno.EBUSY, errno.EXDEV)):
+                raise
+            logger.warning(f"[WebChannel] Atomic replace of config.json failed ({e}), writing in place")
+            with open(tmp_path, "r", encoding="utf-8") as src:
+                text = src.read()
+            with open(config_path, "w", encoding="utf-8") as dst:
+                dst.write(text)
+                dst.flush()
+                os.fsync(dst.fileno())
+            os.remove(tmp_path)
+    except Exception:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def _get_web_password() -> str:
@@ -191,7 +267,7 @@ def _verify_auth_token(token):
         ts_hex.encode(),
         hashlib.sha256,
     ).hexdigest()
-    return hmac.compare_digest(sig, expected)
+    return constant_time_equals(sig, expected)
 
 
 def _get_bearer_token():
@@ -215,8 +291,13 @@ def _get_query_token():
     and file:// cookies are unreliable, so the desktop client passes the token
     in the query string for /stream and /api/logs.
     """
+    # Read the query string alone: web.input() would also consume a multipart
+    # body, leaving nothing for handlers that parse the form themselves.
     try:
-        return web.input(token="").token or ""
+        from urllib.parse import parse_qs
+
+        values = parse_qs(web.ctx.env.get("QUERY_STRING") or "").get("token") or [""]
+        return values[-1] or ""
     except Exception:
         return ""
 
@@ -559,6 +640,35 @@ def _ensure_list(value):
     return [value]
 
 
+def _multipart_lists(max_parts: int) -> dict:
+    """
+    The request's multipart form, every field as a list of all its values.
+
+    Newer web.py parses forms with the ``multipart`` package, keeps only the
+    last value of a repeated field, and inherits that package's 128-part cap.
+    A folder upload repeats ``files`` and ``paths`` once per file, so the body
+    is parsed here directly whenever that package is what web.py relies on.
+    """
+    multipart = getattr(getattr(web, "webapi", None), "multipart", None)
+    env = web.ctx.env
+    content_type = (env.get("CONTENT_TYPE") or "").lower()
+    if not hasattr(multipart, "parse_form_data") or not content_type.startswith("multipart/"):
+        return {key: _ensure_list(value) for key, value in _raw_web_input().items()}
+    forms, files = multipart.parse_form_data(
+        environ=env, ignore_errors=False, part_limit=max_parts,
+    )
+    return {
+        key: forms.getall(key) + files.getall(key)
+        for key in set(forms.keys()) | set(files.keys())
+    }
+
+
+def _first_value(params: dict, key: str, default=None):
+    """The single value of a field from ``_multipart_lists`` output."""
+    values = params.get(key) or []
+    return values[0] if values else default
+
+
 class WebMessage(ChatMessage):
     def __init__(
             self,
@@ -619,20 +729,35 @@ def _agent_badge(profile) -> dict:
 
 
 def _roster_from_members(host_agent_id: str, members) -> List[dict]:
-    """Badge every reachable member of a conversation, host first."""
+    """Badge every reachable member of a conversation, host first.
+
+    Same rule as ``agent.team_addressing.roster_from_members``, reserved
+    "default" alias included: the browser and an IM group have to agree on who
+    is reachable. Deduped on the resolved id, because an alias and the id it
+    resolves to name one teammate.
+    """
+    from agent.multiagent import peer as peer_of
     from agent.registry import get_agent_registry
 
     if not members:
         return []
     registry = get_agent_registry()
     roster: List[dict] = []
+    seen: set = set()
     for agent_id in [host_agent_id, *members]:
-        if any(item["id"] == agent_id for item in roster):
-            continue
         try:
-            roster.append(_agent_badge(registry.get(agent_id)))
+            badge = _agent_badge(registry.get_addressed(agent_id))
         except Exception:
+            # A teammate hosted elsewhere: it has no local profile, but it is on
+            # the team and must be listed. It carries no avatar of its own here.
+            found = peer_of(agent_id)
+            if found is None:
+                continue
+            badge = {"id": found.id, "name": found.name or found.id, "avatar": ""}
+        if badge["id"] in seen:
             continue
+        seen.add(badge["id"])
+        roster.append(badge)
     return roster
 
 

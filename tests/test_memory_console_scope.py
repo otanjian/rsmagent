@@ -201,7 +201,7 @@ def test_a_member_lists_and_reads_their_own_personal_memory(world):
         assert row["size"] > 0
         assert row["updated_at"]
         assert row["revision"]
-        assert row["actions"] == {"edit": False, "delete": False}, "read-only surface"
+        assert row["actions"] == {"edit": True, "delete": True}, "owner management surface"
 
     content = world.get("/api/memory/content?scope=personal&filename=MEMORY.md",
                         token=world.alice_token)
@@ -400,8 +400,8 @@ def test_an_unknown_scope_is_refused(world):
 
 def test_an_unknown_category_is_refused(world):
     for path in ("/api/memory?scope=personal&category=dreams",
-                 "/api/memory?scope=personal&category=dream",
-                 "/api/memory/content?scope=personal&category=evolution"
+                 "/api/memory?scope=personal&category=invalid",
+                 "/api/memory/content?scope=personal&category=invalid"
                  "&filename=MEMORY.md"):
         response = world.get(path, token=world.alice_token)
         assert _status(response) == 400, (path, response.data)
@@ -488,9 +488,9 @@ def test_an_intermediate_directory_symlink_is_refused(world):
     os.symlink(os.path.join(bob_root, "memory"), os.path.join(alice_root, "memory"))
 
     listed = world.get("/api/memory?scope=personal", token=world.alice_token)
-    assert _status(listed) == 200, listed.data
+    assert _status(listed) == 403, listed.data
     assert "BOB-SECRET" not in listed.data.decode("utf-8")
-    assert [row["filename"] for row in _body(listed)["list"]] == ["MEMORY.md"]
+    assert _body(listed)["code"] == "unsafe_path"
 
     content = world.get(
         "/api/memory/content?scope=personal&filename=memory/notes.md",

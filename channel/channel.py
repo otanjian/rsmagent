@@ -39,6 +39,10 @@ class Channel(object):
         # the shared delegate/@mention machinery treats the conversation as a
         # team, exactly like a Web team conversation.
         self.members = []
+        # Connection profiles for teammates that live in another process, so the
+        # owner can hand work to them through the transport. Empty when every
+        # member is local, which is the only shape a stand-alone install produces.
+        self.peers = []
 
     def cfg(self, key, default=None):
         """Read a config value, preferring this instance's credential override.
@@ -55,7 +59,7 @@ class Channel(object):
         return conf().get(key, default)
 
     def apply_instance(self, instance_id="", bound_agent_id="", credentials=None,
-                       members=None, tenant_id=""):
+                       members=None, tenant_id="", peers=None):
         """Attach multi-instance identity, credentials and team to this channel.
 
         Called by the factory/manager only on the new multi-instance path;
@@ -72,6 +76,8 @@ class Channel(object):
             self.members = list(members)
         if tenant_id:
             self.tenant_id = tenant_id
+        if peers is not None:
+            self.peers = [dict(p) for p in peers]
         return self
 
     def stamp_instance_context(self, context):
@@ -104,6 +110,9 @@ class Channel(object):
         members = getattr(self, "members", None)
         if members and "members" not in context:
             context["members"] = list(members)
+        peers = getattr(self, "peers", None)
+        if peers and "peers" not in context:
+            context["peers"] = [dict(p) for p in peers]
         return context
 
     def startup(self):

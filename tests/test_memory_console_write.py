@@ -306,20 +306,32 @@ def test_every_write_verb_is_refused_for_a_foreign_target(world):
         assert _read(path) == "ALICE ONLY\n"
 
 
-def test_the_personal_domain_is_not_reachable_through_these_verbs(world):
-    """One write path per resource: the personal domain keeps its own endpoint.
+def test_personal_writes_share_the_formal_endpoint_and_require_a_revision(world):
+    seed = world.h.post('/api/memory/personal',
+                        {'action': 'save', 'id': MAIN, 'content': 'ORIGINAL'},
+                        token=world.alice_token)
+    revision = _body(seed)['revision']
+    missing = world.h.post('/api/memory/save',
+        {'scope': 'personal', 'filename': MAIN, 'content': 'EDIT'}, token=world.alice_token)
+    assert _status(missing) == 409
+    assert _body(missing)['code'] == 'revision_required'
+    changed = world.h.post('/api/memory/save',
+        {'scope': 'personal', 'filename': MAIN, 'content': 'EDIT', 'revision': revision},
+        token=world.alice_token)
+    assert _body(changed)['status'] == 'success', changed.data
+    read = world.h.get('/api/memory/personal/content?id=MEMORY.md', token=world.alice_token)
+    assert _body(read)['content'] == 'EDIT'
 
-    A member's own memory already has a versioned write surface
-    (``POST /api/memory/personal``). Accepting ``scope=personal`` here would be
-    the "second memory CRUD" the seam forbids, and the two would drift on
-    revision semantics.
-    """
-    response = world.h.post("/api/memory/save",
-                            {"scope": "personal", "filename": MAIN,
-                             "content": "VIA THE WRONG DOOR\n"},
-                            token=world.alice_token)
-    assert _status(response) == 400, response.data
-    assert _body(response)["code"] == "personal_write_endpoint"
+
+def test_legacy_explicit_all_personal_clear_requires_collection_revision(world):
+    world.h.post('/api/memory/personal',
+        {'action': 'save', 'id': MAIN, 'content': 'KEEP'}, token=world.alice_token)
+    missing = world.h.post('/api/memory/personal',
+        {'action': 'clear', 'clear_scope': 'all_personal'}, token=world.alice_token)
+    assert _status(missing) == 409
+    assert _body(missing)['code'] == 'revision_required'
+    read = world.h.get('/api/memory/personal/content?id=MEMORY.md', token=world.alice_token)
+    assert _body(read)['content'] == 'KEEP'
 
 
 # --- the version condition --------------------------------------------------

@@ -214,6 +214,16 @@ class SkillsHandler:
                 skills = service.query()
                 skills = _filter_skill_catalog(ctx, skills, "read")
                 skills = _annotate_skill_actions(ctx, skills)
+                from channel.web.fork.skill_lifecycle import can_install as may_install
+                can_install = may_install(ctx, _request_agent_id(params), service)
+                from auth.service import get_identity_service
+                identity_service = get_identity_service()
+                for skill in skills:
+                    editable = can_install and identity_service.check_resource_action(
+                        ctx.user_id, ctx.tenant_id, "skill", skill["resource_id"],
+                        "edit", permission="skill.edit")
+                    skill["editable"] = bool(editable and not skill.get("ships_with_install"))
+                    skill["deletable"] = bool(editable and skill.get("deletable"))
                 _attach_personal_states(ctx, skills, "skill")
                 if i18n.get_language() == i18n.ZH_HANT:
                     for skill in skills:
@@ -221,7 +231,7 @@ class SkillsHandler:
                             for k, v in list(skill.items()):
                                 if k in ("name", "description", "display_name") and isinstance(v, str):
                                     skill[k] = i18n.to_traditional(v)
-            return json.dumps({"status": "success", "skills": skills}, ensure_ascii=False)
+            return json.dumps({"status": "success", "skills": skills, "can_install": can_install}, ensure_ascii=False)
         except web.HTTPError:
             raise
         except Exception as e:
@@ -243,6 +253,9 @@ class SkillsHandler:
             with _db_scope() as ctx:
                 _require_read_permission(ctx, "skill.read")
                 body = json.loads(web.data())
+                from channel.web.fork import skill_lifecycle
+                if body.get("action") in skill_lifecycle.ACTIONS:
+                    return skill_lifecycle.apply(ctx, body)
                 action = body.get("action")
                 name = body.get("name")
                 resource_id = body.get("resource_id")

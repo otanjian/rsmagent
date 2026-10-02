@@ -1,8 +1,14 @@
-import { app, BrowserWindow, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, ipcMain, session as electronSession, shell, type IpcMainInvokeEvent } from 'electron'
 import { createHash, randomBytes, timingSafeEqual } from 'crypto'
 import * as http from 'http'
+import * as path from 'path'
+import { fileURLToPath } from 'url'
 import type { AddressInfo } from 'net'
 import { AssetProxy, type AssetTarget, type UpstreamReply } from './asset-proxy'
+import {
+  WEB_SESSION_COOKIE, WEB_SESSION_MAJOR, checkBootstrapReply, isValidInstanceId,
+  partitionName,
+} from './remote/web-session'
 
 // The Desktop auth/transport broker (design D8, task group 8).
 //
@@ -169,6 +175,57 @@ const state: BrokerState = {
 // --------------------------------------------------------------------------- //
 
 /**
+ * The origin of the *bundled* backend this process started, kept apart from the
+ * active one.
+ *
+ * ``state.backendOrigin`` is the single origin every credentialed request is
+ * aimed at, and which of the two candidates it is depends on the mode: the
+ * bundled backend in local mode, the active server in remote mode. Remembering
+ * the local one separately is what lets the mode be switched back without a
+ * restart -- and, more to the point, what keeps an unrelated config write from
+ * discarding it. Adding a server to the list while local used to clear the
+ * origin outright, which left a signed-in window with no transport at all.
+ */
+let localBackendOrigin = ''
+
+/**
+ * The bundled backend announced itself, or went away.
+ *
+ * Records the origin *and* installs it, which is what local mode wants. Remote
+ * mode is unaffected: ``syncBrokerOrigin`` runs before the bundled backend is
+ * ever started, and in remote mode it never is.
+ */
+export function announceLocalBackendOrigin(origin: string): void {
+  localBackendOrigin = (origin || '').replace(/\/+$/, '')
+  setBackendOrigin(localBackendOrigin)
+}
+
+/** The bundled backend's origin; empty when it is not running. */
+export function getLocalBackendOrigin(): string {
+  return localBackendOrigin
+}
+
+/**
+ * The native bearer, for the one caller that cannot use ``fetch``.
+ *
+ * Change ``fix-desktop-local-context-and-tool-calls`` (task 2.4): the device
+ * gateway is a WebSocket, so its handshake has to carry the credential as a
+ * header rather than going through :func:`requestBusiness`. That makes this
+ * accessor an exception, and it is kept as narrow as the rest of the broker:
+ * main-process only (never an IPC handler), read fresh per attempt so a
+ * reconnect after a re-auth uses the current session, and ``null`` -- never a
+ * stale token -- when there is no session.
+ */
+export function nativeBearer(): string | null {
+  return state.session?.token || null
+}
+
+/** The origin the native session belongs to, or '' when there is none. */
+export function nativeSessionOrigin(): string {
+  return state.session?.origin || ''
+}
+
+/**
  * Publish the backend the shell is actually talking to.
  *
  * The port is discovered by the Python backend manager (it may fall back when
@@ -186,6 +243,9 @@ export function setBackendOrigin(origin: string): void {
     abortInFlight()
     state.proxy?.clear()
   }
+  // A child cookie belongs to the server it was minted by; a change of origin
+  // destroys the partition rather than leaving a cookie for the old one around.
+  void clearWebChildSessions()
   state.backendOrigin = next
   state.probeFailed = false
 }
@@ -214,6 +274,11 @@ interface RawReply {
   statusText: string
   contentType: string
   body: string
+  /**
+   * Every ``Set-Cookie`` the answer carried. Only the Web child bootstrap reads
+   * this; it is never forwarded to a renderer or written to a log.
+   */
+  setCookies: string[]
 }
 
 /** What the broker will accept as a body from the renderer. */
@@ -268,11 +333,18 @@ async function send(path: string, options: SendOptions): Promise<RawReply> {
     throw new BrokerError('network_error', networkMessage(e))
   }
   const body = await res.text()
+  // ``getSetCookie`` is the only way to read several Set-Cookie headers apart;
+  // the fallback keeps older runtimes readable (single cookie, joined value).
+  const setCookies =
+    typeof (res.headers as { getSetCookie?: () => string[] }).getSetCookie === 'function'
+      ? (res.headers as { getSetCookie: () => string[] }).getSetCookie()
+      : (res.headers.get('set-cookie') ? [res.headers.get('set-cookie') as string] : [])
   return {
     status: res.status,
     statusText: res.statusText,
     contentType: res.headers.get('content-type') || '',
     body,
+    setCookies,
   }
 }
 
@@ -455,6 +527,128 @@ async function exchangeCode(code: string, verifier: string, redirectUri: string)
   return projection
 }
 
+// --------------------------------------------------------------------------- //
+// Web child session for the remote container (task 3.7)
+// --------------------------------------------------------------------------- //
+
+/**
+ * A bootstrapped child session, as much as the main process may know.
+ *
+ * ``partition`` is the answer the container needs: it must load the page into
+ * *this* in-memory partition so the page's requests carry the paired Cookie.
+ * No token is part of this value, so returning it through the ordinary
+ * (already sender-guarded) IPC channel would not leak a credential -- the
+ * bootstrap call itself is still kept off the renderer's surface.
+ */
+export interface WebChildSession {
+  /** In-memory Electron partition the container must be created in. */
+  partition: string
+  linkId: string
+  expiresAt: number
+  webProtocol: number
+}
+
+/** Partitions created by this process. Nothing here is ever persisted. */
+const childPartitions = new Set<string>()
+
+/**
+ * Ask the server for the Web child session of the current native parent.
+ *
+ * Every check that can be made without Electron lives in
+ * ``remote/web-session.ts`` (exact-origin refusal, cookie attributes, "the
+ * secret is in the Cookie and nowhere else"); this function adds the two things
+ * only the main process can do -- install the cookie into a fresh in-memory
+ * partition, and hand back a descriptor that carries no secret.
+ *
+ * The bootstrap id is generated here with 192 bits of entropy and never reused:
+ * the server treats a repeat as ``bootstrap_consumed`` rather than minting a
+ * second child.
+ */
+export async function bootstrapWebSession(instanceId: string): Promise<WebChildSession> {
+  const native = state.session
+  if (!native) throw new BrokerError('unauthorized', 'not signed in', 401)
+  if (!state.backendOrigin) throw new BrokerError('backend_unavailable', 'backend is not ready')
+  if (native.origin !== state.backendOrigin) {
+    // The session was authorized against another server; the server would
+    // compare its registered origin and refuse, so do not even ask.
+    throw new BrokerError('unsupported_origin',
+      'the session was authorized against another server', 400)
+  }
+  if (!isValidInstanceId(instanceId)) {
+    throw new BrokerError('invalid_request', 'invalid instance id', 400)
+  }
+  const reply = await send('/auth/desktop/web-session', {
+    method: 'POST',
+    contentType: 'application/json',
+    withTenant: false,
+    withToken: true,
+    body: JSON.stringify({
+      bootstrap_id: b64url(randomBytes(24)),
+      instance_id: instanceId,
+      web_protocol: WEB_SESSION_MAJOR,
+    }),
+  })
+  const checked = checkBootstrapReply(reply, native.token)
+  if (!checked.ok) throw new BrokerError(checked.code, checked.message, checked.status)
+  const partition = partitionName(instanceId)
+  await installChildCookie(partition, checked.cookie.value)
+  childPartitions.add(partition)
+  return {
+    partition,
+    linkId: checked.linkId,
+    expiresAt: checked.expiresAt,
+    webProtocol: checked.webProtocol,
+  }
+}
+
+/**
+ * Install the child secret into a non-persistent partition as a session cookie.
+ *
+ * ``fromPartition`` without a ``persist:`` prefix is memory-only, and no
+ * ``expirationDate`` keeps the cookie a session cookie inside it: an
+ * application restart destroys both, which is why a restart must re-run the
+ * native authorization instead of resuming from disk.
+ */
+async function installChildCookie(partition: string, value: string): Promise<void> {
+  const target = electronSession.fromPartition(partition)
+  // Chromium treats localhost as a secure context, so Secure cookies work on
+  // ``http://localhost``; for any other http origin (should not happen) drop
+  // Secure so the partition can still hold the child session.
+  const secure = !state.backendOrigin.startsWith('http://')
+    || /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?\/?$/i.test(state.backendOrigin)
+  await target.cookies.set({
+    url: state.backendOrigin,
+    name: WEB_SESSION_COOKIE,
+    value,
+    path: '/',
+    httpOnly: true,
+    secure,
+    sameSite: 'lax',
+  })
+}
+
+/**
+ * Destroy every container partition this process created.
+ *
+ * Called on logout, on a password change and when the backend origin changes:
+ * the server has already revoked the pairing by then, and the local copy of the
+ * child cookie must not outlive it. Best-effort by design -- a partition that
+ * cannot be cleared must not keep the user signed in, and the server-side
+ * revocation is what actually ends the authorization.
+ */
+export async function clearWebChildSessions(): Promise<void> {
+  const partitions = Array.from(childPartitions)
+  childPartitions.clear()
+  for (const partition of partitions) {
+    try {
+      const target = electronSession.fromPartition(partition)
+      await target.clearStorageData({ storages: ['cookies'] })
+    } catch {
+      /* the partition is already gone */
+    }
+  }
+}
+
 //: Monotonic context counter. It never resets -- not even across a re-login --
 //: so a response that arrives after a switch can always be told apart from the
 //: current context.
@@ -510,15 +704,26 @@ function projectionFrom(
   }
 }
 
-async function fetchWithToken(path: string, token: string, tenant?: string): Promise<RawReply> {
+/**
+ * One credentialed request that is not a business call.
+ *
+ * ``method`` is explicit rather than defaulted at the call site: the account
+ * surface mixes a read (``/auth/me``) with a write (``/auth/logout``), and a
+ * bare ``fetch`` is a GET -- which the console answers with 405 for the sign-out,
+ * leaving the server-side pairing alive after the user asked to leave.
+ */
+async function fetchWithToken(path: string, token: string, tenant?: string,
+                              method: 'GET' | 'POST' = 'GET'): Promise<RawReply> {
   const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
   if (tenant) headers['X-Tenant-ID'] = tenant
-  const res = await fetch(`${state.backendOrigin}${path}`, { headers, redirect: 'error' })
+  const res = await fetch(`${state.backendOrigin}${path}`, { method, headers, redirect: 'error' })
   return {
     status: res.status,
     statusText: res.statusText,
     contentType: res.headers.get('content-type') || '',
     body: await res.text(),
+    // This transport never consumes a Set-Cookie; it is read nowhere else.
+    setCookies: [],
   }
 }
 
@@ -591,9 +796,30 @@ export async function refreshProjection(): Promise<BrokerSession> {
 
 async function clearSession(): Promise<void> {
   abortInFlight()
+  // The server revoked the pairing before this runs (logout / password change),
+  // so the local child cookie and its partition go too.
+  await clearWebChildSessions()
   state.session = null
   state.blockedReason = ''
   state.proxy?.clear()
+}
+
+/**
+ * Whether the server has already forgotten ``token``.
+ *
+ * ``/auth/me`` resolves the caller from the credential alone and is a read, so
+ * its only credential answer is the truth about the session: 200 while it is
+ * live, 401 once it is gone, 403 for a disabled account (unusable either way).
+ * Written as a positive test rather than "not 200", so a server error is never
+ * mistaken for proof that a session ended.
+ */
+async function sessionIsGone(token: string): Promise<boolean> {
+  try {
+    const reply = await fetchWithToken('/auth/me', token)
+    return reply.status === 401 || reply.status === 403
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -601,6 +827,18 @@ async function clearSession(): Promise<void> {
  *
  * Revocation failing is reported as a failure. The UI must not claim the
  * session is gone while the server still honours it.
+ *
+ * A sign-out that is not *confirmed* is not automatically a failure, though.
+ * In the paired state the container's own page-level logout has already revoked
+ * the native parent -- that is what revoking a pair means -- so this second call
+ * arrives holding a credential the identity store no longer knows. The route
+ * gates every write through its CSRF rule, and a request whose only credential
+ * is a Bearer that fails to authenticate is refused as `cross_origin` (403), a
+ * *session* fact reported as an *origin* one. Status alone cannot tell that
+ * apart from a live session the server declined to revoke, so the session itself
+ * is asked (`/auth/me`): proof that it is gone means the sign-out the caller
+ * asked for has already happened, and blocking on it would freeze the account
+ * for a state the user is already in.
  */
 export async function logout(): Promise<{ ok: boolean; revoked: boolean; message: string }> {
   const session = state.session
@@ -610,8 +848,9 @@ export async function logout(): Promise<{ ok: boolean; revoked: boolean; message
   }
   let revoked = false
   try {
-    const reply = await fetchWithToken('/auth/logout', session.token)
+    const reply = await fetchWithToken('/auth/logout', session.token, undefined, 'POST')
     revoked = reply.status === 200 || reply.status === 401
+    if (!revoked) revoked = await sessionIsGone(session.token)
   } catch {
     revoked = false
   }
@@ -877,7 +1116,17 @@ export function setupAuthBrokerIPC(): void {
   ipcMain.handle('desktop-auth-begin', async (event) => {
     guard(event)
     try {
-      return { ok: true, session: await beginAuthorization() }
+      const session = await beginAuthorization()
+      // Spec: the in-process backend may be bound as the Web workbench without
+      // a stored HTTPS profile. Do it after native sign-in so the parent session
+      // exists for the child Cookie bootstrap.
+      try {
+        const { tryAutoBindLocalWeb } = await import('./remote/local-web-bind')
+        void tryAutoBindLocalWeb()
+      } catch {
+        /* optional path; local React shell remains usable */
+      }
+      return { ok: true, session }
     } catch (e) {
       return failure(e)
     }
@@ -892,6 +1141,17 @@ export function setupAuthBrokerIPC(): void {
   ipcMain.handle('desktop-auth-logout', async (event) => {
     guard(event)
     try {
+      // Prefer tearing down an attached container (which also revokes); a bare
+      // logout while the Web view is up would leave a live Cookie partition.
+      try {
+        const { isRemoteContainerAttached, detachRemoteContainer } =
+          await import('./remote/remote-container-ipc')
+        if (isRemoteContainerAttached()) {
+          return { ...(await detachRemoteContainer()) }
+        }
+      } catch {
+        /* fall through to native logout */
+      }
       return { ...(await logout()) }
     } catch (e) {
       return failure(e)
@@ -993,18 +1253,45 @@ export function setupAuthBrokerIPC(): void {
   })
 }
 
+/**
+ * The renderer document this build ships, resolved next to the compiled main
+ * process. It is the only ``file:`` document the window is ever allowed to be
+ * on, so it is compared exactly rather than by shape.
+ */
+const RENDERER_ENTRY = path.join(__dirname, '..', 'renderer', 'index.html')
+
 /** Exported for the registration check in the main process entry point. */
 export function isRegisteredEntryUrl(url: string): boolean {
   if (!url) return false
-  if (app.isPackaged) {
-    // Packaged builds load the bundled renderer document from disk; a dev
-    // server, a dropped file or an injected page is not a trusted entry.
-    return url.startsWith('file://') && /\/renderer\/index\.html$/i.test(url)
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return false
   }
+  // Only the *document* decides this, never the fragment. The shell is a
+  // HashRouter, so every page the user opens lives in the fragment of the same
+  // index.html -- comparing the whole URL meant the window stopped being a
+  // trusted sender the moment any route was entered, and every guarded channel
+  // (the connection shell's included) answered "untrusted sender". A query
+  // string is ignored for the same reason: it cannot change which file loaded.
+  if (parsed.protocol === 'file:') {
+    // Exactly the bundled document: a dropped file, another app's document that
+    // happens to sit at the same relative path, or an injected page is not a
+    // registered entry. fileURLToPath decodes percent-escapes so an install
+    // path containing spaces still compares equal.
+    let entry: string
+    try {
+      entry = fileURLToPath(parsed)
+    } catch {
+      return false
+    }
+    return entry === RENDERER_ENTRY
+  }
+  if (app.isPackaged) return false
   // Development accepts only the project's own Vite dev server (index.html at
   // its root) or the built document.
-  if (/^http:\/\/localhost:5173\//.test(url)) return true
-  return url.startsWith('file://') && /\/renderer\/index\.html$/i.test(url)
+  return /^http:\/\/localhost:5173\//.test(`${parsed.origin}${parsed.pathname}`)
 }
 
 /** The MainWindow the broker will accept calls from. */

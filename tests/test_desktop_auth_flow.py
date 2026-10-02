@@ -192,6 +192,24 @@ class TestAuthorizeEntry:
         assert str(resp.status).startswith(("401", "403"))
         assert not _location(resp)
 
+    def test_cookie_less_authorize_offers_same_origin_login(self, web_app):
+        """Unauthenticated authorize must not send the user to a different host.
+
+        Desktop opens ``/auth/desktop/authorize`` on the broker's backend
+        origin (``127.0.0.1`` or ``localhost``). A Web console session on the
+        *other* loopback name does not share cookies, so "open the console,
+        then start again" left users stuck on Sign in to continue. The page
+        itself must collect the password on this exact origin and reload.
+        """
+        web = web_app()
+        resp = web.get(_authorize_path(), token=None, tenant=False)
+        assert str(resp.status).startswith("401")
+        html = resp.data.decode("utf-8")
+        assert 'id="desktop-auth-login"' in html
+        assert "/auth/login" in html
+        assert "location.reload" in html
+        assert "Open the Web console" not in html
+
     def test_authorize_requires_the_registered_client_id(self, web_app):
         web = web_app()
         resp = _Flow(web).consent(client_id="some-other-client")[0]
@@ -291,6 +309,19 @@ class TestConsentConfirm:
         assert cross.status == "403"
         assert "cross_origin" in cross.data.decode("utf-8")
         assert not _location(cross)
+
+    def test_confirm_allows_missing_origin_when_form_csrf_present(self, web_app):
+        """Consent pages use a tight Referrer-Policy; some browsers then omit
+        both Origin and Referer on the Authorize form POST. The one-time form
+        ``csrf`` field is the CSRF proof — a missing Origin must not surface as
+        ``cross_origin`` and strand the Desktop login.
+        """
+        web = web_app()
+        flow = _Flow(web)
+        resp, _verifier, _challenge = flow.consent()
+        confirm = flow.confirm(resp.data.decode("utf-8"), headers={"Origin": ""})
+        assert str(confirm.status).startswith("302"), confirm.data
+        assert _location(confirm).startswith(REDIRECT_URI)
 
     def test_confirm_refuses_another_accounts_session(self, web_app):
         web = web_app()

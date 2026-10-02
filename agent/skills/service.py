@@ -10,10 +10,11 @@ import os
 import shutil
 import zipfile
 import tempfile
-from typing import Dict, List, Optional
+from typing import List, Optional
 from common.log import logger
-from agent.skills.types import Skill, SkillEntry
+from agent.skills.types import SkillEntry
 from agent.skills.manager import SkillManager
+from common.media_download import MAX_FILE_BYTES, download_to_file
 
 try:
     import requests
@@ -53,6 +54,18 @@ class SkillService:
             raise ValueError(
                 f"skill name {name!r} resolves outside the skills directory"
             )
+        return skill_dir
+
+    def _contained_skill_dir(self, base_dir: str, name: str) -> str:
+        """Validate that a loaded skill's directory sits inside the skills root.
+
+        :raises ValueError: for the root itself or anything outside it, such
+            as a builtin skill resolved from the install directory.
+        """
+        skill_dir = os.path.realpath(base_dir)
+        root = os.path.realpath(self.manager.custom_dir)
+        if not skill_dir.startswith(root + os.sep):
+            raise ValueError(f"skill {name!r} is not in the workspace skills directory")
         return skill_dir
 
     @staticmethod
@@ -97,6 +110,13 @@ class SkillService:
             # this field existed.
             if not item.get("resource_id"):
                 item["resource_id"] = f"{item.get('source', 'builtin')}:{item.get('name', '')}"
+            name = item.get("name")
+            entry = self.manager.get_skill(name) if name else None
+            if entry is not None:
+                item["ships_with_install"] = self._ships_with_install(entry.skill)
+            else:
+                item["ships_with_install"] = item.get("source") == "builtin"
+            item["deletable"] = not item["ships_with_install"]
             result.append(item)
         logger.info(f"[SkillService] query: {len(result)} skills found")
         return result
@@ -383,10 +403,12 @@ class SkillService:
         """
         resource_id = payload.get("resource_id")
         name = payload.get("name")
-        entry = self._resolve_target(resource_id=resource_id, name=name)
+        try:
+            entry = self._resolve_target(resource_id=resource_id, name=name)
+        except FileNotFoundError:
+            return
         name = entry.skill.name
-
-        skill_dir = self._safe_skill_dir(name)
+        skill_dir = self._contained_skill_dir(entry.skill.base_dir, name)
         if os.path.exists(skill_dir):
             shutil.rmtree(skill_dir)
             logger.info(f"[SkillService] delete: removed directory {skill_dir}")
@@ -437,6 +459,9 @@ class SkillService:
         """
         Download a file from *url* and save to *dest*.
 
+        Uses the size-capped downloader so a malicious or broken URL cannot
+        fill disk with an unbounded response body.
+
         :param url: remote file URL
         :param dest: local destination path
         """
@@ -447,8 +472,5 @@ class SkillService:
         if dest_dir:
             os.makedirs(dest_dir, exist_ok=True)
 
-        resp = requests.get(url, timeout=60)
-        resp.raise_for_status()
-        with open(dest, "wb") as f:
-            f.write(resp.content)
+        download_to_file(url, dest, MAX_FILE_BYTES, timeout=60)
         logger.debug(f"[SkillService] downloaded {url} -> {dest}")

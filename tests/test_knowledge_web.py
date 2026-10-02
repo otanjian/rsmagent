@@ -1,6 +1,5 @@
 import contextlib
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 
@@ -75,9 +74,11 @@ def test_knowledge_action_handler_preserves_dispatch_error(tmp_path):
 
 
 def test_knowledge_frontend_management_contract():
-    root = Path(__file__).parents[1]
-    html = (root / "channel/web/chat.html").read_text(encoding="utf-8")
-    js = (root / "channel/web/static/js/console.js").read_text(encoding="utf-8")
+    # The page is assembled from templates/, so assert against what is served.
+    from channel.web.core import template
+    html = template.render("chat.html")
+    from conftest import console_js
+    js = console_js()
 
     assert 'id="knowledge-dialog-overlay"' in html
     assert 'id="knowledge-dialog-textarea"' in html
@@ -122,14 +123,14 @@ def test_knowledge_import_handler_delegates_to_dispatch(tmp_path):
     dispatched = {"action": "import_documents", "code": 200, "message": "success",
                   "payload": {"imported": 2, "skipped": 0, "failed": 0}}
     params = {
-        "target_category": "notes",
-        "conflict_strategy": "rename",
+        "target_category": ["notes"],
+        "conflict_strategy": ["rename"],
         "files": [UploadedFile("a.md", b"# A"), UploadedFile("b.txt", b"B")],
     }
 
     with _authorized_write_scope(tmp_path), \
          patch("channel.web.web_channel.web.header"), \
-         patch("channel.web.web_channel._raw_web_input", return_value=params), \
+         patch("channel.web.core._common._multipart_lists", return_value=params), \
          patch("agent.knowledge.service.KnowledgeService.dispatch", return_value=dispatched) as dispatch:
         response = json.loads(KnowledgeImportHandler().POST())
 

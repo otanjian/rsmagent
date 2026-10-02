@@ -45,8 +45,9 @@ _MODEL_SPECS = {
                  "fallback_window": 64000, "full_cap_names": ("deepseek-flash",)},
     # gemini: 1M context, 64K max output.
     "gemini": {"window": 1000000, "max_output": 64000},
-    # claude: 200K context, 64K max output.
-    "claude": {"window": 200000, "max_output": 64000},
+    # claude 5+: 1M context, 128K max output; claude 4 and earlier: 200K / 64K.
+    "claude": {"version_min": 5.0, "window": 1000000, "max_output": 128000,
+               "fallback_window": 200000, "fallback_max_output": 64000},
     # GLM: only 5.3-flash ships a 1M window; older glm-5.x stays at 200K.
     "glm": {"prefix": "glm-5.3-flash", "window": 1000000, "max_output": None,
             "fallback_window": 200000},
@@ -85,12 +86,12 @@ def resolve_family_spec(model_name: str):
         if version_min is not None and (version is None or version < version_min):
             # Older release of a family that only bumped at version_min
             # (e.g. deepseek < v4): use its conservative fallback window.
-            return spec.get("fallback_window", 128000), None
+            return spec.get("fallback_window", 128000), spec.get("fallback_max_output")
         return spec["window"], spec.get("max_output")
     return None, None
-from agent.protocol.models import LLMRequest, LLMModel
+from agent.protocol.models import LLMModel
 from agent.protocol.agent_stream import AgentStreamExecutor
-from agent.protocol.result import AgentAction, AgentActionType, ToolResult, AgentResult
+from agent.protocol.result import AgentAction, AgentActionType, ToolResult
 from agent.tools.base_tool import BaseTool, ToolStage, is_tool_available
 from common.runtime_identity import current_user_id
 
@@ -151,6 +152,30 @@ class Agent:
         # directory (bash cwd, relative file paths) while memory/skills stay
         # anchored to workspace_dir. None means "use workspace_dir".
         self.project_dir = None
+        # Which kind of override `project_dir` is: ``"project"`` when the user
+        # picked the directory, ``"personal"`` when it is the caller's own
+        # folder inside a tenant-shared Agent (change
+        # ``use-personal-workspace-for-shared-agents``), ``"local"`` when the
+        # directory lives on the user's own machine and this session was
+        # authorized to run project work there (change
+        # ``align-desktop-project-execution-with-master``). None alongside a
+        # ``project_dir`` keeps the historical "the user opened a project"
+        # wording; None alongside no ``project_dir`` means no override at all.
+        self.workspace_scope = None
+        # Server-verified input selection, refreshed by the bridge each turn.
+        # This is independent of a project execution/cwd grant.
+        self.desktop_context = None
+        # Where this session's tools are allowed to run. ``BACKEND_TARGET`` is
+        # the pre-existing behaviour (the server's own filesystem); a desktop
+        # target means the working directory is a directory on the client, and
+        # only ``project-execution`` permits project tools and Skill scripts
+        # there. Resolved once per run and never inferred from a path.
+        from agent.workspace.execution_target import BACKEND_TARGET
+        self.execution_target = BACKEND_TARGET
+        # Set when a desktop target could not be resolved on this backend (the
+        # shipped directory is gone, or the grant was revoked). Local work is
+        # refused while it is set rather than quietly running somewhere else.
+        self.local_context_error = None
         # How much this session may change (see agent.permission). None means
         # "follow the global setting", resolved at check time so a change to the
         # global default reaches sessions that never picked a mode themselves.
@@ -202,7 +227,7 @@ class Agent:
         """The working directory in force: the project override, else workspace."""
         return self.project_dir or self.workspace_dir or os.getcwd()
 
-    def apply_project_dir(self, project_dir):
+    def apply_project_dir(self, project_dir, scope=None):
         """Point the working directory at ``project_dir`` (None resets to workspace).
 
         Retargets the cwd of file/shell tools so bash, read, write, etc. operate
@@ -210,6 +235,11 @@ class Agent:
         workspace because they resolve absolute paths of their own. The system
         prompt is rebuilt per turn via ``get_full_system_prompt`` and reads
         ``effective_cwd`` there, so no prompt refresh is needed here.
+
+        ``scope`` records *why* the override exists — ``"project"`` for a
+        directory the user selected, ``"personal"`` for a shared Agent's
+        caller's own folder — so the prompt can describe the right one. It is
+        cleared whenever the override is, since it describes that override.
         """
         # Normalize: an empty or workspace-equal value means "no project".
         if project_dir:
@@ -222,6 +252,7 @@ class Agent:
             project_dir = None
 
         self.project_dir = project_dir
+        self.workspace_scope = scope if project_dir else None
         cwd = self.effective_cwd()
         for tool in self.tools:
             name = getattr(tool, "name", None)
@@ -240,6 +271,94 @@ class Agent:
             except Exception:
                 pass
         return self.project_dir
+
+    def apply_execution_target(self, target, project_dir=None, scope=None):
+        """Set where this session runs, and the directory it runs in.
+
+        ``target`` is the authorization (see
+        :mod:`agent.workspace.execution_target`); ``project_dir`` is the
+        directory it resolves to. Both are applied together because a desktop
+        target without its resolved root, or a local directory without its
+        target, would each be a half-stated fact the tools could misread.
+
+        Passing a backend target (or None) is exactly the pre-existing
+        behaviour: the working directory follows ``project_dir`` as before and
+        no local authorization exists.
+        """
+        from agent.workspace.execution_target import (
+            BACKEND_TARGET, ExecutionTarget,
+        )
+
+        if target is None:
+            target = BACKEND_TARGET
+        if not isinstance(target, ExecutionTarget):
+            raise TypeError("target must be an ExecutionTarget")
+        if target.is_desktop and not project_dir:
+            # A desktop target that did not resolve to a directory must not
+            # leave the previous run's local directory in force.
+            raise ValueError("a desktop target needs its resolved project directory")
+
+        resolved_scope = scope
+        if resolved_scope is None and target.is_desktop:
+            resolved_scope = "local"
+        self.execution_target = target
+        self.local_context_error = None
+        return self.apply_project_dir(project_dir, scope=resolved_scope)
+
+    def client_platform(self) -> str:
+        """The platform this session's commands run on, or ``""`` when unknown.
+
+        A server-side session has no client, so the answer is ``""`` -- and that
+        is deliberate: the *server's* ``sys.platform`` is not evidence about a
+        command that runs on a machine the user is holding, and substituting it
+        is the mistake task 8.7 exists to prevent. Callers render ``""`` as
+        "unknown" rather than filling it in.
+
+        Local and remote desktop modes learn it from different places, because
+        they are different facts: a local run's launcher is this process's own
+        desktop shell, while a remote run's platform is whatever the device
+        declared in its hello.
+        """
+        target = getattr(self, "execution_target", None)
+        if not getattr(target, "is_desktop", False):
+            return ""
+        try:
+            from agent.desktop_remote.mode import remote_mode_for
+
+            if remote_mode_for():
+                from agent.desktop_remote.device import device_state
+
+                return str(getattr(device_state(), "platform", "") or "").strip()
+            from agent.desktop_local.script_executor import (
+                script_platform, script_scope,
+            )
+            from common.runtime_identity import current_identity
+
+            return script_platform(script_scope(current_identity(), target)).strip()
+        except Exception as e:  # noqa: BLE001 - an unknown platform stays unknown
+            logger.debug(f"Client platform unavailable: {e}")
+            return ""
+
+    def mark_local_context_unavailable(self, reason: str):
+        """Refuse local work: the target exists but cannot be resolved here.
+
+        The working directory is cleared too, because leaving the last run's
+        local directory in force would let a tool act on a directory the
+        session is no longer authorized for.
+        """
+        from agent.workspace.execution_target import BACKEND_TARGET
+
+        self.execution_target = BACKEND_TARGET
+        self.local_context_error = reason or "local_context_unavailable"
+        self.apply_project_dir(None)
+        return self.local_context_error
+
+    def clear_execution_target(self):
+        """Drop any local authorization (the session reverts to the backend)."""
+        from agent.workspace.execution_target import BACKEND_TARGET
+
+        self.execution_target = BACKEND_TARGET
+        self.local_context_error = None
 
     def effective_permission_mode(self) -> str:
         """The permission mode in force: this session's, else the global default."""
@@ -297,11 +416,12 @@ class Agent:
         tools, and runtime info so any change takes effect immediately.
         Falls back to the cached self.system_prompt on error.
         """
+        lang = "zh"
         try:
             from agent.prompt import load_context_files, PromptBuilder
 
             if self.skill_manager:
-                self.skill_manager.refresh_skills()
+                self.skill_manager.refresh_skills(use_cache=True)
 
             context_files = None
             if self.workspace_dir and not self.skip_context_files:
@@ -323,6 +443,9 @@ class Agent:
                 memory_manager=self.memory_manager,
                 runtime_info=self.runtime_info,
                 project_dir=self.project_dir,
+                workspace_scope=getattr(self, "workspace_scope", None),
+                desktop_context=getattr(self, "desktop_context", None),
+                client_platform=self.client_platform(),
                 permission_mode=self.effective_permission_mode(),
             )
             if self.extra_system_suffix:
@@ -335,6 +458,17 @@ class Agent:
             # content instruction is re-appended here rather than trusted from
             # the cache (change ``guard-shared-knowledge-skill-writes``).
             base = self._cached_prompt_with_conservative_scope()
+            # Rebuilding unrelated workspace/skill files may fail. The cached
+            # base must still describe this turn's selected input accurately.
+            from agent.prompt.builder import build_desktop_directory_guidance
+            source = build_desktop_directory_guidance(
+                getattr(self, "desktop_context", None),
+                [tool for tool in self.tools if is_tool_available(tool)],
+                lang,
+                getattr(self, "workspace_scope", None),
+            )
+            if source:
+                base = f"{base}\n\n" + "\n".join(source)
             if self.extra_system_suffix:
                 return f"{base}\n\n{self.extra_system_suffix}"
             return base
@@ -771,7 +905,7 @@ class Agent:
 
     def run_stream(self, user_message: str, on_event=None, clear_history: bool = False,
                    skill_filter=None, cancel_event=None, steer_inbox=None,
-                   allow_empty_response: bool = False, attachments=None) -> str:
+                   allow_empty_response: bool = False, attachments=None, on_executor=None) -> str:
         """
         Execute single agent task with streaming (based on tool-call)
 
@@ -802,6 +936,8 @@ class Agent:
             attachments: Optional inbound attachments (images) for this turn.
                 Channels only report where each image lives; this layer decides
                 whether it can be delivered to the turn's model.
+            on_executor: Optional callback(executor), called once before the
+                run starts, for callers that follow its messages as it goes.
 
         Returns:
             Final response text
@@ -850,6 +986,8 @@ class Agent:
             steer_inbox=steer_inbox,
             allow_empty_response=allow_empty_response,
         )
+        if on_executor is not None:
+            on_executor(executor)
 
         # Execute
         try:
@@ -873,8 +1011,11 @@ class Agent:
             # so slicing at original_length yields an empty list and the assistant reply
             # would never be persisted. Instead, locate this run's user query (always the
             # first message of the last turn) by scanning from the tail.
+            run_start = executor.run_start_index()
             trimmed = len(executor.messages) < original_length
-            if trimmed:
+            if run_start is not None:
+                self._last_run_new_messages = list(executor.messages[run_start:])
+            elif trimmed:
                 new_start = original_length  # fallback
                 for idx in range(len(executor.messages) - 1, -1, -1):
                     msg = executor.messages[idx]

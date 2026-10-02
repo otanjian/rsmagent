@@ -1,10 +1,28 @@
 # encoding:utf-8
 
+import atexit
 import logging
 import os
 import signal
 import sys
 import time
+
+# --- desktop local worker dispatch ----------------------------------------
+# This must stay *before* the channel/plugin imports below. A packaged install
+# ships a single frozen executable, so the execution end cannot be started with
+# `python -m agent.desktop_local.worker` the way a source checkout is: the
+# sandboxed worker process IS this binary, run with a flag. Dispatching here --
+# as the very first thing `__main__` does -- means that process loads only the
+# worker, instead of the whole channel/plugin tree, and that a missing plugin
+# directory cannot turn "run a script in the project" into an import error.
+#
+# Guarded by `__name__ == "__main__"`: an importer of `app` (tests, tooling) must
+# keep getting the module it asked for rather than a worker that exits.
+if __name__ == "__main__" and "--desktop-local-worker" in sys.argv:
+    from agent.desktop_local.worker import main as _desktop_worker_main
+
+    raise SystemExit(_desktop_worker_main(
+        [arg for arg in sys.argv[1:] if arg != "--desktop-local-worker"]))
 
 from channel import channel_factory
 from common import const
@@ -21,7 +39,7 @@ import threading
 # invisible to any code that does ``from app import ...`` (that import builds a
 # second, separate ``app`` module). The registry is a single shared cell every
 # caller sees — see common/channel_registry.py and issue #3120.
-from common.channel_registry import get_channel_manager, set_channel_manager
+from common.channel_registry import get_channel_manager, set_channel_manager  # noqa: F401 - re-exported for `from app import get_channel_manager`
 
 # Desktop mode: a lighter runtime for the packaged Electron client. Plugins are
 # loaded in a background thread (so command plugins like cow_cli/godcmd work
@@ -205,6 +223,7 @@ class ChannelManager:
                     "credentials": entry.credentials or None,
                     "members": entry.members or None,
                     "tenant_id": entry.tenant_id,
+                    "peers": entry.peers or None,
                 },
             )
         return (entry, entry, {})
@@ -329,8 +348,8 @@ class ChannelManager:
                 ch = self._channels.pop(name, None)
                 th = self._threads.pop(name, None)
                 to_stop.append((name, ch, th))
-            if channel_name and self._primary_channel is self._channels.get(channel_name):
-                self._primary_channel = None
+                if ch is not None and self._primary_channel is ch:
+                    self._primary_channel = None
 
         for name, ch, th in to_stop:
             if ch is None:
@@ -508,6 +527,45 @@ def sigterm_handler_wrap(_signo):
     signal.signal(_signo, func)
 
 
+def _register_pid_file():
+    """Record this process in the pid file the ``cow`` CLI reads.
+
+    An instance started directly (``python app.py``, e.g. as a container entry
+    point) otherwise looks stopped to ``cow start`` / ``restart`` /
+    ``self-restart``, which then launch a second instance beside it instead of
+    replacing it. Only an absent or stale file is claimed, so a pid written by
+    the CLI or by another live instance is left alone, and on exit the file is
+    removed only while it still names this process.
+    """
+    if DESKTOP_MODE:
+        return
+    try:
+        from cli.commands.process import _get_pid_file, _read_pid
+    except Exception:
+        return
+    try:
+        pid_file = _get_pid_file()
+        if _read_pid():
+            return
+        with open(pid_file, "w") as f:
+            f.write(str(os.getpid()))
+    except Exception as e:
+        logger.debug(f"[App] pid file not written: {e}")
+        return
+
+    own_pid = os.getpid()
+
+    def _cleanup():
+        try:
+            with open(pid_file, "r") as f:
+                if f.read().strip() == str(own_pid):
+                    os.remove(pid_file)
+        except Exception:
+            pass
+
+    atexit.register(_cleanup)
+
+
 def _warmup_mcp_tools():
     """
     Kick off MCP server loading at process startup so subprocesses
@@ -619,6 +677,13 @@ def _migrate_team_roster():
     except Exception as e:
         # Never a reason not to start: read() still falls back to config.json.
         logger.warning(f"[App] Could not move the roster into its own file: {e}")
+    try:
+        from agent import team
+        from config import conf
+
+        team.adopt_legacy_channels(conf())
+    except Exception as e:
+        logger.warning(f"[App] Could not add legacy channels to the roster: {e}")
 
 
 def _migrate_conversations():
@@ -860,6 +925,7 @@ def run():
         _verify_required_seams()
         _guard_identity_mode_consistency()
         _ensure_database_bootstrap()
+        _register_pid_file()
         _migrate_team_roster()
         _migrate_conversations()
         _migrate_conversation_tenancy()

@@ -142,6 +142,13 @@ class WriteTests(SafeFsCase):
 class ReplacementRaceTests(SafeFsCase):
     """A swap between validation and use cannot retarget the operation."""
 
+    @unittest.skipUnless(safe_fs._DIR_FD_OK, 'descriptor-anchored POSIX root access')
+    def test_root_ancestor_link_cannot_redirect_owner_access(self):
+        self.write('owner/MEMORY.md', 'OWN')
+        os.symlink(os.path.join(self.root, 'owner'), os.path.join(self.root, 'alias'))
+        with self.assertRaises(UnsafePathError):
+            safe_fs.read_text(os.path.join(self.root, 'alias', 'nested'), 'MEMORY.md')
+
     def test_swapping_the_parent_to_a_link_does_not_read_the_target(self):
         self.write("memory/notes.md", "mine")
         away = self.write("elsewhere/notes.md", "theirs")

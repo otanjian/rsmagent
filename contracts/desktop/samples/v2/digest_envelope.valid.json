@@ -1,0 +1,28 @@
+{
+  "note": "Cross-language digest fixture. Both implementations must compute `digest` over `envelope`: Python via integrations.desktop.execution_payload.params_digest (tests/test_desktop_execution_payload.py) and the desktop client via project-execution/contract.ts paramsDigest (tests/test_desktop_execution_contract.cjs). The rule is canonical JSON: object keys sorted by code point, no insignificant whitespace, UTF-8, non-integer numbers rejected.",
+  "envelope": {
+    "tool": "bash",
+    "tool_schema_version": 1,
+    "arguments": {
+      "command": "python \"$COW_SKILL_DIR/scripts/report.py\" --input \"资料/明细.xlsx\" --output \"output/开票清单.xlsx\"",
+      "timeout": 120
+    },
+    "run_id": "run_example",
+    "tool_call_id": "call_example",
+    "session_id": "sess_example",
+    "agent_id": "agent_example",
+    "origin": "https://console.example.invalid",
+    "binding_id": "bind_example",
+    "workspace_id": "ws_example",
+    "device_id": "dev_example",
+    "grant_version": 3,
+    "selection_generation": 8,
+    "skill_resources": [
+      {
+        "skill_id": "example-xlsx",
+        "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ]
+  },
+  "digest": "sha256:ccaac830dbfbe7377d62fb075e94de7baf60f88c9bc43691c0f68a7a9bc09eb5"
+}

@@ -61,6 +61,7 @@ from channel.web.auth_handlers import (
     DbUserAvatarHandler,
     DesktopAuthorizeHandler,
     DesktopTokenHandler,
+    DesktopWebSessionHandler,
 )
 from channel.web.admin_handlers import (
     PlatformUsersHandler,
@@ -191,6 +192,31 @@ from channel.web.fork.handlers.chat import (
 from channel.web.fork.handlers.config import (
     ConfigHandler,
 )
+from channel.web.fork.handlers.desktop import (
+    DesktopMetaHandler,
+    DesktopDevicesHandler,
+    DesktopDeviceHandler,
+    DesktopBindingsHandler,
+    DesktopBindingResolveHandler,
+    DesktopBindingHandler,
+    DesktopWorkspacesHandler,
+    DesktopWorkspaceHandler,
+    DesktopBindingWorkspaceHandler,
+    DesktopCommandsHandler,
+    DesktopCommandHandler,
+    DesktopCommandCancelHandler,
+    DesktopLocalRootsHandler,
+    DesktopSessionTargetHandler,
+    DesktopTransfersHandler,
+    DesktopTransferHandler,
+    DesktopTransferChunkHandler,
+    DesktopTransferCommitHandler,
+    DesktopExecutionPrepareHandler,
+    DesktopExecutionStartHandler,
+    DesktopExecutionHeartbeatHandler,
+    DesktopExecutionStatusHandler,
+    DesktopExecutionSkillPackageHandler,
+)
 from channel.web.fork.handlers.files import (
     FileServeHandler,
     PreviewHandler,
@@ -255,6 +281,7 @@ from channel.web.fork.handlers.scheduler import (
     SchedulerUpdateHandler,
 )
 from channel.web.fork.handlers.sessions import (
+    UserMessagesHandler,
     HistoryHandler,
     MessageDeleteHandler,
     PromptOptimizeHandler,
@@ -264,6 +291,7 @@ from channel.web.fork.handlers.sessions import (
     SessionTitleHandler,
     SessionsHandler,
 )
+from channel.web.fork.skill_lifecycle import SkillUploadHandler
 from channel.web.fork.handlers.skills import (
     SkillContentHandler,
     SkillsHandler,
@@ -654,6 +682,7 @@ from channel.web.fork.runtime import (
     _session_roster,
     _session_settings_state,
     _session_team_state,
+    _session_workspace_root,
     _skill_service,
     _steer_reply_text,
     _system_workspace_service,
@@ -731,8 +760,11 @@ URLS = (
     '/api/weixin/qrlogin', 'WeixinQrHandler',
     '/api/feishu/register', 'FeishuRegisterHandler',
     '/api/tools', 'ToolsHandler',
+    '/api/mcp/servers', 'McpServersHandler',
+    '/api/mcp/servers/test', 'McpServerTestHandler',
     '/api/skills', 'SkillsHandler',
     '/api/skills/content', 'SkillContentHandler',
+    '/api/skills/upload', 'SkillUploadHandler',
     '/api/memory', 'MemoryHandler',
     '/api/memory/content', 'MemoryContentHandler',
     '/api/knowledge/list', 'KnowledgeListHandler',
@@ -762,6 +794,7 @@ URLS = (
     '/api/sessions/(.*)/compact_context', 'SessionCompactContextHandler',
     '/api/sessions/(.*)/settings', 'SessionSettingsHandler',
     '/api/sessions/(.*)', 'SessionDetailHandler',
+    '/api/history/user_messages', 'UserMessagesHandler',
     '/api/history', 'HistoryHandler',
     '/api/messages/delete', 'MessageDeleteHandler',
     '/api/logs/download', 'LogsDownloadHandler',

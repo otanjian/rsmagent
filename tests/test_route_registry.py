@@ -155,8 +155,8 @@ class RegistryDerivationTests(unittest.TestCase):
         #: Upstream's table as adopted, and the origin/master commit it came
         #: from: ``git show 8f1b19f1:channel/web/web_channel.py``.
         UPSTREAM_URLS_SHA256 = \
-            "2867888ea56c28d29a455c14d7a8fd839bace31d61e29a052fc87008089f23ca"
-        UPSTREAM_URLS_SOURCE = "origin/master 8f1b19f1"
+            "9022cd44eca2399861832d5a06a4f109dd20fd623537ffd82287452feccaf154"
+        UPSTREAM_URLS_SOURCE = "origin/master 48c0d79c"
 
         import ast
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Cpu, Bot, ShieldCheck, Settings, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Cpu, Bot, ShieldCheck, Settings, Eye, EyeOff, ArrowRight, Loader2, Server } from 'lucide-react'
 import { t, getLang, setLang, localizedLabel, type Lang } from '../../i18n'
 import apiClient from '../../api/client'
 import { product } from '@product'
@@ -34,6 +35,7 @@ interface BasicSettingsProps {
 }
 
 const BasicSettings: React.FC<BasicSettingsProps> = ({ baseUrl, onLangChange, onOpenModels }) => {
+  const navigate = useNavigate()
   const [config, setConfig] = useState<ConfigData | null>(null)
   const [loading, setLoading] = useState(true)
   // When arriving from the context pie's "Config" action, scroll to and briefly
@@ -673,6 +675,25 @@ const BasicSettings: React.FC<BasicSettingsProps> = ({ baseUrl, onLangChange, on
               )}
             </div>
           )}
+        </div>
+      </Card>
+
+      {/* Remote server (change add-desktop-remote-web-workbench, task 2.3).
+          The connection shell is a page of its own -- it renders full-height and
+          owns the mode switch -- so this card only opens it. That is the entry
+          point a user in local mode has: without it, remote mode could be
+          stored but never reached. */}
+      <Card icon={<Server size={16} />} title={t('remote_shell_title')}>
+        <div className="space-y-3">
+          <p className="text-xs text-content-tertiary">{t('remote_shell_desc')}</p>
+          <button
+            type="button"
+            onClick={() => navigate('/remote')}
+            className="inline-flex items-center gap-1 rounded-lg border border-default px-3 py-2 text-sm hover:bg-surface-2 cursor-pointer"
+          >
+            {t('remote_open_shell')}
+            <ArrowRight size={14} />
+          </button>
         </div>
       </Card>
     </div>

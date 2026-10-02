@@ -5,6 +5,11 @@ import type {
   SkillInfo,
   SkillContent,
   ToolInfo,
+  McpServerConfig,
+  McpServersResult,
+  McpTestResult,
+  SkillMarketSource,
+  SkillPreviewResult,
   MemoryItem,
   MemoryCategory,
   MemoryPage,
@@ -21,6 +26,7 @@ import type {
   SessionsPage,
   SessionSettingsState,
   HistoryPage,
+  UserMessageIndex,
   ContextUsage,
   ModelsData,
   ModelsAction,
@@ -556,12 +562,28 @@ class ApiClient {
     })
   }
 
-  async getHistory(sessionId: string, page = 1, pageSize = 20, agentId?: string): Promise<HistoryPage> {
+  async getHistory(
+    sessionId: string,
+    page = 1,
+    pageSize = 20,
+    agentId?: string,
+    untilSeq?: number
+  ): Promise<HistoryPage> {
+    const until = untilSeq != null ? `&until_seq=${untilSeq}` : ''
     return this.request<{ status: string } & HistoryPage>(
       this.scoped(
-        `/api/history?session_id=${encodeURIComponent(sessionId)}&page=${page}&page_size=${pageSize}`,
+        `/api/history?session_id=${encodeURIComponent(sessionId)}&page=${page}&page_size=${pageSize}${until}`,
         agentId
       )
+    )
+  }
+
+  // Lightweight index of a session's user messages for the navigation timeline.
+  // Returns the whole conversation's user turns at once (no pagination): the
+  // payload is small since it only carries {seq, preview, created_at}.
+  async getUserMessages(sessionId: string, agentId?: string): Promise<UserMessageIndex> {
+    return this.request<{ status: string } & UserMessageIndex>(
+      this.scoped(`/api/history/user_messages?session_id=${encodeURIComponent(sessionId)}`, agentId)
     )
   }
 
@@ -698,9 +720,12 @@ class ApiClient {
     })
   }
 
-  // Weixin QR login
-  async getWeixinQr(): Promise<{ status: string; qrcode_url?: string; qr_image?: string; source?: string; message?: string }> {
-    return this.request('/api/weixin/qrlogin')
+  // Weixin QR login. Pass instance_id so a live card reads that channel's
+  // own code instead of opening a standalone session (which would mint a
+  // second instance on confirm).
+  async getWeixinQr(instanceId?: string): Promise<{ status: string; qrcode_url?: string; qr_image?: string; source?: string; message?: string }> {
+    const q = instanceId ? `?instance_id=${encodeURIComponent(instanceId)}` : ''
+    return this.request(`/api/weixin/qrlogin${q}`)
   }
 
   async weixinQrAction(action: 'poll' | 'refresh'): Promise<Record<string, unknown> & { status: string }> {
@@ -736,15 +761,89 @@ class ApiClient {
   // is a separate concern handled on the Agents page, which passes an explicit
   // agentId to read/write that Agent's subset.
   async getSkills(agentId?: string): Promise<SkillInfo[]> {
+    return (await this.getSkillCatalog(agentId)).skills
+  }
+
+  async getSkillCatalog(agentId?: string): Promise<{ status: string; skills: SkillInfo[]; can_install?: boolean }> {
     const path = agentId ? `/api/skills?agent_id=${encodeURIComponent(agentId)}` : '/api/skills'
-    const data = await this.request<{ status: string; skills: SkillInfo[] }>(path)
-    return data.skills
+    return this.request(path)
   }
 
   async toggleSkill(name: string, action: 'open' | 'close'): Promise<ApiResult> {
     return this.request('/api/skills', {
       method: 'POST',
       body: JSON.stringify({ action, name }),
+    })
+  }
+
+  /** Fetch a skill into a staging area so it can be reviewed before installing. */
+  async previewSkill(source: SkillMarketSource, value: string): Promise<SkillPreviewResult> {
+    return this.request('/api/skills', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'preview', source, value }),
+    })
+  }
+
+  /** Stage uploaded files; `path` keeps each file's place inside a dropped folder. */
+  async uploadSkill(files: Array<{ file: File; path: string }>): Promise<SkillPreviewResult> {
+    const formData = new FormData()
+    for (const { file, path } of files) {
+      formData.append('files', file, file.name)
+      formData.append('paths', path)
+    }
+    return this.postFormData('/api/skills/upload', formData)
+  }
+
+  async confirmSkill(token: string, names: string[]): Promise<ApiResult & { installed?: string[] }> {
+    return this.request('/api/skills', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'confirm', token, names }),
+    })
+  }
+
+  async discardSkill(token: string): Promise<ApiResult> {
+    return this.request('/api/skills', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'discard', token }),
+    })
+  }
+
+  /** Install straight from a remote spec (e.g. an https archive URL), without staging. */
+  async installSkill(spec: string): Promise<ApiResult & { installed?: string[] }> {
+    return this.request('/api/skills', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'install', spec }),
+    })
+  }
+
+  async deleteSkill(name: string): Promise<ApiResult> {
+    return this.request('/api/skills', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'delete', name }),
+    })
+  }
+
+  async getMcpServers(): Promise<McpServersResult> {
+    const res: McpServersResult = await this.request('/api/mcp/servers')
+    // A broken mcp.json answers 200 with status "error"; surface it instead of
+    // rendering an empty list that looks like the configuration was lost.
+    if (res && res.status === 'error') {
+      throw new Error(res.message || 'failed to load MCP servers')
+    }
+    return res
+  }
+
+  async saveMcpServers(servers: McpServerConfig[]): Promise<McpServersResult> {
+    return this.request('/api/mcp/servers', {
+      method: 'PUT',
+      body: JSON.stringify({ servers }),
+    })
+  }
+
+  async testMcpServer(server: McpServerConfig): Promise<McpTestResult> {
+    return this.request('/api/mcp/servers/test', {
+      method: 'POST',
+      body: JSON.stringify({ server }),
     })
   }
 

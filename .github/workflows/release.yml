@@ -90,11 +90,28 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r desktop/build/requirements-desktop.txt
           pip install pyinstaller
+          # Refuse a bundle that cannot satisfy its skills' declared dependencies,
+          # before spending a PyInstaller run on it. `--verify-imports` is the real
+          # check: the lock is installed here, so an import is the last word.
+          python desktop/build/check-skill-dependencies.py --verify-imports
+          # The bundle ships this interpreter (python-version: 3.11 above), so
+          # anything that only parses on a newer one has to fail here. PyInstaller
+          # does not fail on it: it builds a bundle that starts and cannot import
+          # its tools.
+          python desktop/build/check-python-syntax.py --floor 3.11
           # Run from repo root so the spec's relative datas resolve correctly.
           pyinstaller desktop/build/cowagent-backend.spec \
             --noconfirm \
             --distpath desktop/build/dist \
             --workpath desktop/build/build-work
+
+      # A bundle that builds is not a bundle that works: this starts the frozen
+      # executable the way the installed app does (no `python`, no `-m`) and runs
+      # a real tool call over the worker protocol. It is the last line of defence
+      # for "the desktop cannot run any local command".
+      - name: Verify the bundled worker runs a tool
+        shell: bash
+        run: python desktop/build/verify-backend-bundle.py
 
       # PyInstaller follows whatever arch the host Python is, so a translated
       # toolchain would hand us a backend for the wrong arch. Shipping that in
@@ -110,6 +127,26 @@ jobs:
           echo "backend arch: $got (want $want)"
           if [ "$got" != "$want" ]; then
             echo "::error::backend is $got but this job targets $want"
+            exit 1
+          fi
+
+      # The bundle carries a single libssl.3.dylib (Python's own). An extension
+      # linked against a different OpenSSL resolves to that copy at runtime and
+      # fails with missing symbols, so only statically linked builds may ship.
+      - name: Verify no extension links a foreign OpenSSL
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          internal=desktop/build/dist/cowagent-backend/_internal
+          bad=""
+          while IFS= read -r -d '' so; do
+            case "$so" in */python3.*/lib-dynload/*) continue ;; esac
+            if otool -L "$so" | tail -n +2 | grep -Eq 'lib(ssl|crypto)\.[0-9.]+dylib'; then
+              bad="$bad ${so#$internal/}"
+            fi
+          done < <(find "$internal" -name '*.so' -print0)
+          if [ -n "$bad" ]; then
+            echo "::error::extensions dynamically linked to OpenSSL:$bad"
             exit 1
           fi
 
@@ -149,6 +186,31 @@ jobs:
         working-directory: desktop
         shell: bash
         run: npm run build
+
+      # The installed-shape boundary (task 4.9's "随包 Python" leg; the local half
+      # of 10.2). Runs the isolation acceptance against the *frozen* backend this
+      # job just built, instead of against a source checkout.
+      #
+      # The two shapes are not interchangeable: a checkout runs the worker from a
+      # virtualenv whose `base_prefix`/`stdlib`/`site-packages` are real readable
+      # directories, while a frozen bundle has no virtualenv at all and
+      # `interpreter.ts` deliberately narrows the read set to `bundleRoot` --
+      # because `sysconfig` on a frozen build still names the **build machine**.
+      # A profile that works in a checkout can therefore fail once frozen (the
+      # worker dies before the handshake, reported as "the worker crashed"), and
+      # that is the shape a user runs.
+      #
+      # macOS only: the probe needs `sandbox-exec`, and Windows refuses local
+      # script execution outright (task 4.5), so there is nothing to confine there.
+      - name: Verify the installed-shape sandbox boundary
+        if: matrix.platform == 'mac'
+        shell: bash
+        env:
+          # `findWorkerRuntime` looks for `<backendPath>/cowagent-backend/<exe>`,
+          # which is exactly what PyInstaller wrote above -- the same layout an
+          # installed app has under `Contents/Resources/backend`.
+          COW_A26_BACKEND: ${{ github.workspace }}/desktop/build/dist
+        run: node --test tests/test_desktop_local_execution.cjs
 
       # Download the Windows signing CLI. The URL comes from a repo variable, so
       # nothing about the signing setup is hardcoded in a public workflow. Only

@@ -6,7 +6,7 @@ from .channel import Channel
 
 
 def create_channel(channel_type, instance_id="", bound_agent_id="", credentials=None, members=None,
-                   tenant_id="") -> Channel:
+                   tenant_id="", peers=None) -> Channel:
     """
     create a channel instance
 
@@ -21,9 +21,11 @@ def create_channel(channel_type, instance_id="", bound_agent_id="", credentials=
     :param members: teammate Agent ids the owner may delegate to (team bot).
     :param tenant_id: owning tenant when this instance is tenant-owned. Empty
         for platform/legacy instances.
+    :param peers: connection profiles for teammates in another process, so the
+        owner can delegate to them through the transport.
     :return: channel instance
     """
-    multi_instance = bool(instance_id or credentials or bound_agent_id or members or tenant_id)
+    multi_instance = bool(instance_id or credentials or bound_agent_id or members or tenant_id or peers)
     ch = _build_channel(channel_type, multi_instance)
     ch.channel_type = _normalize_type(channel_type)
     if multi_instance:
@@ -33,6 +35,7 @@ def create_channel(channel_type, instance_id="", bound_agent_id="", credentials=
             credentials=credentials,
             members=members,
             tenant_id=tenant_id,
+            peers=peers,
         )
     return ch
 

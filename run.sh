@@ -366,8 +366,7 @@ detect_python_command() {
             minor_version=$($cmd -c 'import sys; print(sys.version_info[1])' 2>/dev/null)
             
             if [[ "$major_version" == "3" ]]; then
-                # Supported range is 3.7+. On 3.13+ web.py is installed from a
-                # pinned GitHub commit (see requirements.txt), which needs git.
+                # Supported range is 3.7+.
                 if (( minor_version >= 7 )); then
                     PYTHON_CMD=$cmd
                     PYTHON_VERSION="${major_version}.${minor_version}"
@@ -383,14 +382,6 @@ detect_python_command() {
         exit 1
     fi
 
-    # On 3.13+, web.py is pulled from GitHub via pip, which requires git.
-    if [[ "$major_version" == "3" ]] && (( minor_version >= 13 )); then
-        if ! command -v git &> /dev/null; then
-            echo -e "${YELLOW}⚠️  Python $PYTHON_VERSION detected. Installing web.py from GitHub requires git, which was not found.${NC}"
-            echo -e "${YELLOW}    Please install git, or use Python 3.12 where web.py installs directly from PyPI.${NC}"
-        fi
-    fi
-    
     # Export for global use
     export PYTHON_CMD
     export PYTHON_VERSION
@@ -597,8 +588,8 @@ select_model() {
     # The 12th option is "skip" -> configure later in the web console.
     select_menu sel "$title" \
         "DeepSeek (deepseek-flash, deepseek-v4-pro, etc.)" \
-        "Claude (claude-opus-5, claude-sonnet-5, etc.)" \
-        "OpenAI (gpt-5.6-luna, etc.)" \
+        "Claude (claude-opus-5-5, claude-sonnet-5, etc.)" \
+        "OpenAI (gpt-6.1-sol, gpt-6-luna, etc.)" \
         "Gemini (gemini-3.8-flash, gemini-3.7-flash, etc.)" \
         "MiniMax (MiniMax-M3, etc.)" \
         "GLM (glm-5.3-flash, glm-5.3, etc.)" \
@@ -629,8 +620,8 @@ read_model_config() {
 configure_model() {
     case "$model_choice" in
         1) read_model_config "DeepSeek" "deepseek-flash" "DEEPSEEK_KEY" ;;
-        2) read_model_config "Claude" "claude-opus-5" "CLAUDE_KEY" ;;
-        3) read_model_config "OpenAI" "gpt-5.6-luna" "OPENAI_KEY" ;;
+        2) read_model_config "Claude" "claude-opus-5-5" "CLAUDE_KEY" ;;
+        3) read_model_config "OpenAI" "gpt-6.1-sol" "OPENAI_KEY" ;;
         4) read_model_config "Gemini" "gemini-3.8-flash" "GEMINI_KEY" ;;
         5) read_model_config "MiniMax" "MiniMax-M3" "MINIMAX_KEY" ;;
         6) read_model_config "GLM" "glm-5.3-flash" "ZHIPU_KEY" ;;
@@ -702,7 +693,7 @@ configure_channel() {
             # no prompt; it can be changed later in the web console / config.
             CHANNEL_TYPE="web"
             WEB_PORT="9899"
-            ACCESS_INFO="$(t "Web 控制台地址" "Web console") : http://localhost:9899/chat"
+            ACCESS_INFO="$(t "Web 控制台地址" "Web console") : http://localhost:9899/"
             ;;
         weixin)
             # Weixin
@@ -964,7 +955,7 @@ start_project() {
         local _port="${WEB_PORT:-9899}"
         echo ""
         echo -e "${YELLOW}${EMOJI_WARN} $(t "尚未配置模型，请在 Web 控制台完成配置" "Model not configured yet, please finish setup in the web console"):${NC}"
-        echo -e "${CYAN}   http://localhost:${_port}/chat${NC}"
+        echo -e "${CYAN}   http://localhost:${_port}/${NC}"
     fi
     echo ""
     echo -e "${CYAN}${BOLD}$(t "管理命令" "Management Commands"):${NC}"

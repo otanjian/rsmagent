@@ -4,7 +4,7 @@ Integration module for scheduler with AgentBridge
 
 import os
 import threading
-from typing import Dict, Optional
+from typing import Dict
 from config import conf
 from common.log import logger
 from common.utils import expand_path
@@ -1050,6 +1050,10 @@ def _execute_agent_task(
         # Use Agent to execute the task
         # Mark this as a scheduled task execution to prevent recursive task creation
         context["is_scheduled_task"] = True
+        # Name the source as well: the run boundary refuses to inherit a local
+        # project authorization from a session, and it needs to know this turn
+        # was not sent by a user (change task 3.7).
+        context["task_source"] = "scheduler"
         
         try:
             # Don't clear history - scheduler tasks use isolated session_id so they won't pollute user conversations
@@ -1300,7 +1304,7 @@ def _execute_skill_call(
         skill_params = action.get("call_params") or action.get("skill_params", {})
         result_prefix = action.get("result_prefix", "")
         receiver = action.get("receiver")
-        is_group = action.get("isgroup", False)
+        is_group = action.get("is_group", False)
         channel_type = _primary_channel_type(action.get("channel_type"))
 
         if not skill_name:
@@ -1346,9 +1350,23 @@ def _execute_skill_call(
             logger.error(f"[Scheduler] Task {task['id']}: No result from skill execution")
             return True
 
-        content = reply.content
-        if result_prefix:
-            content = f"{result_prefix}\n\n{content}"
+        # A skill can end its turn by sending files: agent_reply then returns a
+        # FILE / IMAGE_URL reply whose ``content`` is the media URL while the
+        # prose rides in ``text_content`` (see ``_create_file_reply``). Wrapping
+        # that in a TEXT reply would deliver a bare local path and drop both the
+        # answer and the attachment — the trap
+        # ``agent_delegate.delegated_result_text`` documents. Forward it
+        # untouched, exactly as ``_execute_agent_task`` already does.
+        if reply.type in (ReplyType.IMAGE_URL, ReplyType.FILE):
+            delivery = reply
+            if result_prefix:
+                reply.text_content = f"{result_prefix}\n\n{reply.text_content or ''}".rstrip()
+            summary = reply.content
+        else:
+            summary = reply.content
+            if result_prefix:
+                summary = f"{result_prefix}\n\n{summary}"
+            delivery = Reply(ReplyType.TEXT, summary)
 
         channel = _resolve_delivery_channel(channel_type, action.get("instance_id") or "", receiver)
         if not channel:
@@ -1361,15 +1379,15 @@ def _execute_skill_call(
                 channel.request_to_session[req_id] = receiver
 
         try:
-            channel.send(Reply(ReplyType.TEXT, content), context)
+            channel.send(delivery, context)
         except Exception as e:
             logger.error(f"[Scheduler] Failed to send skill result: {e}")
             return False
 
         if output_sink is not None:
-            output_sink["preview"] = str(content)
+            output_sink["preview"] = str(summary)
         _remember_delivered_output(
-            agent_bridge, task, channel_type, content, agent_id
+            agent_bridge, task, channel_type, summary, agent_id
         )
         logger.info(f"[Scheduler] Task {task['id']} executed: skill result sent to {receiver}")
         return True

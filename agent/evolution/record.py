@@ -32,10 +32,26 @@ def append_session_evolution(
     summary: str,
     backup_id: Optional[str] = None,
     user_id: Optional[str] = None,
+    expected_scope=None,
 ) -> None:
     """Append a session-evolution entry to today's evolution log."""
     if not summary or not summary.strip():
         return
+    if user_id:
+        from agent.memory.personal import personal_service_for, _personal_stage
+        service = personal_service_for(user_id)
+        today = datetime.now().strftime('%Y-%m-%d')
+        body = f"## {datetime.now().strftime('%H:%M')}\n\n{summary.strip()}\n"
+        if backup_id:
+            body += f'\n_backup_id: {backup_id}_\n'
+        stage = _personal_stage.get()
+        if stage is not None:
+            entry = f'memory/evolution/{today}.md'
+            previous = stage['changes'].get(entry, service.read(entry)['content'])
+            stage['changes'][entry] = previous + '\n' + body
+            return
+        return service.publish({f'memory/evolution/{today}.md': body},
+                               expected_scope=expected_scope or service.scope_token(), append=True)
     try:
         evo_dir = _evolution_dir(workspace_dir, user_id)
         evo_dir.mkdir(parents=True, exist_ok=True)

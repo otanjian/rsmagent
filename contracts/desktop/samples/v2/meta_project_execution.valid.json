@@ -1,0 +1,31 @@
+{
+  "available": true,
+  "reason": "available",
+  "protocol_major": 2,
+  "protocol_minor": 0,
+  "required": false,
+  "tools": ["read", "write", "edit", "ls", "search_files", "bash"],
+  "tool_schema_version": 1,
+  "platform": "posix",
+  "runtime": "cpython-3.11",
+  "files_write_verified": true,
+  "scripts_verified": true,
+  "limits": {
+    "script_timeout_default_seconds": 120,
+    "script_timeout_max_seconds": 600,
+    "start_permit_ttl_seconds": 10,
+    "effectful_per_project": 1,
+    "readonly_parallel_per_project": 4,
+    "pending_queue": 32,
+    "offline_wait_seconds": 30
+  },
+  "advisory_limits": {
+    "worker_memory_bytes": 1073741824
+  },
+  "artifact_protocol": "local-artifact-v1",
+  "single_source": "contracts/desktop/v2.json",
+  "surfaces": {
+    "files": {"available": true, "reason": "available"},
+    "scripts": {"available": true, "reason": "available"}
+  }
+}

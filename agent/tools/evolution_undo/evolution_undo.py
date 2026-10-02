@@ -44,7 +44,14 @@ class EvolutionUndoTool(BaseTool):
             from agent.evolution.backup import restore_backup
 
             workspace_dir = get_default_memory_config().get_workspace()
-            ok = restore_backup(workspace_dir, backup_id)
+            if backup_id.startswith('personal-'):
+                from agent.evolution.backup import restore_personal_backup
+                result = restore_personal_backup(workspace_dir, backup_id)
+                if result and result.get('index_state') != 'ok':
+                    return ToolResult.success('个人记忆已恢复，索引待恢复；请在记忆管理中重试索引。')
+                ok = bool(result)
+            else:
+                ok = restore_backup(workspace_dir, backup_id)
             if ok:
                 return ToolResult.success(
                     f"Restored memory/skills to the state before evolution "

@@ -49,6 +49,20 @@ Once the desktop client is running, it listens on port `9876` locally, and its b
 
 If that port is unavailable (for example reserved by Hyper-V/WSL2 on Windows), the client automatically falls back to another one and still starts normally. The actual port is shown on the `Local access` line in `run.log`, and you can pin one by setting `web_port` in `config.json`.
 
+## Accounts and Signing Back In
+
+The desktop client uses the same accounts as the backend it runs: signing in happens in your system browser, and the client itself never receives your password.
+
+- After you sign out from the account menu, the client confirms the Web session is ended, ends the native session on this machine, releases the local authorizations and closes the container before the client's own login screen comes back. **No restart is needed** — sign in again and keep working.
+- When a page inside the container asks you to sign in again, use its "re-login" entry. It runs the same native sign-in flow, and will not create a Web-only session inside the container.
+- You must be signed in before picking a local directory. If a directory binding answers `not signed in`, the native session on this machine has already expired: sign out and sign in again, with no need to clear data or reinstall.
+
+The client and the Web console it ships with are one build, so upgrade them together — neither half is upgraded on its own. This change needs no database migration and changes no account, role or permission configuration. A local directory that cannot be used still says which reason applies (permission, tenant, network or device error) instead of a generic failure. To go back, replace the build with the previous version as described in the [upgrade guide](/guide/upgrade).
+
+When a local folder is selected, chat requests about its files use `client_files`. An empty server workspace does not mean the selected folder is empty. For Word, Excel or PDF files, the requested file is transferred on demand before analysis; selecting a folder does not upload all its contents.
+
+For troubleshooting, distinguish these stages: `handshake_failed` or `device_offline` means the device command connection failed; `missing_tenant` during `materialize` means the transfer request lacks tenant context. The bundled backend now starts its device gateway on a private loopback port and reports the port through `/api/desktop/meta`; the desktop discovers it automatically. Initial connection and reconnects preserve the selected folder while its authorization remains valid. These errors do not call for granting broader account permissions.
+
 ## Local Data Storage
 
 All data of the desktop client is stored on your machine:

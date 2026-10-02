@@ -1,0 +1,24 @@
+{
+  "status": "success",
+  "data": {
+    "remote_web": {
+      "implemented": true,
+      "accepted": false,
+      "configured": false,
+      "available": false,
+      "reason": "not_accepted"
+    },
+    "protocols": {
+      "web_session": { "major": 1, "minor": 0 },
+      "bridge": { "major": 1, "minor": 0 },
+      "files": { "major": 1, "minor": 0 }
+    },
+    "entry_path": "/",
+    "console_entry_paths": ["/"],
+    "features": {
+      "local_files": { "available": false, "reason": "not_implemented" },
+      "local_processing": { "available": false, "reason": "not_implemented" },
+      "notifications": { "available": false, "reason": "not_implemented" }
+    }
+  }
+}

@@ -1,6 +1,8 @@
 """Tests for portable RongAI backup archives."""
 
+import errno
 import json
+import os
 import zipfile
 from pathlib import Path
 
@@ -8,6 +10,7 @@ import pytest
 
 from agent import team
 from agent.registry import AgentRegistry
+from cli.commands import backup
 from cli.commands.backup import create_backup_archive, restore_backup_archive
 
 
@@ -51,6 +54,67 @@ def test_backup_restore_round_trip(tmp_path):
     assert (target_workspace / "knowledge" / "index.md").exists()
     assert not (target_workspace / "tmp" / "scratch.txt").exists()
     assert result["workspace_files"] == 5
+
+
+def test_backup_output_on_another_filesystem(tmp_path, monkeypatch):
+    source_workspace = tmp_path / "workspace"
+    source_workspace.mkdir()
+    (source_workspace / "MEMORY.md").write_bytes(b"portable\n")
+    output_dir = source_workspace / "backups"
+    archive = output_dir / "cow-backup.zip"
+    real_replace = os.replace
+
+    def replace_on_same_filesystem(source, destination):
+        # Treat the output directory as a separate mounted filesystem.
+        if output_dir.resolve() not in Path(source).resolve().parents:
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(backup.os, "replace", replace_on_same_filesystem)
+    summary = create_backup_archive(archive, tmp_path / "data", source_workspace)
+
+    assert summary["contents"]["workspace_files"] == 1
+    with zipfile.ZipFile(archive) as bundle:
+        assert set(bundle.namelist()) == {"manifest.json", "workspace/MEMORY.md"}
+        assert bundle.read("workspace/MEMORY.md") == b"portable\n"
+    assert list(output_dir.iterdir()) == [archive]
+
+
+def test_backup_falls_back_to_move_on_cross_device_replace(tmp_path, monkeypatch):
+    source_workspace = tmp_path / "workspace"
+    source_workspace.mkdir()
+    (source_workspace / "MEMORY.md").write_bytes(b"portable\n")
+    output_dir = tmp_path / "backups"
+    output_dir.mkdir()
+    archive = output_dir / "cow-backup.zip"
+    archive.write_bytes(b"previous backup")
+
+    def replace_raising_exdev(source, destination):
+        raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+    monkeypatch.setattr(backup.os, "replace", replace_raising_exdev)
+    create_backup_archive(archive, tmp_path / "data", source_workspace)
+
+    with zipfile.ZipFile(archive) as bundle:
+        assert bundle.read("workspace/MEMORY.md") == b"portable\n"
+    assert list(output_dir.iterdir()) == [archive]
+
+
+def test_backup_replace_failure_preserves_existing_archive(tmp_path, monkeypatch):
+    output_dir = tmp_path / "backups"
+    output_dir.mkdir()
+    archive = output_dir / "cow-backup.zip"
+    archive.write_bytes(b"previous backup")
+
+    def fail_replace(source, destination):
+        raise PermissionError("destination is locked")
+
+    monkeypatch.setattr(backup.os, "replace", fail_replace)
+    with pytest.raises(PermissionError, match="destination is locked"):
+        create_backup_archive(archive, tmp_path / "data", tmp_path / "workspace")
+
+    assert archive.read_bytes() == b"previous backup"
+    assert list(output_dir.iterdir()) == [archive]
 
 
 def test_restore_merges_without_deleting_unrelated_files(tmp_path):
@@ -256,6 +320,59 @@ def test_multi_agent_restore_reuses_matching_local_destinations(tmp_path):
     assert {profile.id: Path(profile.workspace) for profile in registry.list()} == {
         "primary": local_primary.resolve(),
         "research": local_research.resolve(),
+    }
+
+
+def test_multi_agent_restore_reuses_the_local_roster_file(tmp_path):
+    source_data = tmp_path / "source-data"
+    source_primary = tmp_path / "source-primary"
+    source_research = tmp_path / "source-research"
+    _write_json(
+        source_data / "config.json",
+        {
+            "default_agent_id": "primary",
+            "agents": [
+                {"id": "primary", "workspace": str(source_primary)},
+                {"id": "research", "workspace": str(source_research)},
+            ],
+        },
+    )
+    source_primary.mkdir()
+    source_research.mkdir()
+    (source_primary / "AGENT.md").write_text("new primary", encoding="utf-8")
+    (source_research / "AGENT.md").write_text("new research", encoding="utf-8")
+    archive = tmp_path / "multi.zip"
+    create_backup_archive(archive, source_data, source_primary)
+
+    target_data = tmp_path / "target-data"
+    local_primary = tmp_path / "local-primary"
+    local_research = tmp_path / "local-research"
+    local_primary.mkdir()
+    local_research.mkdir()
+    # What a current install leaves behind once the roster has moved out of
+    # config.json: the file beside the workspaces holds it, config.json holds
+    # none of it.
+    _write_json(target_data / "config.json", {"agent_workspace": str(local_primary)})
+    _write_json(
+        local_primary / "agents" / team.FILE_NAME,
+        {
+            "default_agent_id": "primary",
+            "agents": [
+                {"id": "primary"},
+                {"id": "research", "workspace": str(local_research)},
+            ],
+        },
+    )
+    (local_research / "AGENT.md").write_text("local research", encoding="utf-8")
+
+    restore_backup_archive(archive, target_data)
+
+    assert (local_primary / "AGENT.md").read_text(encoding="utf-8") == "new primary"
+    assert (local_research / "AGENT.md").read_text(encoding="utf-8") == "new research"
+    roster = team.read({"agent_workspace": str(local_primary)})
+    assert {item["id"]: item.get("workspace") for item in roster["agents"]} == {
+        "primary": None,
+        "research": str(local_research.resolve()),
     }
 
 

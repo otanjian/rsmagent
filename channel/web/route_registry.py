@@ -115,6 +115,25 @@ def S(slice_id: str, action: str, **kwargs) -> dict:
     return capability_matrix.route(slice_id, action, **kwargs)
 
 
+#: Patterns that serve the console *shell document* itself, as opposed to a
+#: content page or API. The desktop container is told which paths it may load
+#: (``/api/desktop/meta``) so its local workbench-entry rule can be narrowed by
+#: the server's answer.
+#:
+#: This is deliberately a declared tuple next to :data:`ROUTES` and not a
+#: literal inside a handler: ``shell_entry_paths()`` cross-checks it against the
+#: live table (see ``tests/test_desktop_meta.py``), so removing or renaming the
+#: root route fails the test rather than silently advertising a dead entry.
+#: Content pages (``/preview``, ``/uploads``, ``/api/file``, ...) MUST NOT be
+#: listed: a server answer can never authorize a non-shell document.
+_SHELL_ENTRY_PATTERNS: Tuple[str, ...] = ("/",)
+
+
+def shell_entry_paths() -> List[str]:
+    """The literal shell-document entry paths a desktop container may load."""
+    return list(_SHELL_ENTRY_PATTERNS)
+
+
 ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/help", "HelpSiteHandler", "fork:help-site", {"GET": P("public", comment="redirect to help root")}),
     RouteEntry("/help/(.*)", "HelpSiteHandler", "fork:help-site", {"GET": P("public", comment="product help pages and public assets; no tenant data")}),
@@ -130,6 +149,58 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/auth/profile/avatar", "DbSelfAvatarHandler", "fork:self-account", {"GET": P("personal", comment="fetch self avatar"), "POST": P("personal", comment="upload self avatar")}),
     RouteEntry("/auth/desktop/authorize", "DesktopAuthorizeHandler", "fork:desktop-auth", {"GET": P("public", comment="Desktop browser consent page (Cookie session; a bare GET never mints a code)"), "POST": P("public", comment="Desktop consent confirm (CSRF/origin + live session + one-time request record)")}),
     RouteEntry("/auth/desktop/token", "DesktopTokenHandler", "fork:desktop-auth", {"POST": P("public", comment="Desktop authorization-code + PKCE S256 exchange (exact origin, 60s single-use code, no-store)")}),
+    # Desktop client metadata (change add-desktop-remote-web-workbench, task
+    # 2.5). Literal ``public``, not a capability-matrix action: it must answer
+    # exactly when the remote features are *closed*, so a client can learn why.
+    # It carries no user/tenant/directory data and reports the declaration's
+    # state (implemented/accepted/configured/reason) rather than being gated.
+    RouteEntry("/api/desktop/meta", "DesktopMetaHandler", "fork:desktop", {"GET": P("public", comment="public desktop connection/capability metadata: protocol versions, real shell entry paths and honest per-feature availability; no user data, no-store")}),
+    # Desktop native parent -> Web child session (change
+    # add-desktop-remote-web-workbench, tasks 3.3/3.4). ``personal`` = an
+    # authenticated account with no tenant selection; the handler additionally
+    # requires a *native Bearer* (a Cookie session is refused) and re-verifies
+    # that the session's origin was registered at PKCE mint time. The capability
+    # gate inside the handler answers 503 feature_unavailable while
+    # ``desktop_remote_web`` is closed, so the route can be registered (and
+    # coverage-checked) without opening the surface.
+    RouteEntry("/auth/desktop/web-session", "DesktopWebSessionHandler", "fork:desktop", {"POST": P("personal", comment="bootstrap an independent Web child session for a native desktop parent: re-verify origin, single-use bootstrap_id, one active child per parent; the child secret leaves only in a host-only HttpOnly Set-Cookie, no-store"), "GET": P("personal", comment="current parent/child link state; never returns a Cookie, a token or a secret")}),
+    # Desktop local-files devices / bindings / workspaces (change
+    # add-desktop-remote-web-workbench, tasks 8.3/8.4). Routes are registered
+    # with the ordinary personal/tenant policies so coverage can check them;
+    # the handler additionally refuses while ``desktop_local_files`` is closed
+    # (503 feature_unavailable) and every authorization decision goes through
+    # ``integrations.desktop.access`` -- never a second, simplified check.
+    # Absolute client paths are refused at the workspace handler; they have no
+    # column in the schema either.
+    RouteEntry("/api/desktop/devices", "DesktopDevicesHandler", "fork:desktop", {"GET": P("personal", comment="list the caller's registered desktop devices (desensitized); no other user's devices"), "POST": P("personal", comment="register or refresh a desktop device under the native session's real user; owner from session, never from the body")}),
+    RouteEntry("/api/desktop/devices/([^/]+)", "DesktopDeviceHandler", "fork:desktop", {"DELETE": P("personal", comment="disable a device the caller owns; revokes its bindings and workspace grants, does not delete local files")}),
+    RouteEntry("/api/desktop/bindings", "DesktopBindingsHandler", "fork:desktop", {"POST": P("tenant", comment="create a file binding from a paired Web child session: device/agent/business-session ownership re-checked via integrations.desktop.access; unpaired external browsers refused")}),
+    RouteEntry("/api/desktop/bindings/resolve", "DesktopBindingResolveHandler", "fork:desktop", {"POST": P("tenant", comment="native resolve of a binding: non-secret projection after server-side B-order checks; cannot resolve another native link's binding")}),
+    RouteEntry("/api/desktop/bindings/([^/]+)", "DesktopBindingHandler", "fork:desktop", {"DELETE": P("tenant", comment="idempotent revoke of a binding the caller owns; stops new commands and unpublished transfers")}),
+    RouteEntry("/api/desktop/workspaces", "DesktopWorkspacesHandler", "fork:desktop", {"POST": P("tenant", comment="register a workspace after the native picker authorised a root; label + grant_version only -- absolute_path fields are refused")}),
+    RouteEntry("/api/desktop/workspaces/([^/]+)", "DesktopWorkspaceHandler", "fork:desktop", {"DELETE": P("tenant", comment="revoke a server workspace grant; online clients are notified, offline ones must not auto-restore")}),
+    RouteEntry("/api/desktop/local-roots", "DesktopLocalRootsHandler", "fork:desktop", {"POST": P("personal", comment="register the absolute root the native picker returned with this same-machine backend; loopback + per-launch desktop token + native bearer + owned device/workspace/binding; never persisted and never echoed back; refuse a project-execution mode the workspace grant did not authorize"), "DELETE": P("personal", comment="forget a registered local root (or every root for a device) so the backend stops resolving that directory; idempotent")}),
+    RouteEntry("/api/desktop/sessions/([^/]+)/execution-target", "DesktopSessionTargetHandler", "fork:desktop", {"POST": P("tenant", comment="bind a chat to a local project: native + loopback + launch token + owned device/workspace/binding and business session; grant_version read from the workspace row, never from the body; refuses project-execution on a read-only grant; stores identifiers only, never a path"), "DELETE": P("tenant", comment="close the local project for one chat (idempotent); the session falls back to the server-side rules")}),
+    RouteEntry("/api/desktop/bindings/([^/]+)/workspaces/([^/]+)", "DesktopBindingWorkspaceHandler", "fork:desktop", {"PUT": P("tenant", comment="bind a live workspace grant_version to a binding; a late/duplicate message for a revoked version is refused rather than re-activated")}),
+    RouteEntry("/api/desktop/commands", "DesktopCommandsHandler", "fork:desktop", {"POST": P("tenant", comment="create a durable desktop file command; claimed-runtime flag is ignored for authorization; 202 + request_id; queue_full when pending exceeds the bound")}),
+    RouteEntry("/api/desktop/commands/([^/]+)", "DesktopCommandHandler", "fork:desktop", {"GET": P("tenant", comment="bounded status/result of a command the caller owns")}),
+    RouteEntry("/api/desktop/commands/([^/]+)/cancel", "DesktopCommandCancelHandler", "fork:desktop", {"POST": P("tenant", comment="idempotent cancel; already-terminal returns the terminal state and never claims to withdraw delivered bytes")}),
+    # v2 project-execution broker (change
+    # align-desktop-project-execution-with-master, tasks 6.4/6.5). The paths are
+    # exactly the contract's ``broker.paths``; the handlers additionally require
+    # a *native* bearer (a Cookie session -- a page -- is refused), the composed
+    # execution capability, and every check in ``broker.checks`` re-run per
+    # request. A body may name identifiers and its digest; it may not name a URL,
+    # an auth header, a module, a class or a cwd (``broker.forbidden``).
+    RouteEntry("/api/desktop/execution/prepare", "DesktopExecutionPrepareHandler", "fork:desktop", {"POST": P("tenant", comment="may this received frame still run? re-runs membership, Agent use, tool eligibility, approval, quota, binding/device/workspace/grant and the params digest; changes no state; refuses another device's command and a digest mismatch")}),
+    RouteEntry("/api/desktop/execution/start", "DesktopExecutionStartHandler", "fork:desktop", {"POST": P("tenant", comment="second independent re-validation then issues the short-lived single-use start permit; a device offline or holding a superseded epoch is refused by name, never handed a permit")}),
+    RouteEntry("/api/desktop/execution/heartbeat", "DesktopExecutionHeartbeatHandler", "fork:desktop", {"POST": P("tenant", comment="the first beat carries the local journal id and the consumed permit id and records the start (acknowledged -> running); later beats only advance the liveness clock and the in-flight phase")}),
+    RouteEntry("/api/desktop/execution/status", "DesktopExecutionStatusHandler", "fork:desktop", {"GET": P("tenant", comment="the real state/phase/effects of one command the caller owns on one of the caller's devices; a started command with no terminal result reads as running and never as 'did not run'")}),
+    RouteEntry("/api/desktop/execution/skill-package", "DesktopExecutionSkillPackageHandler", "fork:desktop", {"GET": P("tenant", comment="the pinned skill bytes for one authorized version: the command's own recorded skill set decides, a live skill.use grant is re-checked, the digest is recomputed before shipping, and the file/expanded/wire budgets are the contract's; native only, so a page can never pull a package")}),
+    RouteEntry("/api/desktop/transfers", "DesktopTransfersHandler", "fork:desktop", {"POST": P("tenant", comment="create a chunked desktop transfer after reserving storage_bytes stock; native only; idempotent on command_id+source_version; absolute client paths refused")}),
+    RouteEntry("/api/desktop/transfers/([^/]+)", "DesktopTransferHandler", "fork:desktop", {"GET": P("tenant", comment="bounded transfer status: state, acknowledged_offset, expires_at, artifact_ref when committed; no staging absolute path"), "DELETE": P("tenant", comment="idempotent cancel of an unpublished transfer; releases the reservation; committed copies are not deleted here")}),
+    RouteEntry("/api/desktop/transfers/([^/]+)/chunks/([^/]+)", "DesktopTransferChunkHandler", "fork:desktop", {"PUT": P("tenant", comment="native-only sequential chunk write; same offset+digest is idempotent, different digest is chunk_conflict; browsers cannot inject by transfer id")}),
+    RouteEntry("/api/desktop/transfers/([^/]+)/commit", "DesktopTransferCommitHandler", "fork:desktop", {"POST": P("tenant", comment="integrity/version/ownership/quota gate then atomic publish; repeat commit returns the original committed result without re-metering")}),
     RouteEntry("/api/users/([^/]+)/avatar", "DbUserAvatarHandler", "fork:self-account", {"GET": P("personal", comment="read an account avatar by user id (self / platform admin / shared tenant)")}),
     RouteEntry("/api/platform/users", "PlatformUsersHandler", "fork:platform-console", {"GET": P("platform", comment="list accounts")}),
     RouteEntry("/api/platform/users/([^/]+)/password", "PlatformUserPasswordHandler", "fork:platform-console", {"POST": P("platform", comment="reset platform account password")}),
@@ -249,6 +320,7 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/api/weixin/qrlogin", "WeixinQrHandler", "upstream", {"GET": S("weixin_scan", "qr"), "POST": S("weixin_scan", "poll")}),
     RouteEntry("/api/feishu/register", "FeishuRegisterHandler", "upstream", {"GET": P("personal", comment="start a feishu register session"), "POST": P("personal", comment="poll the caller's own register session")}),
     RouteEntry("/api/tools", "ToolsHandler", "upstream", {"GET": P("tenant", comment="tools"), "POST": P("tenant", comment="save or clear my own parameters for a granted tool (owner fixed from the session; the tool definition is untouched)")}),
+    RouteEntry("/api/skills/upload", "SkillUploadHandler", "upstream", {"POST": P("tenant", comment="authorized skill staging")}),
     RouteEntry("/api/skills", "SkillsHandler", "upstream", {"GET": P("tenant", comment="skills"), "POST": P("tenant", comment="skills toggle, or save/clear my own parameters for a granted skill (owner fixed from the session); a bare name that matches two definitions answers 400 — pass resource_id")}),
     RouteEntry("/api/skills/content", "SkillContentHandler", "upstream", {"GET": P("tenant", comment="skill content"), "POST": P("tenant", comment="skill content write; a bare name that matches two definitions answers 400 — pass resource_id")}),
     RouteEntry("/api/memory/personal/content", "PersonalMemoryContentHandler", "fork:member-personal-console", {"GET": P("personal", comment="read one of my personal memory entries (current tenant+user)")}),
@@ -339,6 +411,7 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/api/coding/sessions/sync", "CodingSessionSyncHandler", "fork:coding", {"POST": P("tenant", comment="refresh one batch of the caller's own cached coding list (history.read scoped to owned rows)")}),
     RouteEntry("/api/coding/sessions/([^/]+)/open", "CodingSessionOpenHandler", "fork:coding", {"GET": P("tenant", comment="open one owned coding session (never creates remote state)")}),
     RouteEntry("/api/coding/settings", "CodingSettingsHandler", "fork:coding", {"GET": P("tenant", permission="agent.read", comment="read-only projection of the configured service (never returns the password or its env var)")}),
+    RouteEntry("/api/history/user_messages", "UserMessagesHandler", "upstream", {"GET": P("tenant", comment="owner-scoped conversation timeline")}),
     RouteEntry("/api/history", "HistoryHandler", "upstream", {"GET": P("tenant", comment="history")}),
     RouteEntry("/api/messages/delete", "MessageDeleteHandler", "upstream", {"POST": P("tenant", comment="delete message")}),
     RouteEntry("/api/logs/download", "LogsDownloadHandler", "upstream", {"GET": P("platform", comment="logs download (process-global run.log; platform control plane)")}),

@@ -1,0 +1,38 @@
+{
+  "commit": "48c0d79c36146950667f8d1884ab823deae62305",
+  "integration_branch": "rdai",
+  "sources": [
+    {
+      "path": "channel/web/api/memory.py",
+      "sha256": "b4afa6872a6149ce4a4d4b0c3f144d9da78d97fb52734a3a820b69f5811b37a8"
+    },
+    {
+      "path": "channel/web/templates/views/memory.html",
+      "sha256": "4aef6bd25d1ec91433d2fb62af1b2235e02dd5f373cf03c81061eca616602837"
+    },
+    {
+      "path": "channel/web/static/js/views/memory.js",
+      "sha256": "15855c79685ca0f1b324279368b0bcfbdf9f8dd956264c1f4746d41a012e2707"
+    },
+    {
+      "path": "channel/web/static/js/views/doc-viewers.js",
+      "sha256": "21e6f570e130bccf46e298f5e532e81bf5ddd649cffc5d7125577a82e52150bb"
+    },
+    {
+      "path": "channel/web/static/js/doc-editor.js",
+      "sha256": "5d6047ce221883360717527cdaf070549374a6e229dcc1f109fbbda68c7f4fcb"
+    },
+    {
+      "path": "agent/memory/service.py",
+      "sha256": "938780a700eca2b1b0465dd196078e6e0f206fd968033e10108d0f9245a9a110"
+    },
+    {
+      "path": "agent/memory/summarizer.py",
+      "sha256": "7bbae82d7ccfd4c0900169dbc530ed04f2668c994a63ff44a8ea7bb807e128ce"
+    },
+    {
+      "path": "agent/evolution/record.py",
+      "sha256": "73652388111cee8075e987ea73e34c09243bd4281333044da7001339b9494e1e"
+    }
+  ]
+}

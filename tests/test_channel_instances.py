@@ -8,8 +8,6 @@ behavior (so it never regresses) and cover the new persistence helpers.
 
 import os
 
-import pytest
-
 from channel import channel_instances as ci
 
 
@@ -350,6 +348,95 @@ def test_bootstrap_does_not_carry_weixin_from_flat(tmp_path, monkeypatch):
     }
     assert ci.bootstrap_legacy_instances(settings, {}, "primary") == []
     assert not (tmp_path / "weixin_creds.weixin.json").exists()
+
+
+def _legacy_weixin_file(tmp_path, monkeypatch):
+    import config
+
+    legacy = tmp_path / "weixin_creds.json"
+    legacy.write_text('{"token": "SCAN_TOKEN"}', encoding="utf-8")
+
+    def fake_path(instance_id=""):
+        if not instance_id:
+            return str(legacy)
+        root, ext = os.path.splitext(str(legacy))
+        return f"{root}.{instance_id}{ext}"
+
+    monkeypatch.setattr(config, "get_weixin_credentials_path", fake_path)
+    return tmp_path / "weixin_creds.weixin.json"
+
+
+def test_startup_does_not_adopt_a_legacy_channel_after_the_roster_file(tmp_path, monkeypatch):
+    """An older build run against the same data adds a flat channel to
+    config.json while team.json already exists; nothing writes the roster, so
+    startup has to carry it over or the console cannot show it."""
+    from agent import team
+
+    carried = _legacy_weixin_file(tmp_path, monkeypatch)
+    settings = {"agent_workspace": str(tmp_path), "channel_type": ""}
+    team.write(settings, {
+        "default_agent_id": "primary",
+        "agents": [],
+        "channel_instances": [
+            {"instance_id": "feishu-a", "channel_type": "feishu", "agent_id": "primary"}
+        ],
+    })
+    settings["channel_type"] = "weixin"
+    assert not carried.exists()
+
+    assert team.adopt_legacy_channels(settings) is None
+
+    records = team.read(settings)["channel_instances"]
+    assert [r["instance_id"] for r in records] == ["feishu-a"]
+    assert not carried.exists()
+    assert team.adopt_legacy_channels(settings) is None
+
+
+def test_bootstrap_does_not_take_an_implicit_weixin_login(tmp_path, monkeypatch):
+    """config.json carries no weixin keys once the token is in the file."""
+    carried = _legacy_weixin_file(tmp_path, monkeypatch)
+    settings = {"agent_workspace": str(tmp_path), "channel_type": "weixin"}
+
+    records = ci.bootstrap_legacy_instances(settings, {}, "primary")
+
+    assert records == []
+    assert not carried.exists()
+
+
+def test_bootstrap_skips_a_weixin_channel_that_never_logged_in(tmp_path, monkeypatch):
+    import config
+
+    monkeypatch.setattr(
+        config, "get_weixin_credentials_path", lambda instance_id="": str(tmp_path / "missing.json")
+    )
+    settings = {"agent_workspace": str(tmp_path), "channel_type": "weixin"}
+    assert ci.bootstrap_legacy_instances(settings, {}, "primary") == []
+
+
+def test_bootstrap_leaves_weixin_to_an_outside_provisioner(tmp_path, monkeypatch):
+    import common.utils
+
+    carried = _legacy_weixin_file(tmp_path, monkeypatch)
+    monkeypatch.setattr(common.utils, "is_cloud_deployment", lambda: True)
+    settings = {"agent_workspace": str(tmp_path), "channel_type": "weixin"}
+
+    assert ci.bootstrap_legacy_instances(settings, {}, "primary") == []
+    assert not carried.exists()
+
+
+def test_startup_leaves_the_roster_alone_when_nothing_is_missing(tmp_path):
+    from agent import team
+
+    settings = {"agent_workspace": str(tmp_path), "channel_type": "feishu"}
+    assert team.adopt_legacy_channels(settings) is None
+    assert not team.team_file(settings).exists()
+
+    path = team.team_file(settings)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"channel_instances": [', encoding="utf-8")
+    settings.update({"feishu_app_id": "APP", "feishu_app_secret": "SECRET"})
+    assert team.adopt_legacy_channels(settings) is None
+    assert path.read_text(encoding="utf-8") == '{"channel_instances": ['
 
 
 def test_write_does_not_bootstrap_feishu_from_flat(tmp_path):

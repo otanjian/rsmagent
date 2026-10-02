@@ -76,6 +76,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Current app version (e.g. "0.0.5"), shown in the NavRail footer.
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 
+  // Ask for OS-level microphone access (prompts once on macOS; true elsewhere).
+  requestMicAccess: () => ipcRenderer.invoke('mic-request-access') as Promise<boolean>,
+
   // Launch-at-login toggle (macOS + Windows). get returns the effective state;
   // set returns the real outcome so the UI can surface refusals/errors.
   getLoginItemEnabled: () => ipcRenderer.invoke('get-login-item') as Promise<boolean>,
@@ -149,6 +152,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdate: (lang?: string) => ipcRenderer.invoke('update-check', lang),
   downloadUpdate: (lang?: string) => ipcRenderer.invoke('update-download', lang),
   installUpdate: () => ipcRenderer.invoke('update-install'),
+  // Extra query parameters for the update feed URL; pass {} to clear.
+  setUpdateFeedQuery: (params: Record<string, string>) => ipcRenderer.invoke('update-feed-query', params),
   onUpdateStatus: (callback: (status: unknown) => void) => {
     const handler = (_event: unknown, status: unknown) => callback(status)
     ipcRenderer.on('update-status', handler)
@@ -169,9 +174,61 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('open-session', handler)
   },
 
+  // ---- Remote-mode configuration (change add-desktop-remote-web-workbench) --
+  //
+  // The local shell's own half of remote mode: choose/probe a server, switch
+  // mode. It is a *different* API from ``window.desktopHost``, which the remote
+  // Web container gets and which exposes no server management at all.
+  desktopModeGet: () =>
+    ipcRenderer.invoke('desktop-mode-get') as Promise<{
+      ok: boolean
+      mode: 'local' | 'remote'
+      profiles: Array<{ id: string; origin: string; displayName: string }>
+      activeProfileId: string | null
+      refused: string
+      containerSupported: boolean
+      containerUnsupportedReason: string
+    }>,
+  desktopRemoteProbe: (origin: string) => ipcRenderer.invoke('desktop-remote-probe', origin),
+  desktopRemoteAddServer: (payload: { origin: string; displayName?: string }) =>
+    ipcRenderer.invoke('desktop-remote-add-server', payload),
+  desktopRemoteRemoveServer: (id: string) => ipcRenderer.invoke('desktop-remote-remove-server', id),
+  desktopRemoteSetActive: (id: string | null) => ipcRenderer.invoke('desktop-remote-set-active', id),
+  desktopRemoteSetMode: (mode: 'local' | 'remote') => ipcRenderer.invoke('desktop-remote-set-mode', mode),
+  // Attach/detach the remote container (tasks 4.1/4.6). The remote page never
+  // gets these two channels: only the local shell can ask for them.
+  desktopRemoteConnect: () => ipcRenderer.invoke('remote-container-start') as Promise<{
+    ok: boolean; code?: string; message?: string
+  }>,
+  desktopRemoteDisconnect: () => ipcRenderer.invoke('remote-container-stop') as Promise<{
+    ok: boolean; revoked: boolean; message: string
+  }>,
+  /**
+   * The host's sign-out feed (change ``fix-desktop-relogin-session-sync``,
+   * task 2.2). The container asked to end the account; the local shell has to
+   * refresh its login/connection entry even though the document that asked is
+   * already gone. The payload is a phase and an outcome -- no account, no token.
+   */
+  onDesktopLogoutState: (callback: (notice: {
+    phase: 'started' | 'finished'
+    ok: boolean
+    revoked: boolean
+    code: string
+    message: string
+  }) => void) => {
+    const handler = (_event: unknown, notice: {
+      phase: 'started' | 'finished'
+      ok: boolean
+      revoked: boolean
+      code: string
+      message: string
+    }) => callback(notice)
+    ipcRenderer.on('desktop:logout-state', handler)
+    return () => ipcRenderer.removeListener('desktop:logout-state', handler)
+  },
+
   platform: process.platform,
   // OS UI language (e.g. "zh-CN"), read synchronously so the renderer can pick
-  // a default language on first run. Falls back to '' if unavailable.
   systemLocale: (() => {
     try {
       return ipcRenderer.sendSync('get-system-locale') as string
