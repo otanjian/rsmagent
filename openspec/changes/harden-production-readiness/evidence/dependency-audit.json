@@ -1,0 +1,37 @@
+{
+  "date": "2026-10-02",
+  "method": "pip-audit --no-deps --disable-pip against fully pinned production lock; no Linux install/image scan",
+  "lock_sha256": {
+    "requirements/production-linux-py311.lock": "bfbc2187966ff96a6ce895cb2add8159de6c1500809cb0bcfee49797bff64cb6",
+    "requirements/production-linux-arm64-py311.lock": "fca6b6bc119b4c23672bb48cdfbbf41edd61dc5ed89f5f770609424a458c1567"
+  },
+  "packages_per_arch": {
+    "requirements/production-linux-py311.lock": 116,
+    "requirements/production-linux-arm64-py311.lock": 116
+  },
+  "same_versions_across_arches": true,
+  "vulnerabilities": [
+    {
+      "package": "click",
+      "version": "8.1.8",
+      "reports": [
+        {
+          "id": "PYSEC-2026-2132",
+          "aliases": [
+            "CVE-2026-7246",
+            "GHSA-47fr-3ffg-hgmw"
+          ],
+          "fix_versions": [
+            "8.3.3"
+          ]
+        }
+      ]
+    }
+  ],
+  "disposition": "Click edit API is not called by this repository. gTTS 2.5.4 currently requires Click<8.2. Preserve TTS; keep finding visible; reevaluate when adding click.edit or upgrading gTTS.",
+  "unverified": [
+    "Linux installation and pip check",
+    "OS package image scan",
+    "clean image rebuild"
+  ]
+}

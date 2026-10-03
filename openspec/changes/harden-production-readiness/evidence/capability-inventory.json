@@ -1,0 +1,510 @@
+{
+  "flags": {
+    "identity_mode": "database",
+    "agent": true,
+    "channel_type": "web",
+    "agent_permission_mode": "workspace-write",
+    "self_evolution_enabled": true,
+    "execution_isolation": "default",
+    "desktop_remote_web_enabled": {
+      "configured": false,
+      "value": true
+    },
+    "desktop_local_files_enabled": {
+      "configured": false,
+      "value": true
+    },
+    "desktop_native_notifications_enabled": {
+      "configured": false,
+      "value": true
+    },
+    "desktop_local_processing_enabled": {
+      "configured": false,
+      "value": false
+    },
+    "desktop_project_execution_enabled": {
+      "configured": false,
+      "value": false
+    },
+    "desktop_project_scripts_enabled": {
+      "configured": false,
+      "value": false
+    }
+  },
+  "dotenv_names": [
+    "COW_CREDENTIAL_MASTER_KEY",
+    "OPENAI_API_BASE"
+  ],
+  "configured_agent_count": 74,
+  "roles": [
+    [
+      "e2e_m",
+      1
+    ],
+    [
+      "member",
+      2
+    ],
+    [
+      "tenant_admin",
+      2
+    ]
+  ],
+  "tenants": 2,
+  "agent_bindings": [
+    74,
+    1
+  ],
+  "credential_purposes": [
+    [
+      "channel",
+      2
+    ],
+    [
+      "external_connection",
+      6
+    ]
+  ],
+  "grant_rows": 747,
+  "skills": [
+    {
+      "name": "Weaver E10 Api",
+      "source": "workspace",
+      "environment_names": [
+        "WEAVER_API_BASE",
+        "WEAVER_APP_KEY",
+        "WEAVER_APP_SECRET",
+        "WEAVER_CORPID"
+      ],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "agent-browser",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "bid-analysis",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "check-prd",
+      "source": "workspace",
+      "environment_names": [
+        "HOME",
+        "ROOT",
+        "SCRIPT_DIR",
+        "TARGET"
+      ],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "create-prd",
+      "source": "workspace",
+      "environment_names": [
+        "USERPROFILE"
+      ],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "data-analyst",
+      "source": "workspace",
+      "environment_names": [
+        "DATA_DIR",
+        "DB_CONNECTION",
+        "DB_TYPE",
+        "FILE",
+        "HOME",
+        "OUTPUT",
+        "QUERY"
+      ],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "dev-expert-1.0.48",
+      "source": "workspace",
+      "environment_names": [
+        "HOOKS_DIR",
+        "PHP_",
+        "PHP_BIN",
+        "PROJECT_ROOT",
+        "PYTHON_BIN"
+      ],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "dingtalk-meetings-skill-1.0.0",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "doc-desensitization",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "docx",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "drawio-flowchart-skill-main",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "drawio-skill",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "fin-report-analysis",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "finance-ledger-generator",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "financial-reprot-audit",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "frontend-design",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "hikvision-record",
+      "source": "workspace",
+      "environment_names": [
+        "HIK_FFMPEG",
+        "HIK_HOST",
+        "HIK_OPEN_CLIENT_APP_KEY",
+        "HIK_OPEN_CLIENT_SECRET",
+        "USER_WORKSPACE"
+      ],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "image-generation",
+      "source": "workspace",
+      "environment_names": [
+        "AGENT_WORKSPACE",
+        "ARK_API_BASE",
+        "ARK_API_KEY",
+        "DASHSCOPE_API_BASE",
+        "DASHSCOPE_API_KEY",
+        "GEMINI_API_BASE",
+        "GEMINI_API_KEY",
+        "IMAGE_OUTPUT_DIR",
+        "LINKAI_API_BASE",
+        "LINKAI_API_KEY",
+        "MINIMAX_API_BASE",
+        "MINIMAX_API_KEY",
+        "OPENAI_API_BASE",
+        "OPENAI_API_KEY",
+        "SKILL_IMAGE_GENERATION_MODEL",
+        "SKILL_IMAGE_GENERATION_PROVIDER"
+      ],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "imap-smtp-email",
+      "source": "workspace",
+      "environment_names": [
+        "ACCEPT_CERT",
+        "ACCOUNT_FLAG",
+        "ACCOUNT_NAME",
+        "ACCOUNT_PREFIX",
+        "ACCOUNT_VARS",
+        "ALLOWED_READ_DIRS",
+        "ALLOWED_WRITE_DIRS",
+        "ASK_SHARED",
+        "CONFIG_DIR",
+        "CONFIG_FILE",
+        "EMAIL",
+        "HOME",
+        "IMAP_HOST",
+        "IMAP_PORT",
+        "IMAP_TLS",
+        "OVERWRITE",
+        "PASSWORD",
+        "PROVIDER_CHOICE",
+        "REJECT_UNAUTHORIZED",
+        "SETUP_CHOICE",
+        "SETUP_MODE",
+        "SKILL_DIR",
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_SECURE",
+        "TEMP_FILE"
+      ],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "knowledge-wiki",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "mcp-integration",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "md-docx",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "meeting-and-brief-1.5.0",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "oa-audit-manager",
+      "source": "workspace",
+      "environment_names": [
+        "OA_APPROVAL_ALLOWED_REQUEST_MARKS",
+        "OA_APPROVAL_ENABLED",
+        "OA_APP_KEY",
+        "OA_APP_SECRET",
+        "OA_CORP_ID",
+        "OA_CUSTOM_PAGE_CONFIG_ID",
+        "OA_DOC_GUIDE_EID",
+        "OA_DOC_GUIDE_FROMWHERE",
+        "OA_DOC_GUIDE_KEY",
+        "OA_DOC_GUIDE_TABID",
+        "OA_LANGID",
+        "OA_PASSWORD",
+        "OA_TENANT_KEY",
+        "OA_USERNAME",
+        "OA_WORKFLOW_EBASEID",
+        "OA_WORKFLOW_EID",
+        "OA_WORKFLOW_HPID",
+        "OA_WORKFLOW_STYLEID",
+        "OA_WORKFLOW_SUB_COMPANY_ID",
+        "OA_WORKFLOW_TABID",
+        "SKILL_DIR",
+        "SKILL_ENV_FILE",
+        "SKILL_NAME"
+      ],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "pdf",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "pmc-scheduler",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "pmc-scheduler-hmt-qd",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "ppt-hmt",
+      "source": "workspace",
+      "environment_names": [
+        "BFL_BASE_URL",
+        "BFL_MODEL",
+        "COSYVOICE_TTS_BASE_URL",
+        "FAL_BASE_URL",
+        "FAL_MODEL",
+        "GEMINI_API_KEY",
+        "GEMINI_BASE_URL",
+        "GEMINI_MODEL",
+        "IDEOGRAM_BASE_URL",
+        "IDEOGRAM_MODEL",
+        "IMAGE_BACKEND",
+        "IMAGE_CONCURRENCY",
+        "MINIMAX_BASE_URL",
+        "MINIMAX_MODEL",
+        "MINIMAX_TTS_BASE_URL",
+        "MODELSCOPE_BASE_URL",
+        "MODELSCOPE_MODEL",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "OPENAI_MODEL",
+        "OPENROUTER_API_KEY",
+        "OPENROUTER_BASE_URL",
+        "OPENROUTER_MODEL",
+        "PEXELS_API_KEY",
+        "PIXABAY_API_KEY",
+        "QWEN_BASE_URL",
+        "QWEN_MODEL",
+        "QWEN_TTS_BASE_URL",
+        "REPLICATE_BASE_URL",
+        "REPLICATE_MODEL",
+        "SILICONFLOW_BASE_URL",
+        "SILICONFLOW_MODEL",
+        "STABILITY_BASE_URL",
+        "STABILITY_MODEL",
+        "VOLCENGINE_BASE_URL",
+        "VOLCENGINE_MODEL",
+        "ZHIPU_BASE_URL",
+        "ZHIPU_MODEL"
+      ],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "procurement-comparison",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "procurement-supplier-risk",
+      "source": "workspace",
+      "environment_names": [
+        "ONEAGENT_PROJECT_ROOT"
+      ],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "quality-trace",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "sales-quotation",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "sap-abap-skills",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "sap-integration",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "skill-creator",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "skill-writer",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "taxation-expert",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "tencent-meeting",
+      "source": "workspace",
+      "environment_names": [
+        "TENCENT_MEETING_TOKEN"
+      ],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "tianji-business-search",
+      "source": "workspace",
+      "environment_names": [
+        "ONEAGENT_PROJECT_ROOT"
+      ],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "xlsx",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "合同审查专家",
+      "source": "workspace",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "image-generation",
+      "source": "bundled",
+      "environment_names": [
+        "AGENT_WORKSPACE",
+        "ARK_API_BASE",
+        "ARK_API_KEY",
+        "DASHSCOPE_API_BASE",
+        "DASHSCOPE_API_KEY",
+        "GEMINI_API_BASE",
+        "GEMINI_API_KEY",
+        "IMAGE_OUTPUT_DIR",
+        "LINKAI_API_BASE",
+        "LINKAI_API_KEY",
+        "MINIMAX_API_BASE",
+        "MINIMAX_API_KEY",
+        "OPENAI_API_BASE",
+        "OPENAI_API_KEY",
+        "SKILL_IMAGE_GENERATION_MODEL",
+        "SKILL_IMAGE_GENERATION_PROVIDER"
+      ],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "knowledge-wiki",
+      "source": "bundled",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "rfq-quote",
+      "source": "bundled",
+      "environment_names": [],
+      "local_dotenv_present": false
+    },
+    {
+      "name": "skill-creator",
+      "source": "bundled",
+      "environment_names": [],
+      "local_dotenv_present": false
+    }
+  ],
+  "roster_source": "workspace/agents/team.json",
+  "enabled_agent_count": 74,
+  "configured_secret_key_names": [
+    "dashscope_api_key"
+  ],
+  "configured_custom_provider_count": 0,
+  "configured_skill_settings": {}
+}

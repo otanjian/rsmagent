@@ -1,0 +1,100 @@
+{
+  "date": "2026-10-03",
+  "head": "31afbad9f08f7954d7258d9045b2b773c40fc5ec",
+  "branch": "rdai",
+  "worktree": "dirty; includes pre-existing unrelated user changes; no commit/push/deployment",
+  "source_snapshot": {
+    "method": "sorted git cached+nonignored untracked file name, NUL, SHA256(content); symlinks hash their target text; omit this self-referential record",
+    "excluded": [
+      "openspec/changes/harden-production-readiness/evidence/local-candidate.json"
+    ],
+    "file_entries": 4757,
+    "sha256": "12f64bb3dbafbd3569c64de3728eaada9fb9ea2f07bc0c7951a9b36701236d97"
+  },
+  "local_python": "3.14.3",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "artifacts": [
+    {
+      "path": "/tmp/rsmagent-candidate-macos-20261003-capacity-pin/mac-arm64/容大AI.app",
+      "sha256": "51a17bdef819220ee4307131681ca1947ff7e6aef9dc2d70a6f04ebff796f942",
+      "file_entries": 2100,
+      "bytes": 724317371,
+      "associated_source_snapshot_sha256": "12f64bb3dbafbd3569c64de3728eaada9fb9ea2f07bc0c7951a9b36701236d97"
+    }
+  ],
+  "artifact_status": "rebuilt after background capacity changes using the existing Python 3.11 build environment and Electron 33.4.11; unsigned arm64 local test .app; runtime upgrade is outside these two selected fixes; not an approved distribution artifact",
+  "gates": {
+    "python": {
+      "passed": 580,
+      "skipped_platform": 9,
+      "subtests_passed": 4
+    },
+    "node_source": {
+      "passed": 65,
+      "failed": 0,
+      "skipped_installed_shape": 5
+    },
+    "node_packaged": {
+      "passed": 44,
+      "failed": 0,
+      "skipped_source_shape": 15,
+      "installed_shape_cases_passed": 5
+    },
+    "native_execution": {
+      "filesystem": true,
+      "process_environment": false,
+      "ready": false
+    },
+    "openspec_strict": "passed",
+    "last_adjustment": "12 background capacity and 11 deployment pin regressions added; atomic launch reservations, failure cleanup and checked image ID in Compose; unified gate, real Compose config, rebuilt app worker tests and backend smoke passed",
+    "backup_regressions": {
+      "passed": 35,
+      "new_cases": 7,
+      "included_in_python_total": true
+    },
+    "local_log": "/tmp/rsmagent-production-local-20261003-capacity-pin.log",
+    "packaged_log": "/tmp/rsmagent-app-bundle-20261003-capacity-pin-tests.log",
+    "additional_bash_regressions": {
+      "passed": 18,
+      "included_in_python_total": false
+    },
+    "image_orchestration_regressions": {
+      "passed": 27,
+      "new_cases_this_round": 11,
+      "included_in_python_total": true,
+      "scope": "real temporary filesystem, Compose 5.1.4 config and script exit codes; Docker image calls mocked, not Linux runtime acceptance"
+    },
+    "background_capacity_regressions": {
+      "passed": 12,
+      "included_in_python_total": true
+    }
+  },
+  "production_image": null,
+  "release_candidate_fixed": false,
+  "environment_pending": [
+    "Linux host/container/image isolation and clean rebuild",
+    "macOS kernel process-environment boundary",
+    "real remote candidate and external business test systems",
+    "real supervised stop/recovery and target capacity",
+    "Gitea runners/required checks",
+    "signed distribution and full remote Desktop UI acceptance"
+  ],
+  "windows_desktop": "deferred: environment_unavailable",
+  "linux_boundary_pending": [
+    "protected paths created/replaced after launch",
+    "mount source symlink races",
+    "abstract Unix sockets in shared network namespace"
+  ],
+  "selected_followup": {
+    "risk_items": [
+      3,
+      5
+    ],
+    "local_fixes_complete": true,
+    "openspec_progress": {
+      "total": 38,
+      "complete": 20,
+      "remaining": 18
+    }
+  }
+}
