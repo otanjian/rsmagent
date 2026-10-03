@@ -74,10 +74,32 @@ def is_local_instance_id(instance_id: str, channel_type: str) -> bool:
 
 
 # Per channel type, the config keys that make up its credentials. Only these
-# keys are copied into a per-instance override; everything else (ports, feature
-# flags) stays global in conf(). Keep in sync with the channel classes' cfg()
+# keys are copied into a per-instance override, including webhook listen ports;
+# other feature flags stay global. Keep in sync with the channel classes' cfg()
 # reads. Extend as more channel types gain multi-instance support.
 CREDENTIAL_KEYS: Dict[str, tuple] = {
+    'wechatcom_app': (
+        'wechatcom_corp_id',
+        'wechatcomapp_agent_id',
+        'wechatcomapp_secret',
+        'wechatcomapp_token',
+        'wechatcomapp_aes_key',
+        'wechatcomapp_port',
+    ),
+    'wechat_kf': (
+        'wechat_kf_corp_id',
+        'wechat_kf_secret',
+        'wechat_kf_token',
+        'wechat_kf_aes_key',
+        'wechat_kf_port',
+    ),
+    'wechatmp': (
+        'wechatmp_app_id',
+        'wechatmp_app_secret',
+        'wechatmp_token',
+        'wechatmp_aes_key',
+        'wechatmp_port',
+    ),
     const.FEISHU: (
         "feishu_app_id",
         "feishu_app_secret",
@@ -133,6 +155,9 @@ _CHANNEL_TYPE_LABELS: Dict[str, str] = {
 # Others may appear in channel_instances but will run as a single instance
 # (their @singleton is not yet bypassed); we log and fall back gracefully.
 MULTI_INSTANCE_READY = frozenset({
+    "wechatcom_app",
+    "wechat_kf",
+    "wechatmp",
     const.FEISHU,
     const.DINGTALK,
     const.QQ,
@@ -144,20 +169,12 @@ MULTI_INSTANCE_READY = frozenset({
 })
 
 
-# Channel types whose adapter actually stamps the inbound author's external
-# identity triple (provider / issuer / subject) — the precondition for *any*
-# non-Web inbound in database identity mode, because
-# ``channel.chat_channel._preflight_external_inbound`` refuses an unstamped
-# context as UNSUPPORTED_CHANNEL *before* it looks up any binding, and without
-# recording the attempt. A type outside this set can therefore never be talked
-# to, however thoroughly it is configured — which is why it must not be offered
-# for configuration either. Stamping call sites: ``feishu_channel``,
-# ``dingtalk_channel``, ``wecom_bot_channel``; add a type here only in the same
-# change that adds the stamp to its adapter.
+# Every master catalogue adapter stamps a verified inbound author. Webhook
+# types also dispatch callbacks and hold credentials per instance.
 INBOUND_IDENTITY_STAMPING_TYPES = frozenset({
-    const.FEISHU,
-    const.DINGTALK,
-    const.WECOM_BOT,
+    const.FEISHU, const.DINGTALK, const.WECOM_BOT,
+    const.WEIXIN, const.QQ, const.TELEGRAM, const.SLACK, const.DISCORD,
+    "wechatcom_app", "wechat_kf", "wechatmp",
 })
 
 
@@ -684,6 +701,24 @@ def get_instance(settings: Mapping[str, Any], instance_id: str) -> Optional[Chan
 #: writes that work today. A type without an entry here keeps the previous rule
 #: (at least one declared, non-empty field).
 REQUIRED_CREDENTIAL_KEYS: Dict[str, tuple] = {
+    'wechatcom_app': (
+        'wechatcom_corp_id',
+        'wechatcomapp_agent_id',
+        'wechatcomapp_secret',
+        'wechatcomapp_token',
+        'wechatcomapp_aes_key',
+    ),
+    'wechat_kf': (
+        'wechat_kf_corp_id',
+        'wechat_kf_secret',
+        'wechat_kf_token',
+        'wechat_kf_aes_key',
+    ),
+    'wechatmp': (
+        'wechatmp_app_id',
+        'wechatmp_app_secret',
+        'wechatmp_token',
+    ),
     const.FEISHU: (
         "feishu_app_id",
         "feishu_app_secret",
@@ -1188,6 +1223,9 @@ def load_tenant_channel_instances() -> List[ChannelInstance]:
 #: ``CREDENTIAL_KEYS`` so the console never has to carry a second copy of the
 #: field contract. A type missing here still works (its code is shown).
 TENANT_CHANNEL_LABELS: Dict[str, Dict[str, str]] = {
+    'wechatcom_app': {'zh': '企微自建应用', 'en': 'WeCom App'},
+    'wechat_kf': {'zh': '微信客服', 'en': 'WeChat Customer Service'},
+    'wechatmp': {'zh': '公众号', 'en': 'WeChat MP'},
     const.FEISHU: {"zh": "飞书", "en": "Feishu"},
     const.DINGTALK: {"zh": "钉钉", "en": "DingTalk"},
     const.WECOM_BOT: {"zh": "企微智能机器人", "en": "WeCom Bot"},
@@ -1202,6 +1240,9 @@ TENANT_CHANNEL_LABELS: Dict[str, Dict[str, str]] = {
 #: the same appearance as the platform cards without keeping a second copy of
 #: this mapping in JavaScript. A type missing here still renders (generic icon).
 TENANT_CHANNEL_APPEARANCE: Dict[str, Dict[str, str]] = {
+    'wechatcom_app': {'icon': 'fa-building', 'color': 'emerald'},
+    'wechat_kf': {'icon': 'fa-headset', 'color': 'emerald'},
+    'wechatmp': {'icon': 'fa-comment-dots', 'color': 'emerald'},
     const.FEISHU: {"icon": "fa-paper-plane", "color": "blue"},
     const.DINGTALK: {"icon": "fa-comments", "color": "blue"},
     const.WECOM_BOT: {"icon": "fa-robot", "color": "emerald"},
@@ -1215,6 +1256,22 @@ TENANT_CHANNEL_APPEARANCE: Dict[str, Dict[str, str]] = {
 #: Credential field labels for the tenant form. A key missing here falls back to
 #: its own name, so adding a key to CREDENTIAL_KEYS never breaks the form.
 CREDENTIAL_FIELD_LABELS: Dict[str, Dict[str, str]] = {
+    'wechatcom_corp_id': {'zh': 'Corp ID', 'en': 'Corp ID'},
+    'wechatcomapp_agent_id': {'zh': 'Agent ID', 'en': 'Agent ID'},
+    'wechatcomapp_secret': {'zh': 'Secret', 'en': 'Secret'},
+    'wechatcomapp_token': {'zh': 'Token', 'en': 'Token'},
+    'wechatcomapp_aes_key': {'zh': 'AES Key', 'en': 'AES Key'},
+    'wechatcomapp_port': {'zh': '监听端口（默认 9898）', 'en': 'Listen port (default 9898)'},
+    'wechat_kf_corp_id': {'zh': 'Corp ID', 'en': 'Corp ID'},
+    'wechat_kf_secret': {'zh': 'Secret', 'en': 'Secret'},
+    'wechat_kf_token': {'zh': 'Token', 'en': 'Token'},
+    'wechat_kf_aes_key': {'zh': 'AES Key', 'en': 'AES Key'},
+    'wechat_kf_port': {'zh': '监听端口（默认 9888）', 'en': 'Listen port (default 9888)'},
+    'wechatmp_app_id': {'zh': 'App ID', 'en': 'App ID'},
+    'wechatmp_app_secret': {'zh': 'App Secret', 'en': 'App Secret'},
+    'wechatmp_token': {'zh': 'Token', 'en': 'Token'},
+    'wechatmp_aes_key': {'zh': 'AES Key', 'en': 'AES Key'},
+    'wechatmp_port': {'zh': '监听端口（默认 8080）', 'en': 'Listen port (default 8080)'},
     "feishu_app_id": {"zh": "App ID", "en": "App ID"},
     "feishu_app_secret": {"zh": "App Secret", "en": "App Secret"},
     "feishu_token": {"zh": "校验 Token（可选）", "en": "Verification Token (optional)"},
@@ -1227,7 +1284,7 @@ CREDENTIAL_FIELD_LABELS: Dict[str, Dict[str, str]] = {
     "wecom_bot_token": {"zh": "Token", "en": "Token"},
     "wecom_bot_encoding_aes_key": {"zh": "EncodingAESKey", "en": "EncodingAESKey"},
     "weixin_token": {"zh": "Token", "en": "Token"},
-    "weixin_base_url": {"zh": "回调基址", "en": "Callback base URL"},
+    "weixin_base_url": {"zh": "API 基址（可选）", "en": "API base URL (optional)"},
     "qq_app_id": {"zh": "App ID", "en": "App ID"},
     "qq_app_secret": {"zh": "App Secret", "en": "App Secret"},
     "telegram_token": {"zh": "Bot Token", "en": "Bot Token"},
@@ -1250,6 +1307,9 @@ _SECRET_KEY_HINTS = ("secret", "token", "aes", "key", "password")
 #: conflict can be detected for it; that is a deliberate "unknown" rather than a
 #: guess, and the readiness list keeps such a type out of personal onboarding.
 APP_IDENTITY_KEYS: Dict[str, tuple] = {
+    "wechatcom_app": ("wechatcom_corp_id", "wechatcomapp_agent_id"),
+    "wechat_kf": ("wechat_kf_corp_id",),
+    "wechatmp": ("wechatmp_app_id",),
     const.FEISHU: ("feishu_app_id",),
     const.DINGTALK: ("dingtalk_client_id",),
     const.WECOM_BOT: ("wecom_bot_id",),
@@ -1339,7 +1399,14 @@ def tenant_channel_types() -> List[Dict[str, Any]]:
     narrowing, tenant policy) that must not decide the administrator's surface.
     """
     out: List[Dict[str, Any]] = []
-    for channel_type in sorted(MULTI_INSTANCE_READY):
+    from channel.instance_webhook import WEBHOOK_CONFIG
+
+    # Keep the same ordering as the master channel picker.
+    order = ("weixin", "feishu", "dingtalk", "wecom_bot", "qq",
+             "wechatcom_app", "wechat_kf", "wechatmp", "telegram", "slack", "discord")
+    for channel_type in order:
+        if channel_type not in MULTI_INSTANCE_READY:
+            continue
         keys = CREDENTIAL_KEYS.get(channel_type) or ()
         if not keys:
             continue
@@ -1358,6 +1425,10 @@ def tenant_channel_types() -> List[Dict[str, Any]]:
                 "icon", "fa-tower-broadcast"),
             "color": (TENANT_CHANNEL_APPEARANCE.get(channel_type) or {}).get(
                 "color", "primary"),
+            "webhook": ({"path": WEBHOOK_CONFIG[channel_type][0],
+                         "port_key": WEBHOOK_CONFIG[channel_type][1],
+                         "default_port": WEBHOOK_CONFIG[channel_type][2]}
+                        if channel_type in WEBHOOK_CONFIG else None),
             "credential_fields": [
                 {
                     "key": key,
@@ -1370,6 +1441,7 @@ def tenant_channel_types() -> List[Dict[str, Any]]:
                     # validates against, so the console never keeps a second
                     # copy of the minimum set that could drift from this one.
                     "required": key in required,
+                    "type": "number" if key.endswith("_port") else "text",
                 }
                 for key in keys
             ],

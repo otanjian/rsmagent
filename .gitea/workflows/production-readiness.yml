@@ -1,0 +1,32 @@
+name: Production readiness
+on:
+  pull_request:
+    branches: [main, rdai]
+  push:
+    branches: [main, rdai]
+jobs:
+  local-regression:
+    # The delivery repository is Gitea. Provision this macOS runner label;
+    # a YAML file alone does not activate a runner or branch protection.
+    runs-on: macos-production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare Python and Desktop dependencies
+        run: |
+          python3.11 -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt -r requirements-optional.txt -r requirements-scenes.txt pytest pytest-subtests
+          npm --prefix desktop ci
+      - name: Run the common local gate
+        run: bash scripts/check-production.sh --local
+  final-linux-image:
+    runs-on: linux-production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build this candidate and run final-image smoke
+        run: |
+          set -euo pipefail
+          candidate_id=$(mktemp)
+          trap 'rm -f "$candidate_id"' EXIT
+          candidate="rsmagent:ci-${GITHUB_SHA}"
+          python3 scripts/build-production-candidate.py --tag "$candidate" --iidfile "$candidate_id"
+          PYTHON_BIN="$(command -v python3)" bash scripts/check-production.sh --image "$(cat "$candidate_id")"

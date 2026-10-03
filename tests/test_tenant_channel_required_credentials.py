@@ -55,7 +55,8 @@ class RequiredCredentialKeyDeclarationTests(unittest.TestCase):
     def test_the_verified_types_are_covered_and_the_unverified_ones_are_not(self):
         self.assertEqual(
             set(REQUIRED_CREDENTIAL_KEYS),
-            {"feishu", "wecom_bot", "qq", "telegram", "slack", "discord"})
+            {"feishu", "wecom_bot", "qq", "telegram", "slack", "discord",
+             "wechatcom_app", "wechat_kf", "wechatmp"})
         # Deliberately unverified: inventing a minimum set for these would reject
         # writes that work today.
         self.assertEqual(required_credential_keys("dingtalk"), ())

@@ -37,7 +37,10 @@ def verify(source=None):
         elif "byte_range" in entry:
             start, end = entry["byte_range"]
             expected = expected[start:end]
-        if actual != expected:
+        if entry.get("source_sha256"):
+            if hashlib.sha256(expected).hexdigest() != entry["source_sha256"]:
+                failures.append(entry["path"] + ": upstream source changed; review adaptation")
+        elif actual != expected:
             failures.append(entry["path"] + ": source bytes changed")
     return len(manifest["files"]), failures
 

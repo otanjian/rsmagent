@@ -9,6 +9,9 @@
 避免将业务规则硬编码在 query_planner / permission_guard / fetch_executor 中。
 """
 
+from Scene.catalog import skill_path
+from auth.policy import SAP_DOMAIN_PERMISSIONS as DOMAIN_PERMISSION_MAP
+
 import json
 import os
 from typing import Any, Dict, List, Optional
@@ -19,17 +22,10 @@ from typing import Any, Dict, List, Optional
 # =============================================================================
 def _load_catalog() -> Dict[str, Any]:
     """加载 skills/sap-integration/references/sap_query_catalog.json。"""
-    candidate_paths = [
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "skills", "sap-integration", "references", "sap_query_catalog.json"),
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "skills", "sap-integration", "references", "sap_query_catalog.json"),
-    ]
-    for path in candidate_paths:
-        if os.path.isfile(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                pass
+    path = skill_path('sap-integration') / 'references' / 'sap_query_catalog.json'
+    if path.is_file():
+        with path.open(encoding="utf-8") as source:
+            return json.load(source)
     return {}
 
 
@@ -60,15 +56,7 @@ EXECUTIVE_DEFAULTS: Dict[str, Any] = {
 # =============================================================================
 # 领域级数据查询权限映射
 # =============================================================================
-DOMAIN_PERMISSION_MAP = {
-    "master_data": "sap.query.master_data",
-    "procurement": "sap.query.procurement",
-    "sales": "sap.query.sales",
-    "finance": "sap.query.finance",
-    "inventory": "sap.query.inventory",
-    "production": "sap.query.production",
-    "cost": "sap.query.cost",
-}
+
 
 # 拥有该权限即跳过所有领域/表/BAPI 校验
 ADMIN_PERMISSION = "sap.query.admin"

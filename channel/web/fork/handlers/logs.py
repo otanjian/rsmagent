@@ -25,12 +25,12 @@ def _redact_log_line(line: str) -> str:
     set of well-known secret names rather than trying to detect entropy, so a
     normal log line is left byte-identical.
     """
-    from channel.web.web_channel import _LOG_SECRET_RE
+    from channel.web.fork.runtime import _LOG_SECRET_RE
     return _LOG_SECRET_RE.sub(lambda m: "%s%s***" % (m.group(1), m.group(2)), line)
 
 
 def _redact_log_text(text: str) -> str:
-    from channel.web.web_channel import _redact_log_line
+    from channel.web.fork.handlers.logs import _redact_log_line
     return "\n".join(_redact_log_line(line) for line in text.split("\n"))
 
 
@@ -40,7 +40,7 @@ class LogsHandler:
         # activity (plus whatever secrets a handler happened to log), so it is
         # platform control-plane data: in database mode only a platform admin
         # may read it. Legacy mode keeps the shared console password.
-        from channel.web.web_channel import _redact_log_line
+        from channel.web.fork.handlers.logs import _redact_log_line
         from channel.web.web_channel import _require_platform_console
         from channel.web.web_channel import get_data_root
         _require_platform_console()

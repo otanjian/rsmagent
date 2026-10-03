@@ -257,9 +257,9 @@ def _iter_tenant_agents(ctx: "RequestContext", *, action: str = SCOPE_USE,
       administrator shortcut could admit them.
     """
     from channel.web.web_channel import _agent_binding_for
-    from channel.web.web_channel import _resource_ids
-    from channel.web.web_channel import _tenant_agent_candidates
-    from channel.web.web_channel import _tenant_shared_default_agent
+    from channel.web.fork.authorization import _resource_ids
+    from channel.web.fork.handlers.agents import _tenant_agent_candidates
+    from channel.web.fork.common import _tenant_shared_default_agent
     from channel.web.web_channel import _workbench_chat_readiness
     scope = ObjectScope.from_context(ctx)
     if action == SCOPE_MANAGE:
@@ -308,7 +308,7 @@ def _tenant_agents_projection(ctx: "Optional[RequestContext]") -> Dict:
     *successful* read: the reason is orthogonal to the loading/failed states.
     """
     from channel.web.web_channel import _iter_tenant_agents
-    from channel.web.web_channel import _workbench_empty_reason
+    from channel.web.fork.common import _workbench_empty_reason
     if ctx is None:
         return {"agents": []}
     agents = []
@@ -385,11 +385,11 @@ def _tenant_agents_admin_projection(ctx: "Optional[RequestContext]") -> Dict:
     tenants' state and make one tenant's write invalidate another's revision.
     """
     from channel.web.web_channel import _iter_tenant_agents
-    from channel.web.web_channel import _knowledge_write_authorized
+    from channel.web.fork.handlers.knowledge import _knowledge_write_authorized
     from channel.web.web_channel import _agent_binding_for
-    from channel.web.web_channel import _resolve_default_agent
+    from channel.web.fork.common import _resolve_default_agent
     from channel.web.web_channel import _tenant_default_agent_id
-    from channel.web.web_channel import _user_default_pointer
+    from channel.web.fork.common import _user_default_pointer
     from agent.admin import AgentAdminService
 
     shared_base = AgentAdminService._shared_knowledge_base()
@@ -594,7 +594,7 @@ class AgentsHandler:
         from auth.service import agent_catalog_read_scope
         from channel.web.web_channel import _agent_admin_service
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _personal_agents_projection
+        from channel.web.fork.common import _personal_agents_projection
         from channel.web.web_channel import _require_read_permission
         from channel.web.web_channel import _tenant_agents_admin_projection
         web.header('Content-Type', 'application/json; charset=utf-8')
@@ -645,17 +645,17 @@ class AgentsHandler:
 
     def POST(self):
         from channel.web.web_channel import _agent_admin_service
-        from channel.web.web_channel import _audit_instance_roster_write
+        from channel.web.fork.common import _audit_instance_roster_write
         from channel.web.web_channel import _bind_channel_instance
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _raise_forbidden
-        from channel.web.web_channel import _reject_coding_agent
+        from channel.web.fork.authorization import _raise_forbidden
+        from channel.web.fork.common import _reject_coding_agent
         from channel.web.web_channel import _reload_agent_runtime
         from channel.web.web_channel import _require_agent_action
-        from channel.web.web_channel import _require_agent_create
-        from channel.web.web_channel import _require_agent_deletable
-        from channel.web.web_channel import _require_configured_capabilities
-        from channel.web.web_channel import _require_deletable_provenance
+        from channel.web.fork.authorization import _require_agent_create
+        from channel.web.fork.authorization import _require_agent_deletable
+        from channel.web.fork.authorization import _require_configured_capabilities
+        from channel.web.fork.authorization import _require_deletable_provenance
         from channel.web.web_channel import _require_platform_console
         web.header('Content-Type', 'application/json; charset=utf-8')
         # Bound before the try so the refusal branch can always name the actor and
@@ -1128,7 +1128,7 @@ def _avatar_identity_scope(agent_id: str):
     cannot probe which ids are bound. Object-level ``agent.read`` stays in the
     handler.
     """
-    from channel.web.web_channel import _chat_error
+    from channel.web.fork.handlers.chat import _chat_error
     from auth.runtime import resolve_context, to_runtime_identity, IdentityContextError
     from channel.web.auth_handlers import _get_service, _session_token
     from common.runtime_identity import use_identity
@@ -1173,8 +1173,8 @@ def _avatar_identity_scope(agent_id: str):
 
 class AgentAvatarHandler:
     def GET(self, agent_id: str):
-        from channel.web.web_channel import AVATAR_TYPES
-        from channel.web.web_channel import _avatar_path
+        from channel.web.fork.runtime import AVATAR_TYPES
+        from channel.web.fork.runtime import _avatar_path
         from channel.web.web_channel import _require_agent_action
         from channel.web.web_channel import _require_tenant_agent_binding
         with _avatar_identity_scope(agent_id) as (ctx, agent_id):
@@ -1216,12 +1216,12 @@ class AgentAvatarHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def _store_avatar(self, agent_id, shared_root, get_agent_registry):
-        from channel.web.web_channel import AVATAR_IMAGE_TOKEN
-        from channel.web.web_channel import AVATAR_TYPES
-        from channel.web.web_channel import MAX_AVATAR_BYTES
+        from channel.web.fork.runtime import AVATAR_IMAGE_TOKEN
+        from channel.web.fork.runtime import AVATAR_TYPES
+        from channel.web.fork.runtime import MAX_AVATAR_BYTES
         from channel.web.web_channel import _agent_admin_service
         from channel.web.web_channel import _raw_web_input
-        from channel.web.web_channel import _read_uploaded_file_bytes
+        from channel.web.fork.runtime import _read_uploaded_file_bytes
         get_agent_registry().get(agent_id, require_enabled=False)
         # Read the multipart body raw. web.input() decodes it as UTF-8, which
         # dies on the first non-text byte of an image (a PNG starts with the

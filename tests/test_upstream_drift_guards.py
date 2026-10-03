@@ -156,12 +156,13 @@ class TaskFieldDriftTests(unittest.TestCase):
 class TasksPagePortDriftTests(unittest.TestCase):
     """The ported scheduled-task page is upstream's: drift is re-ported by hand.
 
-    The page is assembled from five upstream files served byte-for-byte
-    (``port-upstream-tasks-page``) and one fork module that re-implements the
+    The page uses five upstream files, with one optional modal-renderer hook,
+    and one fork module that re-implements the
     parts upstream has no notion of. Neither half survives an upstream sync on
     its own: if upstream edits a fragment, the markup the fork's module reasons
     about changed; if upstream edits a script, the functions the fork captured
-    changed. Both are silent failures, so both are pinned here.
+    changed. Both are pinned here; only the explicit renderer hook is removed
+    before comparing the original digest.
     """
 
     ROOT = Path(__file__).resolve().parents[1] / "channel" / "web"
@@ -184,7 +185,14 @@ class TasksPagePortDriftTests(unittest.TestCase):
     PARALLEL_FORK_MODULE = "static/js/fork/tasks-console.js"
 
     def _hash(self, relative):
-        return hashlib.sha256((self.ROOT / relative).read_bytes()).hexdigest()
+        data = (self.ROOT / relative).read_bytes()
+        if relative == "static/js/views/tasks-modal.js":
+            text = data.decode("utf-8")
+            start = text.index("// Optional host adapter;")
+            end = text.index("// =====================================================================", start)
+            text = text[:start] + text[end:]
+            data = text.replace("initTaskDropdown(", "initDropdown(").encode("utf-8")
+        return hashlib.sha256(data).hexdigest()
 
     def test_the_registered_upstream_sources_are_unchanged(self):
         """A byte changed upstream -> re-port the fork module by hand."""

@@ -33,6 +33,8 @@ import uuid
 from typing import Callable, Dict, List, Optional, Tuple
 
 from agent.tools.bash.decode import decode_output
+from agent.tools.bash import launcher
+from agent.tools.bash.redaction import StreamRedactor, redact_text
 
 _IS_WIN = sys.platform == "win32"
 
@@ -57,13 +59,27 @@ _MAX_BUFFER_BYTES = 256 * 1024
 # Finished jobs stay readable for a while so a late poll still sees the exit
 # code, but the registry must not grow forever.
 _MAX_JOBS = 20
+_DEFAULT_MAX_RUNNING = 20
+
+
+class CapacityError(RuntimeError):
+    """The process-wide background capacity is currently occupied."""
+
+
+def _running_limit() -> int:
+    try:
+        value = int(os.environ.get('COW_BASH_MAX_RUNNING', _DEFAULT_MAX_RUNNING))
+    except (TypeError, ValueError):
+        return _DEFAULT_MAX_RUNNING
+    return value if value > 0 else _DEFAULT_MAX_RUNNING
 
 
 class _Job:
     def __init__(self, job_id: str, command: str, process: subprocess.Popen,
                  temp_script: Optional[str] = None):
+        self.owner = launcher.current_owner()
         self.id = job_id
-        self.command = command
+        self.command = redact_text(command, getattr(process, 'execution_secrets', {}).values())
         self.process = process
         self.temp_script = temp_script
         self.started_at = time.time()
@@ -71,6 +87,8 @@ class _Job:
         self.cursor = 0
         self.dropped = 0
         self.lock = threading.Lock()
+        self.cleanup_lock = threading.Lock()
+        self.tree_cleaned = False
         self.readers: List[threading.Thread] = []
 
     def append(self, chunk: bytes) -> None:
@@ -97,15 +115,19 @@ class _Job:
 
 _lock = threading.Lock()
 _jobs: Dict[str, _Job] = {}
+# Reservations cover slow process creation without holding the registry lock,
+# so output polling and cancellation remain available while another job starts.
+_starting = 0
 
 
 def _drain(job: _Job, stream) -> None:
+    redactor = StreamRedactor(getattr(job.process, 'execution_secrets', {}).values())
     try:
         while True:
             chunk = os.read(stream.fileno(), 4096)
+            job.append(redactor.feed(chunk, final=not chunk))
             if not chunk:
                 break
-            job.append(chunk)
     except (OSError, ValueError):
         pass
 
@@ -124,42 +146,96 @@ def _evict_finished() -> None:
 
 
 def _cleanup(job: _Job) -> None:
-    if job.temp_script:
-        try:
-            os.remove(job.temp_script)
-        except OSError:
-            pass
-        job.temp_script = None
+    with job.cleanup_lock:
+        if job.running or job.tree_cleaned:
+            return
+        # Kill once, immediately on exit. Never signal an old numeric process
+        # group on a later output poll: the OS may have reused its identifier.
+        _kill_process(job.process)
+        job.tree_cleaned = True
+        launcher.release(job.process)
+        if job.temp_script:
+            try:
+                os.remove(job.temp_script)
+            except OSError:
+                pass
+            job.temp_script = None
+
+
+def _watch(job: _Job) -> None:
+    job.process.wait()
+    _cleanup(job)
+    for reader in job.readers:
+        reader.join(timeout=2)
+    job.process.execution_secrets = {}
 
 
 def start(command: str, cwd: str, env: dict, temp_script: Optional[str] = None) -> str:
     """Launch *command* in the background and return its job id."""
-    process = subprocess.Popen(
-        command,
-        shell=True,
-        cwd=cwd,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        env=env,
-        start_new_session=not _IS_WIN,
-    )
-    # A new session means the group id is the pid: reported before anything waits,
-    # so the run's owner can end the job even after this job outlives its shell.
-    if _process_group_hook is not None and not _IS_WIN:
-        try:
-            _process_group_hook(process.pid)
-        except Exception:
-            pass
-    job = _Job(f"bash_{uuid.uuid4().hex[:8]}", command, process, temp_script)
-    reader = threading.Thread(target=_drain, args=(job, process.stdout), daemon=True)
-    job.readers.append(reader)
-    reader.start()
-
-    with _lock:
-        _evict_finished()
-        _jobs[job.id] = job
-    return job.id
+    global _starting
+    reserved = False
+    process = None
+    job = None
+    try:
+        limit = _running_limit()
+        with _lock:
+            if _starting + sum(not item.tree_cleaned for item in _jobs.values()) >= limit:
+                raise CapacityError(
+                    f'Background task capacity reached ({limit} running or starting jobs). '
+                    'Wait for a task to finish or stop one of your jobs, then retry.')
+            _starting += 1
+            reserved = True
+        process = launcher.popen(
+            command,
+            shell=True,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=env,
+            start_new_session=not _IS_WIN,
+        )
+        # A new session means the group id is the pid: reported before anything
+        # waits, so the run's owner can stop the shell and its children.
+        if _process_group_hook is not None and not _IS_WIN:
+            try:
+                _process_group_hook(process.pid)
+            except Exception:
+                pass
+        job = _Job(f"bash_{uuid.uuid4().hex[:8]}", command, process, temp_script)
+        reader = threading.Thread(target=_drain, args=(job, process.stdout), daemon=True)
+        job.readers.append(reader)
+        reader.start()
+        threading.Thread(target=_watch, args=(job,), daemon=True).start()
+        with _lock:
+            _evict_finished()
+            _jobs[job.id] = job
+            _starting -= 1
+            reserved = False
+        return job.id
+    except BaseException:
+        if process is not None:
+            _kill_process(process)
+            process.wait(timeout=5)
+            if job is not None:
+                _cleanup(job)
+                for reader in job.readers:
+                    if reader.ident is not None:
+                        reader.join(timeout=2)
+            else:
+                launcher.release(process)
+            if process.stdout is not None:
+                process.stdout.close()
+        if temp_script:
+            try:
+                os.remove(temp_script)
+            except OSError:
+                pass
+        raise
+    finally:
+        if reserved:
+            with _lock:
+                _starting -= 1
 
 
 def read(job_id: str) -> Optional[dict]:
@@ -169,7 +245,7 @@ def read(job_id: str) -> Optional[dict]:
     """
     with _lock:
         job = _jobs.get(job_id)
-    if job is None:
+    if job is None or not launcher.may_access(job.owner):
         return None
 
     output, dropped = job.take_new_output()
@@ -198,11 +274,12 @@ def kill(job_id: str) -> Optional[bool]:
     """Terminate a background job. Returns None when *job_id* is unknown."""
     with _lock:
         job = _jobs.get(job_id)
-    if job is None:
+    if job is None or not launcher.may_access(job.owner):
         return None
-    if job.running:
-        _kill_process(job.process)
-        job.process.wait()
+    with job.cleanup_lock:
+        if not job.tree_cleaned:
+            _kill_process(job.process)
+            job.process.wait()
     _cleanup(job)
     return True
 
@@ -217,7 +294,7 @@ def list_jobs() -> List[dict]:
             "running": j.running,
             "elapsed": round(time.time() - j.started_at, 1),
         }
-        for j in jobs
+        for j in jobs if launcher.may_access(j.owner)
     ]
 
 
@@ -250,6 +327,8 @@ def reset() -> None:
         jobs = list(_jobs.values())
         _jobs.clear()
     for job in jobs:
-        if job.running:
-            _kill_process(job.process)
+        with job.cleanup_lock:
+            if not job.tree_cleaned:
+                _kill_process(job.process)
+                job.process.wait()
         _cleanup(job)

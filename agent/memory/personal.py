@@ -54,6 +54,7 @@ import json
 import os
 import re
 import threading
+import weakref
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime
@@ -76,14 +77,10 @@ _ENTRY_ID_RE = re.compile(
 #: generation and the index labels awaiting a retried purge.
 _SCOPE_FILE = ".memory-scope.json"
 
-#: Guards read-modify-write of the scope file within one process.
-_scope_lock = threading.RLock()
-
-#: Serialises the read-compare-write of an entry's version condition. The
-#: console is served by one process, so this is what makes "two pages save the
-#: same revision" resolve to exactly one winner instead of both passing the
-#: check before either write lands.
+#: Protect only the lock registry. Entry/version I/O holds the per-root RLock
+#: and persistent file lock, so unrelated users do not serialize each other.
 _entry_lock = threading.RLock()
+_root_locks = weakref.WeakValueDictionary()
 _held_roots = threading.local()
 _personal_stage = ContextVar('personal_memory_stage', default=None)
 
@@ -140,8 +137,14 @@ def write_personal_file(target, content, previous):
 @contextmanager
 def scope_transaction(root):
     """One reentrant commit boundary shared by files, indices and processes."""
+    key = os.path.abspath(root)
+    # Keep the registry lock short; unrelated users never share a transaction.
     with _entry_lock:
-        key = os.path.abspath(root)
+        lock = _root_locks.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _root_locks[key] = lock
+    with lock:
         held = getattr(_held_roots, 'roots', set())
         if key in held:
             yield
@@ -277,8 +280,8 @@ def _write_scope_state(root: Path, state: Dict[str, Any]) -> None:
 
 
 def _scope_update(root: Path, mutate: Callable[[Dict[str, Any]], Any]) -> Any:
-    """Read-modify-write the scope marker under :data:`_scope_lock`."""
-    with scope_transaction(root), _scope_lock:
+    """Read-modify-write the scope marker under its owner transaction."""
+    with scope_transaction(root):
         state = read_scope_state(root)
         result = mutate(state)
         _write_scope_state(root, state)
@@ -938,8 +941,8 @@ class PersonalMemoryService:
                         bump_generation: bool = False) -> int:
         """Record the intent to publish and return its operation token.
 
-        Must be called with :data:`_entry_lock` held. The token is the value of
-        ``op_version`` this operation commits at; any publisher that finds a
+        Must be called inside :func:`scope_transaction` for this user root.
+        The token is the ``op_version`` this operation commits at; a publisher finding a
         different value has been overtaken and must not write.
         """
         root = self.user_root()

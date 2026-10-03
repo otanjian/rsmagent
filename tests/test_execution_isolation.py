@@ -24,15 +24,15 @@ def _boundary(tmp_path, *, other_root=None, home=None, data_root=None,
     for root in (own, work, usr, tdir):
         root.mkdir(parents=True, exist_ok=True)
     boundary = _Boundary(
-        read_roots=[str(own), str(work), str(usr), str(tdir)],
-        write_roots=[str(work), str(usr), str(tdir)],
-        blocked=[str(home or tmp_path / "home"), str(data_root or tmp_path / "data")],
-        engineering=str(work),
+        read_roots=[os.path.realpath(p) for p in (own, work, usr, tdir)],
+        write_roots=[os.path.realpath(p) for p in (work, usr, tdir)],
+        blocked=[os.path.realpath(home or tmp_path / "home"), os.path.realpath(data_root or tmp_path / "data")],
+        engineering=os.path.realpath(work),
         tenant_id=tenant_id,
     )
     if other_root is not None:
         other_root.mkdir(parents=True, exist_ok=True)
-        boundary.blocked.append(str(other_root))
+        boundary.blocked.append(os.path.realpath(other_root))
     return boundary, {k: str(v) for k, v in {
         "own": own, "work": work, "usr": usr, "tdir": tdir,
     }.items()}
@@ -324,3 +324,14 @@ def test_blocked_home_does_not_shadow_nested_tenant_root(monkeypatch, tmp_path):
         "read", {"path": str(ssh / "id_rsa")}, cwd=str(work)).allowed
     assert not iso._check_bash(
         boundary, {"command": f"cat {ssh}/id_rsa"}, str(work)).allowed
+
+
+def test_private_subtrees_override_shared_parent_allowance(tmp_path):
+    boundary, dirs = _boundary(tmp_path)
+    parent = dirs['work'] + '/user'
+    boundary.private = [(parent, parent + '/u1')]
+    assert not iso._in_blocked(boundary, parent + '/u1/output.txt', boundary.read_roots)
+    assert iso._in_blocked(boundary, parent + '/u2/output.txt', boundary.read_roots)
+    assert iso._in_blocked(boundary, parent + '/new-owner/secret.txt', boundary.write_roots)
+    boundary.hard_blocked = [dirs['work'] + '/mcp.json']
+    assert iso._in_blocked(boundary, dirs['work'] + '/mcp.json', boundary.read_roots)

@@ -1257,11 +1257,10 @@ class WeixinQrHandler:
         """厂商确认：收窄并加密临时结果，然后走同一个提交通道。"""
         from channel.web import scan_onboarding as so
         from channel import weixin_scan_adapter as adapter
-        from auth.service import get_identity_service
 
         if not session.provider_result_present:
-            # 只保留渠道类型声明的凭据字段；厂商的 ilink_bot_id / ilink_user_id 与
-            # 其余应答字段既不落库也不回显。缺 token 是拒绝，不是空凭据包。
+            # 凭据包只保留渠道类型声明的字段；扫码人的身份单独交由绑定服务处理，
+            # 其余厂商字段不落库也不回显。缺 token 是拒绝，不是空凭据包。
             result = adapter.provider_result(answer)
             session = so.mark_status(session.handle, so.STATUS_CONFIRMED,
                                      actor=actor)
@@ -1269,20 +1268,11 @@ class WeixinQrHandler:
                 session.handle, result=result,
                 sensitive_keys=adapter.provider_secret_keys(),
                 declared_keys=adapter.provider_result_keys(), actor=actor)
-        committed = self._commit(ctx, body)
-        # 扫码人身份：厂商若把「谁扫的码」一并返回，就在实例落地后绑定该账号，本人的第一
-        # 条消息因此无需再走绑定码。绑定发生在提交之后且不抛错（实例已提交、扫码已成功，
-        # 绑定写不进去不能把「已保存」变成「扫码失败」），服务端自行判定该类型入站是否
-        # 携带身份戳——不带戳的类型这里只会记一行日志，未绑定的实例仍可由首个发送者认领。
-        scanner = adapter.scanner_identity(answer)
-        if scanner:
-            adapter.bind_scanner_identity(
-                get_identity_service(),
-                instance_id=str((committed or {}).get("instance_id") or ""),
-                tenant_id=ctx.tenant_id or "", identity=scanner)
-        return committed
+        # The create adapter binds the verified scanner before starting the
+        # connection, so queued messages cannot claim the instance first.
+        return self._commit(ctx, body, scanner=adapter.scanner_identity(answer))
 
-    def _commit(self, ctx, body):
+    def _commit(self, ctx, body, *, scanner=None):
         from channel.web import scan_onboarding as so
         from channel import weixin_scan_adapter as adapter
         from auth.service import get_identity_service
@@ -1317,7 +1307,7 @@ class WeixinQrHandler:
             handle=session.handle, actor=actor, scan_ticket=ticket,
             channel_type=self.CHANNEL_TYPE,
             create_instance=adapter.create_instance_callable(
-                service, scope=session.scope),
+                service, scope=session.scope, scanner=scanner),
             # 客户端可以改名；没改名就用扫码开始时绑定的默认名（类型标签 + 空序号）。
             # 两者都随会话固定，重试提交的内容不会漂移。
             display_name=(str((body or {}).get("display_name") or "").strip()
@@ -1425,7 +1415,7 @@ class WeixinQrHandler:
 
     @staticmethod
     def _fail(message: str, *, status: int, code: str):
-        from channel.web.web_channel import _HTTP_STATUS_TEXT
+        from channel.web.fork.runtime import _HTTP_STATUS_TEXT
         raise web.HTTPError(
             f"{status} {_HTTP_STATUS_TEXT.get(status, 'Error')}",
             {"Content-Type": "application/json; charset=utf-8"},
@@ -1435,7 +1425,7 @@ class WeixinQrHandler:
     @classmethod
     def _fail_from(cls, error):
         """把一次拒绝映射为 HTTP 应答，绝不带出凭据原文。"""
-        from channel.web.web_channel import _SCAN_ERROR_STATUS
+        from channel.web.fork.runtime import _SCAN_ERROR_STATUS
         code = str(getattr(error, "code", "") or "").strip()
         status = getattr(error, "status", None)
         if not isinstance(status, int):
@@ -1477,7 +1467,7 @@ class FeishuRegisterHandler:
     @staticmethod
     def _qr_to_data_uri(data: str) -> str:
         """复用 WeixinQrHandler 的二维码渲染。"""
-        from channel.web.web_channel import WeixinQrHandler
+        from channel.web.fork.handlers.channels import WeixinQrHandler
         return WeixinQrHandler._qr_to_data_uri(data)
 
     @classmethod
@@ -1742,7 +1732,7 @@ class FeishuRegisterHandler:
         本次接入的目标。个人作用域下目标不合法时**在打开飞书对话框之前**就拒绝，
         而不是先让用户扫完码再要求选目标。
         """
-        from channel.web.web_channel import _register_owner_scope
+        from channel.web.fork.handlers.auth import _register_owner_scope
         params = web.input(scope='', agent_id='')
         scope = str(getattr(params, "scope", "") or "").strip() or "tenant"
         agent_id = str(getattr(params, "agent_id", "") or "").strip()
@@ -1762,8 +1752,8 @@ class FeishuRegisterHandler:
 
     def GET(self):
         """为当前发起者启动一次注册会话，返回句柄与二维码。"""
-        from channel.web.web_channel import _register_owner_scope
-        from channel.web.web_channel import _verified_auth_session_id
+        from channel.web.fork.handlers.auth import _register_owner_scope
+        from channel.web.fork.handlers.auth import _verified_auth_session_id
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             from auth.service import IdentityServiceError
@@ -1837,8 +1827,8 @@ class FeishuRegisterHandler:
 
     def POST(self):
         """轮询当前发起者自己的注册会话。"""
-        from channel.web.web_channel import _register_owner_scope
-        from channel.web.web_channel import _verified_auth_session_id
+        from channel.web.fork.handlers.auth import _register_owner_scope
+        from channel.web.fork.handlers.auth import _verified_auth_session_id
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             body = json.loads(web.data() or b"{}")
@@ -1903,10 +1893,10 @@ class PersonalChannelHandler:
 
     def POST(self):
         """Create one personal instance (``channel_type`` + credentials)."""
-        from channel.web.web_channel import _apply_personal_channel_runtime
+        from channel.web.fork.common import _apply_personal_channel_runtime
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _personal_channel_service
-        from channel.web.web_channel import _verified_auth_session_id
+        from channel.web.fork.handlers.auth import _verified_auth_session_id
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             body = json.loads(web.data() or b'{}')
@@ -1968,7 +1958,7 @@ class PersonalChannelInstanceHandler:
             return _personal_channel_error(e)
 
     def POST(self, instance_id: str):
-        from channel.web.web_channel import _apply_personal_channel_runtime
+        from channel.web.fork.common import _apply_personal_channel_runtime
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _personal_channel_service
         web.header('Content-Type', 'application/json; charset=utf-8')
@@ -2102,5 +2092,3 @@ def _channel_target_candidates(ctx: "RequestContext") -> List[Dict]:
             "is_tenant_default": bool(profile.id == tenant_default),
         })
     return targets
-
-

@@ -1,3 +1,12 @@
+
+from Scene._shared.host import _get_upload_dir
+from Scene._shared.host import _require_auth
+import datetime
+import json
+from common.log import logger
+import os
+import web
+
 class VoucherTemplateHandler:
     """POST /api/voucher/generate-template - Generate voucher import template CSV.
 

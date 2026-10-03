@@ -61,15 +61,18 @@ def web(tmp_path_factory):
     harness = WebAppHarness(tmp_path_factory.mktemp("external-api"))
     harness.add_agent("shared-agent")
     harness.role("conn-reader", ["external.connections.read", "chat.use"])
+    harness.role("no-conn-read", ["chat.use"])
     harness.role("conn-manager", ["external.connections.read",
                                   "external.connections.manage", "chat.use"])
     harness.member("reader", ["conn-reader"])
     harness.member("manager", ["conn-manager"])
     harness.member("plain", ["member"])
+    harness.member("no-reader", ["no-conn-read"])
     harness.admin_token = harness.login("root")
     harness.reader_token = harness.login("reader")
     harness.manager_token = harness.login("manager")
     harness.plain_token = harness.login("plain")
+    harness.no_reader_token = harness.login("no-reader")
     yield harness
     harness.close()
 
@@ -111,12 +114,15 @@ def test_a_platform_catalogue_read_is_refused_for_a_non_admin(web):
 
 def test_a_tenant_catalogue_read_needs_the_read_permission(web):
     refused = web.get("/api/external-connections/catalog?scope=tenant",
-                      token=web.plain_token)
+                      token=web.no_reader_token)
     assert refused.status == "403 Forbidden"
     allowed = web.get("/api/external-connections/catalog?scope=tenant",
                       token=web.reader_token)
     assert allowed.status == "200 OK"
     assert _json(allowed)["scope"] == "tenant"
+    # The default member role now grants catalogue reads; preserve that access.
+    assert web.get("/api/external-connections/catalog?scope=tenant",
+                   token=web.plain_token).status == "200 OK"
 
 
 # -- personal mailbox ------------------------------------------------------

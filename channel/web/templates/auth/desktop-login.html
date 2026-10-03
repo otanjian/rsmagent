@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="same-origin">
+    <title>登录桌面端 · 容大AI</title>
+    <link rel="icon" href="/assets/rongda-ai-mark.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/assets/vendor/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="/assets/vendor/fonts/inter/inter.css">
+    <script src="/assets/vendor/tailwind/tailwind.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'] } } }
+        };
+    </script>
+    <link rel="stylesheet" href="/assets/css/console.css">
+    <script defer src="/assets/js/desktop-login.js"></script>
+</head>
+<body class="h-screen overflow-hidden bg-gray-50 text-slate-800 font-sans">
+    <!--#include templates/auth/login.html-->
+</body>
+</html>

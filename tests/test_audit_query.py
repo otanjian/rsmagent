@@ -127,5 +127,93 @@ class AuditQueryTests(unittest.TestCase):
         self.assertEqual(page["events"][0]["changes"], {"name": "A"})
 
 
+class AuditActorNameTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.store = AuditStore(os.path.join(tmp.name, "identity.db"))
+        with self.store._store.connect() as con:
+            con.executemany(
+                "INSERT INTO tenants(id, code, name, shared_root) VALUES (?,?,?,?)",
+                [("t1", "one", "One", ""), ("t2", "two", "Two", "")],
+            )
+            con.executemany(
+                "INSERT INTO users(id, username, display_name, password_hash) VALUES (?,?,?,?)",
+                [("u1", "alice", "全局名称", "unused"),
+                 ("u2", "old-login", "另一个用户", "unused")],
+            )
+            con.executemany(
+                "INSERT INTO memberships(id, tenant_id, user_id, display_name) VALUES (?,?,?,?)",
+                [("m1", "t1", "u1", "张三"), ("m2", "t2", "u1", "另一租户名称")],
+            )
+            con.commit()
+
+    def record(self, **overrides):
+        values = {"actor_user_id": "u1", "tenant_id": "t1",
+                  "action": "agent.update", "target": "agent:demo"}
+        values.update(overrides)
+        return self.store.record(**values)
+
+    def test_id_only_history_resolves_the_name_in_each_events_tenant(self):
+        self.record()
+        self.record(tenant_id="t2")
+        self.record(tenant_id=None)
+        page = self.store.query_events(scope="all")
+        self.assertEqual(page["total"], 3)
+        self.assertEqual({e["tenant_id"]: e["actor_display_name"] for e in page["events"]},
+                         {"t1": "张三", "t2": "另一租户名称", None: "全局名称"})
+        self.assertTrue(all(e["actor_username"] is None for e in page["events"]))
+        self.assertIsNone(self.store.query_tenant("t1")[0]["actor_username"])
+
+    def test_blank_names_fall_back_to_global_name_then_account_name(self):
+        self.record()
+        with self.store._store.connect() as con:
+            con.execute("UPDATE memberships SET display_name='   ' WHERE id='m1'")
+            con.commit()
+        event = self.store.query_events(scope="tenant", tenant_id="t1")["events"][0]
+        self.assertEqual(event["actor_display_name"], "全局名称")
+        with self.store._store.connect() as con:
+            con.execute("UPDATE users SET display_name='' WHERE id='u1'")
+            con.commit()
+        event = self.store.query_events(scope="tenant", tenant_id="t1")["events"][0]
+        self.assertEqual(event["actor_display_name"], "alice")
+
+    def test_missing_accounts_keep_recorded_names_without_reassigning_identity(self):
+        old = self.record(actor_user_id="deleted-user", actor_username="old-login")
+        unknown = self.record(actor_user_id="missing-user")
+        events = {e["id"]: e for e in self.store.query_events(scope="all")["events"]}
+        self.assertEqual(events[old["id"]]["actor_display_name"], "old-login")
+        self.assertEqual(events[unknown["id"]]["actor_display_name"], "")
+
+    def test_name_filter_preserves_scope_pagination_and_historical_accounts(self):
+        self.record(actor_username="former-alice")
+        self.record()
+        self.record(tenant_id="t2")
+        for name in ("张三", "alice", "全局名称"):
+            page = self.store.query_events(scope="tenant", tenant_id="t1",
+                                           actor_username=name, limit=1, offset=1)
+            self.assertEqual(page["total"], 2)
+            self.assertEqual(len(page["events"]), 1)
+            self.assertEqual(page["events"][0]["tenant_id"], "t1")
+        historical = self.store.query_events(scope="tenant", tenant_id="t1",
+                                             actor_username="former-alice")
+        self.assertEqual(historical["total"], 1)
+        self.assertEqual(historical["events"][0]["actor_username"], "former-alice")
+        foreign = self.store.query_events(scope="tenant", tenant_id="t1",
+                                          actor_username="另一租户名称")
+        self.assertEqual(foreign["total"], 0)
+
+    def test_name_filter_treats_wildcard_characters_as_literal_text(self):
+        self.record()
+        with self.store._store.connect() as con:
+            con.execute("UPDATE memberships SET display_name='张_三%' WHERE id='m1'")
+            con.commit()
+        for name in ("_", "%", "张_三%"):
+            self.assertEqual(self.store.query_events(
+                scope="tenant", tenant_id="t1", actor_username=name)["total"], 1)
+        self.assertEqual(self.store.query_events(
+            scope="tenant", tenant_id="t2", actor_username="%")["total"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -62,7 +62,7 @@ def _knowledge_write_authorized(ctx: "Optional[RequestContext]",
 
     Legacy mode (``ctx is None``) keeps its historical no-gate behaviour.
     """
-    from channel.web.web_channel import _private_agent_owned_by_another
+    from channel.web.fork.authorization import _private_agent_owned_by_another
     if ctx is None:
         return True
     if not agent_id:
@@ -141,7 +141,7 @@ class KnowledgeListHandler:
     def GET(self):
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _knowledge_workspace_root
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_private_owner
         from channel.web.web_channel import _require_read_permission
         from channel.web.web_channel import _require_tenant_agent_binding
@@ -177,7 +177,7 @@ class KnowledgeReadHandler:
     def GET(self):
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _knowledge_workspace_root
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_private_owner
         from channel.web.web_channel import _require_read_permission
         from channel.web.web_channel import _require_tenant_agent_binding
@@ -217,7 +217,7 @@ class KnowledgeGraphHandler:
     def GET(self):
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _knowledge_workspace_root
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_private_owner
         from channel.web.web_channel import _require_read_permission
         from channel.web.web_channel import _require_tenant_agent_binding
@@ -245,7 +245,7 @@ class KnowledgeActionHandler:
     def POST(self):
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _knowledge_workspace_root
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_knowledge_write
         from channel.web.web_channel import _require_private_owner
         from channel.web.web_channel import _require_tenant_agent_binding
@@ -278,14 +278,14 @@ class KnowledgeActionHandler:
 class KnowledgeImportHandler:
     def POST(self):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _ensure_list
+        from channel.web.fork.runtime import _ensure_list
         from channel.web.web_channel import _knowledge_workspace_root
         from channel.web.core._common import _multipart_lists, _first_value
-        from channel.web.web_channel import _read_uploaded_file_bytes_limited
+        from channel.web.fork.runtime import _read_uploaded_file_bytes_limited
         from channel.web.web_channel import _require_knowledge_write
         from channel.web.web_channel import _require_private_owner
         from channel.web.web_channel import _require_tenant_agent_binding
-        from channel.web.web_channel import _scoped_agent_id
+        from channel.web.fork.runtime import _scoped_agent_id
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             from agent.knowledge.service import KnowledgeService

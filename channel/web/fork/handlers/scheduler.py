@@ -97,7 +97,7 @@ def _scheduler_run_int_param(params, name: str, default, *, minimum: int,
 
 
 def _run_http_error(code: str, status: int, message: str = ""):
-    from channel.web.web_channel import _SCHEDULER_STATUS_LINES
+    from channel.web.fork.runtime import _SCHEDULER_STATUS_LINES
     return web.HTTPError(
         _SCHEDULER_STATUS_LINES.get(status, "%d Error" % status),
         {"Content-Type": "application/json; charset=utf-8"},
@@ -268,7 +268,7 @@ def _scheduler_access(ctx=None) -> "TaskAccessService":
     One construction for all five handlers, so the HTTP path cannot diverge from
     the tool and background paths (tasks 3.1/3.3).
     """
-    from channel.web.web_channel import _web_auth_session_id
+    from channel.web.fork.common import _web_auth_session_id
     from agent.tools.scheduler.authorization import (
         TaskActor, TaskAccessService, actor_from_identity_context,
     )
@@ -329,7 +329,7 @@ def _scheduler_error(error):
     "not yours" (403) from "no such task" (404) and "someone else edited it
     first" (409).
     """
-    from channel.web.web_channel import _SCHEDULER_STATUS_LINES
+    from channel.web.fork.runtime import _SCHEDULER_STATUS_LINES
     status = int(getattr(error, "status", 403) or 403)
     raise web.HTTPError(
         _SCHEDULER_STATUS_LINES.get(status, "%d Error" % status),
@@ -341,8 +341,8 @@ def _scheduler_error(error):
 class SchedulerHandler:
     def GET(self):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _int_param
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.common import _int_param
+        from channel.web.fork.runtime import _request_agent_id
         web.header('Content-Type', 'application/json; charset=utf-8')
         from agent.tools.scheduler.authorization import TaskAuthorizationError
         try:
@@ -364,7 +364,7 @@ class SchedulerHandler:
 
 
 def _scheduler_actor(ctx):
-    from channel.web.web_channel import _web_auth_session_id
+    from channel.web.fork.common import _web_auth_session_id
     from agent.tools.scheduler.authorization import actor_from_identity_context
     actor = actor_from_identity_context(ctx, source="http")
     actor.session_id = _web_auth_session_id()
@@ -374,7 +374,7 @@ def _scheduler_actor(ctx):
 class SchedulerRunHandler:
     def POST(self):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         web.header('Content-Type', 'application/json; charset=utf-8')
         from agent.tools.scheduler.authorization import TaskAuthorizationError
         try:
@@ -409,7 +409,7 @@ class SchedulerRunHandler:
 class SchedulerToggleHandler:
     def POST(self):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         web.header('Content-Type', 'application/json; charset=utf-8')
         from agent.tools.scheduler.authorization import TaskAuthorizationError
         try:
@@ -437,7 +437,7 @@ class SchedulerToggleHandler:
 class SchedulerUpdateHandler:
     def POST(self):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         web.header('Content-Type', 'application/json; charset=utf-8')
         from agent.tools.scheduler.authorization import (
             FORGED_FIELD, TaskAuthorizationError,
@@ -514,7 +514,7 @@ class SchedulerUpdateHandler:
 class SchedulerDeleteHandler:
     def POST(self):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         web.header('Content-Type', 'application/json; charset=utf-8')
         from agent.tools.scheduler.authorization import TaskAuthorizationError
         try:

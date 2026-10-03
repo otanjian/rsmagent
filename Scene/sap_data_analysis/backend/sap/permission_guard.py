@@ -10,7 +10,7 @@
 
 from typing import List, Set
 
-from auth.tenant_context import get_current_permissions, get_current_roles
+from Scene._shared.host import get_current_permissions, get_current_roles
 from common.log import logger
 
 from .config import (
@@ -28,8 +28,8 @@ class PermissionGuard:
     """SAP 数据分析权限校验器。"""
 
     def __init__(self, user_permissions: List[str] = None, user_roles: List[str] = None):
-        self.permissions = set(user_permissions or get_current_permissions())
-        self.roles = set(user_roles or get_current_roles())
+        self.permissions = set(get_current_permissions() if user_permissions is None else user_permissions)
+        self.roles = set(get_current_roles() if user_roles is None else user_roles)
         self.is_admin = ADMIN_PERMISSION in self.permissions or "admin" in self.roles
 
     def check_plan(self, plan: QueryPlan) -> None:

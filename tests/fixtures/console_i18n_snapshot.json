@@ -372,6 +372,7 @@
     "audit_col_time": "时间",
     "audit_col_tenant": "租户",
     "audit_col_actor": "用户",
+    "audit_unknown_actor": "未知用户",
     "audit_col_action": "动作",
     "audit_col_resource": "资源",
     "audit_col_status": "状态",
@@ -2104,7 +2105,11 @@
     "memory_account_type_dream": "梦境日记",
     "memory_account_no_files": "暂无记忆文件",
     "memory_account_no_evolution": "暂无进化记录",
-    "memory_account_counts": "长期：{global}；每日/主动：{daily}；进化：{evolution}；梦境：{dream}"
+    "memory_account_counts": "长期：{global}；每日/主动：{daily}；进化：{evolution}；梦境：{dream}",
+    "tenant_channel_webhook_hint": "请将渠道配置的监听端口映射到公网 HTTPS，并在平台填写公网域名加以下回调路径。",
+    "tenant_channel_webhook_path": "回调路径",
+    "tenant_channel_webhook_after_save": "保存后显示本渠道专属回调路径。",
+    "tenant_channel_scan_will_save": "扫码确认后将自动保存并接入。"
   },
   "zh-Hant": {
     "login_select_tenant": "選擇租戶",
@@ -2477,6 +2482,7 @@
     "audit_col_time": "時間",
     "audit_col_tenant": "租戶",
     "audit_col_actor": "使用者",
+    "audit_unknown_actor": "未知使用者",
     "audit_col_action": "動作",
     "audit_col_resource": "資源",
     "audit_col_status": "狀態",
@@ -4212,7 +4218,11 @@
     "memory_account_type_dream": "夢境日記",
     "memory_account_no_files": "暫無記憶檔案",
     "memory_account_no_evolution": "暫無進化記錄",
-    "memory_account_counts": "長期：{global}；每日/主動：{daily}；進化：{evolution}；夢境：{dream}"
+    "memory_account_counts": "長期：{global}；每日/主動：{daily}；進化：{evolution}；夢境：{dream}",
+    "tenant_channel_webhook_hint": "請將管道設定的監聽連接埠映射到公網 HTTPS，並在平台填寫公網網域加以下回呼路徑。",
+    "tenant_channel_webhook_path": "回呼路徑",
+    "tenant_channel_webhook_after_save": "儲存後顯示本管道專屬回呼路徑。",
+    "tenant_channel_scan_will_save": "掃碼確認後將自動儲存並接入。"
   },
   "en": {
     "login_select_tenant": "Select tenant",
@@ -4587,6 +4597,7 @@
     "audit_col_time": "Time",
     "audit_col_tenant": "Tenant",
     "audit_col_actor": "User",
+    "audit_unknown_actor": "Unknown user",
     "audit_col_action": "Action",
     "audit_col_resource": "Resource",
     "audit_col_status": "Status",
@@ -6319,6 +6330,10 @@
     "memory_account_type_dream": "Dream",
     "memory_account_no_files": "No memory files",
     "memory_account_no_evolution": "No evolution records yet",
-    "memory_account_counts": "Long-term: {global}; daily/explicit: {daily}; evolution: {evolution}; dreams: {dream}"
+    "memory_account_counts": "Long-term: {global}; daily/explicit: {daily}; evolution: {evolution}; dreams: {dream}",
+    "tenant_channel_webhook_hint": "Expose the configured listening port through public HTTPS, then register your public domain plus the callback path with the provider.",
+    "tenant_channel_webhook_path": "Callback path",
+    "tenant_channel_webhook_after_save": "Save to get the callback path for this channel.",
+    "tenant_channel_scan_will_save": "Confirm the scan to save and connect automatically."
   }
 }

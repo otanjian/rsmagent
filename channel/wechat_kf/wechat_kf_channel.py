@@ -45,7 +45,6 @@ from common.utils import (
     remove_markdown_symbol,
     split_string_by_utf8_length,
 )
-from config import conf
 
 try:
     from voice.audio_convert import any_to_amr, split_audio
@@ -78,12 +77,18 @@ def _scrub_secrets(text) -> str:
 class WechatKfChannel(ChatChannel):
     NOT_SUPPORT_REPLYTYPE = []
 
-    def __init__(self):
+    def __init__(self, defer_init=False):
         super().__init__()
-        self.corp_id = conf().get("wechat_kf_corp_id")
-        self.secret = conf().get("wechat_kf_secret")
-        self.token = conf().get("wechat_kf_token")
-        self.aes_key = conf().get("wechat_kf_aes_key")
+        self._http_server = None
+        self.client = None
+        if not defer_init:
+            self._configure()
+
+    def _configure(self):
+        self.corp_id = self.cfg("wechat_kf_corp_id")
+        self.secret = self.cfg("wechat_kf_secret")
+        self.token = self.cfg("wechat_kf_token")
+        self.aes_key = self.cfg("wechat_kf_aes_key")
         self._http_server = None
         logger.info(
             "[wechat_kf] Initializing WeCom customer-service channel, corp_id: {}".format(
@@ -102,8 +107,13 @@ class WechatKfChannel(ChatChannel):
         # Persist sync_msg cursor under the user's home dir by default,
         # so it survives `tmp/` cleanups and cwd changes across restarts.
         cursor_path = os.path.expanduser(
-            conf().get("wechat_kf_cursor_path") or "~/.wechat_kf_cursors.json"
+            self.cfg("wechat_kf_cursor_path") or "~/.wechat_kf_cursors.json"
         )
+        if self.instance_id:
+            from hashlib import sha256
+            suffix = sha256(self.instance_id.encode()).hexdigest()[:20]
+            stem, ext = os.path.splitext(cursor_path)
+            cursor_path = f"{stem}-{suffix}{ext}"
         self.cursor_store = CursorStore(cursor_path)
 
         # WeCom requires the callback HTTP response to return within ~5s,
@@ -123,21 +133,20 @@ class WechatKfChannel(ChatChannel):
     # Lifecycle
     # ------------------------------------------------------------------
     def startup(self):
-        urls = ("/wxkf/?", "channel.wechat_kf.wechat_kf_channel.Query")
-        app = web.application(urls, globals(), autoreload=False)
-        port = conf().get("wechat_kf_port", 9888)
-        logger.info("[wechat_kf] WeCom customer-service channel started")
-        logger.info("[wechat_kf] Listening on http://0.0.0.0:{}/wxkf/".format(port))
-        func = web.httpserver.StaticMiddleware(app.wsgifunc())
-        func = web.httpserver.LogMiddleware(func)
-        server = web.httpserver.WSGIServer(("0.0.0.0", port), func)
-        self._http_server = server
         try:
-            server.start()
-        except (KeyboardInterrupt, SystemExit):
-            server.stop()
+            if self.client is None:
+                self._configure()
+            from channel.instance_webhook import run_webhook
+            run_webhook(self, Query)
+        except Exception as error:
+            self.report_startup_error(str(error))
+            raise
+        finally:
+            self.stop()
 
     def stop(self):
+        from channel.instance_webhook import stop_webhook
+        stop_webhook(self)
         if self._http_server:
             try:
                 self._http_server.stop()
@@ -146,7 +155,9 @@ class WechatKfChannel(ChatChannel):
                 logger.warning(f"[wechat_kf] Error stopping HTTP server: {e}")
             self._http_server = None
         try:
-            self._callback_executor.shutdown(wait=False)
+            executor = getattr(self, "_callback_executor", None)
+            if executor is not None:
+                executor.shutdown(wait=False)
         except Exception as e:
             logger.warning(f"[wechat_kf] Error shutting down callback executor: {e}")
 
@@ -371,7 +382,8 @@ class WechatKfChannel(ChatChannel):
                 logger.debug("[wechat_kf] {}".format(e))
                 continue
 
-            session_id = kf_msg.from_user_id
+            session_id = (self.file_cache_key(f"{open_kfid}:{kf_msg.from_user_id}")
+                          if getattr(self, "instance_id", "") else kf_msg.from_user_id)
 
             # Cache lone images/files and wait for the user's follow-up
             # text. Agent mode never reads memory.USER_IMAGE_CACHE, so
@@ -601,7 +613,7 @@ def _dedup_image_text_pair(messages: list) -> list:
 # ----------------------------------------------------------------------
 class Query:
     def GET(self):
-        channel = WechatKfChannel()
+        channel = getattr(self, "channel", None) or WechatKfChannel()
         params = web.input()
         logger.info("[wechat_kf] verify params: {}".format(params))
         try:
@@ -615,7 +627,7 @@ class Query:
         return echostr
 
     def POST(self):
-        channel = WechatKfChannel()
+        channel = getattr(self, "channel", None) or WechatKfChannel()
         params = web.input()
         try:
             signature = params.msg_signature

@@ -289,16 +289,37 @@ class GateScopeTests(unittest.TestCase):
         self.assertNotIn("handler", events)
 
 
-class GateStagedRolloutTests(unittest.TestCase):
-    """Unexpected resolution failures are observed before they are denied."""
+class GateFailureTests(unittest.TestCase):
+    """Unexpected failures never authorize a handler, including old configs."""
 
-    def test_unexpected_failure_defers_to_the_handler_by_default(self):
+    def test_unexpected_failure_denies_by_default(self):
         def resolve(require_tenant):
             raise RuntimeError("identity store unreachable")
 
         result, events = _run_gate("/api/tenant/permissions", "GET", resolve=resolve)
-        self.assertEqual(result, "HANDLER-RAN")
-        self.assertIn("handler", events)
+        self.assertEqual(_status_and_code(result), (503, "identity_unavailable"))
+        self.assertNotIn("handler", events)
+
+    def test_old_observation_setting_cannot_bypass_tenant_or_platform_gate(self):
+        def resolve(require_tenant):
+            raise RuntimeError("SYNTHETIC_PRIVATE_VALUE")
+        settings = {"http_policy_gate_fail_closed": False}
+        for path in ("/api/tenant/permissions", "/api/platform/users"):
+            with self.subTest(path=path), self.assertLogs("http_policy", level="WARNING") as logs:
+                result, events = _run_gate(path, "GET", resolve=resolve, settings=settings)
+                self.assertEqual(_status_and_code(result), (503, "identity_unavailable"))
+                self.assertNotIn("handler", events)
+                self.assertNotIn("SYNTHETIC_PRIVATE_VALUE", str(logs.output))
+
+    def test_recovery_rechecks_and_restores_authorized_access(self):
+        def unavailable(require_tenant):
+            raise RuntimeError("temporary failure")
+        failed, events = _run_gate("/api/tenant/permissions", "GET", resolve=unavailable)
+        self.assertEqual(_status_and_code(failed)[0], 503)
+        self.assertNotIn("handler", events)
+        recovered, events = _run_gate("/api/tenant/permissions", "GET", resolve=lambda _: _ctx())
+        self.assertEqual(recovered, "HANDLER-RAN")
+        self.assertEqual(events, ["resolve:True", "handler"])
 
     def test_unexpected_failure_denies_when_fail_closed_is_enabled(self):
         def resolve(require_tenant):
@@ -310,7 +331,7 @@ class GateStagedRolloutTests(unittest.TestCase):
         self.assertNotIn("handler", events)
 
     def test_deterministic_failures_are_never_deferred(self):
-        """The staged knob must not soften a real 400/401/403."""
+        """Unexpected-failure handling must not soften a real 400/401/403."""
         def resolve(require_tenant):
             raise IdentityContextError("forbidden", "forbidden", 403)
 

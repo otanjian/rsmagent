@@ -184,6 +184,10 @@
         }).join(', ');
     }
 
+    function auditColumnCount() {
+        return _auditScope === 'tenant' ? 6 : 7;
+    }
+
     function _auditRow(event) {
         var resource = event.resource_type
             ? (event.resource_id ? event.resource_type + ':' + event.resource_id
@@ -198,7 +202,7 @@
             + esc(fmtTime(event.timestamp)) + '</td>'
             + tenantCell
             + '<td class="px-4 py-3 text-slate-700 dark:text-slate-200">'
-            + esc(event.actor || '-') + '</td>'
+            + esc(event.actor_display_name || event.actor || t('audit_unknown_actor')) + '</td>'
             + '<td class="px-4 py-3 font-mono text-xs text-slate-700 dark:text-slate-200">'
             + esc(event.action || '-') + '</td>'
             + '<td class="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">'
@@ -213,7 +217,7 @@
         var body = el('audit-table-body');
         if (!body) return;
         var seq = ++_auditSeq;
-        body.innerHTML = emptyRow(7, t('tenant_loading'));
+        body.innerHTML = emptyRow(auditColumnCount(), t('tenant_loading'));
 
         var actorEl = el('audit-filter-actor');
         var actionEl = el('audit-filter-action');
@@ -235,10 +239,12 @@
             var data = await apiGet('/api/admin/audit/events?' + query);
             if (seq !== _auditSeq) return;
             _auditScope = data.scope || '';
+            var tenantHeader = el('audit-col-tenant');
+            if (tenantHeader) tenantHeader.style.display = _auditScope === 'tenant' ? 'none' : '';
             _auditTotal = data.total || 0;
             var events = data.events || [];
             if (!events.length) {
-                body.innerHTML = emptyRow(7, t('audit_empty'));
+                body.innerHTML = emptyRow(auditColumnCount(), t('audit_empty'));
             } else {
                 body.innerHTML = events.map(_auditRow).join('');
             }
@@ -247,7 +253,7 @@
             setStatus('audit-status', t('audit_count').replace('{n}', num(_auditTotal)), true);
         } catch (err) {
             if (seq !== _auditSeq) return;
-            body.innerHTML = emptyRow(7, err.message, true);
+            body.innerHTML = emptyRow(auditColumnCount(), err.message, true);
             setStatus('audit-status', err.message, false);
         }
     }

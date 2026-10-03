@@ -115,7 +115,7 @@ def _post(module, monkeypatch, segments):
 
         monkeypatch.setattr(module.asyncio, "run_coroutine_threadsafe", run_coroutine_threadsafe)
         monkeypatch.setattr(module, "WechatMPChannel", lambda: channel)
-        monkeypatch.setattr(module, "verify_server", lambda args: "ok")
+        monkeypatch.setattr(module, "verify_server", lambda args, channel=None: "ok")
         result = module.Query().POST()
     finally:
         drain.close()

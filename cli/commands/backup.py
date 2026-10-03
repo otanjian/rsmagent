@@ -660,7 +660,9 @@ def restore_backup_archive(
     type=click.Path(dir_okay=False, path_type=Path),
     help="Output .zip path (default: ./cow-backup-<timestamp>.zip).",
 )
-def backup_command(output: Optional[Path]):
+@click.option("--instance", is_flag=True, help="Cold whole-instance archive, including identity and all registered business roots.")
+@click.option("--container", help="Stopped container id/name; run on the Docker host to map its persisted volumes.")
+def backup_command(output: Optional[Path], instance=False, container=None):
     """Back up config, persona, memory, skills, knowledge, and schedules."""
     data_root = _data_root()
     config = _read_config(data_root)
@@ -668,6 +670,16 @@ def backup_command(output: Optional[Path]):
     if output is None:
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         output = Path.cwd() / f"cow-backup-{stamp}.zip"
+    if instance:
+        from cli.commands.instance_backup import create
+        try:
+            manifest = create(output, data_root, container=container)
+        except (OSError, ValueError, RuntimeError) as error:
+            raise click.ClickException(str(error)) from error
+        click.echo(f"Whole-instance backup created: {output} ({len(manifest['files'])} files)")
+        return
+    if container:
+        raise click.ClickException("--container requires --instance")
     result = create_backup_archive(output, data_root, workspace)
     click.echo(click.style("✓ Backup created", fg="green"))
     click.echo(f"  Archive: {result['archive']}")
@@ -684,8 +696,23 @@ def backup_command(output: Optional[Path]):
     help="Restore a single workspace here, or use this as the root for Agent subdirectories.",
 )
 @click.option("--yes", is_flag=True, help="Confirm overwriting matching files.")
-def restore_command(archive: Path, workspace: Optional[Path], yes: bool):
+@click.option("--instance", is_flag=True, help="Restore a whole-instance archive to an unused destination.")
+@click.option("--destination", type=click.Path(file_okay=False, path_type=Path), help="New parent directory for the explicit logical-root mapping.")
+def restore_command(archive: Path, workspace: Optional[Path], yes: bool, instance=False, destination=None):
     """Restore a backup without deleting unrelated destination files."""
+    if instance:
+        if destination is None or workspace is not None:
+            raise click.ClickException("--instance requires --destination and cannot be combined with --workspace")
+        from cli.commands.instance_backup import restore
+        try:
+            result = restore(archive, destination)
+        except (OSError, ValueError, RuntimeError) as error:
+            raise click.ClickException(str(error)) from error
+        click.echo(f"Whole instance restored. COW_DATA_DIR={result['data_root']}")
+        click.echo(f"Review path mapping before startup: {result['mapping']}")
+        return
+    if destination is not None:
+        raise click.ClickException("--destination requires --instance")
     from cli.commands.process import _read_pid
 
     pid = _read_pid()

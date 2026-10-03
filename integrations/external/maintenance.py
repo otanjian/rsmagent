@@ -74,12 +74,16 @@ PAUSABLE_SCOPES = frozenset({registry.SCOPE_PLATFORM, registry.SCOPE_TENANT,
                              registry.SCOPE_PERSONAL})
 
 
-def _scope_key(scope: str, tenant_id: Optional[str]) -> str:
-    # Imported lazily: ``migration`` imports this module's callers, and the
-    # scope-key spelling must be the migration's own, not a second copy.
-    from integrations.external.migration import scope_key as _key
-
-    return _key(scope, tenant_id)
+def _scope_key(scope, tenant_id=None, owner_user_id=None):
+    if scope == registry.SCOPE_PLATFORM:
+        return 'platform'
+    if not tenant_id:
+        raise ValueError('tenant required for connection scope')
+    if scope == registry.SCOPE_TENANT:
+        return f'tenant:{tenant_id}'
+    if scope == registry.SCOPE_PERSONAL and owner_user_id:
+        return f'personal:{tenant_id}:{owner_user_id}'
+    raise ValueError('personal connection scope requires its owner')
 
 
 def _now() -> int:
@@ -174,7 +178,7 @@ def begin_window(*, actor_user_id: str, scope: str,
             "ttl_seconds must be between %d and %d"
             % (MIN_TTL_SECONDS, MAX_TTL_SECONDS),
             code="invalid_ttl", status=400)
-    key = _scope_key(scope, tenant_id)
+    key = _scope_key(scope, tenant_id, actor_user_id)
     opened_at = _now()
     window_id = _new_window_id(scope_key=key, actor_user_id=actor_user_id,
                               opened_at=opened_at)
@@ -222,7 +226,7 @@ def end_window(*, actor_user_id: str, scope: str,
     service = _service(identity, service)
     _require_open_authority(service, actor_user_id=actor_user_id, scope=scope,
                             tenant_id=tenant_id)
-    key = _scope_key(scope, tenant_id)
+    key = _scope_key(scope, tenant_id, actor_user_id)
     closed_at = _now()
     store = service._store  # noqa: SLF001
     with store.connect() as con:
@@ -260,6 +264,7 @@ def _active_row(con: Any, scope_key: str, *, now: Optional[int] = None):
 
 
 def active_window(*, scope: str, tenant_id: Optional[str] = None,
+                  owner_user_id: Optional[str] = None,
                   identity: Any = None,
                   service: Any = None) -> Optional[Dict[str, Any]]:
     """The scope's live window, or ``None``. Read-only; no authorization.
@@ -271,7 +276,7 @@ def active_window(*, scope: str, tenant_id: Optional[str] = None,
     would let an unreadable store answer "not paused".
     """
     service = _service(identity, service)
-    key = _scope_key(scope, tenant_id)
+    key = _scope_key(scope, tenant_id, owner_user_id)
     try:
         store = service._store  # noqa: SLF001
         with store.connect() as con:
@@ -292,12 +297,14 @@ def active_window(*, scope: str, tenant_id: Optional[str] = None,
 
 
 def paused(*, scope: str, tenant_id: Optional[str] = None,
+           owner_user_id: Optional[str] = None,
            identity: Any = None, service: Any = None) -> bool:
-    return active_window(scope=scope, tenant_id=tenant_id, identity=identity,
+    return active_window(scope=scope, tenant_id=tenant_id, owner_user_id=owner_user_id, identity=identity,
                          service=service) is not None
 
 
 def refuse_if_paused(*, scope: str, tenant_id: Optional[str] = None,
+                     owner_user_id: Optional[str] = None,
                      identity: Any = None, service: Any = None,
                      what: str = "configuration writes") -> None:
     """Raise :data:`PAUSED` when the scope is in a maintenance window.
@@ -307,7 +314,7 @@ def refuse_if_paused(*, scope: str, tenant_id: Optional[str] = None,
     would tell a caller who is merely paused what they are about to be able to
     reach.
     """
-    window = active_window(scope=scope, tenant_id=tenant_id, identity=identity,
+    window = active_window(scope=scope, tenant_id=tenant_id, owner_user_id=owner_user_id, identity=identity,
                            service=service)
     if window is None:
         return
@@ -359,7 +366,7 @@ def pause_projection(*, actor_user_id: str,
                   registry.SCOPE_PERSONAL):
         scope_tenant = tenant_id if scope != registry.SCOPE_PLATFORM else None
         try:
-            window = active_window(scope=scope, tenant_id=scope_tenant,
+            window = active_window(scope=scope, tenant_id=scope_tenant, owner_user_id=actor_user_id,
                                    identity=identity, service=service)
         except Exception:  # noqa: BLE001 - display only
             out[scope] = {"paused": True, "reason": "unreadable"}

@@ -1,0 +1,25 @@
+# Replace the domain/certificate paths. Nginx runs on the host in this example.
+server {
+    listen 80;
+    server_name agent.example.com;
+    return 308 https://agent.example.com$request_uri;
+}
+server {
+    listen 443 ssl;
+    server_name agent.example.com;
+    ssl_certificate /etc/ssl/agent/fullchain.pem;
+    ssl_certificate_key /etc/ssl/agent/privkey.pem;
+    client_max_body_size 100m;
+    location / {
+        proxy_pass http://127.0.0.1:9899;
+        proxy_http_version 1.1;
+        proxy_set_header Host agent.example.com;
+        # Overwrite client-supplied values; do not append their forwarding chain.
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host agent.example.com;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+    }
+}

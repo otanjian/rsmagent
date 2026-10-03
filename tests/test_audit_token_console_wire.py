@@ -102,9 +102,9 @@ def _seed(fixture):
         actor_user_id=fixture["member_id"], actor_username="alice",
         tenant_id=acme, target_tenant_id=acme, action="agent.create",
         target="agent:shared-agent", redacted_changes={}, result="success")
-    # A denial, so the console's success/failure split has both sides.
+    # A denial with only a user ID, as written by many identity mutations.
     app.service.record_audit(
-        actor_user_id=fixture["member_id"], actor_username="alice",
+        actor_user_id=fixture["member_id"],
         tenant_id=acme, target_tenant_id=acme, action="agent.delete",
         target="agent:not-mine", redacted_changes={}, result="denied")
     app.service.record_audit(
@@ -202,12 +202,17 @@ class AuditScopeTests(_Fixture):
         body = _json(self.get(_EVENTS + "?status=success&actor=ali", "acmeadmin"))
         self.assertEqual(_actions_of(body), ["agent.create"], body)
 
-    def test_the_actor_filter_matches_the_recorded_name(self):
-        """Filtering by display name, not by resolving it to a user id.
+    def test_id_only_events_show_the_users_name(self):
+        body = _json(self.get(_EVENTS + "?action=agent.delete&actor=Alice", "acmeadmin"))
+        self.assertEqual(body["total"], 1, body)
+        row = body["events"][0]
+        self.assertEqual(row["actor"], "Alice")
+        self.assertEqual(row["actor_display_name"], "Alice")
+        self.assertEqual(row["actor_user_id"], _FIXTURE["member_id"])
+        self.assertEqual(row["actor_username"], "")
 
-        A renamed account's older rows keep the older name; an id lookup would
-        return nothing for exactly the rows an operator is looking for.
-        """
+    def test_the_actor_filter_matches_the_recorded_name(self):
+        """Names match both recorded accounts and users resolved by ID."""
         body = _json(self.get(_EVENTS + "?actor=ali", "acmeadmin"))
         self.assertEqual(sorted(_actions_of(body)),
                          ["agent.create", "agent.delete"], body)

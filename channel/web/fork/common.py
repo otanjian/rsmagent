@@ -45,7 +45,7 @@ def _tenant_shared_default_agent(ctx: "Optional[RequestContext]", agent_id: str,
     ``tenant_default`` lets a caller that already resolved the default reuse it
     instead of re-querying per Agent. Read-only, like every other gate here.
     """
-    from channel.web.web_channel import _resolve_tenant_default_agent
+    from channel.web.fork.common import _resolve_tenant_default_agent
     if ctx is None or not agent_id or not ctx.tenant_id:
         return False
     if permission is not None and permission not in (ctx.permissions or ()):
@@ -119,7 +119,7 @@ def _web_navigation_mode() -> str:
     mode, authentication, authorization, or any consumer open/closed state. An
     invalid or absent config value safely falls back to "classic".
     """
-    from channel.web.web_channel import _NAVIGATION_MODES
+    from channel.web.fork.runtime import _NAVIGATION_MODES
     from channel.web.web_channel import conf
     raw = str(conf().get("web_navigation_mode", "classic") or "classic").strip().lower()
     return raw if raw in _NAVIGATION_MODES else "classic"
@@ -198,7 +198,7 @@ def _filter_skill_catalog(ctx: "Optional[RequestContext]", skills: List[dict], a
     ``resource_id`` must be present; skills persisted before this field get one
     from their ``source``/``name``). Legacy mode is unrestricted.
     """
-    from channel.web.web_channel import _resource_ids
+    from channel.web.fork.authorization import _resource_ids
     if ctx is not None and ctx.is_tenant_admin:
         return skills
     allowed = _resource_ids(ctx, "skill", action, permission="skill.read" if action != "read" else None)
@@ -493,7 +493,7 @@ def _resolve_tenant_default_agent(ctx: "Optional[RequestContext]") -> Optional[s
     response) reads this same function, so the badge, the ordering and the
     anchoring can never disagree.
     """
-    from channel.web.web_channel import _resolve_default_agent
+    from channel.web.fork.common import _resolve_default_agent
     return _resolve_default_agent(ctx)["agent_id"]
 
 
@@ -505,7 +505,7 @@ def _tenant_default_agent_id(ctx: "Optional[RequestContext]") -> Optional[str]:
     mode (``ctx is None``) has no tenant default, so callers fall back to the
     global registry default.
     """
-    from channel.web.web_channel import _resolve_tenant_default_agent
+    from channel.web.fork.common import _resolve_tenant_default_agent
     return _resolve_tenant_default_agent(ctx)
 
 
@@ -541,7 +541,7 @@ def _workbench_empty_reason(ctx: "RequestContext") -> str:
     stable, localizable code and carries no identifiers, so the caller learns
     nothing about Agents it cannot read.
     """
-    from channel.web.web_channel import _tenant_agent_candidates
+    from channel.web.fork.handlers.agents import _tenant_agent_candidates
     for _ in _tenant_agent_candidates(ctx):
         return "no_reachable_agents"
     return "no_agents"
@@ -618,8 +618,8 @@ def _workbench_chat_readiness(ctx: "Optional[RequestContext]",
     ``agent.read`` sees the card with ``can_chat=False`` and a permission reason
     — never the historical ``runtime_not_enabled`` version-closure message.
     """
-    from channel.web.web_channel import _agent_bound_to_tenant
-    from channel.web.web_channel import _tenant_admin_owns_agent
+    from channel.web.fork.handlers.agents import _agent_bound_to_tenant
+    from channel.web.fork.authorization import _tenant_admin_owns_agent
     if ctx is None:
         return False, "unauthorized"
     # Binding first: the send path refuses an Agent another tenant owns

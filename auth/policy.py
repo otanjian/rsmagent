@@ -16,6 +16,11 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
+SAP_DOMAIN_PERMISSIONS = {
+    domain: f"sap.query.{domain}"
+    for domain in ("master_data", "procurement", "sales", "finance", "inventory", "production", "cost")
+}
+
 #: The fixed permission directory, in catalog order. Only these strings may be
 #: assigned to a role (or granted by a built-in). Write privileges are *not*
 #: enumerated here — they are conferred by the ``tenant_admin`` qualification.
@@ -55,6 +60,7 @@ PERMISSION_CATALOG: Tuple[str, ...] = (
     "external.connections.read",  # see the connection catalogue it is scoped to
     "external.connections.manage",  # create/edit/enable/delete connections
     "external.connections.test",  # run a connection test (opens with G2-G4)
+    *SAP_DOMAIN_PERMISSIONS.values(),
 )
 
 #: Stable metadata for the nine permission ids. ``group`` / ``label`` /
@@ -193,6 +199,19 @@ PERMISSION_METADATA: Dict[str, Dict[str, object]] = {
         "scope": "tenant", "assignable": True,
     },
 }
+
+PERMISSION_METADATA.update({
+    SAP_DOMAIN_PERMISSIONS[domain]: {
+        "group": "SAP", "label": f"查询{label}",
+        "description": f"查询 SAP {label}，仍受表和字段白名单约束",
+        "scope": "tenant", "assignable": True,
+    }
+    for domain, label in {
+        "master_data": "主数据", "procurement": "采购数据", "sales": "销售数据",
+        "finance": "财务数据", "inventory": "库存数据", "production": "生产数据",
+        "cost": "成本数据",
+    }.items()
+})
 
 #: Default permission set for the built-in ``member``. This is the "use plus
 #: create-your-own-resources" tier from the product plan: a member can run the
@@ -688,3 +707,21 @@ def personal_page_enabled(pid: str, *, config=None) -> bool:
     """Whether every switch behind a personal page is on."""
     switches = personal_page_capabilities(pid, config=config)
     return bool(switches) and all(switches.values())
+
+
+#: Resource-kind + action -> the functional permission that must also be held.
+#: The resource grant (stored in role_resource_grants) is the per-resource
+#: gate; this mapping gives the kind-level functional permission the member must
+#: also possess. A platform admin (all) skips both.
+_RESOURCE_KIND_PERMISSION: Dict[str, Dict[str, str]] = {
+    "menu": {"view": ""},
+    "skill": {"read": "skill.read", "use": "skill.use", "edit": "skill.edit", "enable": "skill.enable"},
+    "tool": {"read": "tool.read", "execute": "tool.execute", "configure": "tool.configure"},
+    "model": {"read": "model.read", "use": "model.use"},
+    "agent": {"read": "agent.read", "use": "agent.use", "edit": "agent.edit", "enable": "agent.enable"},
+}
+
+
+def _resource_permission(kind: str, action: str) -> str:
+    """Return the functional permission required for a kind+action (or '')."""
+    return _RESOURCE_KIND_PERMISSION.get(kind, {}).get(action, "")

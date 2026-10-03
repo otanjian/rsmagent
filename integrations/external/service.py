@@ -964,7 +964,7 @@ class ExternalConnectionService:
             if not tenant_id:
                 raise invalid("tenant is required", code="missing_tenant")
             self.require_personal(actor_user_id, tenant_id)
-        self._refuse_if_paused(scope=scope, tenant_id=tenant_id,
+        self._refuse_if_paused(scope=scope, tenant_id=tenant_id, owner_user_id=actor_user_id,
                                what="connection changes")
         owner_user_id = actor_user_id if scope == registry.SCOPE_PERSONAL else None
         connection_id = _validated_connection_id(connection_id) \
@@ -1099,7 +1099,7 @@ class ExternalConnectionService:
             if not tenant_id:
                 raise invalid("tenant is required", code="missing_tenant")
             self.require_tenant_manage(actor_user_id, tenant_id)
-        self._refuse_if_paused(scope=scope, tenant_id=tenant_id,
+        self._refuse_if_paused(scope=scope, tenant_id=tenant_id, owner_user_id=actor_user_id,
                                what="connection changes")
         with self._tx() as con:
             row = self._row_in_tx(con, connection_id, scope=scope,
@@ -1174,7 +1174,7 @@ class ExternalConnectionService:
             if not tenant_id:
                 raise invalid("tenant is required", code="missing_tenant")
             self.require_tenant_manage(actor_user_id, tenant_id)
-        self._refuse_if_paused(scope=scope, tenant_id=tenant_id,
+        self._refuse_if_paused(scope=scope, tenant_id=tenant_id, owner_user_id=actor_user_id,
                                what="connection changes")
         with self._tx() as con:
             row = self._row_in_tx(con, connection_id, scope=scope,
@@ -1220,7 +1220,7 @@ class ExternalConnectionService:
         return {"id": connection_id, "deleted": True}
 
     def _refuse_if_paused(self, *, scope: str, tenant_id: Optional[str],
-                          what: str) -> None:
+                          what: str, owner_user_id: Optional[str] = None) -> None:
         """Refuse a configuration write while the scope is in a window.
 
         Called *after* the authority check in every write method, deliberately:
@@ -1237,7 +1237,7 @@ class ExternalConnectionService:
         """
         from integrations.external import maintenance
 
-        maintenance.refuse_if_paused(scope=scope, tenant_id=tenant_id,
+        maintenance.refuse_if_paused(scope=scope, tenant_id=tenant_id, owner_user_id=owner_user_id,
                                      service=self, what=what)
 
     @staticmethod

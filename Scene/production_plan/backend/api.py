@@ -14,7 +14,7 @@ from typing import List, Dict, Any, Optional
 import web
 
 from common.log import logger
-from channel.web.web_channel_utils import _require_auth, _get_workspace_root
+from Scene._shared.host import _require_auth, _get_workspace_root
 
 
 # ============================================================
@@ -179,7 +179,7 @@ def _parse_bom(bom_input) -> Dict[str, float]:
 
 def _build_work_orders(data: List[Dict]) -> List[Any]:
     """从导入数据构建WorkOrder对象"""
-    from agent.tools.scheduler.scheduler_engine import WorkOrder, ProcessStep
+    from Scene.production_plan.backend.scheduler_engine import WorkOrder, ProcessStep
 
     orders = []
     for row in data:
@@ -237,7 +237,7 @@ def _build_work_orders(data: List[Dict]) -> List[Any]:
 
 def _build_machines(config: Dict) -> List[Any]:
     """构建设备资源"""
-    from agent.tools.scheduler.scheduler_engine import Machine
+    from Scene.production_plan.backend.scheduler_engine import Machine
 
     machines = []
     default_machines = [
@@ -261,7 +261,7 @@ def _build_machines(config: Dict) -> List[Any]:
 
 def _build_teams(config: Dict) -> List[Any]:
     """构建班组资源"""
-    from agent.tools.scheduler.scheduler_engine import Team
+    from Scene.production_plan.backend.scheduler_engine import Team
 
     teams = []
     default_teams = [
@@ -277,7 +277,7 @@ def _build_teams(config: Dict) -> List[Any]:
 
 def _build_materials(config: Dict) -> List[Any]:
     """构建物料数据"""
-    from agent.tools.scheduler.scheduler_engine import Material
+    from Scene.production_plan.backend.scheduler_engine import Material
 
     materials = []
     default_materials = [
@@ -317,7 +317,7 @@ class SchedulingScheduleHandler:
             materials = _build_materials(config)
 
             # 执行排产
-            from agent.tools.scheduler.scheduler_engine import AdvancedScheduler
+            from Scene.production_plan.backend.scheduler_engine import AdvancedScheduler
             scheduler = AdvancedScheduler()
             scheduler.set_resources(machines, teams)
             scheduler.set_materials(materials)
@@ -330,7 +330,7 @@ class SchedulingScheduleHandler:
             result = scheduler.schedule(orders)
 
             # 生成甘特图HTML
-            from agent.tools.scheduler.gantt_generator import GanttGenerator
+            from Scene.production_plan.backend.gantt_generator import GanttGenerator
             gantt_gen = GanttGenerator()
             gantt_html = gantt_gen.generate(
                 result["schedule"],
@@ -374,7 +374,7 @@ class SchedulingGanttHandler:
             schedule = body.get("schedule", [])
             title = body.get("title", "生产排产甘特图")
 
-            from agent.tools.scheduler.gantt_generator import GanttGenerator
+            from Scene.production_plan.backend.gantt_generator import GanttGenerator
             gantt_gen = GanttGenerator()
             html = gantt_gen.generate(schedule, title)
 
@@ -405,7 +405,7 @@ class SchedulingMaterialCheckHandler:
             orders = _build_work_orders(orders_data)
             materials = _build_materials({"materials": materials_data})
 
-            from agent.tools.scheduler.scheduler_engine import MaterialChecker
+            from Scene.production_plan.backend.scheduler_engine import MaterialChecker
             checker = MaterialChecker(materials)
 
             results = []
@@ -494,7 +494,7 @@ class SchedulingWhatIfHandler:
             teams = _build_teams(config)
             materials = _build_materials(config)
 
-            from agent.tools.scheduler.scheduler_engine import AdvancedScheduler
+            from Scene.production_plan.backend.scheduler_engine import AdvancedScheduler
             scheduler = AdvancedScheduler()
             scheduler.set_resources(machines, teams)
             scheduler.set_materials(materials)
@@ -641,7 +641,7 @@ class SchedulingBOMTreeHandler:
             materials = _build_materials(config)
 
             # 转换BOM数据
-            from agent.tools.scheduler.bom_tree import BOMItem
+            from Scene.production_plan.backend.bom_tree import BOMItem
             bom_db = {}
             for product, items in bom_data.items():
                 bom_db[product] = []
@@ -658,7 +658,7 @@ class SchedulingBOMTreeHandler:
             # 转换工序数据库
             process_db = {}
             for product, steps in process_data.items():
-                from agent.tools.scheduler.scheduler_engine import ProcessStep
+                from Scene.production_plan.backend.scheduler_engine import ProcessStep
                 process_db[product] = [
                     ProcessStep(
                         process_name=s.get("process_name", s.get("工序名称", "默认工序")),
@@ -673,7 +673,7 @@ class SchedulingBOMTreeHandler:
 
             # 执行BOM树排程
             import time
-            from agent.tools.scheduler.scheduler_engine import AdvancedScheduler
+            from Scene.production_plan.backend.scheduler_engine import AdvancedScheduler
             scheduler = AdvancedScheduler()
             scheduler.set_resources(machines, teams)
             scheduler.set_materials(materials)
@@ -694,7 +694,7 @@ class SchedulingBOMTreeHandler:
             logger.info(f"[BOMTree] schedule_with_bom_tree completed in {t1-t0:.2f}s, summary={result.get('summary')}")
 
             # 生成统一的甘特图HTML（包含设备视图、订单甘特图、排产明细表）
-            from agent.tools.scheduler.gantt_generator import GanttGenerator
+            from Scene.production_plan.backend.gantt_generator import GanttGenerator
             gantt_gen = GanttGenerator()
             gantt_html = gantt_gen.generate(
                 result["schedule"],

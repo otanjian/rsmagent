@@ -49,13 +49,17 @@ class Channel(object):
 
         Channels must read their credentials through this instead of ``conf()``
         directly so that several instances of the same channel type can each
-        carry their own app_id / secret / token. With no override present
-        (the default), this is exactly ``conf().get(key, default)``.
+        carry their own app_id / secret / token. Tenant credentials never fall
+        back to platform credentials; legacy channels retain the conf() fallback.
         """
-        if self._creds and key in self._creds:
+        if getattr(self, "_creds", None) and key in self._creds:
             value = self._creds.get(key)
             if value is not None:
                 return value
+        if getattr(self, "tenant_id", ""):
+            from channel.channel_instances import CREDENTIAL_KEYS
+            if key in CREDENTIAL_KEYS.get(self.channel_type, ()):
+                return default
         return conf().get(key, default)
 
     def apply_instance(self, instance_id="", bound_agent_id="", credentials=None,
@@ -113,6 +117,8 @@ class Channel(object):
         peers = getattr(self, "peers", None)
         if peers and "peers" not in context:
             context["peers"] = [dict(p) for p in peers]
+        from channel.external_identity import stamp_adapter_identity
+        stamp_adapter_identity(self, context)
         return context
 
     def startup(self):
@@ -120,6 +126,12 @@ class Channel(object):
         init channel
         """
         raise NotImplementedError
+
+    def file_cache_key(self, session_id):
+        """Keep pending attachments within the bot that received them."""
+        if getattr(self, "instance_id", ""):
+            return f"{self.channel_type}:{self.instance_id}:{session_id}"
+        return session_id
 
     def report_startup_success(self):
         self._startup_error = None

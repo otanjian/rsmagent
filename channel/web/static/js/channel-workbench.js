@@ -104,7 +104,7 @@
     }
 
     // The type list a form may offer is exactly what the server sent, so an
-    // unsupported type (e.g. the deferred 企微自建应用) can never be submitted.
+    // unsupported type can never be submitted.
     function typeOptions(types, lang) {
         const list = Array.isArray(types) ? types : [];
         return list.map(spec => ({
@@ -270,7 +270,7 @@
                        class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10
                               bg-white dark:bg-[#141414] text-sm text-slate-700 dark:text-slate-200">${held}`;
         }
-        return `<input type="text"${required}
+        return `<input type="${field.type === 'number' ? 'number' : 'text'}"${field.type === 'number' ? ' min="1" max="65535" step="1"' : ''}${required}
                    ${attr}="${key}"
                    value="${escape(val)}" placeholder="${label}"
                    class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10
@@ -292,6 +292,20 @@
                             ${fieldInput(Object.assign({}, o, { field: field,
                                 value: values[field.key] }))}
                         </div>`).join('');
+    }
+
+    function webhookHint(opts) {
+        const o = opts || {};
+        const webhook = o.spec && o.spec.webhook;
+        if (!webhook) return '';
+        const escape = _escape(o);
+        const t = _t(o);
+        const path = o.iid ? webhook.path + '/' + encodeURIComponent(o.iid) : '';
+        return `<div class="text-xs text-slate-500 dark:text-slate-400 space-y-1 break-all">
+            <p>${escape(t('tenant_channel_webhook_hint'))}</p>
+            ${path ? `<p>${escape(t('tenant_channel_webhook_path'))}: <code>${escape(path)}</code></p>`
+                : `<p>${escape(t('tenant_channel_webhook_after_save'))}</p>`}
+        </div>`;
     }
 
     const ACTIVE_TAB_CLASSES = 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm';
@@ -460,6 +474,7 @@
         cardShell: cardShell,
         fieldInput: fieldInput,
         fieldsHtml: fieldsHtml,
+        webhookHint: webhookHint,
         modeTabs: modeTabs,
         scanPane: scanPane,
         manualPane: manualPane,

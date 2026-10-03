@@ -113,12 +113,12 @@ def _forget_session_side_stores(session_id: str) -> None:
 
 class SessionsHandler:
     def GET(self):
-        from channel.web.web_channel import _agent_badge
-        from channel.web.web_channel import _annotate_coding_sessions
-        from channel.web.web_channel import _annotate_sessions_with_projects
+        from channel.web.fork.runtime import _agent_badge
+        from channel.web.fork.runtime import _annotate_coding_sessions
+        from channel.web.fork.runtime import _annotate_sessions_with_projects
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _list_sessions_across_agents
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _list_sessions_across_agents
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_read_permission
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
@@ -185,7 +185,7 @@ class SessionDetailHandler:
     def DELETE(self, session_id: str):
         from channel.web.web_channel import WebChannel
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_read_permission
         from channel.web.web_channel import _require_session_scope
         web.header('Content-Type', 'application/json; charset=utf-8')
@@ -272,7 +272,7 @@ class SessionDetailHandler:
     def PUT(self, session_id: str):
         """Update a session's title, pinned flag and/or archived flag."""
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_read_permission
         from channel.web.web_channel import _require_session_scope
         web.header('Content-Type', 'application/json; charset=utf-8')
@@ -402,7 +402,7 @@ class SessionSettingsHandler:
         """
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _is_database_identity
-        from channel.web.web_channel import _require_model_use
+        from channel.web.fork.authorization import _require_model_use
         from channel.web.web_channel import _session_settings_state
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
@@ -539,8 +539,8 @@ class SessionSettingsHandler:
 class SessionTitleHandler:
     def POST(self, session_id: str):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _generate_session_title
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _generate_session_title
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_read_permission
         from channel.web.web_channel import _require_session_scope
         web.header('Content-Type', 'application/json; charset=utf-8')
@@ -609,7 +609,7 @@ class PromptOptimizeHandler:
 class SessionClearContextHandler:
     def POST(self, session_id: str):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_read_permission
         from channel.web.web_channel import _require_session_scope
         web.header('Content-Type', 'application/json; charset=utf-8')
@@ -655,16 +655,16 @@ class SessionClearContextHandler:
 
 class HistoryHandler:
     def GET(self):
-        from channel.web.web_channel import _add_delegate_displays
-        from channel.web.web_channel import _add_subagent_displays
-        from channel.web.web_channel import _artifacts_from_steps
+        from channel.web.fork.runtime import _add_delegate_displays
+        from channel.web.fork.runtime import _add_subagent_displays
+        from channel.web.fork.runtime import _artifacts_from_steps
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_read_permission
-        from channel.web.web_channel import _require_session_owner
+        from channel.web.fork.authorization import _require_session_owner
         from channel.web.web_channel import _require_tenant_agent_binding
         from channel.web.web_channel import _get_workspace_root
-        from channel.web.web_channel import _rewrite_relative_media
+        from channel.web.fork.runtime import _rewrite_relative_media
         web.header('Content-Type', 'application/json; charset=utf-8')
         web.header('Access-Control-Allow-Origin', '*')
         try:
@@ -742,7 +742,7 @@ class HistoryHandler:
 class MessageDeleteHandler:
     def POST(self):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_read_permission
         from channel.web.web_channel import _require_session_scope
         web.header('Content-Type', 'application/json; charset=utf-8')
@@ -799,10 +799,8 @@ class UserMessagesHandler:
     """The upstream timeline index, scoped by the current database identity."""
 
     def GET(self):
-        from channel.web.web_channel import (
-            _db_scope, _require_read_permission, _require_session_scope,
-            _request_agent_id,
-        )
+        from channel.web.web_channel import _db_scope, _require_read_permission, _require_session_scope
+        from channel.web.fork.runtime import _request_agent_id
         web.header('Content-Type', 'application/json; charset=utf-8')
         params = web.input(session_id='', agent_id='')
         session_id = params.session_id.strip()

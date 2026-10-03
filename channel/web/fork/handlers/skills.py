@@ -81,7 +81,7 @@ class ToolsHandler:
         ``execute`` grant on every save.
         """
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _personal_channel_error
+        from channel.web.fork.handlers.channels import _personal_channel_error
         from channel.web.web_channel import _personal_channel_service
         from channel.web.web_channel import _require_catalog_read
         web.header('Content-Type', 'application/json; charset=utf-8')
@@ -155,7 +155,7 @@ def _filter_tool_catalog(ctx: "Optional[RequestContext]", tools: List[dict], act
     member sees only tools explicitly granted for ``action`` via their
     ``resource_id``. Legacy mode is unrestricted.
     """
-    from channel.web.web_channel import _resource_ids
+    from channel.web.fork.authorization import _resource_ids
     if ctx is not None and ctx.is_tenant_admin:
         return tools
     allowed = _resource_ids(ctx, "tool", action, permission="tool.read" if action != "read" else None)
@@ -197,8 +197,8 @@ def _attach_personal_states(ctx: "Optional[RequestContext]", rows: List[dict],
 class SkillsHandler:
     def GET(self):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _filter_skill_catalog
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.common import _filter_skill_catalog
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_catalog_read
         from channel.web.web_channel import _skill_service
         web.header('Content-Type', 'application/json; charset=utf-8')
@@ -241,12 +241,12 @@ class SkillsHandler:
     def POST(self):
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _personal_channel_service
-        from channel.web.web_channel import _raise_if_skill_name_ambiguous
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.authorization import _raise_if_skill_name_ambiguous
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_read_permission
         from channel.web.web_channel import _require_resource_action
-        from channel.web.web_channel import _require_skill_write_scope
-        from channel.web.web_channel import _resolved_skill
+        from channel.web.fork.authorization import _require_skill_write_scope
+        from channel.web.fork.authorization import _resolved_skill
         from channel.web.web_channel import _skill_service
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
@@ -331,8 +331,8 @@ class SkillContentHandler:
 
     def GET(self):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _raise_if_skill_name_ambiguous
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.authorization import _raise_if_skill_name_ambiguous
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_catalog_read
         from channel.web.web_channel import _require_resource_action
         from channel.web.web_channel import _skill_service
@@ -366,12 +366,12 @@ class SkillContentHandler:
 
     def POST(self):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _raise_if_skill_name_ambiguous
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.authorization import _raise_if_skill_name_ambiguous
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_read_permission
         from channel.web.web_channel import _require_resource_action
-        from channel.web.web_channel import _require_skill_write_scope
-        from channel.web.web_channel import _resolved_skill
+        from channel.web.fork.authorization import _require_skill_write_scope
+        from channel.web.fork.authorization import _resolved_skill
         from channel.web.web_channel import _skill_service
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:

@@ -209,9 +209,9 @@ class ConfigHandler:
         return value[:4] + "*" * (len(value) - 8) + value[-4:]
 
     def GET(self):
-        from channel.web.web_channel import ModelsHandler
-        from channel.web.web_channel import _permission_mode_projection
-        from channel.web.web_channel import _project_brand_name
+        from channel.web.fork.handlers.models import ModelsHandler
+        from channel.web.fork.handlers.config import _permission_mode_projection
+        from channel.web.fork.handlers.workspace import _project_brand_name
         from channel.web.web_channel import _require_platform_console
         from channel.web.web_channel import conf
         _require_platform_console()

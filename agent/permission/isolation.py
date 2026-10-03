@@ -14,7 +14,7 @@ touch" to a checked tenant boundary:
 
 * Writes (``write``/``edit``, bash redirects / file-mutating commands) must
   resolve inside the current identity's tenant roots (tenant shared root, the
-  Agent workspace, the user root, system temp). ``..``, symlinks and absolute
+  Agent workspace and the user root). ``..``, symlinks and absolute
   paths are resolved with ``realpath`` before containment is judged.
 * Reads (``read``/``ls``/``search_files``, bash path tokens) may be anywhere
   except a *blocked* area: the user's home (except paths inside a legal tenant
@@ -102,6 +102,8 @@ class _Boundary:
     blocked: List[str] = field(default_factory=list)
     engineering: Optional[str] = None
     tenant_id: Optional[str] = None
+    hard_blocked: List[str] = field(default_factory=list)
+    private: list = field(default_factory=list)
 
     @property
     def active(self) -> bool:
@@ -201,14 +203,42 @@ def resolve_boundary(ident=None) -> _Boundary:
         except Exception:
             pass
         try:
-            _append_unique(read_roots, os.path.realpath(tempfile.gettempdir()))
+            _append_unique(boundary.blocked, os.path.realpath(tempfile.gettempdir()))
         except Exception:
             pass
 
+        shared = os.path.realpath(str(state_dir.shared_root(ident)))
+        workspace = os.path.realpath(str(state_dir.state_root(ident)))
+        agent_container = os.path.join(shared, 'agents')
+        boundary.private = [
+            (os.path.join(shared, 'users'), os.path.realpath(str(state_dir.user_root(ident)))),
+            (os.path.join(workspace, 'user'), os.path.realpath(str(state_dir.agent_user_root(ident)))),
+            (agent_container, workspace if _contains(agent_container, workspace) else None),
+        ]
+        for parent in (shared, workspace):
+            for name in ('.env', 'mcp.json'):
+                _append_unique(boundary.hard_blocked, os.path.join(parent, name))
+        from auth.service import identity_db_path
+        database = os.path.realpath(identity_db_path())
+        for path in (database, database + '-wal', database + '-shm'):
+            _append_unique(boundary.hard_blocked, path)
+        bindings = {row['agent_id']: row for row in svc.list_agent_bindings()}
+        for profile in get_agent_registry().list(include_disabled=True):
+            if profile.id == ident.agent_id:
+                continue
+            binding = bindings.get(profile.id, {})
+            if (binding.get('tenant_id') != ident.tenant_id or
+                    binding.get('private_owner_user_id') not in (None, '', ident.user_id)):
+                _append_unique(boundary.hard_blocked, os.path.realpath(profile.workspace))
         boundary.read_roots = read_roots
         # Write roots are the writable subset: agent workspace, user root,
-        # tenant shared root (skills/knowledge), system temp.
+        # tenant shared root (skills/knowledge), with private subtrees protected.
         boundary.write_roots = list(read_roots)
+        # Bundled skill/scene scripts are immutable runtime inputs. Keep the
+        # argument gate aligned with the OS launcher's readonly view.
+        from agent.execution.sandbox import shipped_resources
+        for root in shipped_resources():
+            _append_unique(boundary.read_roots, root)
         return boundary
     except Exception as error:
         logger.warning(f"[isolation] boundary unresolved, failing closed: {error}")
@@ -229,6 +259,11 @@ def _in_blocked(boundary: _Boundary, real: str, roots: Sequence[str]) -> bool:
     carved out of the blocked area; home paths outside every legal root
     (credentials, other tenants, the data root) stay refused.
     """
+    if any(_contains(blocked, real) for blocked in boundary.hard_blocked):
+        return True
+    if any(_contains(container, real) and not (own and _contains(own, real))
+           for container, own in boundary.private):
+        return True
     if not any(_contains(blocked, real) for blocked in boundary.blocked if blocked):
         return False
     return _outside(real, roots)

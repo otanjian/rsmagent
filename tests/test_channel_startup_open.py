@@ -9,6 +9,7 @@ closure that this change deletes.
 """
 
 import unittest
+from contextlib import ExitStack
 from unittest.mock import patch
 
 import app
@@ -16,7 +17,9 @@ import app
 
 class StartupChannelResolutionTests(unittest.TestCase):
     def _names(self, raw):
-        return app._resolve_startup_channels(raw)
+        with patch("channel.channel_instances.load_tenant_channel_instances", return_value=[]), \
+                patch("agent.team.resolve", return_value={"channel_type": raw}):
+            return app._resolve_startup_channels(raw)
 
     def test_database_mode_preserves_channel_types(self):
         # A fake registry is not required: config entries resolve statically.
@@ -35,21 +38,35 @@ class RunWarmupTests(unittest.TestCase):
     """run() warms scheduler + MCP in BOTH identity modes (task 2.3)."""
 
     def _run(self):
-        with patch("app._guard_identity_mode_consistency"), \
-                patch("app.load_config"), \
-                patch("app._migrate_team_roster"), \
-                patch("app._warn_if_legacy_workspace_data_exists"), \
-                patch("app.sigterm_handler_wrap"), \
-                patch("app._sync_builtin_skills"), \
-                patch("app._scaffold_subagent_assets"), \
-                patch("app._resolve_startup_channels", return_value=["web"]), \
-                patch("app._has_web_entry", return_value=True), \
-                patch("app._warmup_mcp_tools") as warmup_mcp, \
-                patch("app._warmup_scheduler") as warmup_sched, \
-                patch("app.ChannelManager"), \
-                patch("app.set_channel_manager"), \
-                patch("app.DESKTOP_MODE", False), \
-                patch("app.time.sleep", side_effect=KeyboardInterrupt):
+        with ExitStack() as stack:
+            for target in (
+                "common.maintenance.start",
+                "app.process_watch.install",
+                "app._verify_required_seams",
+                "app._ensure_database_bootstrap",
+                "app._register_pid_file",
+                "common.startup_hooks.run_startup_hook",
+                "app._migrate_conversations",
+                "app._migrate_conversation_tenancy",
+                "app._migrate_scheduled_tasks",
+                "app._guard_external_store_version",
+                "app._guard_identity_mode_consistency",
+                "app.load_config",
+                "app._migrate_team_roster",
+                "app._warn_if_legacy_workspace_data_exists",
+                "app.sigterm_handler_wrap",
+                "app._sync_builtin_skills",
+                "app._scaffold_subagent_assets",
+                "app.ChannelManager",
+                "app.set_channel_manager",
+            ):
+                stack.enter_context(patch(target))
+            stack.enter_context(patch("app._resolve_startup_channels", return_value=["web"]))
+            stack.enter_context(patch("app._has_web_entry", return_value=True))
+            stack.enter_context(patch("app.DESKTOP_MODE", False))
+            stack.enter_context(patch("app.time.sleep", side_effect=KeyboardInterrupt))
+            warmup_mcp = stack.enter_context(patch("app._warmup_mcp_tools"))
+            warmup_sched = stack.enter_context(patch("app._warmup_scheduler"))
             app.run()
         return warmup_mcp, warmup_sched
 

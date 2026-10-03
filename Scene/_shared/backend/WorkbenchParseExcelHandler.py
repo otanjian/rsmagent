@@ -1,3 +1,10 @@
+
+from Scene._shared.host import _require_auth
+import json
+from common.log import logger
+import os
+import web
+
 class WorkbenchParseExcelHandler:
     """POST /api/workbench/parse-excel - Parse Excel file and return structured data.
     

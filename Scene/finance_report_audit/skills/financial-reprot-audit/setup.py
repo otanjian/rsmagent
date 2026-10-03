@@ -55,7 +55,7 @@ setup(
         ],
         "pdf": [
             "pdfplumber>=0.6.0",
-            "PyPDF2>=3.0.0",
+            "pypdf>=3.9.0",
         ],
         "word": [
             "python-docx>=0.8.11",

@@ -157,6 +157,14 @@ docker/agent-mail-data/
 /identity.db.bak-*
 /identity.db.prt*
 /memory/
+# Instance lifecycle state written next to the data root by
+# common/maintenance.py (the flock file and the boot marker). Runtime only,
+# never source; see /identity.db above.
+/.instance.lock
+/.instance-active.json
+# Rotated application logs (`run.log.1`, ...): the `*.log` rule above only
+# covers the live file.
+*.log.*
 # Instance-level Web branding state (name/logo/snapshots/rollback) written by
 # channel/web/branding.py under get_data_root(); see /identity.db above.
 /branding/

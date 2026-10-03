@@ -161,11 +161,12 @@ class GetTenantChannelTypesTests(_ChannelHttpFixture):
                                         token=token or self.token_a,
                                         tenant=tenant or self.ta))
 
-    def test_the_form_contract_offers_feishu_and_withholds_wechatcom_app(self):
+    def test_the_form_contract_offers_every_master_channel(self):
         body = self._list()
         types = {t["channel_type"] for t in body["channel_types"]}
-        self.assertIn("feishu", types)
-        self.assertNotIn("wechatcom_app", types)
+        self.assertEqual(types, {"weixin", "feishu", "dingtalk", "wecom_bot", "qq",
+                                 "wechatcom_app", "wechat_kf", "wechatmp",
+                                 "telegram", "slack", "discord"})
 
     def test_every_offered_type_is_actually_creatable(self):
         """A type the form offers but the server rejects would be a dead end."""
@@ -182,7 +183,7 @@ class GetTenantChannelTypesTests(_ChannelHttpFixture):
             for field in entry["credential_fields"]:
                 self.assertTrue(field["key"])
                 self.assertIn("label", field)
-                credentials[field["key"]] = "value"
+                credentials[field["key"]] = "9988" if field.get("type") == "number" else "value"
             if entry["inbound_admissible"] is False:
                 # Not a candidate: its adapter cannot prove the sender, so the
                 # inbound gate would refuse every message. Offered as a
@@ -200,8 +201,7 @@ class GetTenantChannelTypesTests(_ChannelHttpFixture):
                              f"{entry['channel_type']}: {resp.data}")
         # The narrowing must not be silent: the control keeps this test from
         # passing by attempting nothing at all.
-        self.assertTrue(attempted, "no admissible type was exercised")
-        self.assertIn("feishu", attempted)
+        self.assertEqual(len(attempted), 11)
 
     def test_secret_looking_fields_are_marked_secret(self):
         body = self._list()

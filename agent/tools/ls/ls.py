@@ -72,6 +72,10 @@ class Ls(BaseTool):
             return ToolResult.fail(f"Error: Not a directory: {path}")
         
         try:
+            from agent.tools.bash import launcher
+            allowed = launcher.read_filter()
+            if allowed and not allowed(absolute_path):
+                return ToolResult.fail('Error: directory outside authorized scope')
             # Read directory entries
             entries = os.listdir(absolute_path)
             
@@ -88,6 +92,8 @@ class Ls(BaseTool):
                     break
                 
                 full_path = os.path.join(absolute_path, entry)
+                if allowed and not allowed(full_path):
+                    continue
                 
                 try:
                     if os.path.isdir(full_path):

@@ -1085,93 +1085,115 @@
     {
       "path": "_shared/backend/WorkbenchUploadHandler.py",
       "source": "channel/web/web_channel.py",
-      "sha256": "c7dd382b86ac33fbe9557159e0bf7a989b4890b2df7a56c2a229aafc1ac5ee7f",
+      "sha256": "bd47bf8a2b980e6de5168c6ef406cdfdce1ec6272789a4cbefde76b13907119e",
       "lines": [
         6741,
         6817
-      ]
+      ],
+      "source_sha256": "c7dd382b86ac33fbe9557159e0bf7a989b4890b2df7a56c2a229aafc1ac5ee7f",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "procurement_analysis/backend/WorkbenchGenerateReportHandler.py",
       "source": "channel/web/web_channel.py",
-      "sha256": "eb313e13da86c1edd798f0256b2a5a61dcd8ee88bbe376c814909191e6d1d0e6",
+      "sha256": "9b4ad3e6306a525f548d7d0a198edd4a8ae157a1c3147972a8042be8bfb5de81",
       "lines": [
         6819,
         6938
-      ]
+      ],
+      "source_sha256": "eb313e13da86c1edd798f0256b2a5a61dcd8ee88bbe376c814909191e6d1d0e6",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "_shared/backend/WorkbenchParseExcelHandler.py",
       "source": "channel/web/web_channel.py",
-      "sha256": "84e30cff4eb7eb0ca2d6c59b2817ba6a57816db8803ed4a9433c8a3eee2e8f3f",
+      "sha256": "3fc4c346c429980fa6eb8f27b560215c31649acff7d8a48186577f6ace114b67",
       "lines": [
         6940,
         7147
-      ]
+      ],
+      "source_sha256": "84e30cff4eb7eb0ca2d6c59b2817ba6a57816db8803ed4a9433c8a3eee2e8f3f",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "finance_voucher/backend/VoucherTemplateHandler.py",
       "source": "channel/web/web_channel.py",
-      "sha256": "b78c4e420a63da147a49a46737005f3191cb259b440712d2a311630f5cc07e86",
+      "sha256": "ad654209ac658c565125de97726c83cb89652159b415bd087497be587685de60",
       "lines": [
         7150,
         7292
-      ]
+      ],
+      "source_sha256": "b78c4e420a63da147a49a46737005f3191cb259b440712d2a311630f5cc07e86",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "procurement_analysis/backend/ProcurementImportHandler.py",
       "source": "channel/web/web_channel.py",
-      "sha256": "c68027c727f2165643fda6a73538e50e94fd2909c103454c18578b1a7fe4e10c",
+      "sha256": "beb4172720f79cefe833a19526e59e025b324000a1565b1c4b3826b8db528f48",
       "lines": [
         7295,
         7370
-      ]
+      ],
+      "source_sha256": "c68027c727f2165643fda6a73538e50e94fd2909c103454c18578b1a7fe4e10c",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "_shared/backend/ErpConnectionsHandler.py",
       "source": "channel/web/web_channel.py",
-      "sha256": "dd4bcd9b91e9735f32653601ab05726be2a147ca75e9a13d370dfb71b942d767",
+      "sha256": "ecc1b359d47d9d68286c4a62567f2a0959a989de0eaeb7a3b14530bf43be7ebf",
       "lines": [
         7373,
         7458
       ],
       "adapted": "add-external-system-access task 6.5: GET-only read projection; the writable shim was removed so connection management has a single home (/api/erp/connections is registered for GET only)",
-      "provenance": "rewritten"
+      "provenance": "rewritten",
+      "source_sha256": "dd4bcd9b91e9735f32653601ab05726be2a147ca75e9a13d370dfb71b942d767",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "_shared/backend/ErpConnectionsOptionsHandler.py",
       "source": "channel/web/web_channel.py",
-      "sha256": "2e54072a4194ec0dc0a2aa3ffd07b4b352628658479dcfd32b5f321ef74a885e",
+      "sha256": "8b3fda5a20f2cccc92422227e410a6fbc9aceaf386ab538d3149cc0713991a2e",
       "lines": [
         7461,
         7504
       ],
-      "adapted": "add-external-system-access task 6: converted to the external connection service (/api/erp/connections shim)"
+      "adapted": "add-external-system-access task 6: converted to the external connection service (/api/erp/connections shim)",
+      "source_sha256": "2e54072a4194ec0dc0a2aa3ffd07b4b352628658479dcfd32b5f321ef74a885e",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "procurement_analysis/backend/ProcurementErpSyncHandler.py",
       "source": "channel/web/web_channel.py",
-      "sha256": "7a4879e97a2a411524f1d14387efa819fca64ee39bef0b37a8fdb754cfd0a882",
+      "sha256": "3254d6971a42de784bb9f27d876d56c494643d28153fb442bdfcca9f1bc8d50a",
       "lines": [
         7507,
         7719
       ],
-      "adapted": "add-external-system-access task 6: converted to the external connection service (/api/erp/connections shim)"
+      "adapted": "add-external-system-access task 6: converted to the external connection service (/api/erp/connections shim)",
+      "source_sha256": "7a4879e97a2a411524f1d14387efa819fca64ee39bef0b37a8fdb754cfd0a882",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "production_plan/backend/api.py",
       "source": "channel/web/web_channel_scheduling.py",
-      "sha256": "4b087b484b089cf75c4ab6033e97dd66c7528b572964f7424a55f28876a8c1b7"
+      "sha256": "a0577e0fd131df885ec99228ef0b17a504d4c6503732f1e4c924cba85ca44724",
+      "source_sha256": "4b087b484b089cf75c4ab6033e97dd66c7528b572964f7424a55f28876a8c1b7",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "production_plan/backend/scheduler_engine.py",
       "source": "agent/tools/scheduler/scheduler_engine.py",
-      "sha256": "76c74ff1d795b22224fccd028ed5eab0e2b26f992c6e3dae0f0ee9ddb4c66b03"
+      "sha256": "e1b655e4eb266fa93884ace8db554917995f2c425a3eaf1c33772e8f61306662",
+      "source_sha256": "76c74ff1d795b22224fccd028ed5eab0e2b26f992c6e3dae0f0ee9ddb4c66b03",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "production_plan/backend/gantt_generator.py",
       "source": "agent/tools/scheduler/gantt_generator.py",
-      "sha256": "dc606e39300048531c8342fd615110af49f4726e1f48ec0284787c47500014d3"
+      "sha256": "efebf676fc29b87fc7570ebdfc8b4960db47bfeebc3baba61d19499dc01f9e7c",
+      "source_sha256": "dc606e39300048531c8342fd615110af49f4726e1f48ec0284787c47500014d3",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "production_plan/backend/bom_tree.py",
@@ -1181,18 +1203,24 @@
     {
       "path": "production_scheduling_airbag/backend/api.py",
       "source": "channel/web/handlers/airbag_scheduling.py",
-      "sha256": "8a6997f9336a4b54f223bbb487df9cc7825730204fd72ebd0b7e70d3612186c7"
+      "sha256": "54182bb9562521e845e5a531b19aa6ea6c6fa006f4570778687ea86e9b876bf2",
+      "source_sha256": "8a6997f9336a4b54f223bbb487df9cc7825730204fd72ebd0b7e70d3612186c7",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "sap_data_analysis/backend/api.py",
       "source": "channel/web/handlers/sap_data_analysis.py",
-      "sha256": "fba29be89a7d079d17f47cad3ee1716543f666a2dd3518fd3870a3ec7b3db78f",
-      "adapted": "add-external-system-access task 6: converted to the external connection service (/api/erp/connections shim)"
+      "sha256": "acb238b4fc0c830439da7ba0f1fa5fa6df3797bab6ffbba83e186d165094e5f3",
+      "adapted": "add-external-system-access task 6: converted to the external connection service (/api/erp/connections shim)",
+      "source_sha256": "fba29be89a7d079d17f47cad3ee1716543f666a2dd3518fd3870a3ec7b3db78f",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "sap_data_analysis/backend/sap/config.py",
       "source": "channel/web/sap/config.py",
-      "sha256": "151e772208943aca78a1daa7e0249f39e4f779a10f132a82f321298469d6c965"
+      "sha256": "23a2a4247a48c920421f580b6ec0434623bab5424927a576d6a71064d3a06d28",
+      "source_sha256": "151e772208943aca78a1daa7e0249f39e4f779a10f132a82f321298469d6c965",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "sap_data_analysis/backend/sap/scene_config.py",
@@ -1207,7 +1235,9 @@
     {
       "path": "sap_data_analysis/backend/sap/adt_sql_provider.py",
       "source": "channel/web/sap/adt_sql_provider.py",
-      "sha256": "56c3af78bf180570058973d2df016b47e07b8513c4eec99a5583fe06a918d3b9"
+      "sha256": "444239902f67a3b6da8d0873316838a0c5f6fbc3852d2be1060e9b57a13fed8c",
+      "source_sha256": "56c3af78bf180570058973d2df016b47e07b8513c4eec99a5583fe06a918d3b9",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "sap_data_analysis/backend/sap/__init__.py",
@@ -1222,17 +1252,23 @@
     {
       "path": "sap_data_analysis/backend/sap/query_planner.py",
       "source": "channel/web/sap/query_planner.py",
-      "sha256": "f41329f84026334de7d3f1c38930887e4e6c3b68853ceeb78a9d39187f3aebf8"
+      "sha256": "7902de3e8974f96b5af0a20da985cd9de54f5465d17b32997037657348a4734d",
+      "source_sha256": "f41329f84026334de7d3f1c38930887e4e6c3b68853ceeb78a9d39187f3aebf8",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "sap_data_analysis/backend/sap/rfc_provider.py",
       "source": "channel/web/sap/rfc_provider.py",
-      "sha256": "1dc542632b9d5a657ec08ea3633c70280e7eb68d875adc36b294a46777786aed"
+      "sha256": "b8ab456bcaa02e134a49167c3e392b07da72653d22232564bbe445b0e9b56b7c",
+      "source_sha256": "1dc542632b9d5a657ec08ea3633c70280e7eb68d875adc36b294a46777786aed",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "sap_data_analysis/backend/sap/data_exporter.py",
       "source": "channel/web/sap/data_exporter.py",
-      "sha256": "79d1c43b63779eba50214ac1cd729332ed209702f873284eea4082be585ea843"
+      "sha256": "13c370491f288a9ad2736acc0742f35e517dcf5165e6d122ce20ce8b36c810c5",
+      "source_sha256": "79d1c43b63779eba50214ac1cd729332ed209702f873284eea4082be585ea843",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "sap_data_analysis/backend/sap/dashboard_builder.py",
@@ -1242,7 +1278,9 @@
     {
       "path": "sap_data_analysis/backend/sap/permission_guard.py",
       "source": "channel/web/sap/permission_guard.py",
-      "sha256": "8c19175775e6ea4f1dc5cb7d33eea1a4616de73c3cd68bb07ca7ceee528dfcd3"
+      "sha256": "d1edcfe3cb0ba1c160df77ce05ad9e59bd29827c974387ff707e7a369cf32cda",
+      "source_sha256": "8c19175775e6ea4f1dc5cb7d33eea1a4616de73c3cd68bb07ca7ceee528dfcd3",
+      "adaptation": "Explicit imports and scene-local resources; host identity and anchored upload writes."
     },
     {
       "path": "sap_data_analysis/backend/sap/ai_insights.py",

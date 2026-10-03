@@ -49,6 +49,12 @@ const fixture = {
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
     '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
     '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf' };
+// Render shared fragments just as the production template assembler does.
+function expandIncludes(html, depth = 0) {
+    if (depth > 8) throw new Error('Template include cycle');
+    return html.replace(/<!--#include\s+([^\s>]+?)\s*-->/g, (_, fragment) =>
+        expandIncludes(fs.readFileSync(path.join(repo, 'channel/web', fragment), 'utf8'), depth + 1).trimEnd());
+}
 const server = http.createServer((req, res) => {
     const pathname = new URL(req.url, 'http://fixture').pathname;
     const identity = req.headers['x-test-identity'] || 'public';
@@ -62,7 +68,7 @@ const server = http.createServer((req, res) => {
     };
     if (pathname === '/chat' || pathname === '/') {
         res.writeHead(200, { 'Content-Type': mime['.html'], 'Cache-Control': 'no-store' });
-        res.end(fs.readFileSync(path.join(repo, 'channel/web/chat.html'), 'utf8')
+        res.end(expandIncludes(fs.readFileSync(path.join(repo, 'channel/web/chat.html'), 'utf8'))
             .replaceAll('{{COW_DEFAULT_LANG}}', 'zh')
             .replaceAll('{{COW_NAVIGATION_MODE}}', 'classic'));
     } else if (pathname.startsWith('/assets/')) {

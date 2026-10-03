@@ -26,8 +26,8 @@ def _source_download_scope():
     (the same shape as ``_uploads_identity_scope``). The resource decides the
     tenant, never the client; a supplied selection is only cross-checked.
     """
-    from channel.web.web_channel import _chat_error
-    from channel.web.web_channel import _request_agent_id
+    from channel.web.fork.handlers.chat import _chat_error
+    from channel.web.fork.runtime import _request_agent_id
     from auth.runtime import resolve_context, to_runtime_identity, IdentityContextError
     from channel.web.auth_handlers import _get_service, _session_token
     from common.runtime_identity import use_identity
@@ -120,8 +120,8 @@ class KnowledgeSourcesHandler:
     def GET(self):
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _knowledge_workspace_root
-        from channel.web.web_channel import _knowledge_write_authorized
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.handlers.knowledge import _knowledge_write_authorized
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_private_owner
         from channel.web.web_channel import _require_read_permission
         from channel.web.web_channel import _require_tenant_agent_binding
@@ -155,7 +155,7 @@ class KnowledgeSourceDetailHandler:
     def GET(self):
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _knowledge_workspace_root
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_private_owner
         from channel.web.web_channel import _require_read_permission
         from channel.web.web_channel import _require_tenant_agent_binding
@@ -247,14 +247,14 @@ class KnowledgeSourceUploadHandler:
 
     def POST(self):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _ensure_list
+        from channel.web.fork.runtime import _ensure_list
         from channel.web.web_channel import _knowledge_workspace_root
         from channel.web.web_channel import _raw_web_input
-        from channel.web.web_channel import _read_uploaded_file_bytes_limited
+        from channel.web.fork.runtime import _read_uploaded_file_bytes_limited
         from channel.web.web_channel import _require_knowledge_write
         from channel.web.web_channel import _require_private_owner
         from channel.web.web_channel import _require_tenant_agent_binding
-        from channel.web.web_channel import _scoped_agent_id
+        from channel.web.fork.runtime import _scoped_agent_id
         from agent.knowledge.sources import source_limits
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
@@ -354,7 +354,7 @@ class KnowledgeSourceLifecycleHandler:
     def POST(self):
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _knowledge_workspace_root
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_knowledge_write
         from channel.web.web_channel import _require_private_owner
         from channel.web.web_channel import _require_tenant_agent_binding
@@ -392,7 +392,7 @@ class KnowledgeSourceTaskHandler:
     def POST(self):
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _knowledge_workspace_root
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_knowledge_write
         from channel.web.web_channel import _require_private_owner
         from channel.web.web_channel import _require_tenant_agent_binding

@@ -251,6 +251,48 @@ def stamp_external_identity(context: dict, *, provider: str, issuer: str,
     return context
 
 
+def stamp_adapter_identity(channel, context):
+    """Stamp authenticated adapter messages before the shared inbound gate.
+
+    These adapters put the *author* in from_user_id, including group messages.
+    Never use receiver/session_id (which can name a room), a token, or a display
+    name as identity. The three original adapters keep their own richer stamps.
+    """
+    provider = getattr(channel, "channel_type", "")
+    scoped_keys = {
+        "qq": "qq_app_id",
+        "wechatmp": "wechatmp_app_id",
+        "wechatmp_service": "wechatmp_app_id",
+        "wechatcom_app": "wechatcom_corp_id",
+        "wechat_kf": "wechat_kf_corp_id",
+    }
+    if provider in scoped_keys:
+        issuer = str(channel.cfg(scoped_keys[provider], "") or "").strip()
+        if not issuer:
+            return
+    elif provider == "slack":
+        # auth.test is performed using this instance's bot token at startup.
+        issuer = str(getattr(channel, "team_id", "") or "").strip()
+        if not issuer:
+            return
+    elif provider == "weixin":
+        # ilink's authenticated update names the bot as to_user_id, matching
+        # ilink_bot_id returned by QR login and used for scanner binding.
+        issuer = str(getattr(context.get("msg"), "to_user_id", "") or "").strip()
+        if not issuer:
+            return
+    elif provider in ("telegram", "discord"):
+        issuer = ""
+    else:
+        return
+    subject = str(getattr(context.get("msg"), "from_user_id", "") or "").strip()
+    if not subject or subject == "unknown":
+        return
+    stamp_external_identity(
+        context, provider="wechatmp" if provider == "wechatmp_service" else provider,
+        issuer=issuer, subject=subject)
+
+
 # What a refused message may contribute to the administrator's pending list.
 # Kept small so a chatty author cannot fill the store by pasting a wall of text.
 _PREVIEW_LIMIT = 200

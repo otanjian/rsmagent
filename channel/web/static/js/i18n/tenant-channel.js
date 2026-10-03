@@ -7,6 +7,10 @@
     var registry = window.__cowI18N__ = window.__cowI18N__ || {};
     registry["tenant-channel"] = {
         "zh": {
+            "tenant_channel_scan_will_save": "扫码确认后将自动保存并接入。",
+            "tenant_channel_webhook_hint": "请将渠道配置的监听端口映射到公网 HTTPS，并在平台填写公网域名加以下回调路径。",
+            "tenant_channel_webhook_path": "回调路径",
+            "tenant_channel_webhook_after_save": "保存后显示本渠道专属回调路径。",
             "channel_bound_agent": "绑定智能体",
             "channel_bound_default": "默认",
             "channel_bound_agent_hint": "第一个为默认智能体，负责接收消息并可委派给其他成员",
@@ -98,6 +102,10 @@
             "feishu_mode_manual": "手动填写"
         },
         "zh-Hant": {
+            "tenant_channel_scan_will_save": "掃碼確認後將自動儲存並接入。",
+            "tenant_channel_webhook_hint": "請將管道設定的監聽連接埠映射到公網 HTTPS，並在平台填寫公網網域加以下回呼路徑。",
+            "tenant_channel_webhook_path": "回呼路徑",
+            "tenant_channel_webhook_after_save": "儲存後顯示本管道專屬回呼路徑。",
             "channel_bound_agent": "綁定智慧體",
             "channel_bound_default": "預設",
             "channel_bound_agent_hint": "第一個為預設智慧體，負責接收訊息並可委派給其他成員",
@@ -189,6 +197,10 @@
             "feishu_mode_manual": "手動填寫"
         },
         "en": {
+            "tenant_channel_scan_will_save": "Confirm the scan to save and connect automatically.",
+            "tenant_channel_webhook_hint": "Expose the configured listening port through public HTTPS, then register your public domain plus the callback path with the provider.",
+            "tenant_channel_webhook_path": "Callback path",
+            "tenant_channel_webhook_after_save": "Save to get the callback path for this channel.",
             "channel_bound_agent": "Bind agent",
             "channel_bound_default": "default",
             "channel_bound_agent_hint": "first pick is the default agent: it receives messages and can delegate to the rest",

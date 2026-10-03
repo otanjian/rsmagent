@@ -2,10 +2,12 @@
  *
  * WHY THIS FILE EXISTS
  * --------------------
- * The Tasks page is assembled from the upstream fragments and scripts, served
- * as-is (channel/web/templates/views/tasks.html, templates/modals/task-edit.html,
+ * The Tasks page uses upstream fragments and scripts
+ * (channel/web/templates/views/tasks.html, templates/modals/task-edit.html,
  * templates/modals/run-detail.html, static/js/views/tasks.js and
- * static/js/views/tasks-modal.js). Upstream has no notion of this fork's
+ * static/js/views/tasks-modal.js). The modal adds only an optional dropdown
+ * adapter; this file supplies the rdai renderer without replacing the shared
+ * console dropdown. Upstream has no notion of this fork's
  * per-action capability projection, of the per-task `capabilities` the server
  * computes for each row, of the personal/shared scope marker, of a closed
  * consumer, or of a delivery target that must not move on an edit. Those cannot
@@ -702,14 +704,13 @@
         return result;
     }
 
-    // Every picker inside the modal is built through console.js's initDropdown,
-    // including the ones rebuilt asynchronously when the directory arrives, so
-    // wrapping that call is what keeps the lock on the re-render too.
+    // The modal's own renderer hook also handles asynchronous directory loads.
+    // The console's shared dropdown function remains unchanged.
     function blockingTargetPicker(el) {
         return !!el && LOCKED_TARGET_IDS.indexOf(el.id) !== -1 && taskModalMode === 'edit';
     }
 
-    window.initDropdown = function (el, options, selectedValue, onChange, opts) {
+    function taskDropdown(el, options, selectedValue, onChange, opts) {
         if (blockingTargetPicker(el)) {
             // Show the stored target and nothing else. Upstream falls back to
             // `options[0]` when the passed value is not among them, and on save it
@@ -739,7 +740,8 @@
             }
         }
         return upstream.initDropdown(el, options, selectedValue, onChange, opts);
-    };
+    }
+    registerTaskModalAdapter({ dropdown: taskDropdown });
 
     // ------------------------------------------------------------------
     // Installation. Assignments on the global object: the upstream page calls

@@ -2926,6 +2926,16 @@ def _migration_45(con: sqlite3.Connection) -> None:
 _migrations.append(_migration_45)
 
 
+def _migration_46(con: sqlite3.Connection) -> None:
+    """Existing personal maintenance windows belong to their opening member."""
+    con.execute("""UPDATE external_connection_maintenance_windows
+        SET scope_key = scope_key || ':' || opened_by
+        WHERE scope = 'personal' AND scope_key = ('personal:' || tenant_id)""")
+
+
+_migrations.append(_migration_46)
+
+
 class IdentityStoreError(RuntimeError):
     """Raised when the identity store cannot be opened or migrated."""
 
@@ -2957,25 +2967,15 @@ class ConnGuard:
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        con = self._con
+        if con is None:
+            return False
         try:
-            if self._con is None:
-                return False
-            try:
-                # Match the semantics of a bare ``sqlite3.Connection`` used as a
-                # context manager: commit on success, rollback on error. We
-                # additionally CLOSE the connection. (Most callers commit
-                # explicitly, but some rely on the default-commit behaviour, so
-                # we must not change it.)
-                if exc_type is None:
-                    self._con.commit()
-                else:
-                    self._con.rollback()
-            except sqlite3.Error:
-                pass
+            # SQLite rolls back a failed commit and propagates its exception.
+            return con.__exit__(exc_type, exc, tb)
         finally:
-            self._con.close()
+            con.close()
             self._con = None
-        return False
 
 
 class IdentityStore:

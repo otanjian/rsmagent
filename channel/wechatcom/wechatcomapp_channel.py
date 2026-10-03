@@ -22,7 +22,6 @@ from common.media_download import MAX_FILE_BYTES, MAX_IMAGE_BYTES, download_byte
 from common.singleton import singleton
 from common.state_dir import tmp_dir
 from common.utils import compress_imgfile, fsize, split_string_by_utf8_length, convert_webp_to_png, remove_markdown_symbol
-from config import conf
 from voice.audio_convert import any_to_amr, split_audio
 
 MAX_UTF8_LEN = 2048
@@ -47,13 +46,19 @@ def _media_tmp_path(prefix: str, ext: str = "") -> str:
 class WechatComAppChannel(ChatChannel):
     NOT_SUPPORT_REPLYTYPE = []
 
-    def __init__(self):
+    def __init__(self, defer_init=False):
         super().__init__()
-        self.corp_id = conf().get("wechatcom_corp_id")
-        self.secret = conf().get("wechatcomapp_secret")
-        self.agent_id = conf().get("wechatcomapp_agent_id")
-        self.token = conf().get("wechatcomapp_token")
-        self.aes_key = conf().get("wechatcomapp_aes_key")
+        self._http_server = None
+        self.client = None
+        if not defer_init:
+            self._configure()
+
+    def _configure(self):
+        self.corp_id = self.cfg("wechatcom_corp_id")
+        self.secret = self.cfg("wechatcomapp_secret")
+        self.agent_id = self.cfg("wechatcomapp_agent_id")
+        self.token = self.cfg("wechatcomapp_token")
+        self.aes_key = self.cfg("wechatcomapp_aes_key")
         self._http_server = None
         logger.info(
             "[wechatcom] Initializing WeCom app channel, corp_id: {}, agent_id: {}".format(self.corp_id, self.agent_id)
@@ -81,25 +86,20 @@ class WechatComAppChannel(ChatChannel):
         self.client = WechatComAppClient(self.corp_id, self.secret)
 
     def startup(self):
-        # start message listener
-        urls = ("/wxcomapp/?", "channel.wechatcom.wechatcomapp_channel.Query")
-        app = web.application(urls, globals(), autoreload=False)
-        port = conf().get("wechatcomapp_port", 9898)
-        logger.info("[wechatcom] ✅ WeCom app channel started successfully")
-        logger.info("[wechatcom] 📡 Listening on http://0.0.0.0:{}/wxcomapp/".format(port))
-        logger.info("[wechatcom] 🤖 Ready to receive messages")
-        
-        # Build WSGI app with middleware (same as runsimple but without print)
-        func = web.httpserver.StaticMiddleware(app.wsgifunc())
-        func = web.httpserver.LogMiddleware(func)
-        server = web.httpserver.WSGIServer(("0.0.0.0", port), func)
-        self._http_server = server
         try:
-            server.start()
-        except (KeyboardInterrupt, SystemExit):
-            server.stop()
+            if self.client is None:
+                self._configure()
+            from channel.instance_webhook import run_webhook
+            run_webhook(self, Query)
+        except Exception as error:
+            self.report_startup_error(str(error))
+            raise
+        finally:
+            self.stop()
 
     def stop(self):
+        from channel.instance_webhook import stop_webhook
+        stop_webhook(self)
         if self._http_server:
             try:
                 self._http_server.stop()
@@ -107,6 +107,9 @@ class WechatComAppChannel(ChatChannel):
             except Exception as e:
                 logger.warning(f"[wechatcom] Error stopping HTTP server: {e}")
             self._http_server = None
+
+        if self.client is not None:
+            self.client.stop()
 
     def send(self, reply: Reply, context: Context):
         receiver = context["receiver"]
@@ -265,7 +268,7 @@ class WechatComAppChannel(ChatChannel):
 
 class Query:
     def GET(self):
-        channel = WechatComAppChannel()
+        channel = getattr(self, "channel", None) or WechatComAppChannel()
         params = web.input()
         logger.info("[wechatcom] receive params: {}".format(params))
         try:
@@ -279,7 +282,7 @@ class Query:
         return echostr
 
     def POST(self):
-        channel = WechatComAppChannel()
+        channel = getattr(self, "channel", None) or WechatComAppChannel()
         params = web.input()
         logger.info("[wechatcom] receive params: {}".format(params))
         try:

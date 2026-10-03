@@ -12,13 +12,13 @@ class WeChatAPIException(Exception):
     pass
 
 
-def verify_server(data):
+def verify_server(data, channel=None):
     try:
         signature = data.signature
         timestamp = data.timestamp
         nonce = data.nonce
         echostr = data.get("echostr", None)
-        token = conf().get("wechatmp_token")  # 请按照公众平台官网\基本配置中信息填写
+        token = channel.cfg("wechatmp_token") if channel is not None else conf().get("wechatmp_token")  # 请按照公众平台官网\基本配置中信息填写
         # Reject when token is empty: an empty token reduces signature verification
         # to a predictable hash over attacker-controlled values.
         if not token:

@@ -1,7 +1,7 @@
 """SAP 数据分析结果落地与 CSV 按需转换。
 
 JSON 文件保存到租户目录：
-  {agent_workspace}/tenants/{tenant_id}/.one/sap_analysis/sap_data_{timestamp}_{hash}.json
+  {tenant_workspace}/.one/sap_analysis/sap_data_{timestamp}_{hash}.json
 
 CSV 不常驻磁盘，仅在用户请求 /api/sap-data-analysis/{file_id}/csv 时实时从 JSON 转换返回。
 """
@@ -15,10 +15,8 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from auth.tenant_context import get_current_tenant_id
+from Scene._shared.host import get_current_tenant_id
 from common.log import logger
-from common.utils import expand_path
-from config import conf
 
 
 class DataExporter:
@@ -28,11 +26,8 @@ class DataExporter:
         self.tenant_id = tenant_id or get_current_tenant_id()
 
     def _analysis_dir(self) -> str:
-        base = expand_path(conf().get("agent_workspace", "~/one"))
-        base = os.path.abspath(base)
-        if self.tenant_id:
-            base = os.path.join(base, "tenants", self.tenant_id)
-        return os.path.join(base, ".one", "sap_analysis")
+        from Scene._shared.host import _get_tenant_workspace_root
+        return os.path.join(_get_tenant_workspace_root(self.tenant_id), ".one", "sap_analysis")
 
     def save_json(
         self,

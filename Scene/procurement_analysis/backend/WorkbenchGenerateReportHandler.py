@@ -1,3 +1,11 @@
+
+from Scene._shared.host import _get_workspace_root
+from Scene._shared.host import _require_auth
+import json
+from common.log import logger
+import os
+import web
+
 class WorkbenchGenerateReportHandler:
     """POST /api/workbench/generate-report - 后端直接调用技能脚本生成报表。
 
@@ -25,7 +33,7 @@ class WorkbenchGenerateReportHandler:
             if not data_file_path or not os.path.isfile(data_file_path):
                 return json.dumps({"status": "error", "message": "数据文件不存在"})
 
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             workspace_root = _get_workspace_root()
             tmp_dir = os.path.join(workspace_root, "tmp")
             os.makedirs(tmp_dir, exist_ok=True)

@@ -40,6 +40,15 @@ const withTasks = (payload, extra = {}) => boot({
 
 const emptyLine = page => page.get('tasks-empty').querySelector('p');
 
+test('task modal adaptation leaves unrelated console dropdowns unchanged', () => {
+    const page = boot();
+    const el = page.get('ordinary-console-dropdown');
+    page.sandbox.initDropdown(el, [{ value: 'one', label: 'One' }], 'one', () => {});
+    assert.equal(page.sandbox.getDropdownValue(el), 'one');
+    assert.equal(el.classList.contains('cfg-dropdown-disabled'), false);
+    assert.doesNotMatch(page.sandbox.initDropdown.toString(), /blockingTargetPicker|storedTargetOption/);
+});
+
 // ---------------------------------------------------------------------------
 // 1. A refusal ends in a readable state
 // ---------------------------------------------------------------------------

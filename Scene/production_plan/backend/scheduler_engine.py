@@ -289,7 +289,7 @@ class AdvancedScheduler:
                 "daily_plan": List[Dict]          # 每日计划产量
             }
         """
-        from agent.tools.scheduler.bom_tree import (
+        from Scene.production_plan.backend.bom_tree import (
             BOMTreeBuilder, BackwardScheduler, MaterialKitChecker,
             BOMItem, ExplicitParentTreeBuilder, WorkTimeHelper
         )
@@ -577,7 +577,7 @@ class AdvancedScheduler:
     def _build_workcenter_load(self, schedule: List[Dict],
                                 backward_schedules: List[Dict]) -> Dict[str, Any]:
         """构建工作中心负荷数据（使用工作中心每天实际容量）"""
-        from agent.tools.scheduler.bom_tree import WorkTimeHelper
+        from Scene.production_plan.backend.bom_tree import WorkTimeHelper
 
         # 按天统计每个工作中心的负荷
         daily_load: Dict[str, Dict[str, Dict]] = {}

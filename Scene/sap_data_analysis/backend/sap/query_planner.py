@@ -145,7 +145,7 @@ class QueryPlanner:
     def __init__(self, project_root: Optional[str] = None):
         if project_root is None:
             project_root = os.path.dirname(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             )
         self.project_root = project_root
         self.skill_planner_path = os.path.join(

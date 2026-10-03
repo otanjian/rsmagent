@@ -82,29 +82,14 @@ class MutationTests(unittest.TestCase):
              "CrossTenantIsolationAcceptance::"
              "test_b_tenant_cannot_see_a_tenants_instances"],
         ),
-        # 3. The realistic regression for the deferred 企微自建应用: someone marks
-        #    the type multi-instance ready and declares its credential bundle.
-        #    Its fixed-port singleton webhook cannot be tenant-scoped, so it must
-        #    stay out of the tenant-offerable set (and off the console form).
-        #
-        #    The credential-bundle edit anchors on the 微信 entry, which only the
-        #    full CREDENTIAL_KEYS list declares: REQUIRED_CREDENTIAL_KEYS repeats
-        #    several entries verbatim, so the tail of the dict is not unique.
+        # 3. Reintroducing the webhook singleton merges two tenants' runtime
+        #    identity and credentials. The real factory isolation test must fail.
         (
-            "channel/channel_instances.py",
-            [("MULTI_INSTANCE_READY = frozenset({\n    const.FEISHU,",
-              "MULTI_INSTANCE_READY = frozenset({\n    'wechatcom_app',\n    const.FEISHU,"),
-             ('    const.WEIXIN: (\n        "weixin_token",\n        "weixin_base_url",\n    ),',
-              '    const.WEIXIN: (\n        "weixin_token",\n        "weixin_base_url",\n    ),\n'
-              '    "wechatcom_app": (\n'
-              '        "wechatcom_corp_id",\n'
-              '        "wechatcom_agent_id",\n'
-              '        "wechatcom_secret",\n'
-              '    ),')],
-            ["tests/test_tenant_channel_type_gate.py::ChannelTypeConstantsTests::"
-             "test_wechatcom_app_is_not_declared_multi_instance_ready",
-             "tests/test_tenant_channel_http.py::GetTenantChannelTypesTests::"
-             "test_the_form_contract_offers_feishu_and_withholds_wechatcom_app"],
+            "channel/channel_factory.py",
+            [("ch = _fresh(WechatComAppChannel, defer_init=True) if multi_instance else WechatComAppChannel()",
+              "ch = WechatComAppChannel(defer_init=True)")],
+            ["tests/test_tenant_channel_type_gate.py::"
+             "test_webhook_instances_initialize_with_their_own_credentials"],
         ),
         # 4. Drop the ownership half of the range: every member's personal
         #    instance would surface in the administration list, which is not the

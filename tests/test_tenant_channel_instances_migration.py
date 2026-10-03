@@ -72,7 +72,7 @@ class TenantChannelInstancesMigrationTests(unittest.TestCase):
                 "active", "version", "created_by", "created_at", "updated_at",
                 "scope", "owner_user_id",
                 "governance_disabled_at", "governance_disabled_by",
-                "app_fingerprint",
+                "app_fingerprint", "sender_binding_at",
             },
         )
 

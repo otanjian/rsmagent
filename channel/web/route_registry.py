@@ -138,6 +138,7 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/help", "HelpSiteHandler", "fork:help-site", {"GET": P("public", comment="redirect to help root")}),
     RouteEntry("/help/(.*)", "HelpSiteHandler", "fork:help-site", {"GET": P("public", comment="product help pages and public assets; no tenant data")}),
     RouteEntry("/", "RootHandler", "upstream", {"GET": P("public", comment="console root")}),
+    RouteEntry("/api/ready", "ReadyHandler", "fork:operations", {"GET": P("public", comment="readiness probe; booleans only")}),
     RouteEntry("/api/health", "HealthHandler", "upstream", {"GET": P("public", comment="health probe")}),
     RouteEntry("/auth/login", "AuthLoginHandler", "upstream", {"POST": P("public", comment="database account login (username+password)")}),
     RouteEntry("/auth/check", "AuthCheckHandler", "upstream", {"GET": P("public", comment="database auth state probe")}),

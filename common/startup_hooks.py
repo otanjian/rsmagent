@@ -39,6 +39,7 @@ HOOK_DATABASE_BOOTSTRAP = "database_bootstrap"
 HOOK_TENANT_CONVERSATION_BACKFILL = "tenant_conversation_backfill"
 HOOK_SCHEDULER_TASK_MIGRATION = "scheduler_task_migration"
 HOOK_EXTERNAL_STORE_VERSION = "external_store_version"
+HOOK_EXECUTION_SANDBOX = "execution_sandbox"
 
 #: One-shot initial admin password under the data root (mode 0600).
 BOOTSTRAP_PASSWORD_FILENAME = ".bootstrap_admin_password"
@@ -106,6 +107,7 @@ def is_registered(name: str) -> bool:
 #: catch.
 REQUIRED_HOOKS: Tuple[str, ...] = (
     HOOK_IDENTITY_MODE_CONSISTENCY,
+    HOOK_EXECUTION_SANDBOX,
     HOOK_DATABASE_BOOTSTRAP,
     HOOK_TENANT_CONVERSATION_BACKFILL,
     HOOK_SCHEDULER_TASK_MIGRATION,
@@ -538,8 +540,19 @@ def _prune_task_store_backups(path: str, source: str) -> None:
             pass
 
 
+def _execution_sandbox() -> None:
+    from agent.execution.sandbox import install
+    from common.readiness import probe_execution
+    install()
+    import atexit
+    from agent.tools.bash import background
+    atexit.register(background.reset)
+    probe_execution()
+
+
 def register_fork_startup_hooks() -> None:
     """Idempotently arm this fork's hooks."""
+    register_startup_hook(HOOK_EXECUTION_SANDBOX, _execution_sandbox, order=18)
     register_startup_hook(HOOK_IDENTITY_MODE_CONSISTENCY,
                           _identity_mode_consistency, order=10)
     register_startup_hook(HOOK_DATABASE_BOOTSTRAP,

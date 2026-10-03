@@ -40,6 +40,7 @@ class SlackChannel(ChatChannel):
         self.bot_token = ""
         self.app_token = ""
         self.bot_user_id = ""  # used to strip @mention and ignore self messages
+        self.team_id = ""
         self._app = None
         self._handler = None
         self._client = None
@@ -95,6 +96,7 @@ class SlackChannel(ChatChannel):
             # Resolve our own bot user id (needed for @mention strip / self-ignore)
             auth = self._client.auth_test()
             self.bot_user_id = auth.get("user_id", "")
+            self.team_id = auth.get("team_id", "")
             self.name = self.bot_user_id  # ChatChannel uses self.name to strip @-mention
             logger.info(f"[Slack] Bot logged in as user_id={self.bot_user_id}, team={auth.get('team')}")
         except Exception as e:
@@ -237,11 +239,11 @@ class SlackChannel(ChatChannel):
                 # fallthrough to the TEXT branch below
 
             elif ctype == ContextType.IMAGE:
-                file_cache.add(session_id, content, file_type="image")
+                file_cache.add(self.file_cache_key(session_id), content, file_type="image")
                 logger.info(f"[Slack] Image cached for session {session_id}, waiting for query...")
                 return
             elif ctype == ContextType.FILE:
-                file_cache.add(session_id, content, file_type="file")
+                file_cache.add(self.file_cache_key(session_id), content, file_type="file")
                 logger.info(f"[Slack] File cached for session {session_id}: {content}")
                 return
 
@@ -251,7 +253,7 @@ class SlackChannel(ChatChannel):
                     self._do_cancel(session_id, channel_id, event)
                     return
 
-                cached_files = file_cache.get(session_id)
+                cached_files = file_cache.get(self.file_cache_key(session_id))
                 if cached_files:
                     refs = []
                     for fi in cached_files:
@@ -259,7 +261,7 @@ class SlackChannel(ChatChannel):
                         tag = ftype if ftype in ("image", "video") else "file"
                         refs.append(f"[{tag}: {fi['path']}]")
                     slack_msg.content = (slack_msg.content or "") + "\n" + "\n".join(refs)
-                    file_cache.clear(session_id)
+                    file_cache.clear(self.file_cache_key(session_id))
                     logger.info(f"[Slack] Attached {len(cached_files)} cached file(s) to query")
 
             # Reply in the originating thread when present, else start one on this msg

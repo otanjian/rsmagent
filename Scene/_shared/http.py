@@ -23,7 +23,7 @@ def validate_body(body):
                 if key == "filename" and item:
                     if not isinstance(item, str) or "/" in item or "\\" in item or item in {".", ".."}:
                         raise web.badrequest("invalid filename")
-                if key in {"data_file", "file_path", "filepath", "input_file"} and item:
+                if key in {"data_file", "data_file_path", "file_path", "filepath", "input_file"} and item:
                     candidate = Path(item).resolve()
                     if not candidate.is_relative_to(root):
                         raise web.forbidden("file must belong to the current tenant workspace")

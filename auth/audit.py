@@ -218,6 +218,8 @@ class AuditStore:
         show "N of M" without fetching the rest. ``redacted_changes`` is parsed
         for the caller; it was already stripped of secrets by
         :func:`sanitize_payload` at write time, and nothing here re-widens that.
+        ``actor_display_name`` resolves the current name by stable user ID and
+        the event's tenant; recorded identity fields remain unchanged.
         """
         if scope not in self.SCOPES:
             raise AuditError(f"unknown audit scope: {scope!r}")
@@ -227,15 +229,15 @@ class AuditStore:
         clauses: List[str] = []
         params: List[Any] = []
         if scope == "tenant":
-            clauses.append("tenant_id = ?")
+            clauses.append("a.tenant_id = ?")
             params.append(tenant_id)
         elif scope == "platform":
-            clauses.append("tenant_id IS NULL")
+            clauses.append("a.tenant_id IS NULL")
         if actions:
-            clauses.append("action IN (" + ",".join("?" for _ in actions) + ")")
+            clauses.append("a.action IN (" + ",".join("?" for _ in actions) + ")")
             params.extend(actions)
         if result:
-            clauses.append("result = ?")
+            clauses.append("a.result = ?")
             params.append(result)
         if exclude_result:
             # "失败" in the console is a binary choice over a column with more
@@ -243,10 +245,10 @@ class AuditStore:
             # a future writer adds). Comparing against a hard-coded list of the
             # non-success values would silently stop matching the moment a new
             # one appears, so the negation is expressed as one.
-            clauses.append("result <> ?")
+            clauses.append("a.result <> ?")
             params.append(exclude_result)
         if actor_user_id:
-            clauses.append("actor_user_id = ?")
+            clauses.append("a.actor_user_id = ?")
             params.append(actor_user_id)
         if actor_username:
             # A filter box, not an address: an operator looking for "who did
@@ -255,13 +257,18 @@ class AuditStore:
             # stray character cannot turn into a wildcard.
             pattern = str(actor_username).replace("\\", "\\\\") \
                 .replace("%", "\\%").replace("_", "\\_")
-            clauses.append("actor_username LIKE ? ESCAPE '\\'")
-            params.append(f"%{pattern}%")
+            # Match both the displayed name and account names, including the
+            # historical account stored on an event before an account rename.
+            name_fields = ("a.actor_username", "u.username", "u.display_name", "m.display_name")
+            clauses.append("(" + " OR ".join(
+                f"{field} LIKE ? ESCAPE '\\'" for field in name_fields
+            ) + ")")
+            params.extend([f"%{pattern}%"] * len(name_fields))
         if start_time is not None:
-            clauses.append("time >= ?")
+            clauses.append("a.time >= ?")
             params.append(int(start_time))
         if end_time is not None:
-            clauses.append("time <= ?")
+            clauses.append("a.time <= ?")
             params.append(int(end_time))
 
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
@@ -269,14 +276,22 @@ class AuditStore:
         limit = max(1, min(int(limit), 500))
         offset = max(0, int(offset))
 
+        # Never resolve by username: a reused account name must not attribute
+        # an old event to a different user. Each join has at most one match.
+        source = (
+            "FROM audit_events a LEFT JOIN users u ON u.id = a.actor_user_id "
+            "LEFT JOIN memberships m ON m.user_id = u.id AND m.tenant_id = a.tenant_id"
+        )
         total_row = self._store.execute(
-            f"SELECT COUNT(*) FROM audit_events {where}", params
+            f"SELECT COUNT(*) {source} {where}", params
         )
         total = (total_row[0][0] if total_row else 0) or 0
 
         rows = self._store.execute(
-            f"SELECT * FROM audit_events {where}"
-            " ORDER BY time DESC, id DESC LIMIT ? OFFSET ?",
+            "SELECT a.*, COALESCE(NULLIF(TRIM(m.display_name), ''),"
+            " NULLIF(TRIM(u.display_name), ''), NULLIF(TRIM(a.actor_username), ''),"
+            " NULLIF(TRIM(u.username), ''), '') AS actor_display_name "
+            f"{source} {where} ORDER BY a.time DESC, a.id DESC LIMIT ? OFFSET ?",
             list(params) + [limit, offset],
         )
 

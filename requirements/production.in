@@ -1,0 +1,10 @@
+# Linux backend, Python 3.11; includes existing channels, document tools and browser.
+-r ../requirements.txt
+-r ../requirements-optional.txt
+-r ../requirements-scenes.txt
+playwright==1.52.0
+
+# Wheel build backend, plus the existing Google speech adapter import.
+setuptools
+wheel
+SpeechRecognition

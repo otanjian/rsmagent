@@ -669,7 +669,7 @@ class WeixinChannel(ChatChannel):
         if not deadline:
             return
         while time.time() < deadline:
-            if file_cache.get(session_id):
+            if file_cache.get(self.file_cache_key(session_id)):
                 return
             time.sleep(PENDING_MEDIA_POLL_S)
 
@@ -716,14 +716,14 @@ class WeixinChannel(ChatChannel):
 
         if wx_msg.ctype == ContextType.IMAGE:
             if hasattr(wx_msg, "image_path") and wx_msg.image_path:
-                file_cache.add(session_id, wx_msg.image_path, file_type="image")
+                file_cache.add(self.file_cache_key(session_id), wx_msg.image_path, file_type="image")
                 logger.info(f"[Weixin] Image cached for session {session_id}")
             self._clear_pending_media(session_id)
             return
 
         if wx_msg.ctype == ContextType.FILE:
             wx_msg.prepare()
-            file_cache.add(session_id, wx_msg.content, file_type="file")
+            file_cache.add(self.file_cache_key(session_id), wx_msg.content, file_type="file")
             logger.info(f"[Weixin] File cached for session {session_id}: {wx_msg.content}")
             self._clear_pending_media(session_id)
             return
@@ -738,7 +738,7 @@ class WeixinChannel(ChatChannel):
                 # can arrive in a separate poll batch); wait briefly so its path
                 # gets attached instead of the agent answering without the image.
                 self._wait_for_pending_media(session_id, file_cache)
-            cached_files = file_cache.get(session_id)
+            cached_files = file_cache.get(self.file_cache_key(session_id))
             if cached_files:
                 refs = []
                 for fi in cached_files:
@@ -750,7 +750,7 @@ class WeixinChannel(ChatChannel):
                     else:
                         refs.append(f"[文件: {fpath}]")
                 wx_msg.content = wx_msg.content + "\n" + "\n".join(refs)
-                file_cache.clear(session_id)
+                file_cache.clear(self.file_cache_key(session_id))
 
         context = self._compose_context(
             wx_msg.ctype,

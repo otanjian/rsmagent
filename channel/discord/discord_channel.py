@@ -225,11 +225,11 @@ class DiscordChannel(ChatChannel):
                 # fallthrough to the TEXT branch below
 
             elif ctype == ContextType.IMAGE:
-                file_cache.add(session_id, content, file_type="image")
+                file_cache.add(self.file_cache_key(session_id), content, file_type="image")
                 logger.info(f"[Discord] Image cached for session {session_id}, waiting for query...")
                 return
             elif ctype == ContextType.FILE:
-                file_cache.add(session_id, content, file_type="file")
+                file_cache.add(self.file_cache_key(session_id), content, file_type="file")
                 logger.info(f"[Discord] File cached for session {session_id}: {content}")
                 return
 
@@ -239,7 +239,7 @@ class DiscordChannel(ChatChannel):
                     await self._do_cancel(session_id, message)
                     return
 
-                cached_files = file_cache.get(session_id)
+                cached_files = file_cache.get(self.file_cache_key(session_id))
                 if cached_files:
                     refs = []
                     for fi in cached_files:
@@ -247,7 +247,7 @@ class DiscordChannel(ChatChannel):
                         tag = ftype if ftype in ("image", "video") else "file"
                         refs.append(f"[{tag}: {fi['path']}]")
                     dc_msg.content = (dc_msg.content or "") + "\n" + "\n".join(refs)
-                    file_cache.clear(session_id)
+                    file_cache.clear(self.file_cache_key(session_id))
                     logger.info(f"[Discord] Attached {len(cached_files)} cached file(s) to query")
 
             context = self._compose_context(

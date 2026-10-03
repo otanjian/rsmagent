@@ -19,6 +19,10 @@
 }
 #session-panel.hidden { display: none; }
 .history-list-mount { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
+/* The embedded list is a submenu of the sidebar's history disclosure, so inset
+   it: 18px puts a row's title on the disclosure label's column (the nav rows
+   are 12px padding + 20px icon + 12px gap = 56px) instead of under its icon. */
+#session-panel .history-list-mount { padding-left: 18px; }
 #session-panel .session-list { padding: 2px 4px 2px 0; border: 0; border-radius: 0; background: transparent; }
 #session-panel .session-item { display: flex; min-height: 0; gap: 4px; padding: 7px 6px; margin: 1px 0; font-size: 13px; }
 #session-panel .session-row-main { min-height: 0; gap: 6px; }
