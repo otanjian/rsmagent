@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "checked_at": "2026-10-03",
+  "scope": "independent_linux_display_unit",
+  "runtime_verified": false,
+  "workbench_binding_verified": false,
+  "debian_snapshot": "20261003T000000Z",
+  "base_images": {
+    "amd64": "debian:bookworm-20260918-slim@sha256:f3034a6ec3c1205360777c4aae76234998866ad18806ae62b63a3f84ccad782b",
+    "arm64": "debian:bookworm-20260918-slim@sha256:0c8bbb8e987a035fe1d9704eb2e571b7e9a836e1caa46345290674b45b69e417"
+  },
+  "debian_packages": {
+    "xvfb": "2:21.1.7-3+deb12u13",
+    "x11vnc": "0.9.16-9"
+  },
+  "chrome": {
+    "version": "154.0.8037.92",
+    "source": "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json",
+    "archives": {
+      "amd64": {
+        "url": "https://storage.googleapis.com/chrome-for-testing-public/154.0.8037.92/linux64/chrome-linux64.zip?generation=1790638887531589",
+        "prefix": "chrome-linux64",
+        "size": 196202491,
+        "md5_base64": "eb+FnbaHwkXCE8wFqB2DJw==",
+        "generation": "1790638887531589"
+      },
+      "arm64": {
+        "url": "https://storage.googleapis.com/chrome-for-testing-public/154.0.8037.92/linux-arm64/chrome-linux-arm64.zip?generation=1790639929218431",
+        "prefix": "chrome-linux-arm64",
+        "size": 196517840,
+        "md5_base64": "JiZ0GcpjMyhPJGtzqSN8/g==",
+        "generation": "1790639929218431"
+      }
+    }
+  },
+  "novnc": {
+    "version": "1.7.0",
+    "url": "https://codeload.github.com/novnc/noVNC/tar.gz/refs/tags/v1.7.0",
+    "prefix": "noVNC-1.7.0",
+    "sha256": "b1003a11b6e6e8d8f7f5e5586daae7f8ca651d8aee0aa155ff9ac841c48f52c6"
+  },
+  "websockify": {
+    "version": "0.13.0",
+    "url": "https://codeload.github.com/novnc/websockify/tar.gz/refs/tags/v0.13.0",
+    "prefix": "websockify-0.13.0",
+    "sha256": "b6413e364efd04f3c92ec8c17747e3c4adc20157c2ef1c5d019a26d944a46df8"
+  },
+  "seccomp": {
+    "source": "https://raw.githubusercontent.com/microsoft/playwright/v1.56.0/utils/docker/seccomp_profile.json",
+    "sha256": "cc3e61cabda6bbc1e53e54d27ba4d55a9d3be829b6dd1a596f4a7b31b1cc7849",
+    "license": "Apache-2.0"
+  }
+}

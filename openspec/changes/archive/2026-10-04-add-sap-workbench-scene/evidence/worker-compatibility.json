@@ -1,0 +1,9 @@
+{
+  "python": "3.10.0",
+  "disconnects": 2,
+  "same_task_exits": 2,
+  "slow_exit_timeout": true,
+  "timeout_recovery": true,
+  "mode": "offline_worker_compatibility",
+  "network_tested": false
+}

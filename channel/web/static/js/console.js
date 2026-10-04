@@ -5610,6 +5610,11 @@ async function startChatWithAgent(agentId) {
         if (cached) Object.assign(cached, agent, { enabled: true });
         else agentCatalog.push({ ...agent, enabled: true });
         if (agent.is_default) defaultAgentId = agent.id;
+        const seam = (typeof codingSeam === 'function') ? codingSeam() : null;
+        if (seam && agent.agent_type === 'coding') {
+            await seam.open(agentId, '');
+            return;
+        }
         activeAgentId = agentId;
         writeScopedPreference('cow_active_agent', activeAgentId);
         newChat(true, false);
@@ -8871,6 +8876,7 @@ bindWelcomeSuggestions(messagesDiv);
 // with the ASR caption, then dispatches the recognised text to /message
 // through the same SSE/loading flow as a typed message.
 function sendVoiceMessage(text, audioUrl) {
+    if (typeof guardCodingMessage === 'function' && guardCodingMessage()) return;
     text = (text || '').trim();
     if (!text) return;
 
@@ -9203,6 +9209,7 @@ function sendMessage() {
         addMessageError({ code: 'missing_tenant' });
         return;
     }
+    if (typeof guardCodingMessage === 'function' && guardCodingMessage()) return;
     // Do NOT branch on sendBtnMode here: Enter should always send (so
     // typing "/cancel" submits normally). Cancel is wired only to the
     // send button's pointer click — see send-btn listener above.
@@ -11536,8 +11543,7 @@ function newChat(optimistic = true, inherit = true) {
     if (seam && seam.isCodingAgent(activeAgentId)) {
         if (typeof wsGuardUnsaved === 'function'
             && !wsGuardUnsaved(() => newChat(optimistic, inherit))) return;
-        seam.open(activeAgentId, '');
-        return;
+        return seam.open(activeAgentId, '');
     }
     // A fresh session resets the preview panel, discarding an open editor.
     if (typeof wsGuardUnsaved === 'function'
@@ -12834,6 +12840,16 @@ function isCodingAgent(agentId) {
     return agentTypeOf(agentId) === 'coding';
 }
 
+// A restored/stale composer (including voice callbacks) must never submit a
+// coding Agent to the ordinary runtime. Keep the user's draft intact.
+function guardCodingMessage() {
+    if (!isCodingAgent(activeAgentId)) return false;
+    const current = activeCodingSession();
+    if (!current || current.agent_id !== activeAgentId) openCodingSession(activeAgentId, '');
+    _wsToast(t('coding_send_in_pane'));
+    return true;
+}
+
 async function isCodingAgentAsync(agentId) {
     return isCodingAgent(agentId);
 }
@@ -12888,7 +12904,7 @@ function codingAvailability() {
 
 /* Mount the embedded pane for one coding conversation, keeping the console's
    own bookkeeping in step. ``sessionId`` empty means "a new conversation". */
-function openCodingSession(agentId, sessionId, options) {
+function openCodingSession(agentId, requestedSessionId, options) {
     const opts = options || {};
     const module = codingChatModule();
     const availability = codingAvailability();
@@ -12907,24 +12923,10 @@ function openCodingSession(agentId, sessionId, options) {
     if (currentView !== 'chat') navigateTo('chat');
     renderComposerIdentity();
 
-    const isNew = !sessionId;
-    const mounted = sessionId
-        ? module.open(targetAgent, sessionId)
+    const mounted = requestedSessionId
+        ? module.open(targetAgent, requestedSessionId)
         : module.launch(targetAgent, codingProjectDirOf(targetAgent));
-    return Promise.resolve(mounted).then(described => {
-        if (!described || !described.session_id) return false;
-        // The platform session exists only once the service has answered, so the
-        // selection and the history row are written from that answer rather than
-        // from a client-side guess.
-        sessionId = described.session_id;
-        writeScopedPreference(activeSessionStorageKey(), sessionId);
-        _sessCfg = null;
-        markActiveSessionRow();
-        if (isNew && typeof openSessionPanel === 'function') openSessionPanel();
-        if (typeof finishSessionPanelSelection === 'function') finishSessionPanelSelection();
-        if (typeof _historyVisible !== 'undefined' && _historyVisible) loadSessionList();
-        return true;
-    });
+    return Promise.resolve(mounted).then(described => !!(described && described.session_id));
 }
 
 /** Tear the coding pane down, through the module's own leave confirmation. */
@@ -12953,6 +12955,19 @@ function wireCodingModule() {
             ? wsGuardUnsaved(proceed)
             : (proceed(), true)),
         notify: (message) => _wsToast(message),
+        onOpened: (described, options) => {
+            const current = module.current();
+            if (!described?.session_id || current?.agent_id !== activeAgentId) return;
+            // This must update the page's sessionId, including when a failed
+            // initial launch succeeds through the pane's own retry button.
+            sessionId = described.session_id;
+            writeScopedPreference(activeSessionStorageKey(), sessionId);
+            _sessCfg = null;
+            markActiveSessionRow();
+            if (options?.isNew && typeof openSessionPanel === 'function') openSessionPanel();
+            if (typeof finishSessionPanelSelection === 'function') finishSessionPanelSelection();
+            if (typeof _historyVisible !== 'undefined' && _historyVisible) loadSessionList();
+        },
         redrawList: () => {
             _refreshHistoryList();
         },

@@ -90,7 +90,7 @@ class ScenesApiTests(unittest.TestCase):
         data = self._json(resp)
         self.assertEqual(data["status"], "success")
         self.assertEqual(len(data["categories"]), 10)
-        self.assertEqual(len(data["scenes"]), 26)
+        self.assertEqual(len(data["scenes"]), 27)
 
     def test_scenes_returns_configured_catalog(self):
         with patch.object(scenes_config, "load_config", return_value=_CATALOG):

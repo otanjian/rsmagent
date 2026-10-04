@@ -1,0 +1,31 @@
+{
+  "mode": "offline_local_environment",
+  "network_tested": false,
+  "checks": [
+    {
+      "id": "browser",
+      "verification": "passed",
+      "environment": "local"
+    },
+    {
+      "id": "opencode_runtime",
+      "verification": "passed",
+      "environment": "local"
+    },
+    {
+      "id": "embed",
+      "verification": "passed",
+      "environment": "local"
+    },
+    {
+      "id": "project",
+      "verification": "passed",
+      "environment": "local"
+    },
+    {
+      "id": "mcp_runtime",
+      "verification": "passed",
+      "environment": "local"
+    }
+  ]
+}

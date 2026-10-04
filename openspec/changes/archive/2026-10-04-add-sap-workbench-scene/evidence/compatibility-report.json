@@ -1,0 +1,115 @@
+{
+  "mode": "offline_compatibility_baseline",
+  "baseline_id": "sap-workbench-local-2026-10-03",
+  "network_tested": false,
+  "services_started": false,
+  "system_modified": false,
+  "baseline_policy": {
+    "complete_deployment_lock": false,
+    "runtime_enforced": false
+  },
+  "working_tree_checked": false,
+  "all_metadata_matches": false,
+  "checks": [
+    {
+      "id": "chrome",
+      "expected": "154.0.8037.95",
+      "actual": "154.0.8037.95",
+      "status": "matches"
+    },
+    {
+      "id": "macos",
+      "expected": "26.4",
+      "actual": "26.4",
+      "status": "matches"
+    },
+    {
+      "id": "main_python",
+      "expected": "3.14.3",
+      "actual": "3.14.3",
+      "status": "matches"
+    },
+    {
+      "id": "aiohttp",
+      "expected": "3.14.3",
+      "actual": "3.14.3",
+      "status": "matches"
+    },
+    {
+      "id": "opencode_source",
+      "expected": "0442518883",
+      "actual": "9acdb1d09ff4daed68550c2efb7ddb5250c6ab5b",
+      "status": "drift"
+    },
+    {
+      "id": "opencode_web",
+      "expected": "1.18.34",
+      "actual": "1.18.34",
+      "status": "matches"
+    },
+    {
+      "id": "bun",
+      "expected": "1.3.14",
+      "actual": "1.3.14",
+      "status": "matches"
+    },
+    {
+      "id": "mcp_python",
+      "expected": "3.10.0",
+      "actual": "3.10.0",
+      "status": "matches"
+    },
+    {
+      "id": "mcp_sdk",
+      "expected": "1.29.0",
+      "actual": "1.29.0",
+      "status": "matches"
+    },
+    {
+      "id": "anyio",
+      "expected": "4.14.2",
+      "actual": "4.14.2",
+      "status": "matches"
+    }
+  ],
+  "sap_current_version_checked": false,
+  "sap_observation": {
+    "basis": "historical_real_page_observation",
+    "system_id": "S4H",
+    "client": "200",
+    "language": "ZH",
+    "product": "SAP NetWeaver 758",
+    "gui": "SAP GUI for HTML",
+    "screen_label": "原始屏幕",
+    "theme_id": null,
+    "kernel_patch": null,
+    "sso_status": "unverified",
+    "redirect_domains_status": "unverified",
+    "transactions": [
+      {
+        "code": "SPRO",
+        "verified_scope": "read_only_navigation_to_reference_img",
+        "result": "SIMG / SAPLSHI01/0200"
+      },
+      {
+        "code": "ME21N",
+        "verified_scope": "navigate_date_roundtrip_f4_first_row_text_quantity_and_error_readback_without_save"
+      }
+    ],
+    "evidence": [
+      "openspec/changes/add-sap-workbench-scene/evidence/integration.md",
+      "openspec/changes/add-sap-workbench-scene/evidence/runtime-regression.md",
+      "openspec/changes/add-sap-workbench-scene/evidence/live-workbench.md"
+    ]
+  },
+  "not_verified": [
+    "exact_sap_kernel_patch_and_theme_identifier",
+    "sso_login_and_redirect_domain_inventory",
+    "remote_browser_display_and_novnc_deployment",
+    "all_transactions_and_controls_including_full_table_pagination",
+    "complete_valid_document_and_business_submission",
+    "two_real_sap_users_and_representative_concurrent_load",
+    "desktop_dual_pane_after_platform_login",
+    "compatibility_after_version_drift"
+  ]
+}

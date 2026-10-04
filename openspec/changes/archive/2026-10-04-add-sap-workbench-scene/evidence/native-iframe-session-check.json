@@ -1,0 +1,33 @@
+{
+  "first_binding": "sap_06328c46a32d97c75f7ad606f5e4bfdb",
+  "first_state": "ready",
+  "display_mode": "iframe",
+  "owner_state_counts_before_second": {
+    "closed": 18,
+    "ready": 1
+  },
+  "first_gateway_port": 53419,
+  "children_before_second": [
+    {
+      "pid": 87246,
+      "executable": "bun"
+    }
+  ],
+  "second_binding": "sap_698862cc0e92ee9981e92095beda17d3",
+  "first_state_after_second": "closed",
+  "old_remote_session_retained": true,
+  "second_state": "ready",
+  "owner_state_counts_after_second": {
+    "closed": 19,
+    "ready": 1
+  },
+  "first_gateway_stopped": true,
+  "children_after_second": [
+    {
+      "pid": 87368,
+      "executable": "bun"
+    }
+  ],
+  "old_host_reaped": true,
+  "no_dedicated_chrome": true
+}

@@ -250,7 +250,7 @@ function mount() {
     });
 
     return {
-        CodingChat, calls, clock, window, byId, reset, run, pump, settle, flush, respond, queue,
+        CodingChat, calls, clock, window, ctx, byId, reset, run, pump, settle, flush, respond, queue,
         count: p => calls.requests.filter(r => r.path.split('?')[0] === p).length,
         pendingCount: () => pending.length,
         frame: () => find('coding-frame'),
@@ -702,7 +702,7 @@ test('the pane never registers anything without a frame', async () => {
 });
 
 // ============================================================== failures
-test('a refused open reports the server reason and mounts nothing', async () => {
+test('a refused open keeps a coding error pane instead of exposing ordinary chat', async () => {
     const h = mount();
     h.respond('/api/coding/sessions/sess-1/open', () => ({
         ok: false, status: 403, data: { code: 'coding_disabled', message: '编码功能当前未启用，请联系管理员。' },
@@ -711,8 +711,74 @@ test('a refused open reports the server reason and mounts nothing', async () => 
     assert.equal(h.frame(), null);
     assert.ok(h.calls.notes.some(m => String(m).includes('编码功能当前未启用，请联系管理员。')),
         h.calls.notes.join(' | '));
-    // The platform's own pane was never disturbed.
+    assert.equal(h.isHidden('chat-input-area'), true);
+    assert.equal(h.CodingChat.isActive(), true);
+    assert.ok(h.retryBox(), 'the error stays visible with an explicit retry');
+    assert.equal(h.CodingChat.leave(), true);
     assert.equal(h.isHidden('chat-input-area'), false);
+});
+
+test('a coding launch hides ordinary chat before the server answers', async () => {
+    const h = mount();
+    const launch = h.CodingChat.launch('erp-coder', '/tmp/rsm/project');
+    assert.equal(h.isHidden('chat-input-area'), true);
+    assert.equal(h.isHidden('chat-messages'), true);
+    assert.equal(h.CodingChat.isActive(), true);
+    assert.ok(h.loading());
+    await h.settle({ ok: true, data: PAYLOAD });
+    assert.equal((await launch).session_id, PAYLOAD.session_id);
+});
+
+test('a disabled service has a persistent localized error and can retry the same creation', async () => {
+    const h = mount();
+    h.queue('/api/coding/sessions', [
+        { ok: false, status: 503, data: { code: 'coding_disabled',
+            message: 'the shared coding service is not enabled on this instance' } },
+        { ok: true, data: PAYLOAD },
+    ]);
+    assert.equal(await h.run(() => h.CodingChat.launch('erp-coder')), false);
+    assert.equal(h.isHidden('chat-input-area'), true);
+    assert.match(h.retryBox().children[0].textContent, /编码功能当前未启用/);
+    assert.equal(h.clock.pending(), 0, 'a failed open must not poll or retry automatically');
+    const requestId = h.calls.requests[0].options.body.request_id;
+    h.retryBox().children.find(el => el.className === 'coding-retry-btn').click();
+    await h.pump();
+    assert.equal(h.frame() !== null, true);
+    assert.equal(h.calls.requests[1].options.body.request_id, requestId);
+});
+
+test('a rejected transport shows a retry and never restores ordinary chat', async () => {
+    const h = mount();
+    h.CodingChat.setHooks({ request: () => Promise.reject(new Error('Failed to fetch')) });
+    assert.equal(await h.CodingChat.launch('erp-coder'), false);
+    assert.equal(h.isHidden('chat-input-area'), true);
+    assert.match(h.retryBox().children[0].textContent, /编码服务暂时不可用/);
+    assert.equal(h.CodingChat.leave(), true);
+    assert.equal(h.isHidden('chat-input-area'), false);
+});
+
+test('leaving a pending coding launch discards its late response', async () => {
+    const h = mount();
+    const launch = h.CodingChat.launch('erp-coder');
+    assert.equal(h.CodingChat.leave(), true);
+    await h.settle({ ok: true, data: PAYLOAD });
+    assert.equal(await launch, false);
+    assert.equal(h.frame(), null);
+    assert.equal(h.isHidden('chat-input-area'), false);
+    assert.equal(h.clock.pending(), 0);
+});
+
+test('a late launch cannot replace the newer coding session', async () => {
+    const h = mount();
+    let resolveOld;
+    h.CodingChat.setHooks({ request: path => path === '/api/coding/sessions'
+        ? new Promise(resolve => { resolveOld = resolve; })
+        : Promise.resolve({ ok: true, data: { ...PAYLOAD, session_id: 'newer' } }) });
+    const old = h.CodingChat.launch('erp-coder');
+    await h.CodingChat.open('erp-coder', 'newer');
+    resolveOld({ ok: true, data: PAYLOAD });
+    assert.equal(await old, false);
+    assert.equal(h.CodingChat.current().session_id, 'newer');
 });
 
 test('a silent frame offers a retry after the timeout, and the retry reopens the same session', async () => {
@@ -763,6 +829,83 @@ test('a session that cannot be created reports the reason and mounts nothing', a
 });
 
 // =========================================================== console seam
+function consoleLaunchHarness() {
+    const h = mount();
+    const events = [];
+    const agents = [{ id: 'erp-coder', name: 'SAP 智能助手', agent_type: 'coding',
+        coding_project_dir: '/tmp/rsm/project', can_chat: true, enabled: true }];
+    Object.assign(h.ctx, {
+        activeAgentId: 'ordinary', defaultAgentId: 'ordinary', sessionId: 'previous-session',
+        currentView: 'agent-workbench', agentCatalog: agents, _sessCfg: null,
+        _historyVisible: false, _wbContext: () => 'same-user-tenant',
+        fetchAgentWorkbench: async () => agents, applyAgentWorkbench() {},
+        findAgent: id => agents.find(a => a.id === id), renderAgentWorkbench() {},
+        wsGuardUnsaved: () => true,
+        writeScopedPreference: (...args) => events.push(['persist', ...args]),
+        activeSessionStorageKey: () => 'active-session',
+        navigateTo: view => { h.ctx.currentView = view; }, renderComposerIdentity() {},
+        resetWorkspaceToAgentRoot: () => events.push(['ordinary-workspace']),
+        requestAnimationFrame: fn => fn(),
+        _wsToast: message => h.calls.notes.push(message),
+        _refreshHistoryList() {}, openSessionPanel() {}, finishSessionPanelSelection() {},
+        _identityMode: () => 'database', sessionStorage: { getItem: () => 'tenant' },
+        chatInput: { value: '保留这条消息' },
+        t: h.window.t,
+        paintCodingService() {},
+    });
+    const load = (start, end) => {
+        const from = consoleJs.indexOf(start), to = consoleJs.indexOf(end, from);
+        assert.ok(from >= 0 && to > from, start);
+        vm.runInContext(consoleJs.slice(from, to), h.ctx);
+    };
+    load('function codingChatModule()', 'function switchSession(');
+    load('let _agentStartInFlight =', 'function conversationHasMessages(');
+    load('function newChat(', '/**\n * Move the workbench');
+    load('function sendMessage()', '// Attachment markers the backend');
+    load('function sendVoiceMessage(', '// Preserve actionable server failures');
+    h.ctx.wireCodingModule();
+    return { ...h, events };
+}
+
+test('the SAP card launch selects the server coding session in the console', async () => {
+    const h = consoleLaunchHarness();
+    h.respond('/api/coding/sessions', () => ({ ok: true, data: PAYLOAD }));
+    await h.run(() => h.ctx.startChatWithAgent('erp-coder'));
+    assert.equal(h.ctx.activeAgentId, 'erp-coder');
+    assert.equal(h.ctx.sessionId, PAYLOAD.session_id);
+    assert.equal(h.isHidden('chat-input-area'), true);
+    assert.equal(h.count('/api/coding/sessions'), 1);
+    assert.equal(h.events.some(e => e[0] === 'ordinary-workspace'), false);
+});
+
+test('a failed card launch followed by retry selects the recovered session', async () => {
+    const h = consoleLaunchHarness();
+    h.queue('/api/coding/sessions', [
+        { ok: false, status: 503, data: { code: 'coding_disabled' } },
+        { ok: true, data: PAYLOAD },
+    ]);
+    await h.run(() => h.ctx.startChatWithAgent('erp-coder'));
+    assert.equal(h.isHidden('chat-input-area'), true);
+    await h.run(() => h.CodingChat.retry());
+    assert.equal(h.ctx.sessionId, PAYLOAD.session_id);
+    assert.ok(h.events.some(e => e[0] === 'persist' && e[1] === 'active-session'
+        && e[2] === PAYLOAD.session_id));
+});
+
+test('stale text and voice send controls cannot send a coding Agent to ordinary chat', async () => {
+    const h = consoleLaunchHarness();
+    h.ctx.activeAgentId = 'erp-coder';
+    h.respond('/api/coding/sessions', () => ({ ok: false, status: 503,
+        data: { code: 'coding_disabled' } }));
+    // No ordinary send dependencies are installed: reaching them is a failure.
+    h.ctx.sendMessage();
+    await h.pump();
+    h.ctx.sendVoiceMessage('hello', '/audio.wav');
+    assert.equal(h.ctx.chatInput.value, '保留这条消息');
+    assert.equal(h.count('/api/coding/sessions'), 1);
+    assert.equal(h.isHidden('chat-input-area'), true);
+});
+
 test('console.js routes a conversation by the Agent type', () => {
     // The pane is entered by type, so the console has to ask. These are the
     // call sites the design names: open by type, and the coding-only controls

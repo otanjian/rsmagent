@@ -1,0 +1,197 @@
+{
+  "recorded_at": "2026-10-04T02:53:05+08:00",
+  "scope": "standalone SAP scene Linux display deployment; no SAP/OpenCode operation checks",
+  "change": {
+    "complete": 42,
+    "total": 57,
+    "remaining": 15,
+    "new_completed_tasks": []
+  },
+  "official_artifacts": [
+    {
+      "architecture": "arm64",
+      "official_commit": "ca011a8b1c3b259e4cbbf83bf6841f1fd5f497c1",
+      "manifest_digest": "sha256:0c8bbb8e987a035fe1d9704eb2e571b7e9a836e1caa46345290674b45b69e417",
+      "compressed_layer_digest": "sha256:333125b5cee9fb6718bdcb523fc93b4adc71b7c37ada6146a20c193430e549b9",
+      "compressed_bytes": 28123680,
+      "unpacked_digest": "sha256:055ab12bd547e17a0630037f06a186cf405e3f61bb03a614562ca8f5ab52a8be",
+      "unpacked_bytes": 100239360,
+      "archive": "/var/folders/lq/nkc1bb_s0f7b_3krh4_r3k_c0000gn/T/sap-workbench-official-oci-pdi3yz0o/arm64.tar",
+      "manifest_config_layer_verified": true,
+      "network_source": "https://raw.githubusercontent.com/debuerreotype/docker-debian-artifacts/ca011a8b1c3b259e4cbbf83bf6841f1fd5f497c1/bookworm/slim/oci/",
+      "cli_archive": "/var/folders/lq/nkc1bb_s0f7b_3krh4_r3k_c0000gn/T/sap-workbench-oci-cli-main-20261004/arm64.tar",
+      "cli_archive_sha256": "baa33beff1034ce8e76f0cdfc82931f6256c793741ce6740250a5b7e92b5d895",
+      "cli_archive_bytes": 28139520,
+      "original_payloads_byte_identical": true
+    },
+    {
+      "architecture": "amd64",
+      "official_commit": "8f962b15d7884a90e17876a9303cbac909d119aa",
+      "manifest_digest": "sha256:f3034a6ec3c1205360777c4aae76234998866ad18806ae62b63a3f84ccad782b",
+      "compressed_layer_digest": "sha256:774043ccc8ccd0d0833a9ee0792142ab7ad93df971e59dd248fbf82db16d0150",
+      "compressed_bytes": 28238443,
+      "unpacked_digest": "sha256:34467cc93912af891dfee8a3902adf9b4f355a9bca4eaa46f658d1181a21de0d",
+      "unpacked_bytes": 77905920,
+      "archive": "/var/folders/lq/nkc1bb_s0f7b_3krh4_r3k_c0000gn/T/sap-workbench-official-oci-pdi3yz0o/amd64.tar",
+      "manifest_config_layer_verified": true,
+      "network_source": "https://raw.githubusercontent.com/debuerreotype/docker-debian-artifacts/8f962b15d7884a90e17876a9303cbac909d119aa/bookworm/slim/oci/",
+      "cli_archive": "/var/folders/lq/nkc1bb_s0f7b_3krh4_r3k_c0000gn/T/sap-workbench-oci-cli-main-20261004/amd64.tar",
+      "cli_archive_sha256": "b401565d57f3b2f91a8075f3b734c04d0556a4b51c62ffd89bd51ec6e8e041ea",
+      "cli_archive_bytes": 28252160,
+      "original_payloads_byte_identical": true
+    }
+  ],
+  "cli_actual_download": {
+    "python": "3.14.3",
+    "returncode": 0,
+    "architectures": [
+      "amd64",
+      "arm64"
+    ],
+    "default_tls_verification": true,
+    "rootfs_extracted": false,
+    "archive_payload_comparison": "byte identical to independently verified Docker-imported blobs"
+  },
+  "mcp_python310_attempt": {
+    "returncode": 1,
+    "message": "Debian OCI fetch failed: TLS certificate validation failed",
+    "output_directory_cleaned": true,
+    "tls_verification_retained": true,
+    "python": "3.10.0",
+    "default_ca_count": 0,
+    "help_contract_passed_offline": true
+  },
+  "docker_import": [
+    {
+      "architecture": "arm64",
+      "reference": "debian@sha256:0c8bbb8e987a035fe1d9704eb2e571b7e9a836e1caa46345290674b45b69e417",
+      "present_before": false,
+      "load_returncode": 0,
+      "load_message": "Loaded image: debian@sha256:0c8bbb8e987a035fe1d9704eb2e571b7e9a836e1caa46345290674b45b69e417",
+      "locked_reference_resolves": true
+    },
+    {
+      "architecture": "amd64",
+      "reference": "debian@sha256:f3034a6ec3c1205360777c4aae76234998866ad18806ae62b63a3f84ccad782b",
+      "present_before": false,
+      "load_returncode": 0,
+      "load_message": "Loaded image: debian@sha256:f3034a6ec3c1205360777c4aae76234998866ad18806ae62b63a3f84ccad782b",
+      "locked_reference_resolves": true
+    }
+  ],
+  "build_attempts": [
+    {
+      "command": "docker --context colima build --force-rm --build-arg TARGETARCH=arm64 -f Scene/sap_workbench/deployment/browser.Dockerfile -t sap-workbench-display-fixture:20261004-oci Scene/sap_workbench/deployment",
+      "returncode": 100,
+      "timed_out": false,
+      "seconds": 9.26,
+      "base_stages_passed": true,
+      "failed_stage": "Step 6/15 APT",
+      "reason": "main/security snapshot InRelease connection failed; indices unavailable"
+    },
+    {
+      "command": "same original Dockerfile and locks; process-only HTTP_PROXY/HTTPS_PROXY/http_proxy/https_proxy from existing VM proxy",
+      "returncode": 100,
+      "timed_out": false,
+      "seconds": 0.51,
+      "configured_build_proxy": true,
+      "global_network_modified": false,
+      "base_stages_passed": true,
+      "failed_stage": "Step 6/15 APT",
+      "reason": "main/security snapshot InRelease HTTP 502; not a successful signature check"
+    }
+  ],
+  "additional_readonly_routes": [
+    {
+      "url": "https://snapshot-cloudflare.debian.org/archive/debian/20261003T000000Z/dists/bookworm/Release",
+      "result": "URLError / SSLEOFError"
+    },
+    {
+      "url": "http://snapshot-cloudflare.debian.org/archive/debian/20261003T000000Z/dists/bookworm/Release",
+      "result": "HTTP 502"
+    },
+    {
+      "url": "https://ftp.debian.org/debian/dists/bookworm/Release",
+      "result": "URLError / SSLEOFError"
+    }
+  ],
+  "cleanup": {
+    "original_images_preserved": true,
+    "original_containers_unchanged": true,
+    "original_image_count": 6,
+    "original_container_count": 6,
+    "new_verified_base_images": 2,
+    "owned_intermediate_removed": true,
+    "no_fixture_image_or_container": true,
+    "no_running_containers": true,
+    "colima": "stopped",
+    "docker_context": "default",
+    "original_vm_state_restored": true,
+    "readonly_rechecked_at": "2026-10-04T02:51:49+08:00"
+  },
+  "tests": {
+    "command": ".venv/bin/python -B -m pytest -q tests/test_sap_workbench_debian_oci.py tests/test_sap_workbench_display_deployment.py tests/test_sap_workbench_display_process_cleanup.py",
+    "passed": 90,
+    "seconds": 0.45,
+    "cli_tests_included": 38,
+    "overlapping_test_counts_added": false,
+    "full_sap_suite_rerun": false,
+    "node_rerun": false,
+    "bun_rerun": false,
+    "upstream_component_smoke_rerun": false
+  },
+  "previous_full_regression_reference": "mcp-dom-services-reloaded.json",
+  "runtime": {
+    "linux_image_built": false,
+    "linux_browser_started": false,
+    "runtime_verified": false,
+    "workbench_binding_verified": false,
+    "production_nodes_registered": false,
+    "main_services_restarted": false,
+    "main_source_hash_reference": "mcp-dom-services-reloaded.json",
+    "no_new_sap_opencode_model_or_business_mcp_requests": true,
+    "save_post_delete_enabled": false,
+    "real_operation_checks": "still deferred per user"
+  },
+  "boundaries": {
+    "dockerfile_changed": false,
+    "browser_versions_changed": false,
+    "global_proxy_dns_ca_changed": false,
+    "tls_signature_sandbox_checks_disabled": false,
+    "rsmcode_source_changed": false,
+    "normal_agent_iam_bridge_desktop_source_changed": false
+  },
+  "sources": [
+    {
+      "path": "Scene/sap_workbench/deployment/fetch-debian-oci.py",
+      "sha256": "8efff729e55450798893028c6669e804ecbf3588bc6f452c0180e59e0835086e"
+    },
+    {
+      "path": "tests/test_sap_workbench_debian_oci.py",
+      "sha256": "4802fd94d2d20962241064928376958a0745c4e34d2985a819879b43bfa2a85e"
+    },
+    {
+      "path": "Scene/sap_workbench/deployment/browser.Dockerfile",
+      "sha256": "5407675c56c0c0a3a92ed90e92f33fc19ad5403419945103a35e22c8ec9e03a6"
+    },
+    {
+      "path": "Scene/sap_workbench/deployment/browser-versions.json",
+      "sha256": "62c8443e2d6ba581dd0559941dfe7dee4a6530451c933c348590dfc02dde7d15"
+    }
+  ],
+  "final_validation": {
+    "sap_text_files_including_tests": 153,
+    "local_doc_links": 217,
+    "sap_manifest_entries": 3,
+    "prior_runtime_sources_unchanged": 15,
+    "new_cli_and_tests_frozen": true,
+    "core_tracked_diff_empty": true,
+    "opencode_and_sap_connect_worktrees_clean": true,
+    "git_diff_whitespace": "pass",
+    "openspec_strict": "pass",
+    "change_complete": 42,
+    "change_remaining": 15,
+    "remaining_tasks_match_scope_table": true
+  },
+  "final_validation_at": "2026-10-04T02:54:13+08:00"
+}

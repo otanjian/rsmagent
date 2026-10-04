@@ -1,0 +1,11 @@
+{
+  "id": "sap_workbench",
+  "name": "SAP智能工作台",
+  "category": "data",
+  "description": "SAP智能工作台是面向企业的 AI 业务副驾驶（AI Copilot），依托 SAP 业务知识图谱，通过对话式交互，提供自然语言查询、业务洞察、流程自动化、开发辅助等能力，覆盖财务、采购、供应链、销售、HR、开发、运维等业务场景",
+  "icon": "fa-desktop",
+  "has_workbench": true,
+  "workbench_title": "SAP智能工作台",
+  "card_action": "configure",
+  "required_permission": "chat.use"
+}

@@ -136,6 +136,8 @@
         // back (it owns which view is showing); the module only says whether
         // coding chrome is on.
         onLeave: null,
+        // Includes a successful retry after the initial open failed.
+        onOpened: null,
         // Console.js points this at its own "select this conversation" so a
         // newly attached session becomes the selected history row.
         onLinked: null,
@@ -158,6 +160,7 @@
     // =================================================================
     // The mounted coding pane, or null when the ordinary chat pane is showing.
     var mount = null;
+    var mountGeneration = 0;
 
     // The refresh loop. ``generation`` is bumped whenever the thing being
     // refreshed changes (a different session, a different Agent, leaving the
@@ -184,7 +187,9 @@
     }
 
     function isActive() {
-        return !!(mount && mount.frame);
+        // Loading and failed opens still own the coding surface. Exposing the
+        // ordinary composer here would send a coding Agent to /message.
+        return !!mount;
     }
 
     function current() {
@@ -258,7 +263,7 @@
                 },
             },
         )).then(function (result) {
-            if (generation !== mount.generation) return false;
+            if (!mount || generation !== mount.generation) return false;
             if (!result || !result.ok) {
                 delete mount.attachSent[externalSessionID];
                 hooks.notify(codingT('coding_attach_failed', {
@@ -280,10 +285,13 @@
     }
 
     function reasonOf(result) {
+        if (result && result.data && result.data.code === 'coding_disabled') {
+            return codingT('coding_disabled');
+        }
         if (result && result.data && typeof result.data.message === 'string' && result.data.message) {
             return result.data.message;
         }
-        return result && result.status ? String(result.status) : '';
+        return codingT('coding_unavailable');
     }
 
     // =================================================================
@@ -379,20 +387,22 @@
             mount.loadingEl.textContent = codingT('coding_loading');
             mount.host.appendChild(mount.loadingEl);
         }
+        if (!mount.frame) return;
         mount.readyTimer = hooks.setTimer(function () {
             mount.readyTimer = null;
             showRetry();
         }, READY_TIMEOUT_MS);
     }
 
-    function showRetry() {
+    function showRetry(error) {
         if (!mount || !mount.host || mount.retryEl) return;
         var box = document.createElement('div');
         box.className = 'coding-retry';
         var text = document.createElement('span');
         // Not "the service is down" -- nothing said that. It says what is true:
         // the pane is waiting, and here is the one safe action.
-        text.textContent = codingT('coding_not_ready') + ' ';
+        text.textContent = (error || codingT('coding_not_ready')) + ' ';
+        box.setAttribute('role', error ? 'alert' : 'status');
         var button = document.createElement('button');
         button.type = 'button';
         button.className = 'coding-retry-btn';
@@ -432,25 +442,18 @@
         if (mount.host) mount.host.classList.remove('coding-active');
     }
 
-    function installFrame(payload, agentId, requestId) {
+    function beginOpen(agentId, sessionId, requestId) {
         var host = document.getElementById('chat-main');
-        if (!host) return false;
-        if (!payload.iframe_url) {
-            hooks.notify(codingT('coding_open_failed', { reason: reasonOf({}) }));
-            return false;
-        }
-        // Replace whatever was mounted: opening another session must not leave
-        // the previous frame alive behind the new one.
-        var generation = (mount ? mount.generation : 0) + 1;
+        if (!host) return null;
         if (mount) unmountFrame();
-        var channel = 'ch-' + Date.now().toString(36) + '-'
-            + Math.random().toString(36).slice(2, 10);
+        stopRefresh();
+        refresh.generation += 1;
         mount = {
             agentId: agentId,
-            sessionId: payload.session_id,
-            externalId: payload.external_session_id || '',
-            channel: channel,
-            origin: originOf(payload.iframe_url),
+            sessionId: sessionId || '',
+            externalId: '',
+            channel: '',
+            origin: '',
             frame: null,
             host: host,
             ready: false,
@@ -459,20 +462,49 @@
             retryEl: null,
             requestId: requestId || '',
             attachSent: {},
-            generation: generation,
+            generation: ++mountGeneration,
+            pending: true,
         };
+        applyChrome(true);
+        showLoading();
+        return mount;
+    }
+
+    function failOpen(attempt, result) {
+        if (mount !== attempt) return false;
+        mount.pending = false;
+        removeRetry();
+        var message = codingT('coding_open_failed', { reason: reasonOf(result) });
+        showRetry(message);
+        hooks.notify(message);
+        return false;
+    }
+
+    function installFrame(payload, attempt) {
+        if (mount !== attempt) return false;
+        if (!payload.iframe_url || !payload.session_id) return failOpen(attempt, null);
+        removeRetry();
+        mount.pending = false;
+        mount.sessionId = payload.session_id;
+        mount.externalId = payload.external_session_id || '';
+        mount.channel = 'ch-' + Date.now().toString(36) + '-'
+            + Math.random().toString(36).slice(2, 10);
+        mount.origin = originOf(payload.iframe_url);
         var frame = document.createElement('iframe');
         frame.className = 'coding-frame';
         frame.setAttribute('title', codingT('coding_type_coding'));
         // The platform's own origin is the only allowed ancestor; the child
         // asserts the same on its side.
         frame.setAttribute('allow', 'clipboard-write');
-        frame.src = frameUrl(payload, channel);
+        frame.src = frameUrl(payload, mount.channel);
         mount.frame = frame;
         applyChrome(true);
-        host.appendChild(frame);
+        mount.host.appendChild(frame);
         showLoading();
         startRefresh();
+        if (typeof hooks.onOpened === 'function') {
+            hooks.onOpened(payload, { isNew: !!mount.requestId });
+        }
         // The described session, not a bare `true`: the console needs the
         // platform session id the service just confirmed.
         return payload;
@@ -486,17 +518,19 @@
     // here; the caller resumes it through `launch` with the same request id.
     function open(agentId, sessionId) {
         if (!agentId || !sessionId) return Promise.resolve(false);
-        return Promise.resolve(hooks.request(
+        var attempt = beginOpen(agentId, sessionId, '');
+        if (!attempt) return Promise.resolve(false);
+        return Promise.resolve().then(function () { return hooks.request(
             '/api/coding/sessions/' + encodeURIComponent(sessionId)
                 + '/open?agent_id=' + encodeURIComponent(agentId),
             { method: 'GET' },
-        )).then(function (result) {
+        ); }).then(function (result) {
+            if (mount !== attempt) return false;
             if (!result || !result.ok) {
-                hooks.notify(codingT('coding_open_failed', { reason: reasonOf(result) }));
-                return false;
+                return failOpen(attempt, result);
             }
-            return installFrame(result.data || {}, agentId, '');
-        });
+            return installFrame(result.data || {}, attempt);
+        }).catch(function () { return failOpen(attempt, null); });
     }
 
     // Create the session for a click, or resume the one that click already
@@ -506,35 +540,30 @@
     function launch(agentId, projectDir, requestId) {
         if (!agentId) return Promise.resolve(false);
         var rid = requestId || newRequestId();
-        return Promise.resolve(hooks.request('/api/coding/sessions', {
+        var attempt = beginOpen(agentId, '', rid);
+        if (!attempt) return Promise.resolve(false);
+        return Promise.resolve().then(function () { return hooks.request('/api/coding/sessions', {
             method: 'POST',
             body: { agent_id: agentId, request_id: rid },
-        })).then(function (result) {
+        }); }).then(function (result) {
+            if (mount !== attempt) return false;
             if (!result || !result.ok) {
-                hooks.notify(codingT('coding_open_failed', { reason: reasonOf(result) }));
-                return false;
+                return failOpen(attempt, result);
             }
-            return installFrame(result.data || {}, agentId, rid);
-        });
+            return installFrame(result.data || {}, attempt);
+        }).catch(function () { return failOpen(attempt, null); });
     }
 
     // The retry affordance: only ever reopens *this* session. With the stored
     // request id it resumes the same reservation; without one (a session opened
     // from history) it is a plain re-open.
     function retry() {
-        if (!mount) return Promise.resolve(false);
+        if (!mount || mount.pending) return Promise.resolve(false);
         var agentId = mount.agentId;
         var requestId = mount.requestId;
         var sessionId = mount.sessionId;
-        var generation = mount.generation;
         if (requestId) {
-            unmountFrame();
-            return launch(agentId, '', requestId).then(function (ok) {
-                if (!ok && generation === (mount ? mount.generation : -1)) {
-                    hooks.notify(codingT('coding_unavailable'));
-                }
-                return ok;
-            });
+            return launch(agentId, '', requestId);
         }
         return open(agentId, sessionId);
     }
@@ -543,7 +572,7 @@
     // the platform redraw its own list. Concurrent calls collapse into the one
     // in flight, and a round whose generation moved on is discarded.
     function refreshNow() {
-        if (!mount) return Promise.resolve(false);
+        if (!mount || !mount.frame) return Promise.resolve(false);
         if (refresh.inFlight) return refresh.inFlight;
         var generation = refresh.generation;
         var agentId = mount.agentId;
@@ -624,11 +653,13 @@
     }
 
     function _reset() {
+        var hadMount = !!mount;
         unmountFrame();
         mount = null;
         stopRefresh();
         refresh.inFlight = null;
         refresh.generation += 1;
+        if (hadMount) applyChrome(false);
     }
 
     // =================================================================

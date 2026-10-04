@@ -1,0 +1,249 @@
+{
+  "checked_at": "2026-10-04T02:27:11+08:00",
+  "scope": "source_backend_reload_no_sap_opencode_operations",
+  "desktop": {
+    "port": 9876,
+    "old_pid": 66363,
+    "new_pid": 68018,
+    "original_electron": 29265,
+    "original_recovery": true,
+    "environment_preserved": true
+  },
+  "web": {
+    "port": 9899,
+    "old_pid": 66404,
+    "new_pid": 68062,
+    "original_command_and_environment_preserved": true
+  },
+  "health_status": {
+    "desktop": 200,
+    "web": 200
+  },
+  "sources": [
+    {
+      "path": "Scene/sap_workbench/backend/mcp_data.py",
+      "sha256": "73f828f5d3a7ea4324992413bccd25ef6b47cd554d48a950c192ced55999663d"
+    },
+    {
+      "path": "Scene/sap_workbench/backend/mcp_login.py",
+      "sha256": "2b4cff32d6252326d5a1304f0c70e2eca04ffde7c0a2ac79f0d4859baf136843"
+    },
+    {
+      "path": "Scene/sap_workbench/backend/mcp_runtime.py",
+      "sha256": "f02f31a43d47e3c29f99f236ae567840165de1d237333fd3afd6ef924471d345"
+    },
+    {
+      "path": "Scene/sap_workbench/backend/mcp_worker.py",
+      "sha256": "e996da4a1b53c23c4fdc60a8e68916d7c727ea3709d939b5e8c67a246f159237"
+    },
+    {
+      "path": "Scene/sap_workbench/backend/purchase_order.py",
+      "sha256": "5b723b7fbfbb56fa1b9e3960ea5db28291a61248cb644246b217de6724bc595b"
+    },
+    {
+      "path": "Scene/sap_workbench/backend/runtime.py",
+      "sha256": "84d2d3f8673ae26fccf572bd0294e8da93961d6443d985d0e9e1ee018a7ac531"
+    },
+    {
+      "path": "Scene/sap_workbench/opencode_adapter/tools.ts",
+      "sha256": "c2568fc73a041965d35d2a018f0e3ade68246cf31f57f4e13038caa2c1302930"
+    },
+    {
+      "path": "Scene/sap_workbench/opencode_adapter/server.ts",
+      "sha256": "81bca8f241bd64d02d276d5587fa14cb9ba2daa9341332b3bcd199460ad8a1d7"
+    },
+    {
+      "path": "Scene/sap_workbench/browser_service/dom.py",
+      "sha256": "aa14ffeeaeb85675682d66af0c2d9ce3e32cd45f4cbe3f31caeddca9a797ac1e"
+    },
+    {
+      "path": "Scene/sap_workbench/browser_service/page.py",
+      "sha256": "8a06b8c2ac6899fd9b13012c51de568de6489d566c0f981be2a958ff1584631e"
+    },
+    {
+      "path": "Scene/sap_workbench/browser_service/effects.py",
+      "sha256": "5eda4bdfcb476f2ab110906f695d451704d9ced18a253954a477eb6d4bcc3618"
+    },
+    {
+      "path": "Scene/sap_workbench/deployment/entrypoint.py",
+      "sha256": "d44a155d6fd1d0fcf06029301ad4b60bee6666c3d3cf21139d410ec7974eb5d8"
+    },
+    {
+      "path": "Scene/sap_workbench/backend/commit.py",
+      "sha256": "73804fe0d49dec9b1f49a681496c028c29d1189f4c994b2892457ced34691980"
+    },
+    {
+      "path": "Scene/sap_workbench/backend/http.py",
+      "sha256": "ad5a0961990ef5e25e840adece9c1778599f39f3ee104c93867a324541bf6d39"
+    },
+    {
+      "path": "channel/web/route_registry.py",
+      "sha256": "8d9e2a4b7ff72f5f3b1f1b714b710c238357db1cb6328f5362913c285cab6c10"
+    }
+  ],
+  "no_active_workbench_before_reload": true,
+  "no_auth_copy_or_password_reset": true,
+  "no_new_master_key": true,
+  "no_model_or_sap_mcp_requests": true,
+  "public_http_and_static_checks": [
+    {
+      "port": 9876,
+      "path": "/api/health",
+      "status": 200
+    },
+    {
+      "port": 9876,
+      "path": "/chat",
+      "status": 200
+    },
+    {
+      "port": 9876,
+      "path": "/scene-assets/sap_workbench/frontend/workbench.js",
+      "status": 200,
+      "source_matches": true
+    },
+    {
+      "port": 9876,
+      "path": "/scene-assets/sap_workbench/frontend/workbench.css",
+      "status": 200,
+      "source_matches": true
+    },
+    {
+      "port": 9876,
+      "path": "/scene-assets/runtime.js",
+      "status": 200,
+      "matches_previous_static_build": true
+    },
+    {
+      "port": 9876,
+      "path": "/api/scenes/sap-workbench/config",
+      "tenant_header_only": false,
+      "status": 400
+    },
+    {
+      "port": 9876,
+      "path": "/api/scenes/sap-workbench/config",
+      "tenant_header_only": true,
+      "status": 401
+    },
+    {
+      "port": 9876,
+      "path": "/api/scenes/sap-workbench/sessions",
+      "tenant_header_only": false,
+      "status": 400
+    },
+    {
+      "port": 9876,
+      "path": "/api/scenes/sap-workbench/sessions",
+      "tenant_header_only": true,
+      "status": 401
+    },
+    {
+      "port": 9899,
+      "path": "/api/health",
+      "status": 200
+    },
+    {
+      "port": 9899,
+      "path": "/chat",
+      "status": 200
+    },
+    {
+      "port": 9899,
+      "path": "/scene-assets/sap_workbench/frontend/workbench.js",
+      "status": 200,
+      "source_matches": true
+    },
+    {
+      "port": 9899,
+      "path": "/scene-assets/sap_workbench/frontend/workbench.css",
+      "status": 200,
+      "source_matches": true
+    },
+    {
+      "port": 9899,
+      "path": "/scene-assets/runtime.js",
+      "status": 200,
+      "matches_previous_static_build": true
+    },
+    {
+      "port": 9899,
+      "path": "/api/scenes/sap-workbench/config",
+      "tenant_header_only": false,
+      "status": 400
+    },
+    {
+      "port": 9899,
+      "path": "/api/scenes/sap-workbench/config",
+      "tenant_header_only": true,
+      "status": 401
+    },
+    {
+      "port": 9899,
+      "path": "/api/scenes/sap-workbench/sessions",
+      "tenant_header_only": false,
+      "status": 400
+    },
+    {
+      "port": 9899,
+      "path": "/api/scenes/sap-workbench/sessions",
+      "tenant_header_only": true,
+      "status": 401
+    }
+  ],
+  "post_reload_checked_at": "2026-10-04T02:27:25+08:00",
+  "sources_unchanged_after_reload": true,
+  "no_new_chrome_ui_or_sap_opencode_operational_test": true,
+  "final_validation": {
+    "git_diff_whitespace": "pass",
+    "sap_text_files_including_tests": 149,
+    "local_doc_links": 208,
+    "sap_manifest_entries": 3,
+    "sources_unchanged_after_reload": true,
+    "core_tracked_diff_empty": true,
+    "opencode_and_sap_connect_worktrees_clean": true,
+    "change_complete": 42,
+    "change_total": 57,
+    "change_remaining": 15,
+    "remaining_tasks_match_scope_table": true,
+    "openspec_strict": "pass"
+  },
+  "isolated_regression": {
+    "python": {
+      "passed": 1182,
+      "skipped": 2,
+      "seconds": 92.49,
+      "live_chrome": false,
+      "upstream_fixture": false,
+      "installed_mcp_sdk_offline_contract": true
+    },
+    "node": {
+      "passed": 170,
+      "failed": 0,
+      "milliseconds": 204.801875
+    }
+  },
+  "unchanged_opencode_regression_reference": {
+    "record": "purchase-order-services-reloaded.json",
+    "rerun_this_round": false,
+    "adapter_sources_unchanged": true,
+    "previous_bun": {
+      "passed": 4,
+      "failed": 0,
+      "assertions": 81,
+      "seconds": 1.99,
+      "real_canonical_runtime": true,
+      "provider_and_sap_bridge_fixtures": true
+    }
+  },
+  "isolated_runtime_compatibility": {
+    "python": "3.10.0",
+    "mcp": "1.29.0",
+    "tools": [
+      "read_table",
+      "run_query"
+    ],
+    "no_network_or_live_mcp": true
+  },
+  "final_validation_at": "2026-10-04T02:29:52+08:00"
+}

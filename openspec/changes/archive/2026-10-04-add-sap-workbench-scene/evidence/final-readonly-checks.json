@@ -1,0 +1,34 @@
+{
+  "date": "2026-10-03",
+  "note": "Selective fields from persisted real tool results; identifiers, credentials and business contents omitted. First pyrfc attempt failed; final call succeeded via ADT. Native RFC not verified.",
+  "checks": [
+    {
+      "event": 341,
+      "tool": "sap_mcp_read",
+      "connection": "sap-abap",
+      "operation": "adt_discover",
+      "tool_result": "success",
+      "discovery_document_present": true
+    },
+    {
+      "event": 359,
+      "tool": "sap_mcp_read",
+      "connection": "sap-pyrfc",
+      "operation": "healthcheck",
+      "tool_result": "success",
+      "result": {
+        "status": "connected",
+        "backend_mode": "adt",
+        "active_backend": "adt",
+        "pyrfc_installed": false
+      }
+    },
+    {
+      "event": 375,
+      "tool": "sap_page_read",
+      "tool_result": "success",
+      "title": "显示实施指南",
+      "login": false
+    }
+  ]
+}

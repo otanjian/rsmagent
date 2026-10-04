@@ -1,0 +1,20 @@
+{
+  "protocol": "V1",
+  "receipts": [
+    {
+      "transaction": "ME23N",
+      "status": "navigation_applied",
+      "target": "current_left_iframe",
+      "sap_page_verified": false,
+      "business_result_verified": false
+    },
+    {
+      "transaction": "ME21N",
+      "status": "navigation_applied",
+      "target": "current_left_iframe",
+      "sap_page_verified": false,
+      "business_result_verified": false
+    }
+  ],
+  "existing_history_preserved": true
+}

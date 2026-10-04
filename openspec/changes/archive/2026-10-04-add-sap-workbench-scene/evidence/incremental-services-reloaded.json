@@ -1,0 +1,218 @@
+{
+  "checked_at": "2026-10-04T01:10:50+08:00",
+  "scope": "source_backend_reload_no_sap_opencode_operations",
+  "desktop": {
+    "port": 9876,
+    "old_pid": 58386,
+    "new_pid": 61515,
+    "original_electron": 29265,
+    "original_recovery": true,
+    "environment_preserved": true
+  },
+  "web": {
+    "port": 9899,
+    "old_pid": 58422,
+    "new_pid": 61556,
+    "original_command_and_environment_preserved": true
+  },
+  "health_status": {
+    "desktop": 200,
+    "web": 200
+  },
+  "sources": [
+    {
+      "path": "Scene/sap_workbench/browser_service/effects.py",
+      "sha256": "5eda4bdfcb476f2ab110906f695d451704d9ced18a253954a477eb6d4bcc3618"
+    },
+    {
+      "path": "Scene/sap_workbench/browser_service/page.py",
+      "sha256": "1bdb5b2f11f72803557eaa975841ebd73a348f615d85f32a693aa47038251a25"
+    },
+    {
+      "path": "Scene/sap_workbench/backend/http.py",
+      "sha256": "ad5a0961990ef5e25e840adece9c1778599f39f3ee104c93867a324541bf6d39"
+    },
+    {
+      "path": "channel/web/route_registry.py",
+      "sha256": "8d9e2a4b7ff72f5f3b1f1b714b710c238357db1cb6328f5362913c285cab6c10"
+    }
+  ],
+  "no_active_workbench_before_reload": true,
+  "no_auth_copy_or_password_reset": true,
+  "no_new_master_key": true,
+  "no_model_or_sap_mcp_requests": true,
+  "public_http_and_static_checks": [
+    {
+      "port": 9876,
+      "path": "/api/health",
+      "status": 200
+    },
+    {
+      "port": 9876,
+      "path": "/chat",
+      "status": 200
+    },
+    {
+      "port": 9876,
+      "path": "/scene-assets/sap_workbench/frontend/workbench.js",
+      "status": 200,
+      "source_matches": true,
+      "bytes": 63101,
+      "sha256": "4659cf724da0ea22dba40aa2e79fbda79370be35a7b008edf96fa2392e7cc3b3"
+    },
+    {
+      "port": 9876,
+      "path": "/scene-assets/sap_workbench/frontend/workbench.css",
+      "status": 200,
+      "source_matches": true,
+      "bytes": 9521,
+      "sha256": "f07ba56d51a95a1992e5f5f91a354ea2fc423205f75d4d69b9f8ebd82eed556d"
+    },
+    {
+      "port": 9876,
+      "path": "/scene-assets/runtime.js",
+      "status": 200,
+      "matches_previous_static_build": true,
+      "bytes": 644251,
+      "sha256": "aa21fdb56b2296b339795be05ec13ee381386b11b0f7be159356bac3afeba0e9"
+    },
+    {
+      "port": 9876,
+      "path": "/api/scenes/sap-workbench/config",
+      "tenant_header_only": false,
+      "status": 400,
+      "code": "missing_tenant"
+    },
+    {
+      "port": 9876,
+      "path": "/api/scenes/sap-workbench/config",
+      "tenant_header_only": true,
+      "status": 401,
+      "code": "unauthorized"
+    },
+    {
+      "port": 9876,
+      "path": "/api/scenes/sap-workbench/sessions",
+      "tenant_header_only": false,
+      "status": 400,
+      "code": "missing_tenant"
+    },
+    {
+      "port": 9876,
+      "path": "/api/scenes/sap-workbench/sessions",
+      "tenant_header_only": true,
+      "status": 401,
+      "code": "unauthorized"
+    },
+    {
+      "port": 9899,
+      "path": "/api/health",
+      "status": 200
+    },
+    {
+      "port": 9899,
+      "path": "/chat",
+      "status": 200
+    },
+    {
+      "port": 9899,
+      "path": "/scene-assets/sap_workbench/frontend/workbench.js",
+      "status": 200,
+      "source_matches": true,
+      "bytes": 63101,
+      "sha256": "4659cf724da0ea22dba40aa2e79fbda79370be35a7b008edf96fa2392e7cc3b3"
+    },
+    {
+      "port": 9899,
+      "path": "/scene-assets/sap_workbench/frontend/workbench.css",
+      "status": 200,
+      "source_matches": true,
+      "bytes": 9521,
+      "sha256": "f07ba56d51a95a1992e5f5f91a354ea2fc423205f75d4d69b9f8ebd82eed556d"
+    },
+    {
+      "port": 9899,
+      "path": "/scene-assets/runtime.js",
+      "status": 200,
+      "matches_previous_static_build": true,
+      "bytes": 644251,
+      "sha256": "aa21fdb56b2296b339795be05ec13ee381386b11b0f7be159356bac3afeba0e9"
+    },
+    {
+      "port": 9899,
+      "path": "/api/scenes/sap-workbench/config",
+      "tenant_header_only": false,
+      "status": 400,
+      "code": "missing_tenant"
+    },
+    {
+      "port": 9899,
+      "path": "/api/scenes/sap-workbench/config",
+      "tenant_header_only": true,
+      "status": 401,
+      "code": "unauthorized"
+    },
+    {
+      "port": 9899,
+      "path": "/api/scenes/sap-workbench/sessions",
+      "tenant_header_only": false,
+      "status": 400,
+      "code": "missing_tenant"
+    },
+    {
+      "port": 9899,
+      "path": "/api/scenes/sap-workbench/sessions",
+      "tenant_header_only": true,
+      "status": 401,
+      "code": "unauthorized"
+    }
+  ],
+  "post_reload_checked_at": "2026-10-04T01:12:43+08:00",
+  "python_suite": {
+    "passed": 859,
+    "skipped": 1,
+    "seconds": 86.25,
+    "real_browser_fixture_enabled": false
+  },
+  "api_target_suite": {
+    "passed": 78,
+    "seconds": 25.2,
+    "real_temporary_platform": true,
+    "no_live_sap": true
+  },
+  "chrome_ui": {
+    "url": "http://localhost:9899/chat",
+    "normal_login_preserved": true,
+    "sap_workbench_opens": true,
+    "saved_configuration_complete": true,
+    "new_or_resume_available": true,
+    "created_runtime": false,
+    "screenshot": "incremental-closeout-ready.jpg"
+  },
+  "desktop_ui": {
+    "window": "RongAI",
+    "normal_browser_login_entry": true,
+    "logged_in_workbench_verified": false
+  },
+  "change_progress": {
+    "complete": 41,
+    "total": 57,
+    "remaining": 16,
+    "newly_completed": [
+      "3.2"
+    ]
+  },
+  "final_validation": {
+    "openspec_strict": "pass",
+    "git_diff_whitespace": "pass",
+    "sap_text_files": 123,
+    "local_doc_links": 149,
+    "sap_manifest_entries": 3,
+    "sources_unchanged_after_reload": true,
+    "core_tracked_diff_empty": true,
+    "opencode_and_sap_connect_worktrees_clean": true,
+    "change_complete": 41,
+    "change_total": 57,
+    "change_remaining": 16
+  }
+}

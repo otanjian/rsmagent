@@ -1,0 +1,17 @@
+{
+  "archivedAs": "2026-10-04-add-sap-workbench-scene",
+  "schema": "spec-driven",
+  "sourceAbsent": true,
+  "originalFilesVerified": 124,
+  "metadataPreserved": true,
+  "completedTasks": 49,
+  "incompleteTasks": 15,
+  "documentationLinkFilesUpdated": 7,
+  "unexpectedContentChanges": [],
+  "brokenLocalLinks": [],
+  "specSync": {
+    "addedRequirements": 27,
+    "modifiedRequirements": 3,
+    "specsValidated": 5
+  }
+}

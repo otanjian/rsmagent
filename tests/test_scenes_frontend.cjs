@@ -142,6 +142,9 @@ function setup({ scenesPayload = catalog, activate = null } = {}) {
         getElementById: id => nodes.get(id) || byIdInTree(id),
         createElement: tag => element(document, tag),
         body: document.body, activeElement: null,
+        // The scenes view injects the workbench stylesheet and bundles into
+        // <head>; without it every open path stalls before dispatch.
+        head: {appendChild(script) { if (script.onload) queueMicrotask(script.onload); }},
         addEventListener() {}, removeEventListener() {},
         querySelector: () => null, querySelectorAll: () => [],
     });
@@ -160,6 +163,7 @@ function setup({ scenesPayload = catalog, activate = null } = {}) {
                 scenes_title: '场景应用', scenes_subtitle: '选择一个业务场景，进入专用工作台或对话上下文。',
                 scenes_loading: '加载场景中...', scenes_empty: '暂无场景应用。',
                 scenes_go_chat: '开始对话', scenes_all: '全部', scenes_workbench: '工作台',
+                scenes_configure: '配置',
                 scenes_activate_failed: '场景激活失败，请稍后重试。',
                 scenes_no_category: '当前分类没有可用的场景。',
                 scenes_picker_title: '选择场景', scenes_picker_placeholder: '搜索场景...',
@@ -168,6 +172,7 @@ function setup({ scenesPayload = catalog, activate = null } = {}) {
             },
             en: {
                 scenes_title: 'Scenario Apps', scenes_all: 'All', scenes_go_chat: 'Start chatting',
+                scenes_configure: 'Configure',
                 scenes_activate_failed: 'Failed to activate the scenario, please try again.',
                 scenes_picker_empty: 'No matching scenarios',
                 scenes_greeting: 'Switched to the "{name}" scenario.',
@@ -222,11 +227,28 @@ test('scenes view renders category tabs and scene cards from the catalog', async
     assert.equal(grid.classList.contains('hidden'), false);
     // 分类页签：全部 + 采购 + 财务
     assert.equal(tabs.children.length, 3);
-    // 场景卡片：默认第一个分类（procurement）下有 1 个场景
+    // 首次进入显示全部，其他分类的新场景也能被发现。
     const cards = grid.children.filter(c => c.className.includes('scene-card'));
-    assert.equal(cards.length, 1);
+    assert.equal(cards.length, 2);
     assert.equal(cards[0].dataset.sceneId, 'procurement_supplier');
     assert.ok(tabs.children[1].textContent.includes('采购'));
+});
+
+test('SAP workbench is visible on first entry and remains available through the data filter', async () => {
+    const sceneRoot = path.join(__dirname, '../Scene');
+    const index = JSON.parse(fs.readFileSync(path.join(sceneRoot, 'catalog.json'), 'utf8'));
+    const scenes = index.scenes.map(id => JSON.parse(fs.readFileSync(path.join(sceneRoot, id, 'scene.json'), 'utf8')));
+    const h = setup({ scenesPayload: { status: 'success', categories: index.categories, scenes } });
+    const visible = () => h.node('scenes-grid').children.map(card => card.dataset.sceneId);
+    await h.ctx.loadScenesView();
+    assert.ok(visible().includes('sap_workbench'));
+    h.ctx.selectCategory('procurement');
+    assert.ok(!visible().includes('sap_workbench'));
+    h.ctx.selectCategory('data');
+    assert.ok(visible().includes('sap_workbench'));
+    await h.ctx.loadScenesView();
+    assert.ok(visible().includes('sap_workbench'));
+    assert.ok(visible().every(id => scenes.find(scene => scene.id === id).category === 'data'));
 });
 
 test('category tabs switch the visible scene cards and empty category shows the empty state', async () => {
@@ -289,17 +311,60 @@ test('a non-workbench scene card activates into chat and injects the greeting', 
 
 test('a workbench scene with a registered renderer dispatches instead of activating', async () => {
     const h = setup();
-    // 注册通用渲染器，记录被分发到的测试场景。
+    // 注册 registry 将 finance-voucher 映射到的专业渲染器。
     h.run(`
         window.__wbScenes = [];
-        window.ScenesRegistry.registerRenderer('base', function(scene){ window.__wbScenes.push(scene); return true; });
+        window.ScenesRegistry.registerRenderer('voucher', function(scene){ window.__wbScenes.push(scene); return true; });
     `);
-    // 旧业务技能名也只会分发到通用工作台。
+    // 已声明工作台且渲染器可用时不会激活普通对话。
     await h.ctx.openSceneById('finance_voucher');
     await settle();
     assert.equal(h.requests.some(r => r.url === '/api/scenes/activate'), false);
     assert.equal(h.ctx.__wbScenes.length, 1);
     assert.equal(h.ctx.__wbScenes[0].id, 'finance_voucher');
+});
+
+test('a scene with a declared configuration entry shows a 配置 control that opens it directly', async () => {
+    const h = setup({ scenesPayload: {
+        status: 'success',
+        categories: [{ id: 'data', name: '数据', color: '#8b5cf6' }],
+        scenes: [{ id: 'sap_workbench', name: 'SAP 工作台', category: 'data',
+            description: 'd', icon: 'fa-desktop', has_workbench: true,
+            card_action: 'configure', required_permission: 'chat.use' }],
+    }});
+    h.run(`
+        window.__configured = null; window.__opened = null;
+        window.SceneOriginal = {
+            configure: function (scene) { window.__configured = scene.id; return true; },
+            open: function (scene) { window.__opened = scene.id; return true; },
+        };
+    `);
+    await h.ctx.loadScenesView();
+    const card = h.node('scenes-grid').children.find(c => c.className.includes('scene-card'));
+    // 分类标签被「配置」入口取代：卡片下沿是设置动作而不是分类名。
+    assert.ok(card.innerHTML.includes('scene-configure'));
+    assert.ok(card.innerHTML.includes('配置'));
+    assert.ok(!card.innerHTML.includes('数据'));
+    // 点中嵌套的配置控件走配置分发，不激活场景、不创建会话。
+    const control = element(h.document, 'button');
+    control.className = 'scene-configure text-xs';
+    card.dispatch('click', {target: control});
+    await settle();
+    assert.equal(h.ctx.__configured, 'sap_workbench');
+    assert.equal(h.ctx.__opened, null);
+    assert.equal(h.requests.some(r => r.url === '/api/scenes/activate'), false);
+    // 点卡片其他位置仍然打开工作台，两个入口职责不混。
+    card.dispatch('click', {target: card});
+    await settle();
+    assert.equal(h.ctx.__opened, 'sap_workbench');
+});
+
+test('a scene without a configuration entry keeps the plain card and category tag', async () => {
+    const h = setup();
+    await h.ctx.loadScenesView();
+    const card = h.node('scenes-grid').children.find(c => c.dataset.sceneId === 'finance_voucher');
+    assert.ok(!card.innerHTML.includes('scene-configure'));
+    assert.ok(card.innerHTML.includes('财务'));
 });
 
 test('`/场景` picker opens against the loaded catalog without throwing', async () => {

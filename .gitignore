@@ -192,4 +192,10 @@ README*.md
 # Local brainstorm / visual companion sessions
 .superpowers/
 
+# SAP workbench tenant settings, encrypted credentials and browser login state.
+/scenes/sap_workbench.sqlite3*
+/scenes/sap_workbench_browser/
+/scenes/sap_workbench_assets/
+/scenes/sap_workbench_runtime/
+
 # ======================================================================

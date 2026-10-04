@@ -81,7 +81,16 @@ window.SceneOriginal = {
         activeSceneContext = null;
         document.getElementById('scene-subpanel')?.classList.add('hidden');
     },
+    // The scene card's own 配置 entry point (``card_action: "configure"``).
+    // Only scenes that actually expose a configuration surface open it; every
+    // other scene keeps the plain open path, so a card never advertises a
+    // configuration it does not have.
+    async configure(scene) {
+        if (scene.id === 'sap_workbench') return window.SapWorkbench.open({view: 'settings'});
+        return window.SceneOriginal.open(scene);
+    },
     async open(scene) {
+        if (scene.id === 'sap_workbench') return window.SapWorkbench.open({view: 'new-session'});
         _hostScene = scene;
         if (!mounted) {
             mounted = fetch('/scene-assets/workbenches.html').then(r => {

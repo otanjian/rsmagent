@@ -1,0 +1,59 @@
+{
+  "services": [
+    {
+      "port": 9876,
+      "path": "/scene-assets/sap_workbench/frontend/workbench.js",
+      "status": 200,
+      "sourceMatches": true
+    },
+    {
+      "port": 9876,
+      "path": "/assets/js/scenes/index.js",
+      "status": 200,
+      "sourceMatches": true
+    },
+    {
+      "port": 9899,
+      "path": "/scene-assets/sap_workbench/frontend/workbench.js",
+      "status": 200,
+      "sourceMatches": true
+    },
+    {
+      "port": 9899,
+      "path": "/assets/js/scenes/index.js",
+      "status": 200,
+      "sourceMatches": true
+    }
+  ],
+  "sapManifest": [
+    {
+      "path": "sap_workbench/scene.json",
+      "matches": true
+    },
+    {
+      "path": "sap_workbench/frontend/workbench.js",
+      "matches": true
+    },
+    {
+      "path": "sap_workbench/frontend/workbench.css",
+      "matches": true
+    }
+  ],
+  "probeNote": "Initial /static path returned 404. Retested using the actual /assets script path observed in Chrome.",
+  "assembled_runtime_after_reload": [
+    {
+      "port": 9876,
+      "status": 200,
+      "source_matches": true,
+      "new_title": true,
+      "old_title": false
+    },
+    {
+      "port": 9899,
+      "status": 200,
+      "source_matches": true,
+      "new_title": true,
+      "old_title": false
+    }
+  ]
+}
