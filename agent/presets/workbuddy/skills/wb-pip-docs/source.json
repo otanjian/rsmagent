@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "ccb78be2ff3eab24b313de480b9eb8bbb45afa3b417ae2610d06cdd418bc2fd8"
+      "sha256": "f1347b366553a1be46010d23ea67a901d7839c3c73916086c997a82a0e1ba2e4"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "22af4579d93663441ed5585c60aeb939f689f6a9460142e09f01356e138d313a"
+      "sha256": "ecd90caca833e6b1d73cbf54e771f4c95973fd6e17f8251a8d6a287a8ac68832"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "baad6a53366d9bf66ec6384c69bd39a4c5250cd71e9f557d1333e921b37175b9"
+      "sha256": "cf3060c7966943cbf33d708a30215726207af09c720af28a7406e1d3c88f3fee"
     },
     {
       "original": "输入参考文件/01_刘某_近四月考核数据.xlsx",
@@ -32,12 +32,12 @@
     {
       "original": "输入参考文件/03_岗位职责与产出基准_装配岗.txt",
       "path": "assets/demo/03_岗位职责与产出基准_装配岗.txt",
-      "sha256": "56bf60c1d8018efd227612767ed2980dcd1af8d6abcb3a0413d0071c3ed5a051"
+      "sha256": "9bdfb6c000c45d719154c9a56d92ab592a87dfea0ab8eaf4317607ecc9c444f8"
     },
     {
       "original": "输入参考文件/04_历史沟通记录_装配岗.txt",
       "path": "assets/demo/04_历史沟通记录_装配岗.txt",
-      "sha256": "e6868d97bbc5abed900d88eac5c557e5b1cf4709a1da51b6ed27b5c5e0ceea78"
+      "sha256": "26f35a9f956eb2e4ac350d6527808e8740915861482da70a8c9cd8418da8aef5"
     }
   ]
 }

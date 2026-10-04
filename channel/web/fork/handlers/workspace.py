@@ -10,9 +10,19 @@ from __future__ import annotations
 from bridge.context import *
 from common.log import logger
 from urllib.parse import quote
+import io
 import json
 import os
+from typing import Dict, List, NamedTuple, Optional
 import web
+
+from common import safe_fs
+from agent.workspace.service import (
+    TRASH_RETENTION_SECONDS,
+    join_rel,
+    undeletable_reason,
+    unuploadable_reason,
+)
 
 
 def _project_brand_name() -> str:
@@ -264,10 +274,10 @@ class WorkspaceTreeHandler:
                 result = svc.list_dir(params.path,
                                       show_hidden=params.show_hidden == '1',
                                       allow_entry=allowed)
-                result["entries"] = [
+                result["entries"] = _annotate_deletable(ctx, svc, agent_id, [
                     _panel_entry(source, _decorate_entry(svc, e))
                     for e in _visible_entries(ctx, svc, result["entries"])
-                ]
+                ])
                 return json.dumps({"status": "success", **result}, ensure_ascii=False)
             except web.HTTPError:
                 raise
@@ -310,10 +320,10 @@ class WorkspaceSearchHandler:
                     params.q, limit=limit,
                     allow_dir=_workspace_path_allowed(
                         ctx, _db_file_root_owners(ctx)))
-                result["results"] = [
+                result["results"] = _annotate_deletable(ctx, svc, agent_id, [
                     _panel_entry(source, _decorate_entry(svc, e))
                     for e in _visible_entries(ctx, svc, result["results"])
-                ]
+                ])
                 return json.dumps({"status": "success", **result}, ensure_ascii=False)
             except web.HTTPError:
                 raise
@@ -572,6 +582,709 @@ class WorkspaceWriteHandler:
             except Exception as e:
                 logger.error(f"[WebChannel] Workspace write error: {e}")
                 return json.dumps({"status": "error", "message": str(e)})
+
+
+# ======================================================================
+# Writable scope: where the file panel may create and delete
+# ======================================================================
+#
+# Reading and writing text are governed by `_editable_target`, which answers
+# "may this caller see this file". Uploading and deleting need a different
+# answer -- "may this caller put something here / take something away" -- and
+# the two must not be conflated: a member of a shared Agent can *read* the
+# Agent's `knowledge/` and must still not be able to delete it.
+#
+# The range is derived from the Agent's visibility, never from the request body:
+#
+#   private Agent  -> `agents/<id>`          (the owner's own workspace)
+#   shared Agent   -> `agents/<id>/user/<uid>` (this member's own subtree)
+#
+# Everything below funnels through `_resolve_write_target`, so there is exactly
+# one place that decides, and one place to test.
+
+#: Largest single upload the workspace panel accepts (200 MiB). The browser
+#: refuses a larger file before sending, so this is the second line of defence
+#: rather than the number the user sees.
+WS_UPLOAD_MAX_BYTES = 200 * 1024 * 1024
+
+#: Copy granularity for a streamed upload. The payload arrives spooled to a
+#: temporary file by the multipart parser, so this bounds the buffer we hold and
+#: nothing else.
+WS_UPLOAD_CHUNK_BYTES = 1024 * 1024
+
+#: Items one delete request may carry. The panel deletes the rows the caller
+#: selected, not their expanded contents, so this is far above any real
+#: selection while still bounding the work a single body can ask for.
+WS_DELETE_MAX_TARGETS = 2000
+
+#: Stable codes for the two ways a single file's *bytes* can be refused. Both
+#: are conditions the panel must name in the reader's language, and one of them
+#: (the size ceiling) is also reachable without the application seeing the
+#: request at all -- the proxy answers 413 first. The panel maps the proxy's
+#: status onto the same ``too_large`` wording, so the user reads one explanation
+#: whichever layer stopped them (design D9, task 7.5).
+WS_UPLOAD_TOO_LARGE = "too_large"
+WS_UPLOAD_INCOMPLETE = "incomplete_upload"
+
+
+class WorkspaceScopeError(Exception):
+    """The request has no writable range here; ``code`` says which rule refused."""
+
+    def __init__(self, code: str, message: str = ""):
+        super().__init__(message or code)
+        self.code = code
+
+
+class WorkspaceUploadError(Exception):
+    """A single file's bytes were refused; ``code`` is what the panel reports.
+
+    Separate from :class:`WorkspaceScopeError` because the two answer different
+    questions -- "may you write here" versus "did the payload arrive whole" --
+    and the panel renders them with different wording.
+    """
+
+    def __init__(self, code: str, message: str = ""):
+        super().__init__(message or code)
+        self.code = code
+
+
+def _outside_own_directory() -> "WorkspaceScopeError":
+    """The refusal for a path that is not inside the caller's own range.
+
+    One code covers every such shape -- an escape (``../``), a colleague's
+    subtree, the wrong Agent -- because the caller's remedy is the same and a
+    prober learns nothing about which shapes the server happens to recognise.
+    """
+    return WorkspaceScopeError(
+        "outside_own_directory", "outside the directory you may write to")
+
+
+class WriteScope(NamedTuple):
+    """The caller's writable range inside one Agent's workspace.
+
+    ``agent_rel`` is the Agent's own directory and ``root_rel`` the range that
+    may be written and deleted in. They differ only for a shared Agent, whose
+    members may act inside their own ``user/<uid>`` subtree and not across the
+    whole Agent.
+    """
+
+    agent_rel: str
+    root_rel: str
+    user_id: str
+    visibility: str
+
+
+def _write_scope(ctx, svc, agent_id: str) -> WriteScope:
+    """Derive the caller's writable range, or refuse with a reason code."""
+    from agent.registry import get_agent_registry
+    from channel.web.fork.handlers.agents import _agent_visibility
+    from common.runtime_identity import current_identity
+    from common.state_dir import StateDirError, agent_user_root
+    try:
+        visibility = _agent_visibility(ctx, agent_id)
+    except (KeyError, ValueError):
+        raise WorkspaceScopeError("agent_not_found") from None
+
+    profile = get_agent_registry().get(agent_id)
+    agent_rel = svc.to_rel(os.path.realpath(profile.workspace))
+    # A session that has opened a project directory moves the file API's root,
+    # so the Agent's own workspace is then outside it. There is no honest range
+    # to hand out in that state, and picking whichever of the two roots happens
+    # to resolve would be a write the user never asked for.
+    if agent_rel.startswith(".."):
+        raise WorkspaceScopeError(
+            "not_agent_workspace",
+            "the file panel is not showing the Agent's own workspace")
+
+    ident = current_identity()
+    if agent_id and ident.agent_id != agent_id:
+        ident = ident.derive(agent_id=agent_id)
+    try:
+        user_root = agent_user_root(ident, ensure=False)
+    except StateDirError:
+        raise WorkspaceScopeError("unsafe_user_directory") from None
+    if user_root is None:
+        raise WorkspaceScopeError("no_user", "no authenticated user")
+
+    user_rel = svc.to_rel(str(user_root))
+    if user_rel != join_rel(agent_rel, join_rel("user", user_root.name)):
+        raise WorkspaceScopeError(
+            "not_agent_workspace",
+            "the file panel is not showing the Agent's own workspace")
+
+    return WriteScope(
+        agent_rel=agent_rel,
+        root_rel=agent_rel if visibility == "private" else user_rel,
+        user_id=user_root.name,
+        visibility=visibility,
+    )
+
+
+def _resolve_write_target(scope: WriteScope, *segments: str,
+                          allow_root: bool = False,
+                          for_upload: bool = False) -> str:
+    """Return the served-root-relative path to act on, or refuse it.
+
+    ``segments`` are joined before anything is checked, so a caller that holds
+    the destination folder and the entry's own relative path as two values does
+    not have to join them itself -- the join is exactly where an escaping
+    ``..`` used to slip past a string prefix comparison.
+
+    Four rules, in the order that fails fastest and explains best:
+
+    1. the path must be a plain downward path (``..``, ``.``, empty, absolute
+       and drive-letter components are refused by
+       :func:`common.safe_fs.split_relative`);
+    2. it must be inside the caller's range -- so a member of a shared Agent
+       cannot reach a colleague's subtree even by naming it;
+    3. the range's own root is not a *target* of its own (deleting it would take
+       the recycle bin with it), though ``allow_root`` lets an upload *land* in
+       it, which is the ordinary "drop into the folder I am looking at" case;
+    4. the Agent's own entries are not targets, matched on the path's components
+       *relative to the Agent's directory*.
+
+    ``for_upload`` narrows rule 4 to the only entry a write must never address --
+    the recycle bin. A file added to the Agent's ``memory/`` does not break the
+    Agent; deleting ``memory/`` does, so the protected list constrains deletion
+    alone (design D13). The two rules are chosen here, in one place, so the
+    upload and delete paths cannot drift apart.
+
+    The range root itself is never classified, only refused as a target: for a
+    shared Agent it is ``user/<uid>``, which reads as "the per-user container's
+    child" in the Agent's frame and would refuse every write to the very folder
+    the panel is showing.
+
+    Both refusals that are not about a specific protected entry answer with
+    ``outside_own_directory``, including a malformed path: the caller's remedy
+    is the same, and one stable code tells a prober nothing about which shapes
+    the server happens to recognise.
+    """
+    raw = "/".join(seg or "" for seg in segments)
+    raw = raw.replace("\\", "/").strip("/")
+    # Validated textually first, before any syscall and before any prefix
+    # comparison: `a/../../b` is not inside `a` on paper, but the filesystem
+    # would resolve it out of the range, so the string comparison alone would
+    # hand out a write the range forbids.
+    try:
+        parts = safe_fs.split_relative(raw) if raw else []
+    except safe_fs.UnsafePathError:
+        raise _outside_own_directory() from None
+    root_parts = scope.root_rel.split("/")
+    if parts[:len(root_parts)] != root_parts:
+        raise _outside_own_directory()
+    if len(parts) == len(root_parts):
+        if not allow_root:
+            raise WorkspaceScopeError("own_directory_root")
+        return scope.root_rel
+    # Rule 4 is stated against the Agent's own directory, which is what the
+    # refusal list in `agent.workspace.service` describes: `memory/` means the
+    # Agent's memory, not a folder the member happened to name that. The range
+    # is the Agent's directory or a subtree of it, so its components are a
+    # prefix of the range's and the same split serves both frames.
+    agent_relative = "/".join(parts[len(scope.agent_rel.split("/")):])
+    reason = (unuploadable_reason if for_upload
+              else undeletable_reason)(agent_relative)
+    if reason:
+        raise WorkspaceScopeError(reason)
+    return "/".join(parts)
+
+
+def _scope_error_response(error: WorkspaceScopeError):
+    """A refusal the panel can act on: a stable code plus the plain reason."""
+    messages = {
+        "outside_own_directory": "You can only change files under your own directory",
+        "own_directory_root": "That is your own directory itself",
+        "agent_internal": "That belongs to the Agent and cannot be removed",
+        "user_container": "That is the per-user container, not your own directory",
+        "trash_not_targetable": "That is inside the recycle bin",
+        "no_user": "no authenticated user",
+        "agent_not_found": "agent not found",
+        "not_agent_workspace": "the file panel is not showing the Agent's own workspace",
+        "unsafe_user_directory": "refused",
+    }
+    return json.dumps({
+        "status": "error",
+        "code": error.code,
+        "message": messages.get(error.code, str(error)),
+    }, ensure_ascii=False)
+
+
+def _upload_error_response(error: WorkspaceUploadError):
+    """A refused payload: a stable code, plus the measured numbers.
+
+    The panel needs the code to pick the wording and the numbers to say which
+    limit was hit. A bare 500 would leave the user with "it failed" and no way
+    to tell an oversized file from a cut-short transfer -- and the two have
+    different remedies (split the file, or upload again).
+
+    The limit is stated in bytes, not in MB: this is the message an operator
+    reads in a log, and rounding it to whole megabytes is the panel's job (it
+    has the reader's language and the same constant).
+    """
+    limit = WS_UPLOAD_MAX_BYTES
+    messages = {
+        WS_UPLOAD_TOO_LARGE: "file is larger than %d bytes" % limit,
+        WS_UPLOAD_INCOMPLETE: "the upload did not arrive whole and was not saved",
+    }
+    return json.dumps({
+        "status": "error",
+        "code": error.code,
+        "message": messages.get(error.code, str(error)),
+    }, ensure_ascii=False)
+
+
+def _restore_dest_guard(scope: WriteScope):
+    """``rel -> refusal code or None`` for one restore destination.
+
+    Restore is not "put it back where it was", it is **another write**: an
+    Agent's visibility can change between the delete and the restore, so a path
+    that was inside the writable range then may be outside it now (a private
+    Agent made shared narrows the range from the whole workspace to one
+    ``user/<uid>``). Re-running the same seam is what makes that narrowing
+    actually hold; it also re-applies the protected-entry rule.
+    """
+    def guard(rel: str):
+        try:
+            _resolve_write_target(scope, rel)
+        except WorkspaceScopeError as error:
+            return error.code
+        return None
+    return guard
+
+
+def _annotate_deletable(ctx, svc, agent_id, entries: list) -> list:
+    """Add ``deletable`` (and ``undeletable_reason``) to each listed entry.
+
+    The panel disables its delete button per row, so it needs the answer
+    ``delete`` would give *before* the user picks something and is refused. That
+    answer is computed here, by the same ``_resolve_write_target`` the route
+    itself runs, rather than re-derived in JavaScript -- a second copy of the
+    protected-entry list is a copy that drifts, and it would drift silently,
+    because the server still refuses.
+
+    When the caller has no writable range at all (the panel is showing a project
+    directory, or this install has no end-user identity), the shape of the
+    refusal belongs to the range, not to the entry: every row carries that one
+    code instead of thirteen separate answers.
+    """
+    try:
+        scope = _write_scope(ctx, svc, agent_id)
+    except WorkspaceScopeError as error:
+        for entry in entries:
+            entry["deletable"] = False
+            entry["undeletable_reason"] = error.code
+        return entries
+    for entry in entries:
+        try:
+            _resolve_write_target(scope, entry.get("path"))
+            entry["deletable"] = True
+        except WorkspaceScopeError as error:
+            entry["deletable"] = False
+            entry["undeletable_reason"] = error.code
+    return entries
+
+
+def _query_param(name: str) -> str:
+    """One value from the request's query string, or ``''``.
+
+    Read from the URL directly rather than through ``web.input``: the JSON
+    handlers need ``web.data()`` for their body, and letting two readers share
+    the request stream makes the result depend on which ran first.
+    """
+    from urllib.parse import parse_qs
+    raw = getattr(web.ctx, "query", "") or ""
+    return (parse_qs(raw.lstrip("?").strip("&")).get(name) or [""])[0]
+
+
+def _panel_scope_params(body=None):
+    """``(agent, session)`` for one panel request, query string first.
+
+    The console's fetch wrapper appends both to the URL for every
+    ``/api/workspace/*`` call, while the drag-and-drop upload puts them in the
+    multipart body; accepting either means one handler shape serves both
+    without the caller having to know which.
+    """
+    body = body or {}
+    agent = (_query_param("agent") or (body.get("agent") or "")).strip()
+    session = (_query_param("session") or (body.get("session") or "")).strip()
+    return agent or None, session or None
+
+
+def _scope_for_request(ctx, agent_param, session_param):
+    """``(svc, scope)`` for one panel request, or raise the refusal."""
+    from channel.web.web_channel import _workspace_service
+    agent_id = _workspace_request_scope(ctx, session_param, agent_param)
+    svc = _workspace_service(session_param, agent_id)
+    return svc, _write_scope(ctx, svc, agent_id)
+
+
+class WorkspaceUploadHandler:
+    """Receive one file from the panel's drag-and-drop into a folder.
+
+    **One file per request** on purpose. The client walks the drop, then sends
+    its files three at a time; that shape is what makes the progress readout
+    exact (a finished byte count plus the current file's own progress, instead
+    of one number scaled out of a single monolithic body), lets a failed file be
+    retried alone, and keeps the server's memory flat. A single multipart body
+    holding 5000 files would parse into 5000 temporary files before the first
+    one was written.
+
+    Form fields: ``dir`` (destination directory, relative to the file API's
+    root), ``relative_path`` (the file's own path below ``dir``, which is what
+    carries the dragged folder structure), and one file part named ``file``.
+
+    An existing name is not overwritten: the file lands as ``name (1).ext`` and
+    the response says so. A drag that eats a file already in the folder is not
+    something the user asked for and not something they could undo -- the panel
+    ships no move, so the overwritten file would simply be gone.
+    """
+
+    def POST(self):
+        from channel.web.web_channel import _db_scope
+        from channel.web.web_channel import _ensure_list
+        from channel.web.web_channel import _raw_web_input
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        web.header('Cache-Control', 'no-store')
+        with _db_scope() as ctx:
+            from channel.web.auth_handlers import require_management_write
+            require_management_write()
+            try:
+                params = _raw_web_input()
+                agent, session = _panel_scope_params({
+                    "agent": params.get("agent"), "session": params.get("session")})
+                svc, scope = _scope_for_request(ctx, agent, session)
+
+                parts = [p for p in _ensure_list(params.get("file"))
+                         if getattr(p, "filename", None)]
+                if not parts:
+                    return json.dumps({"status": "error", "code": "no_file",
+                                       "message": "no file in the request"})
+                part = parts[0]
+
+                dest_dir = _resolve_write_target(
+                    scope, params.get("dir"), allow_root=True, for_upload=True)
+                relative = (params.get("relative_path") or "").strip()
+                if not relative:
+                    # Without a relative path the payload is just its basename,
+                    # which is what a plain (non-folder) drop sends.
+                    relative = os.path.basename(part.filename.replace("\\", "/"))
+                target = _resolve_write_target(
+                    scope, dest_dir, relative, for_upload=True)
+
+                written = self._stream_to(svc, target, part)
+                logger.info("[WebChannel] Workspace upload: %s (%s bytes)%s",
+                            written["path"], written["size"],
+                            "" if not written["renamed"] else " (renamed)")
+                return json.dumps({"status": "success", **written},
+                                  ensure_ascii=False)
+            except WorkspaceScopeError as e:
+                return _scope_error_response(e)
+            except WorkspaceUploadError as e:
+                return _upload_error_response(e)
+            except web.HTTPError:
+                raise
+            except (ValueError, FileNotFoundError) as e:
+                return json.dumps({"status": "error", "message": str(e)})
+            except Exception as e:
+                logger.error(f"[WebChannel] Workspace upload error: {e}")
+                return json.dumps({"status": "error", "message": str(e)})
+
+    @staticmethod
+    def _stream_to(svc, target: str, part) -> Dict:
+        """Write the part to ``target``, renaming on collision.
+
+        Streamed in bounded chunks, then the byte count is compared with what
+        the transport declared. A body cut short that still parsed as a complete
+        multipart part is the one failure mode a size check catches cheaply, and
+        a silently truncated file is worse than a refused one.
+        """
+        destination = svc.available_name(target)
+        directory = destination.rpartition("/")[0]
+        if directory:
+            svc.ensure_dir(directory)
+
+        source = getattr(part, "file", None)
+        if source is None:
+            data = part.value if isinstance(part.value, (bytes, bytearray)) else b""
+            source = io.BytesIO(data)
+        declared = None
+        try:
+            source.seek(0, os.SEEK_END)
+            declared = source.tell()
+            source.seek(0)
+        except (OSError, ValueError, AttributeError, io.UnsupportedOperation):
+            # Not seekable: there is nothing to compare against and nothing to
+            # rewind, so the size check degrades to "wrote what we read".
+            declared = None
+
+        # Write to a sibling temp file and rename at the end, so a connection
+        # that dies mid-transfer leaves the name free and no half file in the
+        # folder. ``available_name`` already proved the name is free, and
+        # O_CREAT|O_EXCL re-proves it atomically: without that, a symlink planted
+        # at the temp name in between would be written *through*.
+        tmp_rel = svc.available_name(join_rel(
+            directory, ".ws-upload-%s.part" % os.urandom(6).hex()))
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        written = 0
+        try:
+            fd = os.open(svc.resolve(tmp_rel), flags, 0o600)
+            with os.fdopen(fd, "wb") as handle:
+                while True:
+                    block = source.read(WS_UPLOAD_CHUNK_BYTES)
+                    if not block:
+                        break
+                    written += len(block)
+                    if written > WS_UPLOAD_MAX_BYTES:
+                        raise WorkspaceUploadError(
+                            WS_UPLOAD_TOO_LARGE,
+                            "file is larger than %d bytes" % WS_UPLOAD_MAX_BYTES)
+                    handle.write(block)
+                handle.flush()
+                os.fsync(handle.fileno())
+            if declared is not None and written != declared:
+                raise WorkspaceUploadError(
+                    WS_UPLOAD_INCOMPLETE,
+                    "incomplete upload: %d of %d bytes" % (written, declared))
+            safe_fs.rename(svc.root, tmp_rel, destination)
+            tmp_rel = None
+        finally:
+            if tmp_rel is not None:
+                try:
+                    safe_fs.remove_tree(svc.root, tmp_rel)
+                except (OSError, safe_fs.UnsafePathError):
+                    pass
+
+        return {
+            "path": destination,
+            "name": destination.rpartition("/")[2],
+            "size": written,
+            "renamed": destination != target,
+        }
+
+
+class WorkspaceDeleteHandler:
+    """Move selected files or whole folders into the caller's recycle bin.
+
+    Soft by construction: each target is one atomic rename into
+    ``user/<uid>/.trash``, so a directory of any size moves instantly and a
+    failure part-way leaves the rest untouched. Nothing is destroyed, which is
+    why the panel does not need to be right about the user's intent.
+    """
+
+    def POST(self):
+        from channel.web.web_channel import _db_scope
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        with _db_scope() as ctx:
+            from channel.web.auth_handlers import require_management_write
+            require_management_write()
+            try:
+                body = json.loads(web.data() or b'{}')
+                agent, session = _panel_scope_params(body)
+                svc, scope = _scope_for_request(ctx, agent, session)
+
+                raw = body.get("targets")
+                if isinstance(raw, str):
+                    raw = [raw]
+                if not isinstance(raw, list) or not raw:
+                    return json.dumps({"status": "error", "code": "no_targets",
+                                       "message": "targets are required"})
+                if len(raw) > WS_DELETE_MAX_TARGETS:
+                    return json.dumps({
+                        "status": "error", "code": "too_many_targets",
+                        "message": "at most %d items per request"
+                                   % WS_DELETE_MAX_TARGETS})
+
+                items: List[Dict] = []
+                refused: List[Dict] = []
+                seen = set()
+                for entry in raw:
+                    rel = entry if isinstance(entry, str) else (entry or {}).get("path")
+                    try:
+                        target = _resolve_write_target(scope, rel)
+                    except WorkspaceScopeError as e:
+                        refused.append({"rel": rel, "code": e.code})
+                        continue
+                    if target in seen:
+                        continue
+                    seen.add(target)
+                    try:
+                        items.append({
+                            "rel": target,
+                            "is_dir": svc.is_dir(target),
+                            "size": svc.entry_size(target),
+                        })
+                    except FileNotFoundError:
+                        refused.append({"rel": target, "code": "not_found"})
+
+                if not items:
+                    return json.dumps({"status": "success", "batch_id": None,
+                                       "deleted": [], "failed": refused},
+                                      ensure_ascii=False)
+
+                result = svc.move_to_trash(scope.user_id, items,
+                                           agent_rel=scope.agent_rel)
+                logger.info("[WebChannel] Workspace delete: %d item(s) to batch %s",
+                            len(result["moved"]), result["batch_id"])
+                return json.dumps({
+                    "status": "success",
+                    "batch_id": result["batch_id"],
+                    "deleted": [m["rel"] for m in result["moved"]],
+                    "failed": refused + result["failed"],
+                    "reclaimed": sum(m["size"] or 0 for m in result["moved"]),
+                }, ensure_ascii=False)
+            except WorkspaceScopeError as e:
+                return _scope_error_response(e)
+            except web.HTTPError:
+                raise
+            except (ValueError, FileNotFoundError) as e:
+                return json.dumps({"status": "error", "message": str(e)})
+            except Exception as e:
+                logger.error(f"[WebChannel] Workspace delete error: {e}")
+                return json.dumps({"status": "error", "message": str(e)})
+
+
+class WorkspaceTrashHandler:
+    """List what the caller's recycle bin is holding.
+
+    Also the bin's cleanup point. Retention is housekeeping, and the one moment
+    a bin's age is certainly irrelevant is when its owner is looking at it, so
+    the sweep rides on the read instead of needing a scheduler of its own. It
+    only removes batches the bin was already going to drop, so it never changes
+    what this response returns.
+    """
+
+    def GET(self):
+        from channel.web.web_channel import _db_scope
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        web.header('Cache-Control', 'no-store')
+        with _db_scope() as ctx:
+            try:
+                params = web.input(agent='', session='')
+                agent, session = _panel_scope_params({
+                    "agent": params.agent, "session": params.session})
+                svc, scope = _scope_for_request(ctx, agent, session)
+                try:
+                    svc.cleanup_trash(scope.user_id, agent_rel=scope.agent_rel)
+                except (OSError, safe_fs.UnsafePathError) as e:
+                    logger.warning("[WebChannel] trash retention skipped: %s", e)
+                entries = svc.list_trash(scope.user_id, agent_rel=scope.agent_rel)
+                for entry in entries:
+                    entry["name"] = (entry.get("rel") or "").rpartition("/")[2]
+                return json.dumps({
+                    "status": "success",
+                    "entries": entries,
+                    "total_size": sum(e.get("size") or 0 for e in entries),
+                    "retention_days": TRASH_RETENTION_SECONDS // 86400,
+                }, ensure_ascii=False)
+            except WorkspaceScopeError as e:
+                return _scope_error_response(e)
+            except web.HTTPError:
+                raise
+            except Exception as e:
+                logger.error(f"[WebChannel] Workspace trash error: {e}")
+                return json.dumps({"status": "error", "message": str(e)})
+
+
+class WorkspaceTrashRestoreHandler:
+    """Put entries back where they were deleted from.
+
+    A destination that is taken again is restored as ``name (1).ext`` rather
+    than refused: the panel has no move, so a refusal would strand the entry in
+    the bin with no way to act on it.
+    """
+
+    def POST(self):
+        from channel.web.web_channel import _db_scope
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        with _db_scope() as ctx:
+            from channel.web.auth_handlers import require_management_write
+            require_management_write()
+            try:
+                body = json.loads(web.data() or b'{}')
+                agent, session = _panel_scope_params(body)
+                svc, scope = _scope_for_request(ctx, agent, session)
+                batch_id = (body.get("batch_id") or "").strip()
+                if not batch_id:
+                    return json.dumps({"status": "error", "code": "no_batch",
+                                       "message": "batch_id is required"})
+                indices = _indices_or_none(body.get("indices"))
+                result = svc.restore_from_trash(
+                    scope.user_id, batch_id, indices,
+                    agent_rel=scope.agent_rel,
+                    dest_guard=_restore_dest_guard(scope))
+                logger.info("[WebChannel] Workspace trash restore: %d of %d",
+                            len(result["restored"]),
+                            len(result["restored"]) + len(result["failed"]))
+                return json.dumps({"status": "success", **result},
+                                  ensure_ascii=False)
+            except WorkspaceScopeError as e:
+                return _scope_error_response(e)
+            except web.HTTPError:
+                raise
+            except safe_fs.UnsafePathError:
+                return json.dumps({"status": "error", "code": "unsafe_path",
+                                   "message": "invalid batch id"})
+            except (ValueError, FileNotFoundError) as e:
+                return json.dumps({"status": "error", "message": str(e)})
+            except Exception as e:
+                logger.error(f"[WebChannel] Workspace trash restore error: {e}")
+                return json.dumps({"status": "error", "message": str(e)})
+
+
+class WorkspaceTrashPurgeHandler:
+    """Destroy entries in the bin. An absent ``batch_id`` empties it."""
+
+    def POST(self):
+        from channel.web.web_channel import _db_scope
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        with _db_scope() as ctx:
+            from channel.web.auth_handlers import require_management_write
+            require_management_write()
+            try:
+                body = json.loads(web.data() or b'{}')
+                agent, session = _panel_scope_params(body)
+                svc, scope = _scope_for_request(ctx, agent, session)
+                batch_id = (body.get("batch_id") or "").strip()
+                indices = _indices_or_none(body.get("indices"))
+                if batch_id:
+                    result = svc.purge_trash(scope.user_id, batch_id, indices,
+                                             agent_rel=scope.agent_rel)
+                else:
+                    # "Empty the bin": every batch this user owns.
+                    purged: List[Dict] = []
+                    failed: List[Dict] = []
+                    for entry in svc.list_trash(scope.user_id,
+                                                agent_rel=scope.agent_rel):
+                        one = svc.purge_trash(scope.user_id, entry["batch_id"],
+                                              agent_rel=scope.agent_rel)
+                        purged.extend(one["purged"])
+                        failed.extend(one["failed"])
+                    result = {"purged": purged, "failed": failed}
+                logger.info("[WebChannel] Workspace trash purge: %d item(s)",
+                            len(result["purged"]))
+                return json.dumps({"status": "success", **result},
+                                  ensure_ascii=False)
+            except WorkspaceScopeError as e:
+                return _scope_error_response(e)
+            except web.HTTPError:
+                raise
+            except safe_fs.UnsafePathError:
+                return json.dumps({"status": "error", "code": "unsafe_path",
+                                   "message": "invalid batch id"})
+            except (ValueError, FileNotFoundError) as e:
+                return json.dumps({"status": "error", "message": str(e)})
+            except Exception as e:
+                logger.error(f"[WebChannel] Workspace trash purge error: {e}")
+                return json.dumps({"status": "error", "message": str(e)})
+
+
+def _indices_or_none(raw) -> Optional[List[int]]:
+    """``None`` means "everything"; anything else must be a list of indices."""
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise ValueError("indices must be a list")
+    return [int(i) for i in raw]
 
 
 def _ensure_own_user_dir(agent_id: str) -> bool:

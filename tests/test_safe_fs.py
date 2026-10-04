@@ -161,5 +161,72 @@ class ReplacementRaceTests(SafeFsCase):
                          "mine")
 
 
+class ConcurrentCreateTests(SafeFsCase):
+    """Two writers creating the same level is the ordinary case, not a race to lose.
+
+    The console's file panel uploads three files at once, so the first drop into
+    a folder has all three running ``mkdir`` over the same levels. Every creation
+    site is a check followed by a create, and on the ``dir_fd``-less path
+    (Windows) there is no already-open descriptor to lean on, so the loser of
+    that race used to get ``FileExistsError`` for a request that had asked for
+    nothing unusual.
+    """
+
+    def test_a_level_created_by_a_peer_is_not_an_error(self):
+        real_mkdir = os.mkdir
+
+        def peer_wins(path, *args, **kwargs):
+            # The other request created it in the window between this one's
+            # existence check and its own attempt.
+            real_mkdir(path, *args, **kwargs)
+            raise FileExistsError(17, "File exists", str(path))
+
+        os.mkdir = peer_wins
+        try:
+            safe_fs.mkdir(self.root, "drop/tree/g00/s00")
+        finally:
+            os.mkdir = real_mkdir
+        self.assertTrue(os.path.isdir(
+            os.path.join(self.root, "drop", "tree", "g00", "s00")))
+        # ... and the level is usable: the file that raced for it lands.
+        safe_fs.write_text_atomic(self.root, "drop/tree/g00/s00/f.txt", "x")
+        self.assertEqual(
+            safe_fs.read_text(self.root, "drop/tree/g00/s00/f.txt"), "x")
+
+    def test_a_level_planted_as_a_link_in_the_gap_is_still_refused(self):
+        real_mkdir = os.mkdir
+        outside = self.write("elsewhere/target/keep.md", "secret")
+
+        def peer_plants_a_link(path, *args, **kwargs):
+            real_mkdir(path, *args, **kwargs)
+            os.rmdir(path)
+            os.symlink(os.path.dirname(outside), path)
+            raise FileExistsError(17, "File exists", str(path))
+
+        os.mkdir = peer_plants_a_link
+        try:
+            with self.assertRaises(UnsafePathError):
+                safe_fs.mkdir(self.root, "drop/planted")
+        finally:
+            os.mkdir = real_mkdir
+
+    def test_a_level_planted_as_a_file_in_the_gap_is_still_refused(self):
+        real_mkdir = os.mkdir
+
+        def peer_plants_a_file(path, *args, **kwargs):
+            real_mkdir(path, *args, **kwargs)
+            os.rmdir(path)
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("not a directory")
+            raise FileExistsError(17, "File exists", str(path))
+
+        os.mkdir = peer_plants_a_file
+        try:
+            with self.assertRaises(UnsafePathError):
+                safe_fs.mkdir(self.root, "drop/planted")
+        finally:
+            os.mkdir = real_mkdir
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

@@ -18,7 +18,7 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
+          "数据分析",
           "经营复盘"
         ],
         "skills": [
@@ -47,7 +47,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传订单、交付、库存、质量、成本五类资料 → 说明对比的上期或目标 → 查看五条线判定与矛盾点 → 下载经营复盘简报。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍经营复盘。",
+          "复盘要准备哪些数据？",
+          "主指标达标但支撑指标反向，怎么挑出来？",
+          "帮我把差异归因下钻到订单层。"
+        ]
       },
       "package_sha256": "4b7e111d06bbabf75265bcbe2eb853ef9fab46d6c99c41708a7dea81fcd7ac19",
       "demo_file_count": 5
@@ -64,8 +71,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "BOM导入核对"
+          "数据核对",
+          "BOM管理"
         ],
         "skills": [
           "wb-bom-import"
@@ -95,7 +102,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传基线 BOM 与导入 BOM → 查看脏数据体检与料号对齐结果 → 确认新增、删除、替换等差异分类 → 查看影响面与澄清清单。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍 BOM 核对。",
+          "新旧 BOM 要怎么对齐料号？",
+          "差异会分成哪几类？",
+          "帮我评估差异牵动的工单和在途采购。"
+        ]
       },
       "package_sha256": "aa57ebf54e981baaaf777623ea38c7ffe42b252e6c0b777d051ed4c72b7bafcd",
       "demo_file_count": 4
@@ -112,8 +126,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "合同条款确认"
+          "风险合规",
+          "合同管理"
         ],
         "skills": [
           "wb-contract-review"
@@ -142,7 +156,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传合同文本 → 自动归类七类风险条款 → 对照红线清单与历史合同 → 查看风险等级与可直接替换的条款原文。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍合同条款确认。",
+          "合同里哪些条款算高风险？",
+          "这份合同相对平时签的是松还是紧？",
+          "高风险条款能给我可直接替换的原文吗？"
+        ]
       },
       "package_sha256": "6b2e7efe387dbb3970568a8b188f8f4f78e2b3f3aa70219d1dd21645e3b7500d",
       "demo_file_count": 5
@@ -159,8 +180,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "交期平衡与产销协同"
+          "计划排程",
+          "交期管理"
         ],
         "skills": [
           "wb-deadline-balance"
@@ -188,7 +209,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传订单、工单、齐套、产能 4 份资料 → 查看客户等级 × 紧迫度 × 齐套三维评估 → 确认守、拆、延三色打标 → 领取对外话术与分部门待办。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍交期平衡。",
+          "订单按什么维度评估能不能守住交期？",
+          "帮我给每张订单打守、拆、延的标。",
+          "对外的交期说明话术能一起生成吗？"
+        ]
       },
       "package_sha256": "7950db39930852709b2408a7b09b34ab5a05bc7daa331ddfb714c6ff60dcb338",
       "demo_file_count": 4
@@ -205,8 +233,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "交付风险评估"
+          "预警监控",
+          "交付管理"
         ],
         "skills": [
           "wb-delivery-risk"
@@ -235,7 +263,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传检验记录、订单交期、客户协议、返工产能、先例台账 → 查看红线拦截结果 → 复核 CR/MA/MI 档位与接收数 → 选择五档处置并比对两边代价。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍交付风险评估。",
+          "哪些情况属于一票否决的红线？",
+          "缺陷分 CR/MA/MI 后怎么重算接收数？",
+          "放行和返工两边的代价帮我摆出来。"
+        ]
       },
       "package_sha256": "32a7904d1b001e856b4f3f4715de0c7cc33e8963445d61990d5a3873a1d3ebc9",
       "demo_file_count": 5
@@ -252,8 +287,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "工程变更管理ECN"
+          "流程管控",
+          "工程变更"
         ],
         "skills": [
           "wb-ecn"
@@ -283,7 +318,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "说明变更内容并分级 → 查看六维影响评估与 FMEA 联动 → 确认验证计划与审批链 → 跟踪实施进度与效果闭环。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍 ECN 流程。",
+          "变更要怎么分级、去哪几个维度评估影响？",
+          "验证计划按级别应该包含哪些项？",
+          "变更实施后怎么确认效果闭环？"
+        ]
       },
       "package_sha256": "4333570ba9f4e2b5ab7d54c2a428e7ea4a5142bfae0c1ff9b2009731a5122364",
       "demo_file_count": 3
@@ -300,8 +342,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "库存结构与呆滞料复盘"
+          "数据分析",
+          "库存管理"
         ],
         "skills": [
           "wb-idle-stock-review"
@@ -330,7 +372,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传库龄表与采购、工单、销售资料 → 查看剔除伪呆滞后的清单 → 复核图纸公差反查结果 → 确认四档处置与安全库存建议。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍呆滞料复盘。",
+          "账面呆滞但实际已配套的怎么剔出去？",
+          "图纸公差反查能查出什么？",
+          "四档处置建议的依据是什么？"
+        ]
       },
       "package_sha256": "09867bf2c8a4efae2eca59756fa386b7890564e8331715b91cf0dafb1be12503",
       "demo_file_count": 5
@@ -347,8 +396,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "异常分级与升级归口"
+          "流程管控",
+          "异常管理"
         ],
         "skills": [
           "wb-incident-triage"
@@ -377,7 +426,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传各入口的异常原始记录 → 查看去重与历史反向检索 → 确认 P1/P2/P3 分级与建议归口 → 领取协调稿与 SLA 台账。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍异常分级。",
+          "同一个问题多次上报要怎么去重？",
+          "P1/P2/P3 是按什么判出来的？",
+          "为什么建议归 X，而不是 Y 和 Z？"
+        ]
       },
       "package_sha256": "28ba682317e717554e7c5f4146b19a8d6ae90491e0e1d8a5cadc441d8e6e64be",
       "demo_file_count": 4
@@ -394,8 +450,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "来料跟催"
+          "计划排程",
+          "物料跟催"
         ],
         "skills": [
           "wb-material-chase"
@@ -423,7 +479,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传到货与承诺记录 → 查看供应商履约画像 → 确认四色分级与预测到货日 → 领取跟催话术与责任人待办。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍来料跟催。",
+          "供应商的履约画像怎么算出来？",
+          "预测到货日怎么和断料日比？",
+          "跟催话术能带上哪些数据筹码？"
+        ]
       },
       "package_sha256": "312ac970b675091b65396515049f2d487553beee5dadfca106ab70e949203679",
       "demo_file_count": 4
@@ -440,8 +503,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "客户单据转订单"
+          "资料归集",
+          "订单管理"
         ],
         "skills": [
           "wb-order-intake"
@@ -471,7 +534,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传客户单据与价格表 → 查看料号翻译与单位换算结果 → 复核单价与日期归一 → 按三色归口确认可建、待澄清与挂起。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍单据转订单。",
+          "客户料号和我们的料号怎么对应？",
+          "单位「套 / 件」的陷阱怎么识别？",
+          "哪些行可以直接建单、哪些要澄清？"
+        ]
       },
       "package_sha256": "0432891be16a32a42c22a785884abd4f2d3a9ad4e73a13970b3f407516bcb983",
       "demo_file_count": 5
@@ -488,8 +558,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "订单接单评审"
+          "风险合规",
+          "订单管理"
         ],
         "skills": [
           "wb-order-review"
@@ -518,7 +588,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传订单、工单、齐套、产能资料 → 指定目标订单 → 查看齐套、产能与在制冲突评估 → 领取三色结论与建议动作。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍接单评审。",
+          "要准备哪几份数据？",
+          "齐套、产能、在制冲突分别怎么评估？",
+          "不建议接的单子会给出什么动作？"
+        ]
       },
       "package_sha256": "ec7bfde008bd2fb6a0aa0d2f6585b6e23b85d9bf97eed6a03bdfc665a7f1baa5",
       "demo_file_count": 4
@@ -535,8 +612,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "排产与插单调整"
+          "计划排程",
+          "排产管理"
         ],
         "skills": [
           "wb-priority-adjust"
@@ -565,7 +642,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "确认评审或平衡结论 → 回复「按你建议来」触发执行 → 查看工单优先级调整与审计记录 → 领取分部门通知稿。",
+        "suggested_questions": [
+          "评审结论出来了，怎么触发排产调整？",
+          "调整工单优先级会留下记录吗？",
+          "通知稿要分几个部门、口径一样吗？",
+          "怎么确认各部门已经收到？"
+        ]
       },
       "package_sha256": "b9a85be45282cf361b316350d8b9240cf2f6b3b089ebe351f627bc9d04bb1cb8",
       "demo_file_count": 4
@@ -582,8 +666,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "利润风险提示"
+          "预警监控",
+          "利润管理"
         ],
         "skills": [
           "wb-profit-risk"
@@ -612,7 +696,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传报价测算与实发费用资料 → 查看三项实发归集与未挂订单费用 → 复核返工估算与占比 → 查看毛利阈值提示与归口建议。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍利润风险提示。",
+          "超领和外协增量怎么归集？",
+          "未挂订单的加急运费怎么反查回去？",
+          "跌破报价毛利多少会提示？"
+        ]
       },
       "package_sha256": "6f3406edf31a96ffc99a44f43da5d23543079b75e7bcc11da622cd86f3f2ae94",
       "demo_file_count": 7
@@ -629,8 +720,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "执行偏差追踪与补产"
+          "计划排程",
+          "生产进度"
         ],
         "skills": [
           "wb-progress-deviation"
@@ -659,7 +750,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传工单进度、齐套、维修、返工、出勤资料 → 查看数据时点校验 → 确认三类偏差与根因候选 → 领取补产建议与可打印日报。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍偏差追踪。",
+          "哪些报工会被标为不可信？",
+          "欠数、滞后、返工未补回怎么识别？",
+          "要不要补产、补多少能一起算吗？"
+        ]
       },
       "package_sha256": "52ba7c1ffac7971c677566f1bcdfbe263cc5066a58e68ce336e1d7856c4aa73c",
       "demo_file_count": 5
@@ -676,8 +774,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "品质异常分析"
+          "数据分析",
+          "品质管理"
         ],
         "skills": [
           "wb-quality-analysis"
@@ -707,7 +805,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传制造与检验资料 → 查看按批号的工序履历还原 → 复核参数偏差与重复性回查 → 领取双路径归因与改善报告。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍品质异常分析。",
+          "怎么按批号还原全工序履历？",
+          "实际值和工艺要求怎么逐项比？",
+          "怎么判断这次是不是重复发生？"
+        ]
       },
       "package_sha256": "2bd9bf0f4b746a7f7178e80196634f276501bf69388fb224a88e24e432a41cfa",
       "demo_file_count": 5
@@ -724,8 +829,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "对账差异核对"
+          "数据核对",
+          "对账管理"
         ],
         "skills": [
           "wb-reconciliation"
@@ -754,7 +859,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传双方对账资料 → 查看字段映射与单号归一 → 确认逐行匹配与五类差异 → 领取差异清单与回函底稿。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍对账差异核对。",
+          "繁简体和单号简写怎么归一？",
+          "差异会分成哪几类？",
+          "回函底稿能一起生成吗？"
+        ]
       },
       "package_sha256": "6f6c4764edce0784c63f021a77b3edc47272c1570bffcbc9c5fe97631b7f7d50",
       "demo_file_count": 4
@@ -771,8 +883,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "齐套与缺料预警"
+          "预警监控",
+          "物料齐套"
         ],
         "skills": [
           "wb-shortage-alert"
@@ -800,7 +912,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传库存、工单与需料资料 → 查看双口径可用库存 → 确认真缺口与六条路径可行性 → 领取三色结论与缺口收敛验算。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍缺料预警。",
+          "可用库存为什么要双口径？",
+          "伪缺口怎么剔掉？",
+          "六条补料路径怎么判断可行性？"
+        ]
       },
       "package_sha256": "eb6e98786e9ea054166e7fc82e22c62b8e9ffc51afed2666cd76a24f6e1eb20e",
       "demo_file_count": 7
@@ -817,8 +936,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "SOP生成与校验"
+          "文档生成",
+          "SOP管理"
         ],
         "skills": [
           "wb-sop-gen"
@@ -848,7 +967,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传作业指导书、工艺卡、图纸与异常记录 → 查看版本引用核对与参数并排比 → 确认完整性缺口与历史异常闭环 → 领取升版包。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍 SOP 校验。",
+          "指导书引用的图纸版本对不对怎么核？",
+          "哪些属于模糊表述或缺失项？",
+          "升版包会包含哪些内容？"
+        ]
       },
       "package_sha256": "2e63e60be9c5696b1fe0163f8b88f3858fb183585a82e9ba91b9fd07ac42f755",
       "demo_file_count": 9
@@ -865,8 +991,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "开工条件核查"
+          "风险合规",
+          "开工管理"
         ],
         "skills": [
           "wb-trial-check"
@@ -894,7 +1020,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传 BOM、齐套、SOP、产能负荷、工装状态资料 → 指定产品 ID → 查看五项红黄绿 → 领取可开、需补、不可开结论与卡点动作。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍开工核查。",
+          "要准备哪五份文件？",
+          "五项红黄绿是怎么判的？",
+          "卡点补齐要给到哪个岗位？"
+        ]
       },
       "package_sha256": "3b696d5bf20bb7451480d1fa229e8bff90b490b6b03e2f19880b34e4eb938e14",
       "demo_file_count": 5
@@ -911,8 +1044,8 @@
         "category": "制造业",
         "tags": [
           "制造业",
-          "场景智能体",
-          "版本一致性巡检"
+          "数据核对",
+          "版本管理"
         ],
         "skills": [
           "wb-version-audit"
@@ -940,7 +1073,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传系统受控版本与现场发放台账 → 查看逐项 diff 的红绿清单 → 复核现场备注归口 → 领取分岗位通知稿。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍版本巡检。",
+          "系统版本和现场台账怎么逐项比？",
+          "现场备注怎么归口到执行侧？",
+          "通知稿要按岗位分段吗？"
+        ]
       },
       "package_sha256": "9abd8c8db185357f6e4dc7fc15343ae822a3db14eb8d96a52001d45b0ad708eb",
       "demo_file_count": 3
@@ -957,8 +1097,8 @@
         "category": "人力资源",
         "tags": [
           "人力资源",
-          "场景智能体",
-          "劳动仲裁举证资料包"
+          "资料归集",
+          "劳动仲裁"
         ],
         "skills": [
           "wb-arbitration-evidence-pack"
@@ -987,7 +1127,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "说明对方主张与仲裁阶段 → 上传现有考勤、工资、合同等材料 → 查看逐项举证线与证据缺口 → 领取应诉资料包与固证建议。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍举证资料包。",
+          "对方主张加班费，我要准备哪些证据？",
+          "哪些证据缺口是补不了的？",
+          "微信记录怎么取证才算合规？"
+        ]
       },
       "package_sha256": "764607bf5fdcbfc4a03504851038241bb48506ed27239489944bef2c307e9128",
       "demo_file_count": 4
@@ -1004,8 +1151,8 @@
         "category": "人力资源",
         "tags": [
           "人力资源",
-          "场景智能体",
-          "劳动合同台账重建与到期预警"
+          "台账管理",
+          "劳动合同"
         ],
         "skills": [
           "wb-contract-expiry-ledger"
@@ -1035,7 +1182,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传合同扫描件、花名册、社保名单 → 查看底数重建与在职比对结果 → 复核 30/60/90 天预警与顺延情形 → 领取可扛检查的台账底表。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍合同台账重建。",
+          "三个版本台账以哪份为准？",
+          "到期预警按多少天分级？",
+          "哪些情形下合同到期必须顺延？"
+        ]
       },
       "package_sha256": "5a3e48b648e430f8ca3d0730a143ebdd1de9341d2fbfcd98006a0af393aa1ef7",
       "demo_file_count": 5
@@ -1052,8 +1206,8 @@
         "category": "人力资源",
         "tags": [
           "人力资源",
-          "场景智能体",
-          "面试题与量化录用条件生成"
+          "文档生成",
+          "招聘面试"
         ],
         "skills": [
           "wb-interview-criteria-gen"
@@ -1082,7 +1236,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传岗位说明书与 JD → 查看模糊要求的量化对照 → 确认结构化面试题与评分标准 → 领取录用条件与面试题本。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍面试题生成。",
+          "「细心」这类要求怎么量化？",
+          "面试题怎么和录用条件一一对应？",
+          "评分标准怎么减少面试官主观差？"
+        ]
       },
       "package_sha256": "377d0c271e36f5306ec6e2eb84af8d8dc5395c710727ec08f4f0a3d16e68b05b",
       "demo_file_count": 4
@@ -1099,8 +1260,8 @@
         "category": "人力资源",
         "tags": [
           "人力资源",
-          "场景智能体",
-          "月度人力成本一页纸"
+          "报表编制",
+          "人力成本"
         ],
         "skills": [
           "wb-labor-cost-onepager"
@@ -1129,7 +1290,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传工资总额、社保公积金、福利、招聘培训及补偿数据 → 确认成本口径 → 查看环比归因与人均口径 → 领取一页纸成本报告。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍人力成本一页纸。",
+          "哪些项目算人力成本？",
+          "环比多了几万，怎么归因到具体事件？",
+          "人均成本要不要和产量一起看？"
+        ]
       },
       "package_sha256": "f367064fbe71faf51d02e2ba9a05ee46b6957cb2483a73c8f69e4284bf114978",
       "demo_file_count": 4
@@ -1146,8 +1314,8 @@
         "category": "人力资源",
         "tags": [
           "人力资源",
-          "场景智能体",
-          "入职合规启动包"
+          "资料归集",
+          "入职管理"
         ],
         "skills": [
           "wb-onboarding-compliance-pack"
@@ -1176,7 +1344,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传花名册与新人名单 → 查看按人拆分的材料核验清单 → 确认录用条件与时限日历 → 领取签收留痕与启动包。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍入职合规启动包。",
+          "五个人的清单为什么要不一样？",
+          "每个人的时限死线怎么列？",
+          "录用条件为什么要在入职当天签？"
+        ]
       },
       "package_sha256": "b0f79487931559598898c134fb8f605d87b0508bb441a1621898db3cf91e525c",
       "demo_file_count": 4
@@ -1193,8 +1368,8 @@
         "category": "人力资源",
         "tags": [
           "人力资源",
-          "场景智能体",
-          "加班费敞口测算"
+          "测算评估",
+          "加班费"
         ],
         "skills": [
           "wb-overtime-exposure"
@@ -1223,7 +1398,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传打卡与工资数据 → 查看三类工时重构 → 确认基数双口径测算结果 → 查看审批缺口与月度滚动敞口。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍加班费敞口。",
+          "三类加班怎么从打卡还原？",
+          "基数为什么要算两个口径？",
+          "没有审批的加班要不要算？"
+        ]
       },
       "package_sha256": "7c8a4047c2aa21cf3bf14bacb5831fbad09ccac426b2bd73b6a5d0278f54feab",
       "demo_file_count": 4
@@ -1240,8 +1422,8 @@
         "category": "人力资源",
         "tags": [
           "人力资源",
-          "场景智能体",
-          "算薪跨部门数据拼图"
+          "资料归集",
+          "薪酬核算"
         ],
         "skills": [
           "wb-payroll-data-assembly"
@@ -1271,7 +1453,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传考勤、提成、计件等多部门数据 → 查看人名对齐与口径归一 → 复核三道交叉对账异常 → 领取合规工资表与对账包。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍算薪数据拼图。",
+          "五份数据的人名怎么对齐？",
+          "考勤和审批流怎么交叉对账？",
+          "合规工资表要包含哪些法定栏位？"
+        ]
       },
       "package_sha256": "ae29a07a09a340d04e90daa8f49fe8343f80158e5e2769675e87ef2c4d9df7b0",
       "demo_file_count": 5
@@ -1288,8 +1477,8 @@
         "category": "人力资源",
         "tags": [
           "人力资源",
-          "场景智能体",
-          "工资条生成与异常波动拦截"
+          "预警监控",
+          "工资条"
         ],
         "skills": [
           "wb-payslip-anomaly"
@@ -1318,7 +1507,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传本月与上月工资数据 → 查看法定栏位工资条 → 复核 ±20% 环比异常与合理差异排除 → 确认拦截放行并留痕。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍工资条生成。",
+          "环比多少会标红？",
+          "哪些差异属于预期内可以先排除？",
+          "存疑的工资条怎么拦下来？"
+        ]
       },
       "package_sha256": "96a9e07c8361e1c38110b203ff59bcd3152025ee1e20aec5f72dcf47027d49a9",
       "demo_file_count": 3
@@ -1335,8 +1531,8 @@
         "category": "人力资源",
         "tags": [
           "人力资源",
-          "场景智能体",
-          "绩效改进计划（PIP）文书与合规流程"
+          "文档生成",
+          "绩效管理"
         ],
         "skills": [
           "wb-pip-docs"
@@ -1365,7 +1561,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传考核结果与岗位基准 → 查看不胜任证据与目标合理性 → 确认五步日期链与支持记录 → 领取 PIP 文书包。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍 PIP 文书。",
+          "「不胜任」要翻译成什么样的证据？",
+          "改进目标设在什么水平才合理？",
+          "员工拒签怎么处理？"
+        ]
       },
       "package_sha256": "587bd55688145deb2ebb3260ceeeb8e7b2263eeb7e6667b777b0bbfb46696fa0",
       "demo_file_count": 4
@@ -1382,8 +1585,8 @@
         "category": "人力资源",
         "tags": [
           "人力资源",
-          "场景智能体",
-          "试用期考核留痕与录用条件对照"
+          "风险合规",
+          "试用期管理"
         ],
         "skills": [
           "wb-probation-evidence"
@@ -1413,7 +1616,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "说明拟处理意向并上传现有材料 → 查看三个法定条件打分 → 确认程序顺序与口径一致性 → 领取两条路金额测算与留痕模板。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍试用期留痕诊断。",
+          "三个法定条件怎么逐项打分？",
+          "程序倒置为什么也会输？",
+          "辞退和等转正的金额差多少？"
+        ]
       },
       "package_sha256": "38a49c1b491e7d906e52e3a4cc51ba187c19d63b49a9d1097400d7332b19047c",
       "demo_file_count": 4
@@ -1430,8 +1640,8 @@
         "category": "人力资源",
         "tags": [
           "人力资源",
-          "场景智能体",
-          "招聘漏斗月报与渠道 ROI"
+          "报表编制",
+          "招聘分析"
         ],
         "skills": [
           "wb-recruitment-funnel-report"
@@ -1460,7 +1670,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传各招聘平台与渠道花费数据 → 确认口径归一 → 查看漏斗重构与单人成本 → 领取渠道 ROI 一页纸。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍招聘漏斗月报。",
+          "各平台口径不一样怎么对齐？",
+          "单人成本怎么算？",
+          "便宜但流失快的渠道怎么看出来？"
+        ]
       },
       "package_sha256": "fcd01766d5ea23d98f0a65a80850d1ff58c011a104863dd63991a972e6f5294f",
       "demo_file_count": 4
@@ -1477,8 +1694,8 @@
         "category": "人力资源",
         "tags": [
           "人力资源",
-          "场景智能体",
-          "简历格式归一与结构化"
+          "资料归集",
+          "简历管理"
         ],
         "skills": [
           "wb-resume-normalize"
@@ -1507,7 +1724,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传一批简历 → 查看字段抽取与身份去重 → 复核硬条件与疑点标记 → 领取可筛选的结构化底表。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍简历归一。",
+          "同一人多次投递怎么合并？",
+          "硬条件核对会打适配分吗？",
+          "简历里的时间线矛盾怎么标？"
+        ]
       },
       "package_sha256": "cb6d473df340871fac9ccb7d6946a8ee019155cc964b27f6eefa45a4d77a57ef",
       "demo_file_count": 5
@@ -1524,8 +1748,8 @@
         "category": "人力资源",
         "tags": [
           "人力资源",
-          "场景智能体",
-          "核心人才保留成本测算"
+          "测算评估",
+          "人才保留"
         ],
         "skills": [
           "wb-retention-cost"
@@ -1554,7 +1778,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传历史招聘与薪酬数据 → 查看替换成本与保留成本两本账 → 复核离职预警三个信号 → 领取保留建议与预警组合。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍保留成本测算。",
+          "替换成本包含哪几项？",
+          "离职前有哪些信号可以提前看到？",
+          "哪些组合应该设为预警？"
+        ]
       },
       "package_sha256": "743bc479faa4e1e063fddebaa411d407e7313cc623b28bcd75ce22b324a59736",
       "demo_file_count": 4
@@ -1571,8 +1802,8 @@
         "category": "人力资源",
         "tags": [
           "人力资源",
-          "场景智能体",
-          "员工花名册法定栏位体检与重建"
+          "台账管理",
+          "员工花名册"
         ],
         "skills": [
           "wb-roster-audit"
@@ -1601,7 +1832,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传多版本花名册与参保名单 → 查看版本对账与外部交叉结果 → 复核法定八栏位与身份证有效性 → 领取唯一版本底表。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍花名册体检。",
+          "多个版本的花名册以哪份为准？",
+          "法定八项栏位是哪些？",
+          "怎么用参保名单反查漏登记和离职未销？"
+        ]
       },
       "package_sha256": "7a3aa27fd81d5bb1c935de81130f196cf31d68b8b066353fa8ccff32dab1df27",
       "demo_file_count": 5
@@ -1618,8 +1856,8 @@
         "category": "人力资源",
         "tags": [
           "人力资源",
-          "场景智能体",
-          "社保基数三数比对体检"
+          "数据核对",
+          "社保管理"
         ],
         "skills": [
           "wb-social-insurance-base-check"
@@ -1649,7 +1887,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传个税、社保、工资数据 → 查看三数对齐与差异全景 → 确认敞口三档测算与高危分层 → 领取合规路径比选与申报建议。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍社保基数体检。",
+          "个税、社保、工资三个口径怎么对齐？",
+          "敞口和滞纳金怎么测算？",
+          "主动补缴和维持现状的代价差多少？"
+        ]
       },
       "package_sha256": "2050aea7fd64f741fc25fda733514be297f52fb55f71e56c7bfb17f12e993c9d",
       "demo_file_count": 4
@@ -1666,8 +1911,8 @@
         "category": "财务",
         "tags": [
           "财务",
-          "场景智能体",
-          "应收账款账龄分析与逾期预警"
+          "数据分析",
+          "应收账款"
         ],
         "skills": [
           "wb-ar-aging"
@@ -1696,7 +1941,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传销售、财务与回款流水 → 查看回款核销与四档账龄分级 → 复核坏账计提测算 → 领取逾期催收清单。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍账龄分析。",
+          "回款流水怎么匹配到发票？",
+          "账龄四档和坏账计提怎么算？",
+          "催收清单按什么排序？"
+        ]
       },
       "package_sha256": "86723d49bb299ff1e5e08130e060c7cd7e3d35c95065c9cbf56fabf766808195",
       "demo_file_count": 4
@@ -1713,8 +1965,8 @@
         "category": "财务",
         "tags": [
           "财务",
-          "场景智能体",
-          "银行余额调节表自动编制"
+          "数据核对",
+          "银行对账"
         ],
         "skills": [
           "wb-bank-reconciliation"
@@ -1743,7 +1995,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传银行对账单与银行日记账 → 查看要素校验与逐笔勾对 → 复核四类未达账项与历史遗留 → 领取左右闭合的调节表。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍余额调节表。",
+          "勾对用哪三个要素？",
+          "未达账项分哪四类？",
+          "上月的遗留未达项怎么追踪？"
+        ]
       },
       "package_sha256": "8394f1669473a8616fc699950b67061acd1903a704e8e90121028883a234c459",
       "demo_file_count": 4
@@ -1760,8 +2019,8 @@
         "category": "财务",
         "tags": [
           "财务",
-          "场景智能体",
-          "预算编制数据收集"
+          "资料归集",
+          "预算管理"
         ],
         "skills": [
           "wb-budget-collection"
@@ -1790,7 +2049,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传各部门预算申报表 → 查看格式归一与口径对齐 → 复核汇总差异与动因比对 → 领取可上会的预算底稿。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍预算收集。",
+          "各部门表格列名不一样怎么办？",
+          "汇总后数据打架怎么标？",
+          "怎么用业务动因校验申报数？"
+        ]
       },
       "package_sha256": "ea651c5577a63caf0b1cabd687e09a94ca7f74f3bdf7d43eb387ea37da817f66",
       "demo_file_count": 4
@@ -1807,8 +2073,8 @@
         "category": "财务",
         "tags": [
           "财务",
-          "场景智能体",
-          "资金日报自动拼表"
+          "报表编制",
+          "资金管理"
         ],
         "skills": [
           "wb-cash-daily-report"
@@ -1836,7 +2102,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传三账户余额、在途收款与待付审批单 → 查看在途收款归集 → 核对待付款排序 → 领取可用资金日报。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍资金日报。",
+          "微信里的收款截图怎么入表？",
+          "可用资金怎么算？",
+          "待付款怎么排优先级？"
+        ]
       },
       "package_sha256": "56f2fc55ca3c95a1ed9a0b65780cd63ce3bc051d92769cab06faba7adb537b28",
       "demo_file_count": 4
@@ -1853,8 +2126,8 @@
         "category": "财务",
         "tags": [
           "财务",
-          "场景智能体",
-          "费用异常波动分析"
+          "数据分析",
+          "费用管理"
         ],
         "skills": [
           "wb-cost-variance"
@@ -1882,7 +2155,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传本期与基期费用数据 → 查看环比涨项定位 → 复核量价分离结果 → 领取超标科目排序与归因清单。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍费用波动分析。",
+          "涨价是量涨还是价涨怎么分？",
+          "计价方式变更怎么发现？",
+          "超支科目怎么排序？"
+        ]
       },
       "package_sha256": "b4756943331b908d00733cde8dc4b3a8daddf1dae778d2f27ae00377567c66fb",
       "demo_file_count": 3
@@ -1899,8 +2179,8 @@
         "category": "财务",
         "tags": [
           "财务",
-          "场景智能体",
-          "报销单合规预审"
+          "风险合规",
+          "报销管理"
         ],
         "skills": [
           "wb-expense-precheck"
@@ -1929,7 +2209,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传报销单、发票与附件 → 查看要素校验与十看审查 → 复核标准比对结果 → 领取预审清单与退单话术。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍报销预审。",
+          "发票要看哪几项？",
+          "差旅和招待的标准怎么比？",
+          "退单理由能挂到制度条款吗？"
+        ]
       },
       "package_sha256": "f090aaafefc295578be7f501bc10ebb38f6568d6477d39a3fd48b77d5e1d6286",
       "demo_file_count": 4
@@ -1946,8 +2233,8 @@
         "category": "财务",
         "tags": [
           "财务",
-          "场景智能体",
-          "往来对账差异清单"
+          "数据核对",
+          "往来对账"
         ],
         "skills": [
           "wb-reconciliation-diff"
@@ -1976,7 +2263,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传我方明细与对方对账单 → 查看逐笔对齐结果 → 复核四类差异与红字专查 → 领取对账函底稿与差异清单。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍往来对账。",
+          "差异分哪四类？",
+          "红字发票为什么最容易漏？",
+          "对账函底稿能一起生成吗？"
+        ]
       },
       "package_sha256": "76f6a18e07801249626915868e13c300ae2987ff2e1e37bafb8dd349d4b9db13",
       "demo_file_count": 4
@@ -1993,8 +2287,8 @@
         "category": "财务",
         "tags": [
           "财务",
-          "场景智能体",
-          "税收优惠体检与漏享扫描"
+          "风险合规",
+          "税收优惠"
         ],
         "skills": [
           "wb-tax-benefit-scan"
@@ -2023,7 +2317,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传财税资料与申报数据 → 查看小微三条件判定 → 逐条对照可享优惠 → 领取已享、漏享、可申请清单与政策依据。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍税收优惠体检。",
+          "小微企业的三个条件是什么？",
+          "研发加计扣除等优惠怎么逐条对照？",
+          "利润贴近 300 万门槛有什么风险？"
+        ]
       },
       "package_sha256": "52247df7e6aaab3721ebbfe47826e7639ebe328524cf2e6ef09513b58120da58",
       "demo_file_count": 4
@@ -2040,8 +2341,8 @@
         "category": "财务",
         "tags": [
           "财务",
-          "场景智能体",
-          "纳税日历与逾期预警"
+          "预警监控",
+          "纳税申报"
         ],
         "skills": [
           "wb-tax-calendar"
@@ -2069,7 +2370,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "说明企业税种与申报习惯 → 查看全年税种日历 → 复核应启动日倒推 → 领取申报日历与逾期试算提醒。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍纳税日历。",
+          "每个申报节点要提前几天启动？",
+          "逾期滞纳金怎么试算？",
+          "能按时间给我一份提醒清单吗？"
+        ]
       },
       "package_sha256": "97be964c0a24d169e8f3e667b63d3320d253939ee964dc96bb70378da7704a1e",
       "demo_file_count": 3
@@ -2086,8 +2394,8 @@
         "category": "财务",
         "tags": [
           "财务",
-          "场景智能体",
-          "纳税申报前风险清单"
+          "风险合规",
+          "纳税申报"
         ],
         "skills": [
           "wb-tax-risk-checklist"
@@ -2116,7 +2424,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传销项、进项与开票数据 → 查看进销项差异与未开票收入排查 → 复核三流一致与高风险行为自查 → 领取风险清单与处置建议。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍申报前风险清单。",
+          "进销项税负率异常怎么提示？",
+          "未开票收入怎么排查？",
+          "三流一致要初筛哪些疑点？"
+        ]
       },
       "package_sha256": "5ffbaa7a774dd845b1b96699e7394dbab40b7a87875b65f1b47182689b149593",
       "demo_file_count": 4
@@ -2133,8 +2448,8 @@
         "category": "财务",
         "tags": [
           "财务",
-          "场景智能体",
-          "凭证全量稽核扫描"
+          "数据核对",
+          "会计凭证"
         ],
         "skills": [
           "wb-voucher-audit"
@@ -2163,7 +2478,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传凭证导出文件 → 查看借贷平衡与科目异常检测 → 复核附件摘要与断号检测 → 领取分类稽核清单与处理建议。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍凭证稽核。",
+          "借贷不平的凭证怎么揪出来？",
+          "科目挂错、方向反了怎么判定？",
+          "断号检测能查出什么问题？"
+        ]
       },
       "package_sha256": "8d12fa843de10394c3868f3a0c7241c9f3c3d56e62df41dda276819e83ad327c",
       "demo_file_count": 3
@@ -2180,8 +2502,8 @@
         "category": "财务",
         "tags": [
           "财务",
-          "场景智能体",
-          "经营周报自动拼表"
+          "报表编制",
+          "经营周报"
         ],
         "skills": [
           "wb-weekly-report"
@@ -2210,7 +2532,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传销售、财务、仓储三处数据 → 查看口径对齐 → 复核 12 项指标拼表 → 领取带异常标注的经营周报。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍经营周报。",
+          "要取哪三处数据？",
+          "12 项指标包含哪些？",
+          "口径差异和缺项怎么标注？"
+        ]
       },
       "package_sha256": "bf3c659326e1b10c347204bfe17047fcb9bf543772ca40bc20fcad5e33772887",
       "demo_file_count": 3
@@ -2227,8 +2556,8 @@
         "category": "销售",
         "tags": [
           "销售",
-          "场景智能体",
-          "逾期应收账龄分档与差异化催收方案"
+          "风险合规",
+          "应收账款"
         ],
         "skills": [
           "wb-ar-aging-collection"
@@ -2258,7 +2587,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传合同、发票、回款与公开信息 → 查看按约定到期日算准的逾期天数 → 复核四档占比闭合与诉讼时效 → 领取分档催收方案与留证签批。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍逾期分档催收。",
+          "逾期天数为什么要按到期日算？",
+          "诉讼时效的剩余天数怎么算？",
+          "每笔的催收动作和证据清单能一起给吗？"
+        ]
       },
       "package_sha256": "289220dec8fa9cc760da1583be8feb7cb30e43acd421cd30b4876b2812124d22",
       "demo_file_count": 6
@@ -2275,8 +2611,8 @@
         "category": "销售",
         "tags": [
           "销售",
-          "场景智能体",
-          "客户对账差异逐笔排查"
+          "数据核对",
+          "客户对账"
         ],
         "skills": [
           "wb-ar-reconciliation-gap"
@@ -2306,7 +2642,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传双方台账与凭证 → 查看多字段匹配结果 → 复核三类差异逐笔归因 → 领取差异说明与凭证索引。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍对账差异排查。",
+          "两边对不上怎么逐笔配平？",
+          "差异怎么归因到漏单、退货或运费？",
+          "差异汇总为什么要闭合？"
+        ]
       },
       "package_sha256": "70afd0f0823aa713e26f083d5588d39b6d84271a091ae0af047fb3bb2cef871a",
       "demo_file_count": 6
@@ -2323,8 +2666,8 @@
         "category": "销售",
         "tags": [
           "销售",
-          "场景智能体",
-          "关联方串标风险自查"
+          "风险合规",
+          "招投标"
         ],
         "skills": [
           "wb-bid-collusion-selfcheck"
@@ -2354,7 +2697,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传投标相关公开信息与编制记录 → 查看痕迹清单逐项核对 → 复核第三方服务与上传环境重合 → 领取风险分级与自查记录。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍串标风险自查。",
+          "公开认定口径要看哪些痕迹？",
+          "第三方服务和上传环境怎么核？",
+          "风险分几档、各自怎么处置？"
+        ]
       },
       "package_sha256": "5cf659ec0d9a41236515c8aed0c8fca8c1dbd73fa3630d37e956258be117e4fc",
       "demo_file_count": 6
@@ -2371,8 +2721,8 @@
         "category": "销售",
         "tags": [
           "销售",
-          "场景智能体",
-          "投不投的可行性初筛"
+          "测算评估",
+          "招投标"
         ],
         "skills": [
           "wb-bid-go-nogo"
@@ -2402,7 +2752,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传招标文件与项目信息 → 查看硬门槛与垫资测算 → 复核业主支付能力与投标成本 → 领取四档初筛意见表。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍投标初筛。",
+          "硬门槛都有哪些？",
+          "按付款条件要垫多少资？",
+          "业主的历史支付能力怎么查？"
+        ]
       },
       "package_sha256": "c55eacdafd7145c2bdb625190d586c45f94041ccf9e46d992050740a837dfd92",
       "demo_file_count": 6
@@ -2419,8 +2776,8 @@
         "category": "销售",
         "tags": [
           "销售",
-          "场景智能体",
-          "招标文件实质性条款逐条清单化"
+          "资料归集",
+          "招投标"
         ],
         "skills": [
           "wb-bid-mandatory-clause"
@@ -2450,7 +2807,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传招标文件与答疑 → 查看★号与强制表述抽取 → 逐条响应比对 → 领取含页码出处的条款响应表。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍条款清单化。",
+          "哪些表述算实质性条款？",
+          "答疑把哪些正本条款改掉了？",
+          "不能响应的条款怎么评估废标风险？"
+        ]
       },
       "package_sha256": "a01358a1b7ee005ad400cfadb431a14818615dd36d478e0ecf6ced1d31850cc5",
       "demo_file_count": 6
@@ -2467,8 +2831,8 @@
         "category": "销售",
         "tags": [
           "销售",
-          "场景智能体",
-          "商务标废标项逐条自查"
+          "风险合规",
+          "招投标"
         ],
         "skills": [
           "wb-bid-void-selfcheck"
@@ -2498,7 +2862,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传本次招标文件与投标材料 → 查看现场生成的核查清单 → 复核材料齐套、有效期与金额一致性 → 领取可签字自查表。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍废标项自查。",
+          "核查项为什么要按本次招标文件生成？",
+          "资质和证书的有效期怎么核？",
+          "三处总价和大小写怎么交叉核？"
+        ]
       },
       "package_sha256": "0dc8d5870508a168cb7c487c3a52f1cf370cbbb397e3219721a19f79320cc36b",
       "demo_file_count": 6
@@ -2515,8 +2886,8 @@
         "category": "销售",
         "tags": [
           "销售",
-          "场景智能体",
-          "渠道价格体系一致性与窜货证据链"
+          "风险合规",
+          "渠道管理"
         ],
         "skills": [
           "wb-channel-price-fleeing"
@@ -2546,7 +2917,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传价格体系、出货与投诉资料 → 查看各级价差与倒挂点 → 复核批号流向与时间线 → 领取处理建议与条款缺口。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍窜货证据链。",
+          "各级价差和倒挂怎么算？",
+          "按批号能把货追到哪一步？",
+          "判断窜货还缺哪些证据？"
+        ]
       },
       "package_sha256": "9d1e924d086bc096bdf0bd6ee6e6244ad399d4280bd5732f0336a1a21bfc4863",
       "demo_file_count": 6
@@ -2563,8 +2941,8 @@
         "category": "销售",
         "tags": [
           "销售",
-          "场景智能体",
-          "合同条款与标准模板偏离比对"
+          "风险合规",
+          "合同管理"
         ],
         "skills": [
           "wb-contract-clause-deviation"
@@ -2594,7 +2972,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传本次合同与标准模板 → 查看逐条改动点 → 判断偏离方向并对照历史合同 → 领取偏离清单与会签表。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍合同偏离比对。",
+          "两份文本怎么切到可比的条款粒度？",
+          "偏离对我方是有利还是不利？",
+          "同类客户历史上接受过什么边界？"
+        ]
       },
       "package_sha256": "7725a2466bb9dda985607dfa72cc2e1914eafa551ce70c0c849192d1f2a5ed00",
       "demo_file_count": 5
@@ -2611,8 +2996,8 @@
         "category": "销售",
         "tags": [
           "销售",
-          "场景智能体",
-          "合同到期与续签盘点"
+          "台账管理",
+          "合同管理"
         ],
         "skills": [
           "wb-contract-renewal-sweep"
@@ -2642,7 +3027,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传合同台账与正本 → 查看通知期倒推结果 → 复核自动续期与涨价条款 → 领取续签盘点表与谈判依据。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍续签盘点。",
+          "到期日怎么和正本核对？",
+          "通知期和最晚动作日怎么算？",
+          "续签谈判能用哪些履约依据？"
+        ]
       },
       "package_sha256": "c62ceede097f48033ad48bf517f37aa635a6e3e787e84b3a0133323d4edc3a04",
       "demo_file_count": 5
@@ -2659,8 +3051,8 @@
         "category": "销售",
         "tags": [
           "销售",
-          "场景智能体",
-          "合同评审跨部门资料一次性齐套"
+          "资料归集",
+          "合同管理"
         ],
         "skills": [
           "wb-contract-review-pack"
@@ -2690,7 +3082,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传销售、法务、财务、技术四段材料 → 查看齐套核验与主体一致性 → 复核缺件影响与待决问题 → 领取评审齐套表。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍合同评审齐套。",
+          "四段会签各要看什么材料？",
+          "缺件会影响哪一段、多少钱？",
+          "会上要给每段列哪些待决问题？"
+        ]
       },
       "package_sha256": "a1462d4033d9e8c5a9d92cfab36b4d0fb5fc3adf2dd02d03c724017954c0e326",
       "demo_file_count": 6
@@ -2707,8 +3106,8 @@
         "category": "销售",
         "tags": [
           "销售",
-          "场景智能体",
-          "客户额度占用与超限发货预警"
+          "预警监控",
+          "客户信用"
         ],
         "skills": [
           "wb-credit-limit-exposure"
@@ -2738,7 +3137,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传客户订单、应收与授信资料 → 查看三项累计额度占用 → 复核超限金额与公开异动 → 领取分级建议动作与核查单。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍额度核查。",
+          "累计额度占用包含哪几项？",
+          "超限金额和比例怎么算？",
+          "超限到什么程度要暂停发货？"
+        ]
       },
       "package_sha256": "cc3510ab231151f317627808cf77e97c9b30bff0ec4dfa15c8809f899c9dd44f",
       "demo_file_count": 6
@@ -2755,8 +3161,8 @@
         "category": "销售",
         "tags": [
           "销售",
-          "场景智能体",
-          "丢单复盘事实时间线重建"
+          "数据分析",
+          "商机复盘"
         ],
         "skills": [
           "wb-lost-deal-timeline"
@@ -2786,7 +3192,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传商机、沟通、报价等记录 → 查看实质互动筛选与时间轴 → 复核异议闭环与决策链缺口 → 领取只含事实的复盘表。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍丢单复盘。",
+          "哪些记录不算实质互动？",
+          "客户的异议有没有被回应怎么追？",
+          "决策链缺口怎么看？"
+        ]
       },
       "package_sha256": "c40b899b8fc88b25aca23fcef3a39f5787d9ef3b8b49da0ec5730e4c5e5eb275",
       "demo_file_count": 6
@@ -2803,8 +3216,8 @@
         "category": "销售",
         "tags": [
           "销售",
-          "场景智能体",
-          "历史报价一致性与越权折扣核查"
+          "风险合规",
+          "报价管理"
         ],
         "skills": [
           "wb-quote-discount-audit"
@@ -2834,7 +3247,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传历史报价与授权规则 → 查看折算到标准价的折扣率 → 复核同客户纵向与同产品横向对比 → 领取折扣核查单与签批栏。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍折扣核查。",
+          "历史报价口径不一怎么折算？",
+          "本次折扣该谁签、超了几点？",
+          "其他客户同产品的折扣分布如何？"
+        ]
       },
       "package_sha256": "9d9c11fd7d68a91e66e62ba2b0dad9c039cddbb2a19061bf77e6738858cf2070",
       "demo_file_count": 6
@@ -2851,8 +3271,8 @@
         "category": "销售",
         "tags": [
           "销售",
-          "场景智能体",
-          "经销商返利兑现核对"
+          "数据核对",
+          "返利管理"
         ],
         "skills": [
           "wb-rebate-reconciliation"
@@ -2882,7 +3302,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传年度协议、月度通知与返利核算数据 → 查看政策口径拉平与基数归一 → 复核达成率档位与扣款依据 → 领取可对外的核算单。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍返利核对。",
+          "年度协议和月度通知口径不一致怎么办？",
+          "返利基数到底怎么算？",
+          "差额怎么拆到每一条原因上？"
+        ]
       },
       "package_sha256": "4b7b7828c6b8c07bad59e3a6d6ad2abd502b3e424a0e62bb3ef6caf1ff07ed71",
       "demo_file_count": 6
@@ -2899,8 +3326,8 @@
         "category": "销售",
         "tags": [
           "销售",
-          "场景智能体",
-          "停滞商机识别与唤醒清单"
+          "预警监控",
+          "商机管理"
         ],
         "skills": [
           "wb-stalled-deal-detection"
@@ -2930,7 +3357,14 @@
           "erp",
           "scheduler"
         ],
-        "agent_type": "normal"
+        "agent_type": "normal",
+        "usage_hint": "上传商机与互动记录 → 查看实质互动定义下的客观指标 → 复核三档停滞判定与归因 → 领取每个商机待核实问题的唤醒清单。",
+        "suggested_questions": [
+          "用内置演示数据跑一遍停滞商机识别。",
+          "什么才算实质互动？",
+          "停滞三档按什么判定？",
+          "每个商机要核实的那一件事怎么给？"
+        ]
       },
       "package_sha256": "413449c2712e18e2e0be31d2376e54c5ced52e7c2169df1a0651886a4cb2a796",
       "demo_file_count": 6

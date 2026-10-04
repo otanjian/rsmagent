@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "217e51836aa9cf8e65cbe419d56d027a16f5ed6935721530b4cb7f8207443243"
+      "sha256": "e9eda4d05b92da6098e412045030bbbbd3b4d1b4c421aade0ddb218f7aafbcc0"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "9e91d54d85ca31da7c4b7a87780d7bb59388c9a107cc0ac30f74996459a23405"
+      "sha256": "115e8be79ba536d4d41284d3dbf7127a1fdfc07a24629f7a139e471c5c6e4776"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "e33804b1938a936012ee81cc82513c09e0296f05b6bcd8c1c23ca7bc4763da72"
+      "sha256": "aed677786148465139050b47373822a11c9e015f6a7e64cb9501bc0e7900a9b8"
     },
     {
       "original": "输入参考文件/01_CRM跟进记录全量.xlsx",
@@ -37,12 +37,12 @@
     {
       "original": "输入参考文件/04_邮件与会议纪要.txt",
       "path": "assets/demo/04_邮件与会议纪要.txt",
-      "sha256": "83c10524ce8baf6661586f4b2071800b73d954ce54a8679086881a6fb1ec2c6b"
+      "sha256": "3a878b8bee39069890c629b56af32db9c2483d9ac78b137e77b65ee172ba471e"
     },
     {
       "original": "输入参考文件/05_中标公示与对手信息.txt",
       "path": "assets/demo/05_中标公示与对手信息.txt",
-      "sha256": "a71c7663be09d66d1893c7ff1f35ef308421349adf59d115c95f3249c093687b"
+      "sha256": "891ac00273a4395e0f73ea3d1c93a3b19629591cd8ce09eaa199f7b57b57e823"
     },
     {
       "original": "输入参考文件/06_上次丢单复盘表(德茂重工).xlsx",

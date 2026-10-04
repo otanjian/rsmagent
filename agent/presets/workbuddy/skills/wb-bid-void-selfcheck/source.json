@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "59009aa3e97857a087760fdfb849ebcd810e159d9c12116c59095a3cc6bfa48b"
+      "sha256": "8482ade02c6be7464cbcdb816ec3eb0fbb81f99782d66d10ba7c0116df62c7a8"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "483b145e3f721cc6d6ae3dad524f980c8bfec4fe55199fe64bcb2038a9f34bbe"
+      "sha256": "10bdc0695458134a59e33a844e24029b0c27499c1901d01946a75a6169844b5a"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "8d54b75d4a86250d8e86ea6ba0a0b6df08c7cf8778c6e9f074c6496344583f98"
+      "sha256": "d72878015cd37e55890efb216ef8415ee360da1ad304fada7870f3c74ff5f68f"
     },
     {
       "original": "输入参考文件/01_商务标材料清册.xlsx",
@@ -27,7 +27,7 @@
     {
       "original": "输入参考文件/02_招标文件材料要求摘录.txt",
       "path": "assets/demo/02_招标文件材料要求摘录.txt",
-      "sha256": "784488890c4fde608d411c14c0f0353dcb53e1977d689bb6194f80df578105d2"
+      "sha256": "f9845781f42c948ad744803ce4bf38d9821d075f1d2a014ece72d66544c26f63"
     },
     {
       "original": "输入参考文件/03_分项报价表与总价核对底稿.xlsx",

@@ -14,7 +14,7 @@ import time
 
 from agent.tools.base_tool import BaseTool, ToolResult
 
-CHILD_TOOLS = frozenset({"read", "write", "edit", "ls", "search_files", "bash", "browser", "vision"})
+CHILD_TOOLS = frozenset({"read", "write", "edit", "ls", "search_files", "bash", "browser", "vision", "excel"})
 _CREATE_LOCK = threading.RLock()
 
 

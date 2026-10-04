@@ -4597,9 +4597,122 @@ textarea.doc-editor {
     text-overflow: ellipsis;
 }
 
+/* ---------------------------------------------------------------------
+   Files tab: drop-to-upload, upload progress, deletion and the recycle bin
+   --------------------------------------------------------------------- */
+
+/* The drop overlay is positioned over the whole files tab, so the tab is a
+   positioning context. */
+#ws-body-files { position: relative; }
+
+/* A row's own action button. It sits at the row's end, i.e. to the right of the
+   file name, and is muted until the row is pointed at: at rest the list reads
+   as a list of names, on hover it says what can be done. */
+.ws-row-act {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #cbd5e1;
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.ws-file-row:hover .ws-row-act { color: #94a3b8; }
+.ws-row-act:hover { background: #e2e8f0; color: #334155; }
+.ws-row-act-danger:hover { background: #fee2e2; color: #dc2626; }
+.dark .ws-row-act { color: #475569; }
+.dark .ws-file-row:hover .ws-row-act { color: #94a3b8; }
+.dark .ws-row-act:hover { background: rgba(255, 255, 255, 0.10); color: #e2e8f0; }
+.dark .ws-row-act-danger:hover { background: rgba(220, 38, 38, 0.18); color: #f87171; }
+
+/* A row the caller may not delete. It still previews (it is readable), but it
+   carries the lock instead of an action: the reason is its title. The lock is
+   keyed off the attribute the row actually carries (`data-ws-locked`); this
+   rule used to name a class nothing ever set, so it never applied and a locked
+   row offered a control it would then refuse to act on. */
+.ws-file-row[data-ws-locked="1"] .ws-file-name { opacity: 0.7; }
+.ws-row-lock { flex-shrink: 0; width: auto !important; font-size: 10px !important; color: #cbd5e1; }
+.dark .ws-row-lock { color: #475569; }
+
+/* The bin's rows: the original path is the useful label there. */
+.ws-bin-row .ws-file-path { flex: 1; }
+
+/* Where a drop will land. Shown on dragenter, so the answer arrives before the
+   bytes do; the refused state is the same overlay in red. */
+.ws-drop-hint {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px;
+    text-align: center;
+    font-size: 12px;
+    color: #16a34a;
+    background: rgba(237, 253, 243, 0.94);
+    border: 2px dashed #4abe6e;
+    border-radius: 10px;
+    pointer-events: none;
+}
+.ws-drop-hint i { font-size: 24px; }
+.ws-drop-hint-text { word-break: break-all; }
+.dark .ws-drop-hint { background: rgba(15, 23, 42, 0.92); color: #86efac; }
+.ws-drop-hint.ws-drop-refused { color: #dc2626; border-color: #f87171; background: rgba(254, 242, 242, 0.95); }
+.dark .ws-drop-hint.ws-drop-refused { background: rgba(69, 10, 10, 0.9); color: #fca5a5; }
+
+/* Upload progress. The byte readout is the point of the block, so it is the
+   line that does not shrink. */
+.ws-upload-progress {
+    flex-shrink: 0;
+    margin: 0 10px 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #f8fafc;
+    font-size: 11px;
+    color: #475569;
+}
+.dark .ws-upload-progress { background: rgba(255, 255, 255, 0.05); color: #cbd5e1; }
+.ws-upload-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ws-upload-title { font-weight: 600; font-size: 12px; }
+.ws-upload-count { color: #94a3b8; }
+.ws-upload-bar { height: 4px; margin: 6px 0; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+.dark .ws-upload-bar { background: rgba(255, 255, 255, 0.1); }
+.ws-upload-fill { height: 100%; width: 0; border-radius: 999px; background: #4abe6e; transition: width 0.15s ease; }
+/* Never 100% when something failed: the bar would contradict the readout. */
+.ws-upload-progress.ws-upload-partial .ws-upload-fill { background: #f59e0b; }
+.ws-upload-detail { max-height: 84px; overflow-y: auto; white-space: pre-line; }
+.ws-upload-actions { display: flex; gap: 6px; margin-top: 6px; }
+.ws-upload-btn {
+    border: 0;
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    background: #e2e8f0;
+    color: #334155;
+}
+.ws-upload-btn:hover { background: #cbd5e1; }
+.dark .ws-upload-btn { background: rgba(255, 255, 255, 0.12); color: #e2e8f0; }
+
+/* Toolbar: an action that cannot run is visibly unable, and destructive
+   actions only read as destructive while armed. */
+.workspace-icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.workspace-icon-btn:disabled:hover { background: none; color: #94a3b8; }
+.workspace-icon-btn.ws-icon-danger:not(:disabled) { color: #dc2626; }
+.workspace-icon-btn.ws-icon-danger:not(:disabled):hover { background: #fee2e2; }
+
 /* File icon colors by kind */
-.ws-icon-directory { color: #f59e0b; }
-.ws-icon-html { color: #f97316; }
+.ws-icon-directory { color: #f59e0b; }.ws-icon-html { color: #f97316; }
 .ws-icon-markdown { color: #6366f1; }
 .ws-icon-image { color: #10b981; }
 .ws-icon-video { color: #ec4899; }

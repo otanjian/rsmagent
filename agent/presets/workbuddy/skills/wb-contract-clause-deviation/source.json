@@ -7,32 +7,32 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "627fad97075e4ff05bb9cbf6782fcc8f9d3cbafd96e1d45a26d56fb89a44fb72"
+      "sha256": "52502a1e77076ab10c4a241b15bf3421f8ae0ac4eac25088be2d23787fd4139e"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "63db684ef0db6ef2aada1dd4230832675b0192ecb9c92bfb4de1cda0f4d397e2"
+      "sha256": "ca390cf6445dc890ae218d3f8a312721f3a4ac834b07407e2e967011a5398363"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "d4ffd960249800661ff675f6afda6245acb930b8dc6222d4aefcfdb1b864dddb"
+      "sha256": "3c2fabf86988f8d82683858c2a9f326d4c1c0bb777c40ef4271335ce046d6b4f"
     },
     {
       "original": "输入参考文件/01_销售合同标准模板条款摘录.txt",
       "path": "assets/demo/01_销售合同标准模板条款摘录.txt",
-      "sha256": "94c94d094e8b7cc328a1667c88297450e2c7bc6fc8b013f2d3e6b6fa43753a29"
+      "sha256": "2523279e31b981bfe8b7ec648ef33f8dbea7ce3ddb941d00bd712f8f286d6b4f"
     },
     {
       "original": "输入参考文件/02_本次待签合同条款摘录.txt",
       "path": "assets/demo/02_本次待签合同条款摘录.txt",
-      "sha256": "f47050661e4bf943eb5f1d0abdc77bfa6c97a0792b57d8821ccf42246f099808"
+      "sha256": "4f324ba43e123e405fcb54e2a58050d9a1e18faa3b83b1ecbef3028b5635b299"
     },
     {
       "original": "输入参考文件/03_合同评审制度与内控红线摘录.txt",
       "path": "assets/demo/03_合同评审制度与内控红线摘录.txt",
-      "sha256": "7975988b75bd875bc0a5700db08cc52431a64eace2fdd26dff65099462526df6"
+      "sha256": "5f259168f24635a275293a1629df279505e671ba43119c88cc61cd98faf72181"
     },
     {
       "original": "输入参考文件/04_历史同类合同同一条款对照台账.xlsx",

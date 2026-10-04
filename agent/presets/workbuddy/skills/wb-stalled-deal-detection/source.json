@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "3144156b9f9668a8ff2b81fec7e4b2e889bc7f9cb9ff2d8fd409d2ccc1c86b7d"
+      "sha256": "2ce0a05bc32cf58cee6874d5c1c669aa9275d7edd8f5908e7f91042fce47fc15"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "2eb817e582c9489aec649cf5e74b051033ccac6970b5ad8ca356ea0581e061aa"
+      "sha256": "ca07c9d1a24ee2ea93c41eec9789ec5258163d148998073d945bee545ded1575"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "1a959a8c5dcfed502eb91276f7b38860924c58cd2e6a3959805f0af42d3c4950"
+      "sha256": "5218c6e04dfdf005d8161a2cd43b37cfb3a191ea0e6ed031b7c623b3163f5ec6"
     },
     {
       "original": "输入参考文件/01_CRM在推商机清单导出.xlsx",
@@ -47,7 +47,7 @@
     {
       "original": "输入参考文件/06_上年度丢单复盘会纪要摘录.txt",
       "path": "assets/demo/06_上年度丢单复盘会纪要摘录.txt",
-      "sha256": "c2ceed2e1d0d5a08bfc24249fc84dc1d4ec2a4aa3b2e6ff7cbf73b64f4c8de26"
+      "sha256": "624217ac77db8feb9adce1e19a6eff777c0b455c248e5e8e8ee01cbfc5994a26"
     }
   ]
 }

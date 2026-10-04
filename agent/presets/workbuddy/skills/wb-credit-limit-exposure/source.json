@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "fc5976eed15f0d6a880fc513bef1da44e457ed76a099f2e1d8268ab013bd125f"
+      "sha256": "95347b61e00a9438c9297ede5958336622e1bb745f2c6bf2cc633cfefa765d5f"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "4fdff7beb7d2950140ad6a989efffaa70774a66d89ecc9c7d90edf31649bae8c"
+      "sha256": "b6d333901147c2006c4de700b416a63b1ee4e29187663ba3b3be63f9f027439b"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "d6749048e59b557157f0b85367910371f88307a4b77f950d5f6fcce3df279bad"
+      "sha256": "b33de8a10724ed6c62ab7d4d33a4a3002b87785386dc3d7a7a9b45e3c2fd855c"
     },
     {
       "original": "输入参考文件/01_应收账款台账（恒晟部分）.xlsx",
@@ -42,12 +42,12 @@
     {
       "original": "输入参考文件/05_客户工商与司法公开信息.txt",
       "path": "assets/demo/05_客户工商与司法公开信息.txt",
-      "sha256": "78d732ea445e0808c0c86f4449f445464ecf290ef9ac776a2459afa7b66dc583"
+      "sha256": "56932d7dc20d1dfb41c510db2ba7036b5c9034e696e77d7ae06cf5c58c6d6d5f"
     },
     {
       "original": "输入参考文件/06_客户信用与发货管理办法摘录.txt",
       "path": "assets/demo/06_客户信用与发货管理办法摘录.txt",
-      "sha256": "d7992c51b136ba350324fd9f303138f5d7806965292f2e45f12bf94042b7af35"
+      "sha256": "f643f77df20a911e8b4545a4042d9a6fc6b6b18ef7ee432a25acd6c0ab62f51f"
     }
   ]
 }

@@ -713,6 +713,12 @@ class WebAppHarness:
             payload = body if isinstance(body, (bytes, str)) else json.dumps(body)
         merged = self.headers(token, tenant=tenant, json_body=body is not None)
         merged.update(headers or {})
+        if isinstance(payload, str):
+            # web.py computes Content-Length from the *string* length while
+            # sending UTF-8 bytes, so a body holding non-ASCII text arrives
+            # truncated -- for a multipart body that silently drops the trailing
+            # file part. State the byte count instead.
+            merged.setdefault("Content-Length", str(len(payload.encode("utf-8"))))
         return self.app.request(path, method=method, headers=merged, data=payload)
 
     def get(self, path, token=None, **kwargs):

@@ -7,22 +7,22 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "e258779d8ebcfe238aa2428614679acd28652d2891611a10a82b37b76289a4e0"
+      "sha256": "0bddc73fc1643bbf36a3d8e962c5d190a605e730864acb8ab10508f663704020"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "9a2b9bbe65e5743cd46d0ca9b038c5f5dbbbba7db7735197112cb0dcfcca2387"
+      "sha256": "a918fc6c0f48a3a8e341b269400ca95caf57537ce2b47398a56482d854939fa4"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "4e79fc172cac32b2c5d60c40372d8cadd4f65c409cf4b02d2eb72cc1f3084219"
+      "sha256": "b4e0714f9ea8bd174035d229d2bec7a16db6284328056e936a4b7fa602cc150b"
     },
     {
       "original": "输入参考文件/01_仲裁申请书副本.txt",
       "path": "assets/demo/01_仲裁申请书副本.txt",
-      "sha256": "73520aa117c420d55774360cf730940ca10e2a6042a524263b29a9b74c95f0ba"
+      "sha256": "f60740e7d2fad107a05667a43fc24fcf7f08d17bd2bac9037c26aa09a5075a79"
     },
     {
       "original": "输入参考文件/02_钱进_人事档案节选.xlsx",
@@ -32,7 +32,7 @@
     {
       "original": "输入参考文件/03_辞退沟通_微信记录.txt",
       "path": "assets/demo/03_辞退沟通_微信记录.txt",
-      "sha256": "ff00d99e54d5b8181da43ec0e83619ad8d44c2c9071329d22a1e5dd428b95d02"
+      "sha256": "972bf3a4f47326b1201490c6ae34b996ce74fe98db25856830f8daf2bf60411b"
     },
     {
       "original": "输入参考文件/04_打卡机导出_2024-2026.xlsx",

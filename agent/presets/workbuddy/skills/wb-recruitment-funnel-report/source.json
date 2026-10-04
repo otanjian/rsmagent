@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "058e0a9f5954b464d471b770730accf400f64617152193dd465e148ddb4046a1"
+      "sha256": "77e066b67fd610106ffa4d4629e412c862aa0d026631e54927969543d4a67e89"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "63a203875176619600af35de6d4f04db0b63a3fa7a795b1bbc930dd82f5c9785"
+      "sha256": "12fff8991e16353d1d3f734df9ac1875acbacc2c9f33bdced3add04b1df1303a"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "26aa18d51691fa8accdd0943462d3c8cd102820d1682326aed92aa5c4e43ac28"
+      "sha256": "0b2676b98720e8b47c486df83c790e4dcd29c06c226cde129198c764a57a28e6"
     },
     {
       "original": "输入参考文件/01_各平台后台导出_本季.xlsx",
@@ -37,7 +37,7 @@
     {
       "original": "输入参考文件/04_内推奖金方案_未发出.txt",
       "path": "assets/demo/04_内推奖金方案_未发出.txt",
-      "sha256": "651ba5048f91e897bf9ddb8bc24f8bea3a72130e3c2dce73296b3e4483b6341d"
+      "sha256": "b0eada3b5ada062802900db6c26afb1c7cf45ed02f398acc1a664396de000eed"
     }
   ]
 }

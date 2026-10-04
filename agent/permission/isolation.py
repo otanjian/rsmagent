@@ -19,7 +19,8 @@ touch" to a checked tenant boundary:
 * Reads (``read``/``ls``/``search_files``, bash path tokens) may be anywhere
   except a *blocked* area: the user's home (except paths inside a legal tenant
   root under it), the global data root (identity.db, private tenant data) and
-  any *other* tenant's shared root.
+  any *other* tenant's shared root. A tool that both reads and writes is judged
+  per call, by its sub-action (``excel inspect`` reads, ``excel update`` writes).
 * When the isolation slice is not yet validated (conf ``execution_isolation``
   false) the gate refuses arbitrary-code tools in database mode instead of
   falling back to unrestricted execution.
@@ -48,9 +49,20 @@ WRITE_TOOLS = frozenset({"write", "edit"})
 #: File tools whose ``path``-like argument is read.
 READ_TOOLS = frozenset({"read", "ls", "search_files", "search"})
 
-#: Argument keys that carry a filesystem path for first-party tools.
+#: Tools that read one path and may write another (or the same one), where the
+#: sub-action decides which: ``{tool: (action_arg, mutating_action_values)}``.
+#: ``excel inspect`` only reads the workbook; ``excel update`` rewrites it, and
+#: can be pointed at a second file through ``output``. An unclassified tool gets
+#: no path confinement at all here, which is why a new path-carrying tool MUST
+#: be listed in exactly one of these sets.
+READ_WRITE_TOOLS = {"excel": ("action", frozenset({"update"}))}
+
+#: Argument keys that carry a path for first-party tools.
 _PATH_KEYS = frozenset({"path", "dir", "directory", "root", "target",
                         "destination", "file_path", "input_path", "output_path"})
+
+#: Argument keys a *multi-path* tool may write through (excel's save-as).
+_WRITE_PATH_KEYS = ("output", "output_path", "destination", "target")
 
 CONFIG_KEY = "execution_isolation"
 
@@ -380,23 +392,41 @@ def isolation_decision(tool_name: str, arguments: Dict[str, Any],
                 return _deny("多租户隔离边界不可用，代码执行已拒绝")
             return _check_bash(boundary, arguments, cwd)
 
-        if tool_name in WRITE_TOOLS or tool_name in READ_TOOLS:
-            path = None
-            for key in _PATH_KEYS:
-                value = arguments.get(key)
-                if value:
-                    path = str(value)
-                    break
-            if not path:
+        if tool_name in WRITE_TOOLS or tool_name in READ_TOOLS or tool_name in READ_WRITE_TOOLS:
+            # One flat list of (path, written) so a tool that touches two files
+            # in one call - excel rewriting its source and saving a copy - has
+            # every one of them judged, not just the first key found.
+            targets: List[tuple] = []
+            spec = READ_WRITE_TOOLS.get(tool_name)
+            if spec:
+                action_arg, mutating_actions = spec
+                mutating = str(arguments.get(action_arg) or "").strip().lower() in mutating_actions
+                source = arguments.get("path")
+                if not source:
+                    return Decision(True)
+                targets.append((str(source), mutating))
+                if mutating:
+                    for key in _WRITE_PATH_KEYS:
+                        extra = arguments.get(key)
+                        if extra:
+                            targets.append((str(extra), True))
+            else:
+                for key in _PATH_KEYS:
+                    value = arguments.get(key)
+                    if value:
+                        targets.append((str(value), tool_name in WRITE_TOOLS))
+                        break
+            if not targets:
                 return Decision(True)
-            real = _real(path, cwd)
             boundary = resolve_boundary(ident)
             if not boundary.active:
                 return _deny("多租户隔离边界不可用，文件访问已拒绝")
-            if _in_blocked(boundary, real, boundary.read_roots):
-                return _deny(f"目标路径 {path!r} 位于隔离根之外")
-            if tool_name in WRITE_TOOLS and _outside(real, boundary.write_roots):
-                return _deny(f"写入目标 {path!r} 超出本租户可写范围")
+            for path, written in targets:
+                real = _real(path, cwd)
+                if _in_blocked(boundary, real, boundary.read_roots):
+                    return _deny(f"目标路径 {path!r} 位于隔离根之外")
+                if written and _outside(real, boundary.write_roots):
+                    return _deny(f"写入目标 {path!r} 超出本租户可写范围")
             return Decision(True)
 
         # Unclassified tools do not get a path-level confinement here.

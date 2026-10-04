@@ -415,6 +415,37 @@ if (typeof CowProjectSource !== 'undefined') {
     });
 }
 
+/**
+ * Add the panel's own scope to a workspace API path.
+ *
+ * `sessionId` and `activeAgentId` are globals from console.js on the same page.
+ * Scoping reads to the session keeps the file panel / @ picker / preview
+ * following the session's opened project directory; and without an opened
+ * project the root falls back to the shared root of the caller's tenant, where
+ * every Agent has a folder of its own, so the panel must say which Agent is
+ * active — else it always shows the default Agent's directory.
+ */
+function wsScopedPath(path) {
+    try {
+        if (path.startsWith('/api/workspace/')) {
+            const sid = (typeof sessionId !== 'undefined') ? sessionId : '';
+            if (sid) path += (path.includes('?') ? '&' : '?') + 'session=' + encodeURIComponent(sid);
+            const aid = wsScopedAgentId();
+            if (aid) path += (path.includes('?') ? '&' : '?') + 'agent=' + encodeURIComponent(aid);
+        }
+    } catch (e) { /* globals not available yet */ }
+    return path;
+}
+
+/** The error for a response the panel cannot use, carrying the server's code. */
+function wsResponseError(res, data) {
+    const err = new Error(data.message || `Request failed (HTTP ${res.status})`);
+    err.status = res.status;
+    err.code = data.code;
+    err.data = data;
+    return err;
+}
+
 async function wsApi(path) {
     // The session's *source* decides where the panel reads from (task 9.2). A
     // session bound to a project on this machine reads it through the local
@@ -440,30 +471,23 @@ async function wsApi(path) {
             throw err;
         }
     }
-    // Scope workspace reads to the current session so the file panel / @ picker /
-    // preview follow the session's opened project directory. `sessionId` and
-    // `activeAgentId` are globals from console.js on the same page.
-    try {
-        if (path.startsWith('/api/workspace/')) {
-            const sid = (typeof sessionId !== 'undefined') ? sessionId : '';
-            if (sid) path += (path.includes('?') ? '&' : '?') + 'session=' + encodeURIComponent(sid);
-            // Without an opened project the root falls back to the shared root
-            // of the caller's tenant, where every Agent has a folder of its
-            // own, so the file panel must say which Agent is active — else it
-            // always shows the default Agent's directory.
-            const aid = wsScopedAgentId();
-            if (aid) path += (path.includes('?') ? '&' : '?') + 'agent=' + encodeURIComponent(aid);
-        }
-    } catch (e) { /* globals not available yet */ }
-    const res = await fetch(path);
+    const res = await fetch(wsScopedPath(path));
     let data = {};
     try { data = await res.json(); } catch (e) { data = {}; }
-    if (!res.ok || data.status !== 'success') {
-        const err = new Error(data.message || `Request failed (HTTP ${res.status})`);
-        err.status = res.status;
-        err.code = data.code;
-        throw err;
-    }
+    if (!res.ok || data.status !== 'success') throw wsResponseError(res, data);
+    return data;
+}
+
+/** A workspace write: same scope, same refusal decoding, JSON body. */
+async function wsApiPost(path, body) {
+    const res = await fetch(wsScopedPath(path), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+    });
+    let data = {};
+    try { data = await res.json(); } catch (e) { data = {}; }
+    if (!res.ok || data.status !== 'success') throw wsResponseError(res, data);
     return data;
 }
 
@@ -554,6 +578,8 @@ function showActiveAgentWorkspace() {
     // The fallback Agent of a previous visit is dropped *before* the landing
     // path is derived, so the folder shown is the active Agent's own.
     wsAgentOverride = '';
+    // A visit starts on the files, not where the last one ended up.
+    wsResetUploadAndTrashState();
     const list = document.getElementById('ws-file-list');
     if (list && list.childElementCount) list.innerHTML = '';
     wsOwnUserId().then(() => {
@@ -1732,6 +1758,10 @@ async function openWorkspaceLink(path) {
 // File manager tab
 // =====================================================================
 function refreshWorkspaceTree() {
+    if (wsTrashMode) {
+        loadWorkspaceTrash();
+        return;
+    }
     const input = document.getElementById('ws-search-input');
     if (input) input.value = '';
     wsSearchMode = false;
@@ -1748,6 +1778,9 @@ function resetWorkspaceToAgentRoot() {
     // Agent's fallback must not outlive the switch — and the landing path is the
     // new Agent's folder, never the old fallback's.
     wsAgentOverride = '';
+    // Another Agent has another bin, and the last drop's report described a
+    // folder of the previous Agent.
+    wsResetUploadAndTrashState();
     // A tenant-shared Agent lands on the caller's own `user/<user id>` folder,
     // so the path cannot be derived before that id is known. A switch that
     // happens meanwhile supersedes this one (see `wsScopeEpoch`).
@@ -1897,6 +1930,13 @@ function wsTreeRequest(relPath) {
 async function loadWorkspaceDir(relPath) {
     const list = document.getElementById('ws-file-list');
     if (!list) return;
+    // A directory listing is never the bin. Leaving the bin by any route — the
+    // back button, a drop's own refresh, the breadcrumb — puts the toolbar back
+    // to the directory's controls, so the two modes cannot be half-applied.
+    if (wsTrashMode) {
+        wsTrashMode = false;
+        wsUpdateToolbarState();
+    }
     list.innerHTML = `<div class="workspace-empty"><i class="fas fa-spinner fa-spin"></i></div>`;
     const epoch = wsScopeEpoch;
     const landing = !!relPath && relPath === wsAgentLandingPath();
@@ -2024,10 +2064,13 @@ function renderWorkspaceEntries(entries, truncated) {
     }
     const rows = entries.map(entry => {
         const meta = entry.is_dir ? '' : wsFormatSize(entry.size);
+        const lock = wsRowLockHTML(entry);
         return `<div class="ws-file-row" ${wsRowAttrs(entry)}>
             <i class="${wsIconClass(entry.kind)}"></i>
             <span class="ws-file-name">${escapeHtml(entry.name)}</span>
+            ${lock}
             <span class="ws-file-meta">${escapeHtml(meta)}</span>
+            ${wsRowDeleteHTML(entry)}
         </div>`;
     });
     if (truncated) {
@@ -2041,11 +2084,44 @@ function renderWorkspaceEntries(entries, truncated) {
  * Row attributes for a tree/search entry. Everything is draggable into the
  * composer; `data-ws-dir` additionally makes a click navigate rather than
  * preview, since directories have nothing to render.
+ *
+ * `data-ws-locked` is the server's own verdict on whether this entry may be
+ * deleted (``_annotate_deletable``), not a rule re-derived here: a locked row
+ * stays readable and previewable, and is simply left out of a deletion.
  */
 function wsRowAttrs(entry) {
     const payload = escapeHtml(JSON.stringify(entry));
     const nav = entry.is_dir ? ` data-ws-dir="${escapeHtml(entry.path)}"` : '';
-    return `data-ws-file='${payload}' draggable="true"${nav}`;
+    const locked = entry.deletable === false
+        ? ` data-ws-locked="1" data-ws-lock-reason="${escapeHtml(entry.undeletable_reason || '')}"`
+        : '';
+    return `data-ws-file='${payload}' draggable="true"${nav}`
+        + ` data-ws-rel="${escapeHtml(entry.path || '')}"`
+        + ` data-ws-size="${entry.is_dir ? 0 : (entry.size || 0)}"`
+        + ` data-ws-is-dir="${entry.is_dir ? '1' : '0'}"${locked}`;
+}
+
+/** The lock a row the caller may not delete carries, or ''. */
+function wsRowLockHTML(entry) {
+    if (entry.deletable !== false) return '';
+    const reason = wsFailureText(entry.undeletable_reason);
+    return `<span class="ws-row-lock" title="${escapeHtml(reason)}">
+        <i class="fas fa-lock"></i></span>`;
+}
+
+/**
+ * The row's own delete control, or '' when the server said it may not be.
+ *
+ * Per row rather than a tick box plus a toolbar button: a locked row has no
+ * action to offer at all, so the reason for its refusal is its lock's title
+ * instead of a button that would decline after the attempt, and the row itself
+ * says what can be done to it.
+ */
+function wsRowDeleteHTML(entry) {
+    if (entry.deletable === false) return '';
+    return `<button type="button" class="ws-row-act ws-row-act-danger"
+        data-ws-act="delete" title="${escapeHtml(t('ws_delete'))}">
+        <i class="fas fa-trash-can"></i></button>`;
 }
 
 function renderWorkspaceSearchResults(results) {
@@ -2060,7 +2136,9 @@ function renderWorkspaceSearchResults(results) {
         <div class="ws-file-row" ${wsRowAttrs(entry)}>
             <i class="${wsIconClass(entry.kind)}"></i>
             <span class="ws-file-name">${escapeHtml(entry.name)}</span>
+            ${wsRowLockHTML(entry)}
             <span class="ws-file-path">${escapeHtml(entry.path)}</span>
+            ${wsRowDeleteHTML(entry)}
         </div>`).join('');
 }
 
@@ -2100,6 +2178,19 @@ function initWorkspaceFilesTab() {
     list?.addEventListener('click', (e) => {
         const row = e.target.closest('.ws-file-row');
         if (!row) return;
+        // A row's own controls are checked before the row's click, so pressing
+        // delete on a file does not also open that file in the preview.
+        const act = e.target.closest('.ws-row-act');
+        if (act) {
+            if (act.dataset.wsAct === 'delete') askWorkspaceDelete(row);
+            else if (act.dataset.wsAct === 'restore') restoreTrashRow(row);
+            else if (act.dataset.wsAct === 'purge') askWorkspacePurge(row);
+            return;
+        }
+        if (e.target.closest('.ws-row-lock')) return;
+        // A bin row addresses a batch entry, not a file on disk: it has nothing
+        // to navigate into and nothing to preview.
+        if (wsTrashMode) return;
         if (row.dataset.wsDir !== undefined) {
             loadWorkspaceDir(row.dataset.wsDir);
             return;
@@ -2333,6 +2424,14 @@ function initMention() {
 /** Re-render the JS-generated parts of the panel after a language switch. */
 function relocalizeWorkspacePanel() {
     if (!wsCurrentFile) wsSetPreviewEmpty(t('ws_preview_empty'));
+    // The toolbar's own labels are markup (`data-i18n-title`); the row actions
+    // carry `t()` text written at render time, so they are re-rendered below.
+    if (wsUpload) wsRenderUpload();
+    if (wsTrashMode) {
+        renderWorkspaceTrashHeader(wsTrashBytes);
+        renderTrashEntries(wsTrashEntries);
+        return;
+    }
     if (wsActiveTab === 'files' && !wsSearchMode
         && document.getElementById('ws-file-list')?.childElementCount) {
         loadWorkspaceDir(wsCurrentDir);
@@ -2354,6 +2453,9 @@ function wsOnSessionSwitch() {
     wsSearchMode = false;
     wsCurrentFile = null;
     wsTurnArtifacts = [];
+    // The bin belongs to an Agent too: another Agent's bin is a different bin,
+    // and the last drop's report describes a folder that is not this session's.
+    wsResetUploadAndTrashState();
     wsDiscardEditState();
     wsUpdateHeaderActions();
     // A shared Agent lands on the caller's own `user/<user id>` folder, so the
@@ -2371,13 +2473,828 @@ function wsOnSessionSwitch() {
 }
 
 // =====================================================================
+// Drop to upload into the folder the panel is showing
+// =====================================================================
+//
+// A drop on the panel writes into the directory currently listed, folders
+// included: a dragged tree is recreated by sending each file's own path below
+// that directory. **One file per request**, three at a time — a 200MB file and
+// a 5000-file drop are then the same code path, a failure is retryable on its
+// own, the server's memory stays flat (it never spools a whole drop to disk
+// before writing the first file), and the progress readout is exact: finished
+// bytes plus the in-flight requests' own `upload.onprogress`.
+//
+// The ceilings below are the *experience* layer — they say "this is not going
+// to work" before the bytes move. The server checks its own numbers again and
+// its answer is the one that counts; a client-side guard is not a guarantee.
+
+/** Files one drop may carry (server-side ceiling is the same number). */
+const WS_UPLOAD_MAX_FILES = 5000;
+/** Bytes one drop may carry. */
+const WS_UPLOAD_MAX_TOTAL_BYTES = 5 * 1024 * 1024 * 1024;
+/** Bytes one file may carry; the server refuses a larger one outright. */
+const WS_UPLOAD_MAX_FILE_BYTES = 200 * 1024 * 1024;
+/** Requests in flight at once. Peak bytes in flight ≈ this × the largest file
+ *  the panel accepts; the panel stays usable because the browser, not the
+ *  page, buffers the request bodies. */
+const WS_UPLOAD_CONCURRENCY = 3;
+/** Directory entries read in parallel while walking a dropped tree. */
+const WS_UPLOAD_WALK_CONCURRENCY = 12;
+/** Depth guard rail for a dropped tree. The entries API hands back a tree, so a
+ *  cycle cannot occur; a pathological drop should still not spin forever. */
+const WS_UPLOAD_MAX_DEPTH = 32;
+
+//: The drop in progress, or the report of the last one.
+let wsUpload = null;
+//: Identifies the current drop. A second drop (or a scope change) makes the
+//: first one's late answers stale, and they must not paint into the new report.
+let wsUploadSeq = 0;
+
+/**
+ * The directory the caller may write into for the Agent being browsed, or ''.
+ *
+ * A tenant-shared Agent keeps each member's files under `user/<user id>`; a
+ * private one has no such split (its whole workspace is the owner's). Both
+ * answers are the ones the panel already derives for its landing path, so the
+ * drop affordance asks the same question rather than a second one. This is a
+ * UI hint only: the server decides, and it refuses regardless of what the
+ * panel believes.
+ */
+function wsWritableRootPath() {
+    const agentId = wsScopedAgentId();
+    if (!agentId) return '';
+    if (wsAgentVisibility(agentId) === 'tenant') return wsOwnUserDirPath(agentId);
+    return wsAgentDirPath(agentId);
+}
+
+/** Whether the folder currently listed is one the caller may write into. */
+function wsCanWriteHere() {
+    const root = wsWritableRootPath();
+    if (!root) return false;
+    const dir = wsCurrentDir || '';
+    return dir === root || dir.indexOf(root + '/') === 0;
+}
+
+/** Show where the drop will land, before it lands. */
+function wsShowDropHint() {
+    const hint = document.getElementById('ws-drop-hint');
+    const text = document.getElementById('ws-drop-hint-text');
+    if (!hint || !text) return;
+    const writable = wsCanWriteHere();
+    hint.classList.toggle('ws-drop-refused', !writable);
+    text.textContent = writable
+        ? t('ws_upload_drop_here').replace('{dir}', wsCurrentDir || '/')
+        : t('ws_upload_out_of_scope');
+    hint.classList.remove('hidden');
+}
+
+function wsHideDropHint() {
+    const hint = document.getElementById('ws-drop-hint');
+    if (hint) hint.classList.add('hidden');
+}
+
+/** Run `worker` over `items`, at most `limit` at a time, and wait for all. */
+async function wsEachLimited(items, limit, worker) {
+    let next = 0;
+    const run = async () => {
+        while (next < items.length) {
+            const index = next;
+            next += 1;
+            await worker(items[index], index);
+        }
+    };
+    const width = Math.max(1, Math.min(limit, items.length));
+    const runners = [];
+    for (let i = 0; i < width; i += 1) runners.push(run());
+    await Promise.all(runners);
+}
+
+function wsEntryFile(entry) {
+    return new Promise((resolve, reject) => entry.file(resolve, reject));
+}
+
+/**
+ * Every child of one dropped directory.
+ *
+ * `readEntries()` answers in chunks and a large folder needs more than one
+ * call; an empty array is how the API says "that was the last chunk", not
+ * "empty folder".
+ */
+function wsReadDirectory(dirEntry) {
+    return new Promise((resolve, reject) => {
+        const reader = dirEntry.createReader();
+        const found = [];
+        const step = () => {
+            reader.readEntries((batch) => {
+                if (!batch.length) { resolve(found); return; }
+                for (const child of batch) found.push(child);
+                step();
+            }, reject);
+        };
+        step();
+    });
+}
+
+/**
+ * Collect one dropped entry into `out` as `{file, rel}`.
+ *
+ * `rel` is the file's path below the drop, which is what carries a dragged
+ * folder's shape: the server joins it onto the destination directory instead of
+ * flattening the tree.
+ */
+async function wsWalkEntry(entry, prefix, out, depth, problems) {
+    if (entry.isFile) {
+        try {
+            const file = await wsEntryFile(entry);
+            out.push({ file, rel: prefix ? `${prefix}/${file.name}` : file.name });
+        } catch (e) {
+            problems.push({ name: prefix || entry.name, code: 'unreadable' });
+        }
+        return;
+    }
+    if (!entry.isDirectory) return;
+    const here = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (depth >= WS_UPLOAD_MAX_DEPTH) {
+        problems.push({ name: here, code: 'too_deep' });
+        return;
+    }
+    let children;
+    try {
+        children = await wsReadDirectory(entry);
+    } catch (e) {
+        problems.push({ name: here, code: 'unreadable' });
+        return;
+    }
+    await wsEachLimited(children, WS_UPLOAD_WALK_CONCURRENCY,
+        (child) => wsWalkEntry(child, here, out, depth + 1, problems));
+}
+
+/**
+ * Everything a drop carries, as `{files, problems, unsupported}`.
+ *
+ * The entries are all converted to handles *synchronously*, before the first
+ * `await`: the drag's data store is only readable during the event, and a
+ * single `await` before `webkitGetAsEntry()` is what turns a folder into an
+ * empty `FileList`.
+ */
+async function wsCollectDroppedFiles(dataTransfer) {
+    const entries = [];
+    for (const item of Array.from(dataTransfer.items || [])) {
+        if (item.kind !== 'file') continue;
+        const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+        if (!entry) {
+            // Without the directory API a dropped folder is indistinguishable
+            // from a file, so there is no honest way to walk it. Uploading the
+            // top level only would silently lose everything inside.
+            return { files: [], problems: [], unsupported: true };
+        }
+        entries.push(entry);
+    }
+    const files = [];
+    const problems = [];
+    await wsEachLimited(entries, WS_UPLOAD_WALK_CONCURRENCY,
+        (entry) => wsWalkEntry(entry, '', files, 0, problems));
+    return { files, problems, unsupported: false };
+}
+
+/** Split a walked drop into what will be sent and what cannot be. */
+function wsPartitionDrop(files) {
+    const accepted = [];
+    const skipped = [];
+    let totalBytes = 0;
+    for (const item of files) {
+        const size = item.file.size || 0;
+        if (size > WS_UPLOAD_MAX_FILE_BYTES) {
+            skipped.push({ name: item.rel, code: 'too_large', size });
+        } else if (accepted.length >= WS_UPLOAD_MAX_FILES) {
+            skipped.push({ name: item.rel, code: 'too_many_files', size });
+        } else if (totalBytes + size > WS_UPLOAD_MAX_TOTAL_BYTES) {
+            skipped.push({ name: item.rel, code: 'too_much_total', size });
+        } else {
+            accepted.push(item);
+            totalBytes += size;
+        }
+    }
+    return { accepted, skipped, totalBytes };
+}
+
+/**
+ * Send one file. Resolves with `null` on success, or a `{name, code}` failure.
+ *
+ * `XMLHttpRequest` rather than `fetch` for one reason: `upload.onprogress` is
+ * the only way to report bytes actually on the wire, and a
+ * 5000-file drop reported by "files finished" alone looks frozen for minutes.
+ */
+function wsSendOne(upload, index, item) {
+    return new Promise((resolve) => {
+        const form = new FormData();
+        form.append('dir', upload.dir);
+        form.append('relative_path', item.rel);
+        form.append('file', item.file, item.file.name);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', wsScopedPath('/api/workspace/upload'));
+        xhr.upload.addEventListener('progress', (e) => {
+            if (!e.lengthComputable || wsUpload !== upload) return;
+            // `e.total` is the multipart body, which is the file plus framing;
+            // scaling by the ratio reports the file's own progress instead of
+            // the envelope's (which never quite reaches its total for small
+            // files).
+            const size = item.file.size || 0;
+            const ratio = e.total ? size / e.total : 1;
+            upload.transferred[index] = Math.min(size, Math.round(e.loaded * ratio));
+            wsRenderUpload();
+        });
+        xhr.addEventListener('load', () => {
+            let data = {};
+            try { data = JSON.parse(xhr.responseText || '{}'); } catch (e) { data = {}; }
+            if (xhr.status >= 200 && xhr.status < 300 && data.status === 'success') {
+                if (wsUpload === upload) {
+                    upload.transferred[index] = item.file.size || 0;
+                    upload.doneCount += 1;
+                    if (data.renamed) upload.renamed.push(data.path);
+                }
+                resolve(null);
+                return;
+            }
+            resolve(wsUploadFailure(item, data.code, xhr.status, data.message));
+        });
+        xhr.addEventListener('error', () =>
+            resolve(wsUploadFailure(item, 'network', 0, '')));
+        xhr.addEventListener('abort', () =>
+            resolve(wsUploadFailure(item, 'network', 0, '')));
+        xhr.send(form);
+    });
+}
+
+/** One failed file, in the shape the report and the retry both read. */
+function wsUploadFailure(item, code, status, message) {
+    let reason = code || '';
+    // A 413 comes from the proxy, not the app: it never reaches the handler, so
+    // there is no `code` to read and the distinction has to be made here.
+    if (!reason && status === 413) reason = 'too_large';
+    if (!reason && (status === 401 || status === 403)) reason = 'forbidden';
+    return { name: item.rel, code: reason || 'failed', status: status || 0,
+             message: message || '', item };
+}
+
+/** A failed file's reason, in the reader's language. */
+function wsUploadFailureText(failure) {
+    const key = WS_FAILURE_KEYS[failure.code];
+    if (key) return t(key);
+    return failure.message || failure.code || '';
+}
+
+/**
+ * Send every accepted file, and keep the report in step.
+ *
+ * `transferred` is keyed by index and only ever grows, so the byte readout is
+ * monotonic even when a request fails part-way: bytes on the wire is what it
+ * counts, and a failure does not unsend them.
+ */
+async function wsSendAll(upload, items) {
+    const failures = [];
+    await wsEachLimited(items.map((item, index) => ({ item, index })),
+        WS_UPLOAD_CONCURRENCY, async ({ item, index }) => {
+            if (wsUpload !== upload) return;
+            const failure = await wsSendOne(upload, index, item);
+            if (failure) failures.push(failure);
+            if (wsUpload === upload) wsRenderUpload();
+        });
+    return failures;
+}
+
+function wsUploadProgressBytes(upload) {
+    let sum = 0;
+    for (const key of Object.keys(upload.transferred)) sum += upload.transferred[key];
+    return sum;
+}
+
+/** Paint the report. Called on every progress event, so it stays cheap. */
+function wsRenderUpload() {
+    const box = document.getElementById('ws-upload-progress');
+    if (!box || !wsUpload) return;
+    const upload = wsUpload;
+    const bytes = Math.min(wsUploadProgressBytes(upload), upload.totalBytes);
+    const percent = upload.totalBytes ? (bytes / upload.totalBytes) * 100 : 0;
+    const failed = upload.failures.length + upload.skipped.length;
+    // A drop that lost something never reads 100%: the bar would contradict the
+    // list right below it.
+    const shown = failed ? Math.min(percent, 99) : percent;
+
+    const title = document.getElementById('ws-upload-title');
+    const count = document.getElementById('ws-upload-count');
+    const detail = document.getElementById('ws-upload-detail');
+    const fill = document.getElementById('ws-upload-fill');
+    if (title) title.textContent = t(upload.phase === 'walking'
+        ? 'ws_upload_walking' : (failed ? 'ws_upload_partial' : 'ws_upload_sending'));
+    if (count) {
+        count.textContent = upload.phase === 'walking'
+            ? t('ws_upload_found').replace('{count}', String(upload.found))
+            : t('ws_upload_bytes')
+                .replace('{done}', wsFormatSize(bytes))
+                .replace('{total}', wsFormatSize(upload.totalBytes))
+                .replace('{done_count}', String(upload.doneCount))
+                .replace('{count}', String(upload.queued))
+                .replace('{percent}', String(Math.floor(percent)));
+    }
+    if (fill) fill.style.width = `${shown}%`;
+    box.classList.toggle('ws-upload-partial', !!failed);
+    if (detail) {
+        const lines = upload.skipped.concat(upload.failures)
+            .slice(0, 20)
+            .map(f => `${f.name} · ${wsUploadFailureText(f)}`);
+        const more = upload.skipped.length + upload.failures.length - lines.length;
+        if (more > 0) lines.push(t('ws_upload_more').replace('{count}', String(more)));
+        if (upload.renamed.length) {
+            const shown = upload.renamed.slice(0, 3).join(' · ');
+            lines.unshift(t('ws_upload_renamed')
+                .replace('{count}', String(upload.renamed.length))
+                .replace('{paths}', shown));
+        }
+        detail.textContent = lines.join('\n');
+        detail.classList.toggle('hidden', lines.length === 0);
+    }
+    const retry = document.getElementById('ws-upload-retry');
+    const dismiss = document.getElementById('ws-upload-dismiss');
+    if (retry) {
+        const retryable = upload.failures.filter(f => f.item).length;
+        retry.classList.toggle('hidden', retryable === 0);
+        retry.textContent = t('ws_upload_retry').replace('{count}', String(retryable));
+    }
+    if (dismiss) {
+        dismiss.classList.toggle('hidden', upload.phase !== 'done');
+        dismiss.textContent = t('ws_upload_dismiss');
+    }
+    box.classList.remove('hidden');
+}
+
+/** The whole flow for one drop. */
+async function wsHandleDrop(dataTransfer) {
+    if (!wsCanWriteHere()) {
+        _wsToast(t('ws_upload_out_of_scope'));
+        return;
+    }
+    const seq = wsUploadSeq + 1;
+    wsUploadSeq = seq;
+    const upload = wsUpload = {
+        seq,
+        dir: wsCurrentDir || '',
+        phase: 'walking',
+        found: 0,
+        queued: 0,
+        totalBytes: 0,
+        doneCount: 0,
+        transferred: {},
+        renamed: [],
+        skipped: [],
+        failures: [],
+    };
+    wsRenderUpload();
+
+    const collected = await wsCollectDroppedFiles(dataTransfer);
+    if (wsUpload !== upload) return;
+    if (collected.unsupported) {
+        wsUpload = null;
+        document.getElementById('ws-upload-progress')?.classList.add('hidden');
+        _wsToast(t('ws_upload_no_dir_api'));
+        return;
+    }
+    upload.found = collected.files.length;
+    const { accepted, skipped, totalBytes } = wsPartitionDrop(collected.files);
+    upload.queued = accepted.length;
+    upload.totalBytes = totalBytes;
+    upload.skipped = collected.problems.concat(skipped);
+    upload.phase = 'sending';
+    wsRenderUpload();
+
+    if (accepted.length) {
+        upload.failures = await wsSendAll(upload, accepted);
+    }
+    if (wsUpload !== upload) return;
+    upload.phase = 'done';
+    upload.failures = upload.failures.filter(f => f.item);
+    wsRenderUpload();
+    // Refresh whatever the panel is showing so the files that did land are on
+    // screen; the report above the list explains the ones that did not.
+    if (wsTrashMode) loadWorkspaceTrash();
+    else loadWorkspaceDir(wsCurrentDir);
+}
+
+/** Re-send only the files that failed. Nothing already on disk is re-sent. */
+async function retryFailedWorkspaceUploads() {
+    const upload = wsUpload;
+    if (!upload || upload.phase !== 'done') return;
+    const retryable = upload.failures.filter(f => f.item);
+    if (!retryable.length) return;
+    const items = retryable.map(f => f.item);
+    upload.phase = 'sending';
+    upload.failures = [];
+    // The retry has its own byte budget: the first attempt's bytes were spent
+    // on files that are not there, so counting them again would overstate it.
+    upload.totalBytes = items.reduce((n, item) => n + (item.file.size || 0), 0);
+    upload.queued = items.length;
+    upload.doneCount = 0;
+    upload.transferred = {};
+    wsRenderUpload();
+    upload.failures = await wsSendAll(upload, items);
+    if (wsUpload !== upload) return;
+    upload.phase = 'done';
+    upload.failures = upload.failures.filter(f => f.item);
+    wsRenderUpload();
+    if (wsTrashMode) loadWorkspaceTrash();
+    else loadWorkspaceDir(wsCurrentDir);
+}
+
+/** Put the report away. The drop it described is over. */
+function dismissWorkspaceUpload() {
+    wsUpload = null;
+    document.getElementById('ws-upload-progress')?.classList.add('hidden');
+}
+
+function initWorkspaceUploadDrop() {
+    const target = document.getElementById('ws-body-files');
+    if (!target) return;
+    let depth = 0;
+    const hasFiles = (e) => Array.from((e.dataTransfer && e.dataTransfer.types) || [])
+        .includes('Files');
+
+    // The chat view above has its own file drop (attachments) and its own
+    // "drop files here" overlay. A drop that belongs to the panel is stopped
+    // here, all three events, or the user would watch the attachment overlay
+    // promise one thing while the panel did another.
+    target.addEventListener('dragenter', (e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        depth += 1;
+        wsShowDropHint();
+    });
+    target.addEventListener('dragover', (e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = wsCanWriteHere() ? 'copy' : 'none';
+    });
+    target.addEventListener('dragleave', () => {
+        if (depth === 0) return;
+        depth -= 1;
+        if (depth === 0) wsHideDropHint();
+    });
+    target.addEventListener('drop', (e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        depth = 0;
+        wsHideDropHint();
+        wsHandleDrop(e.dataTransfer);
+    });
+}
+
+// =====================================================================
+// Files tab: per-row deletion and the recycle bin
+// =====================================================================
+
+//: Every refusal code the panel can be handed, and the label it shows for it.
+//: One table, because the same code arrives from three directions (a row's
+//: `undeletable_reason`, a delete response's `failed[]`, a restore's
+//: `failed[]`) and they must not disagree on the wording.
+const WS_FAILURE_KEYS = {
+    outside_own_directory: 'ws_lock_outside',
+    agent_internal: 'ws_lock_agent_internal',
+    user_container: 'ws_lock_user_container',
+    trash_not_targetable: 'ws_lock_trash',
+    own_directory_root: 'ws_lock_own_root',
+    not_agent_workspace: 'ws_lock_not_agent_workspace',
+    unsafe_user_directory: 'ws_lock_outside',
+    no_user: 'ws_lock_no_user',
+    unsafe_path: 'ws_lock_outside',
+    not_found: 'ws_delete_missing',
+    not_movable: 'ws_delete_missing',
+    not_removable: 'ws_delete_missing',
+    batch_not_found: 'ws_trash_batch_gone',
+    forbidden: 'ws_forbidden',
+    too_large: 'ws_upload_err_too_large',
+    too_many_files: 'ws_upload_err_too_many_files',
+    too_much_total: 'ws_upload_err_too_much_total',
+    too_deep: 'ws_upload_err_too_deep',
+    unreadable: 'ws_upload_err_unreadable',
+    network: 'ws_upload_err_network',
+    incomplete_upload: 'ws_upload_err_incomplete',
+    failed: 'ws_delete_failed',
+};
+
+/** A refusal code in the reader's language; the raw code if it is unknown. */
+function wsFailureText(code) {
+    const key = WS_FAILURE_KEYS[code];
+    return key ? t(key) : (code || '');
+}
+
+//: Whether the panel is showing the recycle bin instead of a directory.
+let wsTrashMode = false;
+//: The bin as last read, so a restore can say what it acted on.
+let wsTrashEntries = [];
+//: The bin's total size, as the server reported it.
+let wsTrashBytes = 0;
+//: The bin's retention window, in days, as the server reported it.
+let wsTrashRetention = 0;
+
+function wsRowRel(row) {
+    return (row && row.dataset && row.dataset.wsRel) || '';
+}
+
+/**
+ * Ask before moving one row to the bin, and say what that means.
+ *
+ * A single row's confirmation still names the counts and the volume, because
+ * the message is the same one a batch used to raise (and a *directory* row is
+ * one click that carries everything under it).
+ */
+function askWorkspaceDelete(row) {
+    if (!row || row.dataset.wsLocked === '1') return;
+    const rel = wsRowRel(row);
+    if (!rel) return;
+    const size = parseInt(row.dataset.wsSize, 10) || 0;
+    const isDir = row.dataset.wsIsDir === '1';
+    const message = [
+        t('ws_delete_confirm_msg')
+            .replace('{count}', '1')
+            .replace('{size}', wsFormatSize(size)),
+        isDir ? t('ws_delete_confirm_dirs').replace('{count}', '1') : '',
+        t('ws_delete_confirm_trash'),
+    ].filter(Boolean).join(' ');
+    showConfirmDialog({
+        title: t('ws_delete_confirm_title'),
+        message,
+        okText: t('ws_delete_go'),
+        onConfirm: () => wsRunDelete([rel]),
+    });
+}
+
+async function wsRunDelete(targets) {
+    try {
+        const data = await wsApiPost('/api/workspace/delete', { targets });
+        const deleted = data.deleted || [];
+        const failed = data.failed || [];
+        if (deleted.length) {
+            _wsToast(t('ws_delete_done').replace('{count}', String(deleted.length)));
+        }
+        if (failed.length) _wsToast(wsFailureSummary(failed));
+        loadWorkspaceDir(wsCurrentDir);
+    } catch (e) {
+        _wsToast(wsErrorMessage(e));
+    }
+}
+
+/** Which controls the files tab is showing: a directory's, or the bin's. */
+function wsUpdateToolbarState() {
+    const show = (id, visible) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('hidden', !visible);
+    };
+    // Only controls that act on the panel as a whole live here; anything that
+    // acts on one row is on that row.
+    show('ws-btn-trash', !wsTrashMode);
+    show('ws-btn-refresh', !wsTrashMode);
+    show('ws-btn-trash-back', wsTrashMode);
+    show('ws-btn-purge-all', wsTrashMode);
+    const search = document.querySelector('.workspace-search');
+    if (search) search.classList.toggle('hidden', wsTrashMode);
+}
+
+/**
+ * Forget what belonged to the folder the panel was showing.
+ *
+ * The bin is per Agent, the drop report describes one directory, and a listing
+ * is about to be replaced. A drop still in flight carries the scope it started
+ * under, so the sequence is bumped to retire it: its late answers are dropped
+ * instead of painted into the folder now on screen.
+ */
+function wsResetUploadAndTrashState() {
+    wsTrashMode = false;
+    wsTrashEntries = [];
+    wsTrashBytes = 0;
+    wsTrashRetention = 0;
+    wsUploadSeq += 1;
+    wsUpload = null;
+    document.getElementById('ws-upload-progress')?.classList.add('hidden');
+    document.getElementById('ws-drop-hint')?.classList.add('hidden');
+    wsUpdateToolbarState();
+}
+
+/** A date the panel shows as-is: the bin's own clock, not a relative one. */
+function wsShortWhen(seconds) {
+    if (!seconds) return '';
+    const when = new Date(seconds * 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}`
+        + ` ${pad(when.getHours())}:${pad(when.getMinutes())}`;
+}
+
+/**
+ * One line for a set of refusals: the first few reasons, then a count.
+ *
+ * A per-item table would be the honest shape, but the panel's report area is
+ * the file list itself and the items are still there — what a reader needs from
+ * a toast is *why*, and the reasons are grouped by code, so three lines cover
+ * the cases that actually happen.
+ */
+function wsFailureSummary(failed) {
+    const byCode = new Map();
+    for (const item of failed) {
+        const code = item.code || 'failed';
+        byCode.set(code, (byCode.get(code) || 0) + 1);
+    }
+    const lines = [];
+    for (const [code, count] of byCode) {
+        lines.push(`${wsFailureText(code)} ×${count}`);
+        if (lines.length >= 3) break;
+    }
+    return t('ws_delete_failed').replace('{detail}', lines.join(' · '));
+}
+
+async function openWorkspaceTrash() {
+    wsTrashMode = true;
+    wsUpdateToolbarState();
+    await loadWorkspaceTrash();
+}
+
+function closeWorkspaceTrash() {
+    wsTrashMode = false;
+    wsTrashEntries = [];
+    wsUpdateToolbarState();
+    loadWorkspaceDir(wsCurrentDir);
+}
+
+async function loadWorkspaceTrash() {
+    const list = document.getElementById('ws-file-list');
+    if (!list) return;
+    const epoch = wsScopeEpoch;
+    list.innerHTML = `<div class="workspace-empty"><i class="fas fa-spinner fa-spin"></i></div>`;
+    try {
+        const data = await wsApi('/api/workspace/trash');
+        if (wsScopeStale(epoch)) return;
+        wsTrashEntries = data.entries || [];
+        wsTrashBytes = data.total_size || 0;
+        wsTrashRetention = data.retention_days || 0;
+        renderWorkspaceTrashHeader(wsTrashBytes);
+        renderTrashEntries(wsTrashEntries);
+    } catch (e) {
+        if (wsScopeStale(epoch)) return;
+        list.innerHTML = `<div class="workspace-empty">
+            <i class="fas fa-triangle-exclamation"></i><span>${escapeHtml(wsErrorMessage(e))}</span></div>`;
+    }
+}
+
+/** The bin's own breadcrumb: what it is, how much, and how long it keeps it. */
+function renderWorkspaceTrashHeader(totalSize) {
+    const bar = document.getElementById('ws-breadcrumb');
+    if (!bar) return;
+    bar.innerHTML = `<span class="crumb"><i class="fas fa-recycle"></i>
+        <span class="crumb-root">${escapeHtml(t('ws_trash_title'))} ·
+        ${escapeHtml(String(wsTrashEntries.length))} · ${escapeHtml(wsFormatSize(totalSize))} ·
+        ${escapeHtml(t('ws_trash_keep').replace('{days}', String(wsTrashRetention)))}</span></span>`;
+}
+
+function renderTrashEntries(entries) {
+    const list = document.getElementById('ws-file-list');
+    if (!list) return;
+    if (!entries.length) {
+        list.innerHTML = `<div class="workspace-empty"><i class="fas fa-recycle"></i>
+            <span>${escapeHtml(t('ws_trash_empty_state'))}</span></div>`;
+        return;
+    }
+    list.innerHTML = entries.map(entry => `
+        <div class="ws-file-row ws-bin-row" data-ws-rel="${escapeHtml(entry.rel || '')}"
+             data-ws-size="${entry.size || 0}" data-ws-is-dir="${entry.kind === 'directory' ? '1' : '0'}"
+             data-ws-bin-batch="${escapeHtml(entry.batch_id || '')}" data-ws-bin-index="${entry.index}"
+             title="${escapeHtml(t('ws_trash_deleted_at').replace('{when}', wsShortWhen(entry.deleted_at)))}">
+            <i class="${wsIconClass(entry.kind)}"></i>
+            <span class="ws-file-name">${escapeHtml(entry.rel || '')}</span>
+            <span class="ws-file-meta">${escapeHtml(wsFormatSize(entry.size))}</span>
+            <button type="button" class="ws-row-act" data-ws-act="restore"
+                    title="${escapeHtml(t('ws_trash_restore'))}">
+                <i class="fas fa-rotate-left"></i></button>
+            <button type="button" class="ws-row-act ws-row-act-danger" data-ws-act="purge"
+                    title="${escapeHtml(t('ws_trash_purge'))}">
+                <i class="fas fa-fire"></i></button>
+        </div>`).join('');
+}
+
+/** A bin row's batch and index, which is how a bin entry is addressed. */
+function wsBinAddress(row) {
+    const batch = (row && row.dataset && row.dataset.wsBinBatch) || '';
+    const index = parseInt((row && row.dataset && row.dataset.wsBinIndex) || '', 10);
+    if (!batch || Number.isNaN(index)) return null;
+    return { batch, index };
+}
+
+/** Restore one bin row to the place it came from. */
+async function restoreTrashRow(row) {
+    const address = wsBinAddress(row);
+    if (!address) return;
+    const restored = [];
+    const failed = [];
+    try {
+        const data = await wsApiPost('/api/workspace/trash/restore',
+            { batch_id: address.batch, indices: [address.index] });
+        for (const item of data.restored || []) restored.push(item);
+        for (const item of data.failed || []) failed.push(item);
+    } catch (e) {
+        failed.push({ code: e.code || 'failed' });
+    }
+    _wsToast(wsRestoreSummary(restored, failed));
+    await loadWorkspaceTrash();
+}
+
+/**
+ * What a restore actually did.
+ *
+ * A destination that was taken again is restored as `name (1).ext`, so the
+ * summary names the real path rather than the one the entry asked for — that
+ * path is the only way the user finds the file.
+ */
+function wsRestoreSummary(restored, failed) {
+    const parts = [];
+    if (restored.length) {
+        parts.push(t('ws_trash_restored').replace('{count}', String(restored.length)));
+    }
+    const renamed = restored.filter(item => item.renamed);
+    if (renamed.length) {
+        const shown = renamed.slice(0, 3).map(item => item.path).join(' · ');
+        parts.push(t('ws_trash_restored_renamed')
+            .replace('{count}', String(renamed.length)).replace('{paths}', shown));
+    }
+    if (failed.length) {
+        parts.push(wsFailureSummary(failed.map(item => ({ code: item.code }))));
+    }
+    return parts.join(' · ') || t('ws_trash_restored').replace('{count}', '0');
+}
+
+/** Permanently destroy one bin row, after saying it cannot be undone. */
+function askWorkspacePurge(row) {
+    const address = wsBinAddress(row);
+    if (!address) return;
+    showConfirmDialog({
+        title: t('ws_trash_purge_confirm_title'),
+        message: t('ws_trash_purge_confirm_msg').replace('{count}', '1'),
+        okText: t('ws_trash_purge'),
+        onConfirm: () => wsRunPurge([[address.batch, [address.index]]]),
+    });
+}
+
+function emptyWorkspaceTrash() {
+    if (!wsTrashEntries.length) return;
+    showConfirmDialog({
+        title: t('ws_trash_empty_confirm_title'),
+        message: t('ws_trash_empty_confirm_msg')
+            .replace('{count}', String(wsTrashEntries.length)),
+        okText: t('ws_trash_purge'),
+        onConfirm: () => wsRunPurge([]),
+    });
+}
+
+/** Purge the given batches, or the whole bin when `groups` is empty. */
+async function wsRunPurge(groups) {
+    const purged = [];
+    const failed = [];
+    if (!groups.length) {
+        try {
+            const data = await wsApiPost('/api/workspace/trash/purge', {});
+            purged.push(...(data.purged || []));
+            failed.push(...(data.failed || []));
+        } catch (e) {
+            failed.push({ code: e.code || 'failed' });
+        }
+    } else {
+        for (const [batchId, indices] of groups) {
+            try {
+                const data = await wsApiPost('/api/workspace/trash/purge',
+                    { batch_id: batchId, indices });
+                purged.push(...(data.purged || []));
+                failed.push(...(data.failed || []));
+            } catch (e) {
+                failed.push({ code: e.code || 'failed' });
+            }
+        }
+    }
+    if (failed.length) _wsToast(wsFailureSummary(failed));
+    else if (purged.length) {
+        _wsToast(t('ws_trash_purged').replace('{count}', String(purged.length)));
+    }
+    await loadWorkspaceTrash();
+}
+
+// =====================================================================
 // Init
 // =====================================================================
 function initWorkspacePanel() {
     initWorkspaceResizer();
     initWorkspaceFilesTab();
     initWorkspaceDropTarget();
+    initWorkspaceUploadDrop();
     initMention();
+    wsUpdateToolbarState();
     wsSetPreviewEmpty(t('ws_preview_empty'));
 
     // Reloading or closing the tab would drop an open editor's changes silently.

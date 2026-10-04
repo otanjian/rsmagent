@@ -17,7 +17,51 @@ from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 PRESET = ROOT/"agent/presets/workbuddy"
+#: Reviewed chat-onboarding copy (使用说明 + 建议问题) per scenario slug, kept
+#: beside the presets so it can be revised without editing this generator.
+ONBOARDING_COPY = PRESET/"onboarding-copy.json"
 GROUPS = {"manufacturing": ("制造业", "🏭"), "hr": ("人力资源", "👥"), "finance": ("财务", "💹"), "sales": ("销售", "🤝")}
+
+# Bounds copied from ``agent/registry.py`` on purpose: this script stands alone
+# (it must run without the project's dependencies), but a line that breaks them
+# has to fail the build rather than an install on some tenant.
+USAGE_HINT_MAX_LENGTH = 200
+SUGGESTED_QUESTION_MAX_LENGTH = 200
+SUGGESTED_QUESTIONS_MAX = 4
+
+
+def load_onboarding_copy():
+    data = json.loads(ONBOARDING_COPY.read_text(encoding="utf-8"))
+    scenarios = data.get("scenarios")
+    if not isinstance(scenarios, dict) or not scenarios:
+        raise ValueError("onboarding copy must carry a non-empty scenarios object")
+    return scenarios
+
+
+def apply_onboarding_copy(profile, slug, copy):
+    """Attach and check the reviewed usage hint and suggested questions."""
+    entry = copy.get(slug)
+    if entry is None:
+        raise ValueError("onboarding copy missing for "+slug)
+    hint, questions = entry.get("usage_hint"), entry.get("suggested_questions")
+    if not isinstance(hint, str) or not hint.strip():
+        raise ValueError("usage_hint missing for "+slug)
+    if len(hint) > USAGE_HINT_MAX_LENGTH:
+        raise ValueError(f"usage_hint too long for {slug}: {len(hint)}")
+    if not isinstance(questions, list) or not questions:
+        raise ValueError("suggested_questions missing for "+slug)
+    if len(questions) > SUGGESTED_QUESTIONS_MAX:
+        raise ValueError(f"too many suggested questions for {slug}")
+    for question in questions:
+        if not isinstance(question, str) or not question.strip():
+            raise ValueError("blank suggested question for "+slug)
+        if len(question) > SUGGESTED_QUESTION_MAX_LENGTH:
+            raise ValueError(f"suggested question too long for {slug}")
+        # Ordinary prose: a question must never become a command entry point.
+        if question.startswith("/") or "@" in question:
+            raise ValueError("suggested question carries a command mark for "+slug)
+    profile["usage_hint"] = hint
+    profile["suggested_questions"] = list(questions)
 
 
 def write_json(path, value):
@@ -58,6 +102,9 @@ def build(catalog_path, docs_path, packs, output):
     items = [i for i in catalog["items"] if i["slug"] != "rfq-quote"]
     if len(items) != 62 or len({i["slug"] for i in items}) != 62:
         raise ValueError("expected exactly 62 remaining scenarios")
+    copy = load_onboarding_copy()
+    if {i["slug"] for i in items} - set(copy):
+        raise ValueError("onboarding copy does not cover every scenario")
     # Validate the whole batch before materializing any files.
     archives = {}
     for item in items:
@@ -136,6 +183,7 @@ description: {json.dumps(description, ensure_ascii=False)}
                    "persona_summary": f"专注{name}。接到任务先读取 {skill} 技能，以原始文件和可复算依据形成交付物。案例中的具体金额、概率与法律结果仅用于演示，不作为真实任务的预设结论。",
                    "sops": steps, "tools_allowlist": ["read", "write", "edit", "bash", "ls", "search_files", "send"],
                    "tools_denylist": ["email", "erp", "scheduler"], "agent_type": "normal"}
+        apply_onboarding_copy(profile, slug, copy)
         manifest.append({"slug": slug, "skill": skill, "group": item["group"], "profile": profile,
                          "package_sha256": inventory[slug]["sha256"], "demo_file_count": len(scenario["demo_files"])})
     write_json(output/"catalog.json", {"version": 1, "source": catalog["source"], "source_revision": "184",

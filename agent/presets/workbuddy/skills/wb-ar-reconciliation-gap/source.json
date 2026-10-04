@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "79f47803a06fe7738db50936e36296337e79e4ebf170d6ac6af758353a70e781"
+      "sha256": "221c8d657753b0e31d56ddd0d38a78abf3f5611efd3e31e37db19613dc003a04"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "0a10c02a38cf0c295ec040e24df840b6d62e47c9dcc40ef60c5c44694ece74d1"
+      "sha256": "59d01a9dcaeda09873153ba21b7438ba9d4915be0950249c4bd59c69c5b9cbfd"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "8dc7f0dd2b6d37643757b83d2ea3105749628393d4abc35fb4e2e86f1443edb1"
+      "sha256": "c6bcbb02657a43c17a4ccacab1787e2aab2d0950e97a0c66ace38333caaf78dd"
     },
     {
       "original": "输入参考文件/01_我方应收台账（恒晟部分）.xlsx",
@@ -47,7 +47,7 @@
     {
       "original": "输入参考文件/06_对账管理与差异归因口径.txt",
       "path": "assets/demo/06_对账管理与差异归因口径.txt",
-      "sha256": "c0f5a10d7ca537b6f10d4a8d6190005fbc4653b3a78ddb13e2844bf2d4a04e1b"
+      "sha256": "8dcf5b85c0b95fd3e676a791fa532bb61c141ea45492ad613c1a309e32be3e5a"
     }
   ]
 }

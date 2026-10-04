@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "21660f47454b1fbf850f5d70231a5608da2e3fb77ccc3667f635ea1aaa2a40bc"
+      "sha256": "67987269eb1bdb0cb0682200db18220fac77e4568ee3bc5e5ae5a2bf660c6892"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "6116c880c50629263de494bdeda5e3a70fe63c7bfd2526c641e68864c6e0676f"
+      "sha256": "747b59bc6cc380dc19aba1a23dcddbb43e18ce4b52f204264047746456dcc17b"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "98360d52d71c3b0eaea84b113225ad7d5702a6e2a7e3f2f875c72e18911667c6"
+      "sha256": "6eff8200cbd899d5d56ee5ed368c4d4fa708a0a88fe51bf43e34dd2a10daee27"
     },
     {
       "original": "输入参考文件/01_应收账款台账（全库逾期部分）.xlsx",
@@ -32,7 +32,7 @@
     {
       "original": "输入参考文件/03_催收跟进记录整理.txt",
       "path": "assets/demo/03_催收跟进记录整理.txt",
-      "sha256": "3a02a733b8e0d07ca90efbad4d4cc5a65bd431c8232f6845702d79c745d09287"
+      "sha256": "084ff38e2f000a6ecdb9be0dea3946d0e638a89368772cf3655f2e293c5c5655"
     },
     {
       "original": "输入参考文件/04_债权凭证材料归档情况.xlsx",
@@ -42,12 +42,12 @@
     {
       "original": "输入参考文件/05_客户工商与司法公开信息.txt",
       "path": "assets/demo/05_客户工商与司法公开信息.txt",
-      "sha256": "2fdde99ebdd0e4ba84bf50396b73e435ec17bf8ec008780cc4d1c952d54aa3c7"
+      "sha256": "de586d37ffbab5936b8fcb418d2a13bae2e267f7198b34f3a2af937ab9ea4cbb"
     },
     {
       "original": "输入参考文件/06_逾期应收款项登记卡填写要求.txt",
       "path": "assets/demo/06_逾期应收款项登记卡填写要求.txt",
-      "sha256": "a34a4afd3c8fafcb863a10709cf1e687167b86a856d54cd7ff9f97f95f882ee5"
+      "sha256": "a459860e86e5e46482dd2803a9ce31f6bbef0a5841c8b801b4ec6b2d58279374"
     }
   ]
 }

@@ -7,22 +7,22 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "fd74efe98ff17d05367932aaed758e212b563a2389e46cfaed068c676e538344"
+      "sha256": "8cb064b7b6f30b79de65b746410735d98249174d52d440f8dfddd08d2d3e2288"
     },
     {
       "original": "references/diff_classification.md",
       "path": "references/diff_classification.md",
-      "sha256": "68b31ec56628d00dfafad5d598d3c6049b6bf706417ad62bab4de523f3854ec8"
+      "sha256": "d8a4150a2eb515c257662370c87a901c8a7d8be0d87b18425931e49c2ad88c8e"
     },
     {
       "original": "references/multimodal_parsing.md",
       "path": "references/multimodal_parsing.md",
-      "sha256": "00d3f3fb687b499d985a8d4951b91c18cd4158b180c70d7ae20a801fcc3553ef"
+      "sha256": "d5c4cf6ea6db6240af87141c047a9e2798cced258ee20b9929aacbce7e51d4a5"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "0328c4e128a01719e6dc5e248ffa77e4e67891d25c955e04f772cae65dcc78c2"
+      "sha256": "100593224df94f0ae955b008af55b91a2a58780603fa95effbe7b0ec92fc3b71"
     },
     {
       "original": "输入参考文件/P-IPC-01_基线_v1.2.xlsx",
@@ -32,7 +32,7 @@
     {
       "original": "输入参考文件/P-IPC-01_新版_v1.3.pdf",
       "path": "assets/demo/P-IPC-01_新版_v1.3.pdf",
-      "sha256": "4535b2f6331947bc0142b426d3650e6b16694a2a6677ca61bfdbc95ed447b2ea"
+      "sha256": "232caa686b2327410e11857cb43558aa246a93f716077839e049fca89ed066df"
     },
     {
       "original": "输入参考文件/P-IPC-01_新版_v1.3.xlsx",

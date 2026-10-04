@@ -75,6 +75,8 @@ __all__ = [
     "unlink",
     "mkdir",
     "file_lock",
+    "rename",
+    "remove_tree",
 ]
 
 
@@ -181,6 +183,46 @@ def contains(root, candidate) -> bool:
         return False
 
 
+def _mkdir_level(part: str, *, directory: Optional[str] = None,
+                 dir_fd: Optional[int] = None) -> None:
+    """Create one directory level, tolerating a peer that created it first.
+
+    Every creation site in this module is a check followed by a create, and the
+    console's file panel runs **three uploads at once**: the first drop into a
+    folder has all three racing to create each level of it. A plain ``mkdir``
+    therefore fails the unlucky request with ``FileExistsError`` for a reason
+    that has nothing to do with what the caller asked for — on Windows, whose
+    ``dir_fd``-less fallback cannot lean on an already-open descriptor, that is
+    the *normal* first outcome rather than a rare one.
+
+    Tolerating the error is not the same as ignoring it. The level is
+    re-validated after the race, so a symlink (or a plain file) planted in the
+    gap is still refused instead of being accepted because "something is there
+    now" — the guarantee the rest of this module exists to keep.
+
+    ``directory`` is the level's full path, for platforms without ``dir_fd``;
+    with ``dir_fd`` the name is resolved against the open descriptor, which is
+    the form that stays check-then-use-free.
+    """
+    target = directory if directory is not None else part
+    try:
+        if dir_fd is not None:
+            os.mkdir(part, dir_fd=dir_fd)
+        else:
+            os.mkdir(target)
+    except FileExistsError:
+        if dir_fd is not None:
+            info = os.stat(part, dir_fd=dir_fd, follow_symlinks=False)
+            is_link = _stat.S_ISLNK(info.st_mode)
+            is_dir = _stat.S_ISDIR(info.st_mode)
+        else:
+            is_link, is_dir = os.path.islink(target), os.path.isdir(target)
+        if is_link:
+            raise UnsafePathError("symbolic link component %r" % part) from None
+        if not is_dir:
+            raise UnsafePathError("non-directory component %r" % part) from None
+
+
 def _resolve_chain(root: str, parts: List[str], *, create: bool = False,
                    allow_missing_tail: bool = False) -> Tuple[str, bool]:
     """Fallback validation: link-check every component, then realpath-check.
@@ -196,7 +238,7 @@ def _resolve_chain(root: str, parts: List[str], *, create: bool = False,
             raise UnsafePathError("symbolic link component %r" % part)
         if not os.path.lexists(current):
             if create:
-                os.mkdir(current)
+                _mkdir_level(part, directory=current)
             elif allow_missing_tail and index == len(parts) - 1:
                 return current, False
             else:
@@ -219,6 +261,36 @@ def resolve_within(root, relative) -> str:
     root_path = _root_path(root)
     path, _present = _resolve_chain(root_path, split_relative(relative))
     return path
+
+
+def _resolve_parent(root: str, parts: List[str], *, create: bool = False
+                    ) -> Tuple[str, str, str]:
+    """Validate the parent chain; return ``(parent_dir, name, entry_path)``.
+
+    :func:`_resolve_chain` requires *every* component to be a directory, which
+    is right for :func:`resolve_within` (its caller wants a directory) but
+    wrong for the primitives that act on an entry: there the last component is
+    the file being created, moved or removed. Only the components above it must
+    be real directories.
+    """
+    if not parts:
+        raise UnsafePathError("a file name is required")
+    _assert_root_is_not_link(root)
+    parent = root
+    for part in parts[:-1]:
+        parent = os.path.join(parent, part)
+        if os.path.islink(parent):
+            raise UnsafePathError("symbolic link component %r" % part)
+        if not os.path.lexists(parent):
+            if not create:
+                raise FileNotFoundError(parent)
+            _mkdir_level(part, directory=parent)
+        elif not os.path.isdir(parent):
+            raise UnsafePathError("non-directory component %r" % part)
+    if not contains(root, parent):
+        raise UnsafePathError("path escapes the trusted root")
+    name = parts[-1]
+    return parent, name, os.path.join(parent, name)
 
 
 # --- descriptor helpers -----------------------------------------------------
@@ -287,7 +359,7 @@ def _open_dir_chain(root: str, parts: List[str], *, create: bool = False
             except FileNotFoundError:
                 if not create:
                     raise
-                os.mkdir(part, dir_fd=fd)
+                _mkdir_level(part, dir_fd=fd)
                 child = os.open(part, flags, dir_fd=fd)
             except OSError as exc:
                 if exc.errno in (errno.ELOOP, errno.EMLINK):
@@ -301,7 +373,7 @@ def _open_dir_chain(root: str, parts: List[str], *, create: bool = False
                     except FileNotFoundError:
                         if not create:
                             raise
-                        os.mkdir(part, dir_fd=fd)
+                        _mkdir_level(part, dir_fd=fd)
                         child = os.open(part, flags, dir_fd=fd)
                         if parent is not None:
                             os.close(parent)
@@ -367,8 +439,13 @@ def _open_file(root: str, parts: List[str], flags: int
         raise UnsafePathError("a file name is required")
     directory, name = parts[:-1], parts[-1]
     if not _DIR_FD_OK:
-        full, present = _resolve_chain(root, parts, allow_missing_tail=True)
-        return (None, full) if present else (None, None)
+        try:
+            _parent, _name, full = _resolve_parent(root, parts)
+        except FileNotFoundError:
+            return None, None
+        if not os.path.lexists(full):
+            return None, None
+        return None, full
     try:
         with _DirChain(root, directory) as chain:
             try:
@@ -389,8 +466,14 @@ def _lstat(root: str, parts: List[str]):
         raise UnsafePathError("a path is required")
     directory, name = parts[:-1], parts[-1]
     if not _DIR_FD_OK:
-        full, present = _resolve_chain(root, parts, allow_missing_tail=True)
-        return os.lstat(full) if present else None
+        try:
+            _parent, _name, entry = _resolve_parent(root, parts)
+        except FileNotFoundError:
+            return None
+        try:
+            return os.lstat(entry)
+        except FileNotFoundError:
+            return None
     try:
         with _DirChain(root, directory) as chain:
             return os.stat(name, dir_fd=chain.fd, follow_symlinks=False)
@@ -520,7 +603,7 @@ def _write_temp_then_replace(root: str, parts: List[str], data: bytes) -> None:
             if os.path.islink(parent_dir):
                 raise UnsafePathError("symbolic link directory %r" % part)
             if not os.path.lexists(parent_dir):
-                os.mkdir(parent_dir)
+                _mkdir_level(part, directory=parent_dir)
             elif not os.path.isdir(parent_dir):
                 raise UnsafePathError("non-directory component %r" % part)
         if not contains(root, parent_dir):
@@ -595,10 +678,15 @@ def unlink(root, relative) -> bool:
     root_path = _root_path(root)
     directory, name = parts[:-1], parts[-1]
     if not _DIR_FD_OK:
-        full, present = _resolve_chain(root_path, parts, allow_missing_tail=True)
-        if not present:
+        try:
+            _parent, _name, full = _resolve_parent(root_path, parts)
+        except FileNotFoundError:
             return False
-        if _stat.S_ISLNK(os.lstat(full).st_mode):
+        try:
+            st = os.lstat(full)
+        except FileNotFoundError:
+            return False
+        if _stat.S_ISLNK(st.st_mode):
             raise UnsafePathError("symbolic link entry %r" % name)
         os.unlink(full)
         return True
@@ -614,3 +702,148 @@ def unlink(root, relative) -> bool:
             return True
     except FileNotFoundError:
         return False
+
+
+# --- moves and recursive removal --------------------------------------------
+#
+# ``rename`` and ``remove_tree`` are the only destructive primitives beyond
+# ``unlink``. Both keep the same promise as the rest of the module: every
+# component of *both* sides is link-checked, so a directory swapped for a link
+# between validation and the syscall is refused rather than followed.
+
+def rename(root, src_relative, dst_relative, *, create_parents: bool = False
+           ) -> None:
+    """Move ``src_relative`` to ``dst_relative`` inside one root.
+
+    An existing destination is :class:`FileExistsError`, never an overwrite:
+    every caller in the console needs "fail, then pick a new name" (a
+    delivered file that would clobber the one the user already has is a bug,
+    not a convenience).
+
+    ``create_parents`` materializes the destination's parent chain, which the
+    trash move needs (``.trash/<batch>/files/<original path...>``) and the
+    restore does not (the original parent is expected to exist).
+
+    A cross-device move raises the platform's ``OSError`` with ``EXDEV``: the
+    caller reports that item as failed. Silently degrading to copy-then-delete
+    would leave a window where neither the source nor a complete destination
+    exists, which is exactly what an atomic move is here to prevent.
+    """
+    src_parts = split_relative(src_relative)
+    dst_parts = split_relative(dst_relative)
+    if not src_parts or not dst_parts:
+        raise UnsafePathError("a file name is required")
+    root_path = _root_path(root)
+    _assert_root_is_not_link(root_path)
+
+    src_dir, src_name = src_parts[:-1], src_parts[-1]
+    dst_dir, dst_name = dst_parts[:-1], dst_parts[-1]
+
+    if not _DIR_FD_OK:
+        try:
+            src_parent, src_name, src_full = _resolve_parent(root_path, src_parts)
+        except FileNotFoundError:
+            raise FileNotFoundError(src_relative) from None
+        if _stat.S_ISLNK(os.lstat(src_full).st_mode):
+            raise UnsafePathError("symbolic link entry %r" % src_name)
+        dst_parent, dst_name, dst_full = _resolve_parent(
+            root_path, dst_parts, create=create_parents)
+        if os.path.lexists(dst_full):
+            raise FileExistsError(dst_relative)
+        os.rename(src_full, dst_full)
+        return
+
+    with _DirChain(root_path, dst_dir, create=create_parents) as dst_chain:
+        try:
+            dst_st = os.stat(dst_name, dir_fd=dst_chain.fd,
+                             follow_symlinks=False)
+        except FileNotFoundError:
+            dst_st = None
+        if dst_st is not None:
+            raise FileExistsError(dst_relative)
+        with _DirChain(root_path, src_dir) as src_chain:
+            try:
+                src_st = os.stat(src_name, dir_fd=src_chain.fd,
+                                 follow_symlinks=False)
+            except FileNotFoundError:
+                raise FileNotFoundError(src_relative) from None
+            if _stat.S_ISLNK(src_st.st_mode):
+                raise UnsafePathError("symbolic link entry %r" % src_name)
+            os.rename(src_name, dst_name, src_dir_fd=src_chain.fd,
+                      dst_dir_fd=dst_chain.fd)
+
+
+def remove_tree(root, relative) -> bool:
+    """Remove one entry, recursing into a directory. False when absent.
+
+    The addressed entry being a symlink is refused (:class:`UnsafePathError`),
+    consistent with :func:`unlink`. Inside the tree a symlink is *unlinked as
+    an entry and never traversed*: the link itself is removed, its target is
+    untouched. Refusing instead would make a directory that merely contains a
+    link impossible to delete, which is not a safety property anyone asked
+    for.
+    """
+    parts = split_relative(relative)
+    if not parts:
+        raise UnsafePathError("a path is required")
+    root_path = _root_path(root)
+    _assert_root_is_not_link(root_path)
+    directory, name = parts[:-1], parts[-1]
+
+    if not _DIR_FD_OK:
+        try:
+            _parent, name, full = _resolve_parent(root_path, parts)
+        except FileNotFoundError:
+            return False
+        try:
+            st = os.lstat(full)
+        except FileNotFoundError:
+            return False
+        if _stat.S_ISLNK(st.st_mode):
+            raise UnsafePathError("symbolic link entry %r" % name)
+        if _stat.S_ISDIR(st.st_mode):
+            _remove_tree_path(full)
+        else:
+            os.unlink(full)
+        return True
+
+    with _DirChain(root_path, directory) as chain:
+        try:
+            st = os.stat(name, dir_fd=chain.fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return False
+        if _stat.S_ISLNK(st.st_mode):
+            raise UnsafePathError("symbolic link entry %r" % name)
+        if not _stat.S_ISDIR(st.st_mode):
+            os.unlink(name, dir_fd=chain.fd)
+            return True
+        _remove_tree_fd(chain.fd, name)
+        return True
+
+
+def _remove_tree_fd(parent_fd: int, name: str) -> None:
+    """Recursively remove ``name`` under ``parent_fd`` using descriptors."""
+    flags = os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW
+    child = os.open(name, flags, dir_fd=parent_fd)
+    try:
+        for entry in os.listdir(child):
+            st = os.stat(entry, dir_fd=child, follow_symlinks=False)
+            if _stat.S_ISLNK(st.st_mode) or not _stat.S_ISDIR(st.st_mode):
+                os.unlink(entry, dir_fd=child)
+            else:
+                _remove_tree_fd(child, entry)
+    finally:
+        os.close(child)
+    os.rmdir(name, dir_fd=parent_fd)
+
+
+def _remove_tree_path(full: str) -> None:
+    """Recursively remove ``full`` by validated path (no ``dir_fd`` platform)."""
+    for entry in os.listdir(full):
+        child = os.path.join(full, entry)
+        st = os.lstat(child)
+        if _stat.S_ISLNK(st.st_mode) or not _stat.S_ISDIR(st.st_mode):
+            os.unlink(child)
+        else:
+            _remove_tree_path(child)
+    os.rmdir(full)

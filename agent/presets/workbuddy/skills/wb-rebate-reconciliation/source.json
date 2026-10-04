@@ -7,27 +7,27 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "11a000ba3e93602aa21a45b24dacb34d6b6fe09ba62d8ddbd51b48bc2e1fdc75"
+      "sha256": "d6c18f5a81b6befdbe174dfefe0266a069b8058504d713aac1568f5ba6ba2ed8"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "11bbf61008d316dbcd8751e3a6cc741db3f558ea1a3c6d5dfd48a2f55c7ee16c"
+      "sha256": "c33bc9dabae738156ed8f5c8868a5bc97d39f84515874089547c16566341ed00"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "716e94f8f0c05c359c1540b296de9e63ed799b99c351033017a6e2cef15ae1c5"
+      "sha256": "2352f66814615e76fe3af6a594426046af39804c941c46a0c7e395ef3933789d"
     },
     {
       "original": "输入参考文件/01_2025年度经销协议与返利政策附件.txt",
       "path": "assets/demo/01_2025年度经销协议与返利政策附件.txt",
-      "sha256": "49ff0eb77d7e1b75c7b19e48e4e06448e08799054e9e65a7d4a94043efb5a390"
+      "sha256": "31235772e568ee6346714c81e9a65cfd3d99d00b1d44d6bee9e989f214a3e052"
     },
     {
       "original": "输入参考文件/02_月度促销与临时政策通知整理.txt",
       "path": "assets/demo/02_月度促销与临时政策通知整理.txt",
-      "sha256": "283b004d92020951b573ef760b9eb7b1d21ae06b37da069fdfb83e13c138c664"
+      "sha256": "c0fe6ce18fee010d1c2d09059563f814abe8cc66510a5ddc840ce2b1000ce2bd"
     },
     {
       "original": "输入参考文件/03_我方经销商进货台账.xlsx",
@@ -47,7 +47,7 @@
     {
       "original": "输入参考文件/06_渠道纠纷判例与历史处理口径摘录.txt",
       "path": "assets/demo/06_渠道纠纷判例与历史处理口径摘录.txt",
-      "sha256": "1444912da89c9ef7e710156c8583fe135ff8c4a294c2f5fdbfcde960159d277a"
+      "sha256": "e70db1714d05c8abaaae5d932437bc76825ba026e7c781e8bd720779ea9d8df0"
     }
   ]
 }

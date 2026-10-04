@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "422cb70fc2cece9104e0a4bd523ef08a703f6d1a732830472f5f91a8ff0c09ef"
+      "sha256": "1f6042a0c20afcf13d2a0de20b940eda571238c1cd6981a4b74d4c4e1206b20a"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "36eb56e0c93dc5ce7155d954775d64ace4e2b040b9f663fad12646e9daf126c1"
+      "sha256": "42c480349c2146065e10bb677aa4d24b8424fe4f5cf87ae41c0d45611f6f024e"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "76e516bc36aa65a076c394e7653faf9ad622a53415592a92c88cd0b00d9153fa"
+      "sha256": "e0be231d1abbbe3690e99205433e977d1c20b0049c609e18cd7c9de5070c258c"
     },
     {
       "original": "输入参考文件/01_吴梦琪_入职材料与JD.xlsx",
@@ -32,12 +32,12 @@
     {
       "original": "输入参考文件/03_业务经理_微信评价.txt",
       "path": "assets/demo/03_业务经理_微信评价.txt",
-      "sha256": "188a63075a7c932b38a1360934256e461f977fce03691cdbfdc9721e74250c80"
+      "sha256": "de08018edc4459719e033aebe43fb58b2de1d4556bbad9e7a5dd128588b345ea"
     },
     {
       "original": "输入参考文件/04_去年辞退案例_装配岗.txt",
       "path": "assets/demo/04_去年辞退案例_装配岗.txt",
-      "sha256": "fc4f6642cbd22da219a268c7a5a8dfba80f0f43374cbd952a2ba370eb41b7180"
+      "sha256": "239fd1308649cedb95181f72645be5dfd1b3dcb77c566c2c35be6f1ae6a86b10"
     }
   ]
 }

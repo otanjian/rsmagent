@@ -270,13 +270,46 @@
                                         <input id="ws-search-input" type="text" spellcheck="false"
                                                data-i18n-placeholder="ws_search_placeholder" placeholder="搜索文件">
                                     </div>
-                                    <button class="workspace-icon-btn" onclick="refreshWorkspaceTree()"
+                                    <button id="ws-btn-trash" class="workspace-icon-btn hidden"
+                                            onclick="openWorkspaceTrash()"
+                                            data-i18n-title="ws_trash_open" title="回收站">
+                                        <i class="fas fa-recycle"></i>
+                                    </button>
+                                    <button id="ws-btn-trash-back" class="workspace-icon-btn hidden"
+                                            onclick="closeWorkspaceTrash()"
+                                            data-i18n-title="ws_trash_back" title="返回文件">
+                                        <i class="fas fa-arrow-left"></i>
+                                    </button>
+                                    <button id="ws-btn-purge-all" class="workspace-icon-btn ws-icon-danger hidden"
+                                            onclick="emptyWorkspaceTrash()"
+                                            data-i18n-title="ws_trash_empty" title="清空回收站">
+                                        <i class="fas fa-dumpster-fire"></i>
+                                    </button>
+                                    <button id="ws-btn-refresh" class="workspace-icon-btn" onclick="refreshWorkspaceTree()"
                                             data-i18n-title="ws_refresh" title="刷新">
                                         <i class="fas fa-rotate-right"></i>
                                     </button>
                                 </div>
                                 <div id="ws-breadcrumb" class="workspace-breadcrumb"></div>
+                                <div id="ws-upload-progress" class="ws-upload-progress hidden">
+                                    <div class="ws-upload-head">
+                                        <span id="ws-upload-title" class="ws-upload-title"></span>
+                                        <span id="ws-upload-count" class="ws-upload-count"></span>
+                                    </div>
+                                    <div class="ws-upload-bar"><div id="ws-upload-fill" class="ws-upload-fill"></div></div>
+                                    <div id="ws-upload-detail" class="ws-upload-detail"></div>
+                                    <div class="ws-upload-actions">
+                                        <button id="ws-upload-retry" class="ws-upload-btn hidden"
+                                                onclick="retryFailedWorkspaceUploads()"></button>
+                                        <button id="ws-upload-dismiss" class="ws-upload-btn hidden"
+                                                onclick="dismissWorkspaceUpload()"></button>
+                                    </div>
+                                </div>
                                 <div id="ws-file-list" class="workspace-file-list"></div>
+                                <div id="ws-drop-hint" class="ws-drop-hint hidden">
+                                    <i class="fas fa-cloud-arrow-up"></i>
+                                    <span id="ws-drop-hint-text" class="ws-drop-hint-text"></span>
+                                </div>
                             </div>
                         </div>
                     </aside>

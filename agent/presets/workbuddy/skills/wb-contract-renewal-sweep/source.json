@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "a1f97e4c77ee88c5714c9cbb51af2fa4245e6f9b3327052fbd16727380822d9f"
+      "sha256": "fe80eaeea23744e435e73dd5a94f1f4c705f252d3d6010ebd6c26572ff848c24"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "2c44347a33365f4730e0879454f78109b0742b8dd2503b1ef0e2beab3d928f31"
+      "sha256": "950d5b7531d8d6a6c2aeb25fe81ef3c58c0a7efc43259bf9de5fb4d93affc51f"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "aaba66a81cd40654fed7ca407a53af820de25384dccf8b294de2c3232a697263"
+      "sha256": "96b691ed4e56e4703980c0b35772ec3bc1d0ac972524385ca35b91c666bb93f8"
     },
     {
       "original": "输入参考文件/01_销售合同台账.xlsx",
@@ -27,7 +27,7 @@
     {
       "original": "输入参考文件/02_在执行合同正本条款提取.txt",
       "path": "assets/demo/02_在执行合同正本条款提取.txt",
-      "sha256": "2daaed59f5d722804cf9f2e99a315704a6e42095f9142c5d52e361af6fb671a9"
+      "sha256": "7345544b2eb919a2b2ea074ade509cd204b62e7b130f0e8f4131488d0d9e6879"
     },
     {
       "original": "输入参考文件/03_履约记录.xlsx",

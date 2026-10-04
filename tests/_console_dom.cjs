@@ -36,11 +36,26 @@ function isClassSelector(selector) {
     return typeof selector === 'string' && /^(\.[A-Za-z0-9_-]+)+$/.test(selector);
 }
 
+//: `#ws-file-list .ws-file-row.ws-checked` — one id scope, then classes. The
+//: workspace panel scopes its row queries to the list element it owns, so the
+//: helper has to understand that one shape or every selection query would throw.
+function isScopedClassSelector(selector) {
+    return typeof selector === 'string' && /^#[A-Za-z0-9_-]+\s+(\.[A-Za-z0-9_-]+)+$/.test(selector);
+}
+
 function matches(el, selector) {
     if (!isClassSelector(selector)) {
         throw new Error(`_console_dom supports class selectors only, got ${selector}`);
     }
     return selector.split('.').filter(Boolean).every(name => el.classList.contains(name));
+}
+
+/** Resolve a `#id .a.b` selector against `root`'s subtree, scoped by the id. */
+function selectScoped(root, selector) {
+    const [scope, classes] = selector.split(/\s+/);
+    const id = scope.slice(1);
+    const owners = [root, ...root.descendants()].filter(node => node.id === id);
+    return owners.flatMap(owner => owner.descendants().filter(node => matches(node, classes)));
 }
 
 function createElement(document, tag = 'div') {
@@ -99,8 +114,10 @@ function createElement(document, tag = 'div') {
     };
     el.remove = () => { if (el.parentNode) el.parentNode.removeChild(el); };
     el.descendants = () => el.children.flatMap(child => [child, ...child.descendants()]);
-    el.querySelector = selector => el.descendants().find(node => matches(node, selector)) || null;
-    el.querySelectorAll = selector => el.descendants().filter(node => matches(node, selector));
+    el.querySelector = selector => el.querySelectorAll(selector)[0] || null;
+    el.querySelectorAll = selector => (isScopedClassSelector(selector)
+        ? selectScoped(el, selector)
+        : el.descendants().filter(node => matches(node, selector)));
     el.closest = selector => {
         let node = el;
         while (node) {

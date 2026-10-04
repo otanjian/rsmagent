@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "6145f938e4d9a3a9dca192370fae6090fe501c84acb42910c8c5e500a39a6dc9"
+      "sha256": "54eb16b7c1b828a4df749a2a380ffb2e427317bb427feeee5ddbfda8e3f752a6"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "a27bf137dcd2f211749d088294016929e348a8061ca230265d5a3578c3ac2fab"
+      "sha256": "3a9d81403745e804e4c014a92e4acce9f54bc217d95eb80392b18025efc813ef"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "ba42db94cef8687297b01941044f9e9c8f4d0d6ae4b04c82c36a70c2287053a4"
+      "sha256": "e151150cac07810f43f96651e2866ec45dee34a08e5ee15767034663ebb7135c"
     },
     {
       "original": "输入参考文件/历史未达账项台账.xlsx",
@@ -27,7 +27,7 @@
     {
       "original": "输入参考文件/微信收款截图转录.txt",
       "path": "assets/demo/微信收款截图转录.txt",
-      "sha256": "07099ce02eb16ffbbf0da832f481228e90152321021e9c4c3f9138df41743244"
+      "sha256": "00bd08949687d181e99c9bb04fa68736377c3dc2081367e87decd98437c32d7a"
     },
     {
       "original": "输入参考文件/银行对账单_工行_2026年6月.xlsx",

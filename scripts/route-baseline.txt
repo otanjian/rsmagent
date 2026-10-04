@@ -389,4 +389,30 @@
 /auth/desktop/authorize	GET	public	-
 /auth/desktop/authorize	POST	public	-
 /auth/desktop/token	POST	public	-
+#
+# --- add-workspace-panel-upload-and-delete (fork:workspace-upload-delete) ----
+#
+#   Five method entries for the file panel's drag-and-drop upload and its
+#   recycle bin. All `tenant`: `_workspace_request_scope` resolves the addressed
+#   Agent through the tenant-binding / private-owner / owned-session chain before
+#   any filesystem work, and the handler then derives the *writable range* from
+#   the Agent's visibility -- never from the request body.
+#
+#   No route-level permission, matching the sibling `/api/workspace/*` rows
+#   above. The fine-grained authority here is not a verb on a resource but a
+#   range (private Agent: the Agent's own workspace; shared Agent: strictly the
+#   caller's `user/<user_id>` subtree), plus a refusal list for the Agent's own
+#   entries. A route-level permission is a per-resource grant and cannot express
+#   "your own directory only", so declaring one would add a second, weaker
+#   authority that reads as an equivalence it is not.
+#
+#   `/api/workspace/trash` is a GET but not a read of user content: it lists the
+#   caller's own bin and is also the 30-day retention sweep's host. It is
+#   `tenant` for the same reason as the rest -- the bin is resolved from the
+#   Agent's tenant binding and the caller's own identity.
+/api/workspace/delete	POST	tenant	
+/api/workspace/trash	GET	tenant	
+/api/workspace/trash/purge	POST	tenant	
+/api/workspace/trash/restore	POST	tenant	
+/api/workspace/upload	POST	tenant	
 

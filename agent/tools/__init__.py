@@ -9,6 +9,7 @@ from agent.tools.edit.edit import Edit
 from agent.tools.bash.bash import Bash
 from agent.tools.ls.ls import Ls
 from agent.tools.send.send import Send
+from agent.tools.excel.excel import Excel
 from agent.tools.search_files.search_files import SearchFiles
 from agent.tools.client_files.client_files import ClientFiles
 
@@ -177,6 +178,7 @@ __all__ = [
     'Bash',
     'Ls',
     'Send',
+    'Excel',
     'SearchFiles',
     'ClientFiles',
     'MemorySearchTool',

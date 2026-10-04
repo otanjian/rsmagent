@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "a7149ecc132e45a0c9252b9abc40ff46276cb1a3aca7e633174d70c264a14ceb"
+      "sha256": "e2b1176afa5f9544cf3b40e022ba1945215b97f5a3cf06e635e0c8a18c65b9b5"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "b0e95714249a2eed15883efa69426ad328d74b822c6706cb816e7c76371648a8"
+      "sha256": "0d8980567d90aac54aaecce464ff2102597ccb1b058cdaeee138186ce9882d4f"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "3e63b260e39fa704f44fe11b369d929b83899b8876b8c8aa7f9a78ef839eb9c1"
+      "sha256": "45615c9df542a65d4988b999a2221e8f79975e38f26f1b42e22b6247696bcb20"
     },
     {
       "original": "输入参考文件/2025年度历史申报记录.xlsx",
@@ -32,7 +32,7 @@
     {
       "original": "输入参考文件/残保金口径待确认.txt",
       "path": "assets/demo/残保金口径待确认.txt",
-      "sha256": "3dac10434afc796cf97d795c9e6d1bf29be11d566935a8737eb83b99a271fd31"
+      "sha256": "0c832aeed6941fea0a0e037c8038af1ad23574230bc049ee7d7e64183ed9afec"
     }
   ]
 }

@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "4d733a65825ee31af8efd83bfd14b384d2d4595ac750ad8682e3b2119657973c"
+      "sha256": "a07f7e0dea882458d72f8240dcd2a9f346788f80c01fde61283a32e6f9c3e38e"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "b96e8761a17f897cb9e14ae0fa9c68d871abe14ab3aca228fee1c929b9aed2a2"
+      "sha256": "2699b3a9fafb796ff0043f00a29dd827493918ddf99a7e99b66d9514d89917af"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "92eccd7019b258d25531375a951450a5518997295b85def82241f4d9dfad426f"
+      "sha256": "e29337cf3cf639536ffec0153ba83b90a3963df029577066769066cd8171c805"
     },
     {
       "original": "输入参考文件/01_考勤原始导出_2026-05至08.xlsx",
@@ -37,7 +37,7 @@
     {
       "original": "输入参考文件/04_加班审批记录.txt",
       "path": "assets/demo/04_加班审批记录.txt",
-      "sha256": "fe79c1f36effec5923535e478e09bef9d216c91f09d9e77620367a5f46d41592"
+      "sha256": "fc996f2a83635f7e35feebcc3f16ba79da4dec96c6e29c3e09c18a059d673462"
     }
   ]
 }

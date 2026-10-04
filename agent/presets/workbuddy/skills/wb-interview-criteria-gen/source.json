@@ -7,27 +7,27 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "ac2706511563665177e2ca9daf998ebe1ace5f92172483c9767c72dffe8f05d9"
+      "sha256": "28ea38755ab260ff6bb016f8122a162fac12a226e946d5b6e3cab581b449e297"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "ed80efafc5e37c4c6912931d4d99fd494605db6c2a04c0cddaef09f92499b3bb"
+      "sha256": "be23d4f7a8ba464979781418e262fc5b8951916f9271f663e647aa5a63a22d51"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "d3067904a58fa7943323bb702416ea0266cc38b19bd535d642f91b3408d031e2"
+      "sha256": "c040000f2c897173bb4b0e284d0aadd0b598437a3ac26eaf79bad0ba722ee796"
     },
     {
       "original": "输入参考文件/01_业务经理需求_微信原话.txt",
       "path": "assets/demo/01_业务经理需求_微信原话.txt",
-      "sha256": "8839838bac7ed65cbbbf66084edf9210a020ce3dda92cec351c75d854f37ad78"
+      "sha256": "9c063faa7f443c0b3b028825ac267cc2765e3f4a3e150ac411f576a27dab7a3f"
     },
     {
       "original": "输入参考文件/02_质检员JD_2024版.txt",
       "path": "assets/demo/02_质检员JD_2024版.txt",
-      "sha256": "de7477cf92142662f1b6eadb28c97dd4c87e8c554a9f85ed845bdda8bdf48819"
+      "sha256": "eefd82b5f908c2eecf4005367e5c2cf6d66d49c86d4b9213e4808f35d5002194"
     },
     {
       "original": "输入参考文件/03_在职质检员_职责与产出.xlsx",
@@ -37,7 +37,7 @@
     {
       "original": "输入参考文件/04_去年辞退记录_质检岗.txt",
       "path": "assets/demo/04_去年辞退记录_质检岗.txt",
-      "sha256": "1564a36adbe75fe96db1bda0e23c26d441431b4d5ca457f5ffa7a2a9cd06030c"
+      "sha256": "0bb37f203e8af29d185a2fbb893fbf8e244e309067766251a9e4b18a73b88117"
     }
   ]
 }

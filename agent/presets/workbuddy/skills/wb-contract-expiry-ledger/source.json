@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "310723e5244684b808c7477a72666ea5e0d6edc549b3a2e32c23bfc996d28d63"
+      "sha256": "f229190ff125e21ade7c4486f8093809832963d093ac3e33ad9a3adac3d1bda6"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "9177832dffb6dc06d8bdf5daeced9baa96c88fe7816937f4e7b30b781a370a03"
+      "sha256": "7f82324a620a614b592469574a7316bb61eb32b81eac4ab20e8bfaf0a0fcc8da"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "cf2f63c2f6e57a6ee2150b0d9df6c25ba36cc0d7ec0850efbac8d4ed06f047de"
+      "sha256": "fd55dd66f85b62a8487b25a2206a42573785c1399b3c9d973c877c40010e8b94"
     },
     {
       "original": "输入参考文件/01_劳动合同台账_现行版.xlsx",
@@ -42,7 +42,7 @@
     {
       "original": "输入参考文件/05_在休与特殊状态名单.txt",
       "path": "assets/demo/05_在休与特殊状态名单.txt",
-      "sha256": "4ee51463626da888efe5860a15abe09fca998058c44a8543ffe130bed272c896"
+      "sha256": "451030b4a6f2ae14a9958f057988cec9d6d69bdcbfa8a704c89bb01ec406ee2a"
     }
   ]
 }

@@ -116,6 +116,8 @@ _ACTION_TOOLS: Dict[str, Tuple[str, frozenset]] = {
     "browser": ("action", frozenset({"click", "fill", "select", "press", "evaluate"})),
     "scheduler": ("action", frozenset({"create", "delete", "enable", "disable"})),
     "env_config": ("action", frozenset({"set", "delete"})),
+    # Inspecting a workbook reads it; updating one rewrites cells in it.
+    "excel": ("action", frozenset({"update"})),
 }
 
 # Built-in tools that only read. Listed so the MCP name heuristic below never
@@ -123,7 +125,7 @@ _ACTION_TOOLS: Dict[str, Tuple[str, frozenset]] = {
 _KNOWN_TOOLS = frozenset({
     "read", "ls", "search_files", "memory_search", "memory_get", "web_search",
     "web_fetch", "vision", "send", "subagent", "bash", "write", "edit",
-    "browser", "scheduler", "env_config", "evolution_undo", "time",
+    "browser", "scheduler", "env_config", "evolution_undo", "time", "excel",
 })
 
 # MCP tools arrive with names we have never seen. Rather than guess "safe", read
@@ -499,6 +501,33 @@ def _check_read_only(tool_name: str, args: Dict[str, Any]) -> Decision:
     return ALLOW
 
 
+# Argument keys a file tool may write through. ``path`` covers write/edit and
+# the in-place case; ``output`` and friends cover a tool that can be pointed at
+# a second file (excel's save-as).
+_WRITE_PATH_KEYS = ("path", "output", "output_path", "destination", "file_path")
+
+
+def _written_paths(tool_name: str, args: Dict[str, Any]) -> List[str]:
+    """The paths this call writes, or [] when it writes nothing.
+
+    ``write``/``edit`` always write ``path``. A tool with per-action effects
+    writes only when its action says so - ``excel inspect`` reads a workbook,
+    ``excel update`` rewrites it in place or at ``output`` - which is why the
+    action is consulted before any path is treated as a destination.
+    """
+    if tool_name in _FILE_WRITE_TOOLS:
+        path = str(args.get("path") or "")
+        return [path] if path else []
+
+    spec = _ACTION_TOOLS.get(tool_name)
+    if not spec:
+        return []
+    arg_name, mutating = spec
+    if str(args.get(arg_name) or "").strip().lower() not in mutating:
+        return []
+    return [str(args[key]) for key in _WRITE_PATH_KEYS if args.get(key)]
+
+
 def _check_workspace_write(
     tool_name: str,
     args: Dict[str, Any],
@@ -507,15 +536,16 @@ def _check_workspace_write(
 ) -> Decision:
     roots = _normalize_roots(write_roots, cwd)
 
-    if tool_name in _FILE_WRITE_TOOLS:
-        path = str(args.get("path") or "")
-        if path and not _inside_roots(path, roots, cwd):
+    written = _written_paths(tool_name, args)
+    for path in written:
+        if not _inside_roots(path, roots, cwd):
             return _deny(
                 f"'{path}' is outside the writable area ({_roots_hint(roots)}), so "
                 f"{tool_name} did not run and nothing was written. Reading it is "
                 f"still allowed.",
                 WORKSPACE_WRITE,
             )
+    if written:
         return ALLOW
 
     if tool_name == "bash":

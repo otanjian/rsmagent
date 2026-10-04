@@ -7,22 +7,22 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "a81d6180a1287f8423903ce9852595759e91085d0c2345aa0fdfbe42924e5a90"
+      "sha256": "5c75fc19a779860ef2dd9e70bedb3e94d7c5e34ec42c5cc94552df7461d02854"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "6cbb7ce66406dc1e43ffdd5155b032f5f5f0f6649d68b3a3ec01a98305dc08d6"
+      "sha256": "3d30c1f84dd26853e119ebb3f62050cbc5fc94d8b1fa84280c4b701f8288be3f"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "39f69d5b0949bb18f8ade9bca8d7c631e3a7c16cc9caa6d0cfaf4bfa2a4bc13a"
+      "sha256": "77e48c2cd9c462fd83fbafa78b6b1ca37f03456b8075935610c246f9a3f32617"
     },
     {
       "original": "输入参考文件/历史资金日报口径说明.txt",
       "path": "assets/demo/历史资金日报口径说明.txt",
-      "sha256": "80a4fdb1b58e1b1feb226db21d4fee48da8114376816b2afc5eabfebb2887dae"
+      "sha256": "81f2825752b9cb9802b5a8d5d46ff78c8cb1043c23699fa84fe9bfea8fefc1ca"
     },
     {
       "original": "输入参考文件/待付款审批单_本周.xlsx",
@@ -32,7 +32,7 @@
     {
       "original": "输入参考文件/微信收款截图转录.txt",
       "path": "assets/demo/微信收款截图转录.txt",
-      "sha256": "c7ee4e9e668b9e736998ea87090497892eea1371dc7ef12f34ba0ea567c9cd9a"
+      "sha256": "e5aa9858c3e7109b9acd6c18662a2337b13a4a657afe276eae13559ba6b9abd0"
     },
     {
       "original": "输入参考文件/银行账户余额_2026年6月22日.xlsx",

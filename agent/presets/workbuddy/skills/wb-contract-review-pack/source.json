@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "01e4fd873bdd3ed2e70a5933de2935af8c43d89eb4d59389b5c830e121e7d30d"
+      "sha256": "1785fde57f574654a445200d1c252be0fdc057f2cbe52c34ddae2e8ec845b917"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "42fa89f4f94b19e197cc6d313f0ca0945b196d791cb77a11b3bbe36c6682da8a"
+      "sha256": "b9a0a02e2e261089eb9012d67148e8326813aee24c9277279ed1881bfc364ab8"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "837d0dd820ca12e01c2dfc2e5de4cdb432676aafe3c1e802f4e0b366a04eb392"
+      "sha256": "d14200540dd8c70de93c79fdb91e7354f3a5ab804031675ce7e1ab581278b1af"
     },
     {
       "original": "输入参考文件/01_合同评审必备材料清单与四段审核要点.xlsx",
@@ -47,7 +47,7 @@
     {
       "original": "输入参考文件/06_历史评审缺件与返工记录.txt",
       "path": "assets/demo/06_历史评审缺件与返工记录.txt",
-      "sha256": "e7cee7d143ca58b84a363c8301dca60a687fe7a4d56f47394627a7efefd6903d"
+      "sha256": "848ecd5ed613a7ddd89c827bba1147409d14859364d33923bae0f0abf211a29a"
     }
   ]
 }

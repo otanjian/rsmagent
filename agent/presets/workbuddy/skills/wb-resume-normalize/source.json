@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "85113483c840294ea919560edc549d5f76c005540f0197aaf080208741b59c2c"
+      "sha256": "02ab5028ee771bad4f8c00829d04c5d520a95483ecba3583796a70abaaab7f05"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "8b4b5abd93aadcfbb61ca664616a3047a19b49f8e0e09402fa1718cfaec5f1a8"
+      "sha256": "4d9b821e0d707b4bb9a0e9583dbf842bb9a57c2aad43bae7656f4997f2bc1df2"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "a5f73f9f2d179b4b53a2e9374339c941777b216144b6a4ff7e637c293de6c3a3"
+      "sha256": "5de13442de5acb96e098c9e4c6f8ce785467e69fae176cdec15432b01011073c"
     },
     {
       "original": "输入参考文件/01_BOSS直聘导出_装配技师.xlsx",
@@ -42,7 +42,7 @@
     {
       "original": "输入参考文件/05_岗位JD_装配技师.txt",
       "path": "assets/demo/05_岗位JD_装配技师.txt",
-      "sha256": "4be057d2575de890ed642247fa1139603b03183fe57103d3758d18e54a516365"
+      "sha256": "cec518a0be43cf0719df649df4ab3e28e96c705f1149f54dc5b565d5834d6327"
     }
   ]
 }

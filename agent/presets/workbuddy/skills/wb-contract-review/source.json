@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "ba3f5d7d0cd45d07844e34f47b62022576aa67838810ce411293852e10da41e7"
+      "sha256": "03ecd5b1c71fab7b309b63a75cf4e21406c41ee12210881bbdacf134cce5f4c1"
     },
     {
       "original": "references/十三条通用红线.md",
       "path": "references/十三条通用红线.md",
-      "sha256": "34247051e23d7666a81671a4e480053426b76c90eef4c6d26540e99a46b4053c"
+      "sha256": "a1ce6d72e77bcdaeb14eff6ba28aa6580cc267785349b8a5c9d91afe8c863d9f"
     },
     {
       "original": "references/比对表与提示书模板.md",
       "path": "references/比对表与提示书模板.md",
-      "sha256": "713863b5d81739d56ae65d8f7de262cf116478bc12597b659224b051eb8a24b4"
+      "sha256": "84f918509e574e03ce1019ce32d0808c758649dc6a34861d5db02da11bd876d7"
     },
     {
       "original": "输入参考文件/历史已签合同条款基线.xlsx",
@@ -27,7 +27,7 @@
     {
       "original": "输入参考文件/合同条款风险提示.pdf",
       "path": "assets/demo/合同条款风险提示.pdf",
-      "sha256": "67a9d6209baa2f428e36e33b91e575e72bcd3f7d2ae1014afbbbc2a0229fd060"
+      "sha256": "aed8119764e1627b1648624614e5f8ffdf8268bbceecbedd3e7dae6d1434b52b"
     },
     {
       "original": "输入参考文件/待签合同条款摘录.xlsx",

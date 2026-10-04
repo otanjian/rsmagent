@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "15cdfad05b9dff77487eb7e10718286737ba026a6eb78d4805cd155525eb1ce8"
+      "sha256": "f0385feb1631123f2755717f86348b47841cc38ac69246092d750a13af7dad35"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "42951deb254f845d7a40cce4c5aadd6bded811aa38fb4b50b17a2d62f8293752"
+      "sha256": "57457da28c9affddf90b9536dd33e86734abf4f5f26dffc045a6ffcbad8d5c0c"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "d17369ba16a41fef7de28ed4e3a2183d30ab1cde890c3dbd79e4090a268d2598"
+      "sha256": "d9114b22afb2d9932af0384373bb7f7cc57bebe732b616b8b93cd5874bbaded1"
     },
     {
       "original": "输入参考文件/01_四份招标公告关键信息汇总.xlsx",
@@ -27,7 +27,7 @@
     {
       "original": "输入参考文件/02_四份招标公告资格条款摘录.txt",
       "path": "assets/demo/02_四份招标公告资格条款摘录.txt",
-      "sha256": "d2bc7ab81045c9a462a38a080a72e2135d7e248ab0e271b8938847fb9f7309db"
+      "sha256": "e7a57461f15f52eb1178f2c4c8c9b77e2758b4bb83790447e39b06b32c17b406"
     },
     {
       "original": "输入参考文件/03_我方资质证书与同类业绩台账.xlsx",

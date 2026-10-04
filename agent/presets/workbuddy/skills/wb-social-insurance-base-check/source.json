@@ -7,17 +7,17 @@
     {
       "original": "SKILL.md",
       "path": "workflow.md",
-      "sha256": "861c12d8f0e91e05d54ba8208367d29d5abf80c70a97999b3e2b111894ab022f"
+      "sha256": "7532a50bc1b15811a416953b856e415e5543290af97a97183126645d3d04c8c4"
     },
     {
       "original": "references/judgement_rules.md",
       "path": "references/judgement_rules.md",
-      "sha256": "9eb6e1a75e5f712f58c2242fc31110844d00a3adee143464b752bfdc7ce1eea4"
+      "sha256": "9e1d9f4a6ab0558aa488c8096ca226c5b6a8c90a0e29a05e125ccb987f0e7f6a"
     },
     {
       "original": "references/output_template.md",
       "path": "references/output_template.md",
-      "sha256": "75d44a59ac72a01cc3bb340dea12abbc7f0f1061246233b1e8992e9ae6df3862"
+      "sha256": "4a35417955b87c777e0134959c8a203c45464ceba8266263131aaf8d33aec7af"
     },
     {
       "original": "输入参考文件/01_个税申报记录_2025-09至2026-08.xlsx",
@@ -37,7 +37,7 @@
     {
       "original": "输入参考文件/04_自愿放弃社保协议.txt",
       "path": "assets/demo/04_自愿放弃社保协议.txt",
-      "sha256": "37d78493dc7693aa8337967f46c777ecb8aa08f5b894be102333651ea11e5211"
+      "sha256": "91c65f86a212f09a64598f3c1efd20dd370f604bbef317d202a0026c19bcdba3"
     }
   ]
 }

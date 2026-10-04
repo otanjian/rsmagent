@@ -318,6 +318,7 @@ def _build_tooling_section(tools: List[Any], language: str) -> List[str]:
             "read": "read file content",
             "write": "create or overwrite a file",
             "edit": "make precise edits to a file",
+            "excel": "inspect or edit an .xlsx workbook: list sheets and column names, set or clear a column",
             "ls": "list directory contents",
             "search_files": "search inside files by regex, or find files by name",
             "bash": "run shell commands",
@@ -340,6 +341,7 @@ def _build_tooling_section(tools: List[Any], language: str) -> List[str]:
             "read": "读取文件内容",
             "write": "创建或覆盖文件",
             "edit": "精确编辑文件",
+            "excel": "查看或编辑 .xlsx 工作簿：列出工作表与列名、按列写入或清空",
             "ls": "列出目录内容",
             "search_files": "按正则搜索文件内容，或按文件名查找文件",
             "bash": "执行shell命令",
@@ -360,7 +362,7 @@ def _build_tooling_section(tools: List[Any], language: str) -> List[str]:
 
     # Preferred display order
     tool_order = [
-        "read", "write", "edit", "ls", "search_files",
+        "read", "write", "edit", "excel", "ls", "search_files",
         "bash", "terminal",
         "web_search", "web_fetch", "browser",
         "memory_search", "memory_get",
@@ -404,6 +406,7 @@ def _build_tooling_section(tools: List[Any], language: str) -> List[str]:
             "- Keep going until the task is done, then report the result to the user",
             "- Always redact secrets, tokens and other sensitive info in replies",
             "- Put URLs directly in the reply text; the system handles and renders them. Don't download and re-send them via the send tool",
+            "- Read files and attachments with `read`, including .docx/.xlsx/.pptx/.pdf; edit spreadsheets with `excel` (its `inspect` action lists the sheet names, header rows and column names, so never ask the user for a column name you can look up). This host is headless: no MS Office GUI or COM automation, no OleDb/ACE driver, no LibreOffice. Excel automation scripts (PowerShell COM, OleDb, npm xlsx CLI, LibreOffice --headless) fail here, and a failed attempt costs the whole turn - use the tools instead of shelling out",
             "",
         ]
         if has_subagent:
@@ -428,6 +431,7 @@ def _build_tooling_section(tools: List[Any], language: str) -> List[str]:
             "- 持续推进直到任务完成，完成后向用户报告结果",
             "- 回复中涉及密钥、令牌等敏感信息必须脱敏",
             "- URL链接直接放在回复文本中即可，系统会自动处理和渲染。无需下载后使用send工具发送",
+            "- 读文件和附件用 read（.docx/.xlsx/.pptx/.pdf 都支持）；处理表格用 excel——它的 inspect 会列出工作表、表头行和列名，能查到的列名不要反过来问用户。服务器是无界面的：没有 MS Office 界面与 COM 自动化、没有 OleDb/ACE 驱动、也没有 LibreOffice，用 PowerShell COM、OleDb、LibreOffice --headless 或临时 Python 脚本处理 Excel 都会失败，且失败会浪费整轮对话——请直接用工具，不要绕道 shell",
             "",
         ]
         if has_subagent:

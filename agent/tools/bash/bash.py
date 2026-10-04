@@ -33,7 +33,7 @@ class Bash(BaseTool):
     # *different* machine can drop it instead of inheriting a statement about the
     # wrong platform (task 8.7). Empty on POSIX: there is nothing to correct.
     _WIN_PLATFORM_NOTE = (
-        "PLATFORM: Windows (cmd.exe), not Bash, WSL, PowerShell, or Windows Terminal. Use cmd.exe syntax: double quotes (single quotes are literal), `>nul 2>&1` instead of `/dev/null`, `&&` instead of `;`, and `findstr /I \"pattern\"` without grep-style `-i`/`-e` flags. Do not invoke `bash script.sh` or use Unix-only commands such as grep, head, tail, sed, or awk. Use the search_files tool for file/content search and Python for portable scripting."
+        "PLATFORM: Windows (cmd.exe), not Bash, WSL, PowerShell, or Windows Terminal. Use cmd.exe syntax: double quotes (single quotes are literal), `>nul 2>&1` instead of `/dev/null`, `&&` instead of `;`, and `findstr /I \"pattern\"` without grep-style `-i`/`-e` flags. Do not invoke `bash script.sh` or use Unix-only commands such as grep, head, tail, sed, or awk. Search files with the search_files tool, and prefer the built-in tools (read/write/edit/excel/ls) over writing a script. This host is headless: no MS Office, no Excel/PowerShell COM automation, no OleDb/ACE driver and no LibreOffice, so scripts that drive Excel fail - use the excel tool for workbooks."
     )
     platform_note: str = _WIN_PLATFORM_NOTE if _IS_WIN else ""
     # Composed outside the description template on purpose. A backslash inside an
@@ -621,7 +621,10 @@ SAFETY:
         if "/dev/null" in lower:
             corrections.append("redirect to nul, for example >nul 2>&1, not /dev/null")
         if re.search(r"(?:^|[&|()]\s*|\s)(?:bash|sh)\s+\S", lower):
-            corrections.append("do not invoke bash/sh; use a cmd.exe command or a Python script")
+            corrections.append(
+                "do not invoke bash/sh; use a cmd.exe command, or the built-in "
+                "tools (read/write/edit/excel/ls) instead of a script"
+            )
         if re.search(r"'[^'\r\n]*'", command):
             corrections.append("use double quotes because cmd.exe treats single quotes literally")
         if re.search(r"(?:^|[&|()]\s*|\s)(?:grep|head|tail|sed|awk)\b", lower):
