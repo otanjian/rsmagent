@@ -1,7 +1,42 @@
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 import sys
 import io
+import stat
+
+
+def _positive_env(name, default):
+    try:
+        value = int(os.environ.get(name, default))
+        return value if value > 0 else default
+    except (TypeError, ValueError):
+        return default
+
+
+class _RuntimeLogHandler(RotatingFileHandler):
+    """Bound logs; preserve existing access modes, defaulting new logs to 0600."""
+
+    _error_reported = False
+
+    def _open(self):
+        if not hasattr(self, "_log_file_mode"):
+            try:
+                self._log_file_mode = stat.S_IMODE(os.stat(self.baseFilename).st_mode)
+            except FileNotFoundError:
+                self._log_file_mode = 0o600
+        return open(self.baseFilename, self.mode, encoding=self.encoding,
+                    errors=getattr(self, "errors", None),
+                    opener=lambda path, flags: os.open(path, flags, self._log_file_mode))
+
+    def handleError(self, record):
+        # Never log via this handler again, or print the failed record/secrets.
+        if not self._error_reported:
+            self._error_reported = True
+            try:
+                sys.stderr.write("[log] file logging failed; check disk space and log directory permissions\n")
+            except (OSError, ValueError):
+                pass
 
 
 def log_path(filename: str) -> str:
@@ -28,7 +63,7 @@ def _log_path():
 
 
 def _reset_logger(log):
-    for handler in log.handlers:
+    for handler in list(log.handlers):
         handler.close()
         log.removeHandler(handler)
         del handler
@@ -50,7 +85,11 @@ def _reset_logger(log):
     # an unwritable CWD), fall back to console-only instead of crashing the
     # whole process at import time.
     try:
-        file_handle = logging.FileHandler(_log_path(), encoding="utf-8")
+        file_handle = _RuntimeLogHandler(
+            _log_path(), encoding="utf-8",
+            maxBytes=_positive_env("COW_LOG_MAX_BYTES", 20 * 1024 * 1024),
+            backupCount=_positive_env("COW_LOG_BACKUP_COUNT", 5),
+        )
         file_handle.setFormatter(
             logging.Formatter(
                 "[%(levelname)s][%(asctime)s][%(filename)s:%(lineno)d] - %(message)s",
@@ -62,8 +101,8 @@ def _reset_logger(log):
         console_handle.handle(
             logging.LogRecord(
                 "log", logging.WARNING, __file__, 0,
-                "[log] file logging disabled (log path not writable): %s",
-                (_log_path(),), None,
+                "[log] file logging unavailable; check data directory permissions and disk space",
+                (), None,
             )
         )
 

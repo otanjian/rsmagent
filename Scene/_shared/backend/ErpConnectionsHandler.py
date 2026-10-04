@@ -1,3 +1,10 @@
+
+from Scene._shared.host import _require_auth
+from Scene._shared.host import _require_permission
+import json
+from common.log import logger
+import web
+
 class ErpConnectionsHandler:
     """GET /api/erp/connections - a read-only compatibility projection.
 

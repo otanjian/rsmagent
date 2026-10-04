@@ -25,6 +25,7 @@ verifier or a session token.
 
 from __future__ import annotations
 
+import pytest
 import base64
 import hashlib
 import re
@@ -146,6 +147,14 @@ def _restricted_session(web, username="fresh"):
     return web.service.login(username, "TempPass123!").token
 
 
+@pytest.fixture(autouse=True)
+def _isolate_login_limiter():
+    from channel.web.auth_handlers import reset_login_rate_limiter
+    reset_login_rate_limiter()
+    yield
+    reset_login_rate_limiter()
+
+
 class TestLoginCompatibility:
     """``/auth/login`` sets only the Cookie and an empty compatibility token."""
 
@@ -205,10 +214,28 @@ class TestAuthorizeEntry:
         resp = web.get(_authorize_path(), token=None, tenant=False)
         assert str(resp.status).startswith("401")
         html = resp.data.decode("utf-8")
-        assert 'id="desktop-auth-login"' in html
-        assert "/auth/login" in html
-        assert "location.reload" in html
+        assert 'id="login-form"' in html
+        assert '/assets/js/desktop-login.js?v=' in html
+        assert 'src="/assets/login-bg.jpg"' in html
+        assert '/assets/css/console.css?v=' in html
+        assert '/assets/css/desktop-auth.css' not in html
         assert "Open the Web console" not in html
+
+        from channel.web.core import template
+        shared_login = template.render("templates/auth/login.html").strip()
+        assert shared_login in html
+        assert shared_login in web.get("/chat", token=None, tenant=False).data.decode("utf-8")
+
+        # Signing in on this host still leads to explicit consent, not directly
+        # to the native callback or a code in the login response.
+        login = web.post("/auth/login",
+                         {"username": "root", "password": web.ADMIN_PASSWORD},
+                         token=None, tenant=False)
+        assert web.json(login)["token"] == ""
+        consent = web.get(_authorize_path(), token=_cookie(login, "cow_session"))
+        assert str(consent.status).startswith("200")
+        assert all(_consent_fields(consent.data.decode("utf-8")))
+        assert not _location(consent)
 
     def test_authorize_requires_the_registered_client_id(self, web_app):
         web = web_app()
@@ -264,6 +291,39 @@ class TestAuthorizeEntry:
 
 class TestConsentConfirm:
     """The confirm POST validates CSRF, origin, session and the request record."""
+
+    def test_switch_account_keeps_request_and_authorizes_only_the_new_account(self, web_app):
+        web = web_app()
+        web.member("alice", ["member"])
+        old = _Flow(web)
+        verifier, challenge = _pkce()
+        authorize_path = _authorize_path(challenge=challenge, state="switch-account-1")
+        old_page = web.get(authorize_path, token=old.token).data.decode("utf-8")
+        assert 'id="desktop-switch-account"' in old_page
+        assert '/assets/js/desktop-consent.js?v=' in old_page
+
+        logout = web.post("/auth/logout", {}, token=old.token, tenant=False)
+        assert web.json(logout)["status"] == "success"
+        assert web.service.verify_session(old.token) is None
+        assert not _location(logout)
+        login = web.get(authorize_path, token=None, tenant=False)
+        assert str(login.status).startswith("401")
+        assert 'id="login-form"' in login.data.decode("utf-8")
+
+        new = _Flow(web, "alice")
+        new_page = web.get(authorize_path, token=new.token).data.decode("utf-8")
+        assert "@alice" in new_page
+        # Neither a stale tab nor the new account may confirm the old form.
+        for token in (old.token, new.token):
+            refused = old.confirm(old_page, token=token)
+            assert str(refused.status).startswith(("401", "403"))
+            assert not _location(refused)
+        confirmed = new.confirm(new_page)
+        location = _location(confirmed)
+        assert parse_qs(urlparse(location).query)["state"] == ["switch-account-1"]
+        exchanged = new.exchange(_code_from_redirect(location), verifier)
+        native = web.json(exchanged)["token"]
+        assert web.service.verify_session(native)["user"]["username"] == "alice"
 
     def test_confirm_redirects_with_code_and_state(self, web_app):
         web = web_app()

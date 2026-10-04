@@ -64,8 +64,8 @@ FOREIGN_PERSONAL_TARGET = "foreign-private"
 class _FakeChannelManager:
     """A stand-in for the process's ``ChannelManager`` — the runtime seam.
 
-    ``channel.channel_instances`` resolves the manager through the app module
-    (``sys.modules["__main__"]._channel_mgr``) precisely so it never owns it, so
+    ``channel.channel_instances`` resolves the manager through the shared
+    channel registry precisely so it never owns it, so
     a test can put one there and drive the *real* runtime path: the row is read
     from the identity store, the credentials are decrypted per instance, and the
     recorded outcome is what ``instance_connection_state`` reports.
@@ -84,8 +84,7 @@ class _FakeChannelManager:
 
 def _install_manager(monkeypatch, manager):
     """Put *manager* where the delivered runtime resolver looks for it."""
-    monkeypatch.setattr(sys.modules["__main__"], "_channel_mgr", manager,
-                        raising=False)
+    monkeypatch.setattr("common.channel_registry.get_channel_manager", lambda: manager)
 
 
 class _FakeVendor:
@@ -737,6 +736,27 @@ def test_one_instance_never_starts_a_second_connection(flow, monkeypatch):
     assert calls == [committed["instance_id"]], "a replayed receipt connects nothing"
 
 
+@pytest.mark.parametrize("who", ["root", "member1"])
+def test_scanner_is_bound_before_the_connection_can_receive_a_message(flow, monkeypatch, who):
+    monkeypatch.setattr(channel_instances, "PERSONAL_RUNTIME_ACCEPTED_TYPES", frozenset({"weixin"}))
+    monkeypatch.setattr(channel_instances, "personal_runtime_enabled", lambda _type: True)
+    observed = []
+
+    def apply(instance_id):
+        row = flow.service.get_tenant_channel_instance_row(instance_id)
+        assert row["sender_binding_at"] is not None
+        if who == "member1":
+            verdict = flow.service.resolve_personal_channel_inbound(
+                instance_id=instance_id, provider="weixin", issuer="ilink-bot-1", subject="ilink-user-1")
+            assert verdict["allowed"] is True, verdict
+        observed.append(instance_id)
+        return {"applied": True}
+
+    monkeypatch.setattr(channel_instances, "reconcile_instance_runtime", apply)
+    committed = flow.scan(who, commit={"agent_id": PERSONAL_TARGET} if who == "member1" else None)
+    assert observed == [committed["instance_id"]]
+
+
 def test_a_commit_cannot_move_the_vendor_endpoint(flow):
     """The endpoint is bound at scan time; a later request may not redirect it."""
     started = flow.start("root")
@@ -906,8 +926,11 @@ def test_only_the_bound_owner_reaches_a_private_agent_on_a_scanned_bot(
     verdict = lambda **kw: service.resolve_personal_channel_inbound(  # noqa: E731
         instance_id=instance_id, provider="weixin", **kw)
 
-    # Unbound: nothing is proven about any sender yet.
-    assert verdict(issuer="wx-app", subject="wx-user-1")["reason"] == "not_linked"
+    # The verified scanner is already bound; another sender cannot take over.
+    scanned = verdict(issuer="ilink-bot-1", subject="ilink-user-1")
+    assert scanned["allowed"] is True, scanned
+    assert scanned["owner_user_id"] == owner
+    assert verdict(issuer="wx-app", subject="wx-user-1")["reason"] == "sender_not_owner"
     # A group chat is a shared surface, never the owner's private chat.
     assert verdict(issuer="wx-app", subject="wx-user-1",
                    is_group=True)["reason"] == "group_not_personal"

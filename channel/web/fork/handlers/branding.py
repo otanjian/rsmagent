@@ -120,7 +120,7 @@ class BrandingPublicHandler:
 
     def GET(self):
         from channel.web.web_channel import _branding_service
-        from channel.web.web_channel import _help_site_url
+        from channel.web.fork.common import _help_site_url
         web.header('Content-Type', 'application/json; charset=utf-8')
         web.header('Cache-Control', 'no-store')
         try:
@@ -164,7 +164,7 @@ class BrandingManageHandler:
     def POST(self):
         from channel.web.web_channel import _branding_service
         from channel.web.web_channel import _raw_web_input
-        from channel.web.web_channel import _read_uploaded_file_bytes_limited
+        from channel.web.fork.runtime import _read_uploaded_file_bytes_limited
         web.header('Content-Type', 'application/json; charset=utf-8')
         web.header('Cache-Control', 'no-store')
         try:

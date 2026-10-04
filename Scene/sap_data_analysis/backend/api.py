@@ -12,18 +12,18 @@ from urllib.parse import quote, unquote
 
 import web
 
-from auth.tenant_context import (
+from Scene._shared.host import (
     get_current_roles,
     get_current_tenant_id,
     get_current_username,
 )
-from channel.web.sap import SAPProviderFactory
-from channel.web.sap.config import DOMAIN_PERMISSION_MAP, EXECUTIVE_DEFAULTS
-from channel.web.sap.data_exporter import DataExporter
-from channel.web.sap.fetch_executor import FetchExecutor
-from channel.web.sap.permission_guard import PermissionGuard
-from channel.web.sap.query_planner import QueryPlan, QueryPlanner, merge_context_where, validate_where_safety
-from channel.web.sap.dashboard_builder import (
+from Scene.sap_data_analysis.backend.sap import SAPProviderFactory
+from Scene.sap_data_analysis.backend.sap.config import DOMAIN_PERMISSION_MAP, EXECUTIVE_DEFAULTS
+from Scene.sap_data_analysis.backend.sap.data_exporter import DataExporter
+from Scene.sap_data_analysis.backend.sap.fetch_executor import FetchExecutor
+from Scene.sap_data_analysis.backend.sap.permission_guard import PermissionGuard
+from Scene.sap_data_analysis.backend.sap.query_planner import QueryPlan, QueryPlanner, merge_context_where, validate_where_safety
+from Scene.sap_data_analysis.backend.sap.dashboard_builder import (
     build_dashboard,
     build_finance_dashboard,
     build_inventory_dashboard,
@@ -32,8 +32,8 @@ from channel.web.sap.dashboard_builder import (
     build_production_dashboard,
     build_sales_dashboard,
 )
-from channel.web.sap.visualizer import _MATPLOTLIB_AVAILABLE, generate_chart
-from channel.web.web_channel_utils import (
+from Scene.sap_data_analysis.backend.sap.visualizer import _MATPLOTLIB_AVAILABLE, generate_chart
+from Scene._shared.host import (
     _get_global_workspace_root,
     _require_auth,
     _require_permission,
@@ -112,16 +112,9 @@ class SapDataAnalysisHandler:
                 # 生成查询计划
                 plan = self._build_plan(question, context)
 
-            # WHERE 安全校验
-            if not validate_where_safety(plan.where):
-                return self._error("查询条件包含非法字符，已被拦截")
-
-            # 权限校验
-            guard = PermissionGuard()
-            try:
-                guard.check_plan(plan)
-            except PermissionError as e:
-                return self._error(str(e), status=403)
+            refusal = self._validate_plan(plan)
+            if refusal is not None:
+                return refusal
 
             # 仅生成计划模式：返回计划供用户确认/修改
             if plan_only:
@@ -154,6 +147,15 @@ class SapDataAnalysisHandler:
         plan = merge_context_where(plan, context)
         return plan
 
+    def _validate_plan(self, plan):
+        if not validate_where_safety(plan.where):
+            return self._error("查询条件包含非法字符，已被拦截")
+        try:
+            PermissionGuard().check_plan(plan)
+        except PermissionError as exc:
+            return self._error(str(exc), status=403)
+        return None
+
     def _execute_plan(
         self,
         plan: QueryPlan,
@@ -176,6 +178,9 @@ class SapDataAnalysisHandler:
         empty_retries = 0
 
         for attempt in range(MAX_RETRIES + 1):
+            refusal = self._validate_plan(current_plan)
+            if refusal is not None:
+                return refusal
             # 创建 SAP Provider
             try:
                 provider = self._create_provider(connection)
@@ -319,7 +324,7 @@ class SapDataAnalysisHandler:
             dashboard_result = self._build_domain_dashboard(rows, current_plan.domain, current_plan.intent)
 
         try:
-            from channel.web.sap.ai_insights import generate_insights_for_sap_rows
+            from Scene.sap_data_analysis.backend.sap.ai_insights import generate_insights_for_sap_rows
             insights_result = generate_insights_for_sap_rows(rows, domain=current_plan.domain)
         except Exception as e:
             logger.warning(f"[SapDataAnalysisHandler] insights generation failed: {e}")

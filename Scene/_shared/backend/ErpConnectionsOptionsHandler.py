@@ -1,3 +1,12 @@
+
+from Scene._shared.host import _require_auth
+from Scene._shared.host import _require_permission
+from Scene._shared.host import get_current_permissions
+from Scene._shared.host import get_current_roles
+import json
+from common.log import logger
+import web
+
 class ErpConnectionsOptionsHandler:
     """GET /api/erp/connections/options - non-secret options for scene pickers.
 

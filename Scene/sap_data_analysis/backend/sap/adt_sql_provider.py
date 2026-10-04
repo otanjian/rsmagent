@@ -43,9 +43,9 @@ class AdtSqlProvider(SAPDataProvider):
             self.cli_path = os.environ.get("SAP_ADT_CLI_PATH")
         else:
             # 从当前文件位置向上推算项目根目录
-            # channel/web/sap/ -> channel/web/ -> channel/ -> project_root/
+            # Packaged CLI belongs to this scene.
             project_root = os.path.dirname(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             )
             self.cli_path = os.path.join(project_root, self.DEFAULT_CLI_PATH)
 

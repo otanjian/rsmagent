@@ -17768,7 +17768,7 @@ function channelFieldLabel(field) {
 }
 
 // The form's type list is exactly what the server offered — never a local copy,
-// so an unsupported type (e.g. the deferred 企微自建应用) cannot be submitted.
+// so an unsupported type cannot be submitted.
 // On the caller's *own* surface (task 6.1) it is narrowed to the types the
 // server reports as ready for personal onboarding. On the shared surface it is
 // narrowed by the server's separate `inbound_admissible` verdict (task 7.7): a
@@ -17832,6 +17832,7 @@ function tenantChannelAgentOptions() {
 // function that starts each flow. Declared rather than inferred from the label
 // so adding a scan flow is one line here and the contract test can pin the set.
 const TENANT_CHANNEL_SCAN_TYPES = {
+    weixin: 'startTenantWeixinScan',
     feishu: 'startFeishuRegister',
     wecom_bot: 'startTenantWecomScan',
 };
@@ -17843,6 +17844,10 @@ const TENANT_CHANNEL_SCAN_TYPES = {
 // app to expect afterwards. Declared beside the start function so a new type is
 // added in one place, and pinned by the card contract test.
 const TENANT_CHANNEL_SCAN_COPY = {
+    weixin: {
+        tab: 'wecom_mode_scan', manualTab: 'wecom_mode_manual',
+        desc: 'weixin_scan_desc', btn: 'weixin_scan_title',
+    },
     feishu: {
         tab: 'feishu_mode_scan',
         manualTab: 'feishu_mode_manual',
@@ -17894,7 +17899,7 @@ function buildTenantChannelForm(inst) {
     const fields = spec ? spec.credential_fields : [];
     const iid = (inst && inst.id) || 'new';
     const editing = !!(inst && inst.id);
-    const supportsScan = tenantChannelSupportsScan(channelType);
+    const supportsScan = tenantChannelSupportsScan(channelType) && !(editing && channelType === 'weixin');
     const scanStart = supportsScan ? TENANT_CHANNEL_SCAN_TYPES[channelType] : '';
     const scanCopy = supportsScan ? tenantChannelScanCopy(channelType) : null;
     const mode = draft.mode === 'scan' && supportsScan ? 'scan' : 'manual';
@@ -17965,6 +17970,7 @@ function buildTenantChannelForm(inst) {
             </div>
             ${scanPane}
             ${manualPane}
+            ${wb.webhookHint({ spec, iid: editing ? iid : '', escape: escapeHtml, t })}
             <div class="flex items-center justify-end gap-3 pt-1">
                 <button type="button" onclick="closeTenantChannelForm()"
                     class="px-4 py-2 rounded-lg border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 text-sm font-medium cursor-pointer">
@@ -18009,7 +18015,9 @@ function renderTenantChannelCard(inst) {
                                    text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer">
                             ${inst.active ? t('tenant_channel_disable') : t('tenant_channel_enable')}</button>
                     </div>`,
-                bodyHtml: editing ? buildTenantChannelForm(inst) : '',
+                bodyHtml: editing ? buildTenantChannelForm(inst) : window.ChannelWorkbench.webhookHint({
+                    spec: tenantChannelType(inst.channel_type), iid: inst.id, escape: escapeHtml, t,
+                }),
             })}
         </div>`;
 }
@@ -18177,6 +18185,7 @@ function renderTenantChannels() {
 // draft (which survives a rejected write) and repaints the list; it no longer
 // builds a separate panel.
 function openTenantChannelForm(instanceId) {
+    stopTenantWeixinScan();
     const inst = instanceId
         ? tenantChannelInstances.find(i => i.id === instanceId) || null
         : null;
@@ -18202,6 +18211,7 @@ function openTenantChannelForm(instanceId) {
 // only their visibility changes, so moving between them keeps typed input.
 function switchTenantChannelMode(iid, mode) {
     if (!tenantChannelDraft) return;
+    if (mode !== 'scan') stopTenantWeixinScan();
     tenantChannelDraft.mode = mode === 'scan' ? 'scan' : 'manual';
     // Pane visibility is the shared module's job: it knows the prefixed pane ids
     // it emitted, so a personal form's panes are never touched from here.
@@ -18219,6 +18229,7 @@ function switchTenantChannelMode(iid, mode) {
 // Switching the type of a create form resets the credentials (the previous
 // type's keys no longer apply) but keeps what the operator typed for the name.
 function changeTenantChannelType(channelType) {
+    stopTenantWeixinScan();
     if (!tenantChannelDraft) return;
     const display = document.getElementById('tenant-channel-display');
     if (display) tenantChannelDraft.display_name = display.value || '';
@@ -18369,7 +18380,94 @@ function startTenantWecomScan(statusId, iid) {
     }).catch(err => fail('SDK load failed: ' + (err && err.message ? err.message : '')));
 }
 
+let tenantWeixinScan = null;
+
+function stopTenantWeixinScan() {
+    const scan = tenantWeixinScan;
+    tenantWeixinScan = null;
+    if (!scan) return;
+    clearTimeout(scan.timer);
+    if (scan.handle) {
+        fetch('/api/weixin/qrlogin', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'cancel', handle: scan.handle }),
+        }).catch(() => {});
+    }
+}
+
+function startTenantWeixinScan(statusId, iid) {
+    stopTenantWeixinScan();
+    const draft = tenantChannelDraft;
+    if (!draft || draft.instance_id || draft.channel_type !== 'weixin') return Promise.resolve();
+    const agent = (document.getElementById('tenant-channel-agent') || {}).value || '';
+    const display = (document.getElementById('tenant-channel-display') || {}).value || '';
+    const target = tenantChannelTargets.find(item => item.id === agent);
+    const scope = tenantChannelSelfScope || (target && target.scope === 'user') ? 'user' : 'tenant';
+    const scan = { draft, statusId, handle: '', timer: null, agent_id: agent, display_name: display };
+    tenantWeixinScan = scan;
+    const panel = document.getElementById(statusId);
+    if (panel) panel.textContent = t('weixin_scan_loading');
+    return fetch('/api/weixin/qrlogin', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'refresh', scope }),
+    }).then(r => r.json()).then(data => {
+        scan.handle = data.handle || '';
+        if (tenantWeixinScan !== scan || tenantChannelDraft !== draft) {
+            if (scan.handle) fetch('/api/weixin/qrlogin', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'cancel', handle: scan.handle }),
+            }).catch(() => {});
+            return;
+        }
+        if (data.status !== 'success' || !scan.handle) throw new Error(data.message || t('weixin_scan_fail'));
+        renderTenantWeixinScan(scan, data);
+        scan.timer = setTimeout(() => pollTenantWeixinScan(scan), 2000);
+    }).catch(error => tenantWeixinScanFailed(scan, error));
+}
+
+function renderTenantWeixinScan(scan, data) {
+    const panel = document.getElementById(scan.statusId);
+    if (!panel) return;
+    const src = data.qr_image || data.qrcode_url || '';
+    panel.innerHTML = `<div class="flex flex-col items-center gap-3 py-3">
+        ${src ? `<img src="${escapeHtml(src)}" alt="${escapeHtml(t('weixin_scan_title'))}" class="w-48 h-48 rounded-lg">` : ''}
+        <p class="text-sm text-slate-500">${t(data.qr_status === 'scaned' ? 'weixin_scan_scanned' : 'weixin_scan_waiting')}</p>
+        <p class="text-xs text-slate-400">${t('tenant_channel_scan_will_save')}</p>
+    </div>`;
+}
+
+function tenantWeixinScanFailed(scan, error) {
+    if (tenantWeixinScan !== scan) return;
+    clearTimeout(scan.timer);
+    const panel = document.getElementById(scan.statusId);
+    if (panel) panel.innerHTML = `<p class="text-sm text-red-500">${escapeHtml(error.message || t('weixin_scan_fail'))}</p>`;
+}
+
+function pollTenantWeixinScan(scan) {
+    if (tenantWeixinScan !== scan || tenantChannelDraft !== scan.draft) return Promise.resolve();
+    return fetch('/api/weixin/qrlogin', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'poll', handle: scan.handle,
+            agent_id: scan.agent_id, display_name: scan.display_name }),
+    }).then(r => r.json()).then(data => {
+        if (tenantWeixinScan !== scan || tenantChannelDraft !== scan.draft) return;
+        if (data.status !== 'success') throw new Error(data.message || t('weixin_scan_fail'));
+        if (data.saved && data.instance_id) {
+            scan.handle = '';
+            stopTenantWeixinScan();
+            tenantChannelDraft = null;
+            tenantChannelRuntimeNotice = data.connected
+                ? { applied: true } : { applied: false, reason: data.connection_reason || data.connection };
+            return loadTenantChannelsView();
+        }
+        if (data.terminal) throw new Error(data.error || t('weixin_scan_fail'));
+        renderTenantWeixinScan(scan, data);
+        scan.timer = setTimeout(() => pollTenantWeixinScan(scan), 2000);
+    }).catch(error => tenantWeixinScanFailed(scan, error));
+}
+
 function closeTenantChannelForm() {
+    stopTenantWeixinScan();
     tenantChannelDraft = null;
     const panel = document.getElementById('channels-add-panel');
     if (panel) { panel.classList.add('hidden'); panel.innerHTML = ''; }

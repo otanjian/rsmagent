@@ -83,3 +83,11 @@ node --test tests/test_session_history_frontend.cjs tests/test_session_history_r
 - 商务浅色及深色可读；1280×540 时主导航可继续滚动，底部账号可见；浏览器没有 console error。
 
 最终截图：`embedded-history-desktop.jpg`、`embedded-history-mobile.jpg`、`embedded-history-dark-short.jpg`。之前的截图仅记录先前阶段。
+
+## 后续修正：内嵌子菜单缩进（2026-10-02）
+
+用户指出内嵌历史的行与主导航齐平，看不出它是「历史会话」的子菜单。原因是面板移入主导航后把列表左边距清成 0（`#session-panel .session-list { padding: 2px 4px 2px 0 }`），普通行标题落在 38px，反而比主导航标题（56px）更靠左。
+
+修正：在 `static/css/fork/sessions.css` 增加 `#session-panel .history-list-mount { padding-left: 18px; }`。18px 来自主导航行本身的留白（左 12px + 图标 20px + 图文间距 12px），缩进后子项标题正好落在「历史会话」标题一列（56px），图标仍在菜单图标右侧；项目子项沿用原 8px 层级，标题落在 64px。规则限定在 `#session-panel`，完整历史页的 `.history-list-mount` 不受影响。
+
+验证：用隔离预览（`tests/support/session_history_preview.cjs`，63 条 fixture）实测，父级标题 x=56，普通行标题由 38 变为 56，项目行标题 64，侧栏无横向溢出；`node --test tests/test_session_panel_frontend.cjs tests/test_nav_area_frontend.cjs` 13 项通过。对照截图 `history-indent-before-after.png`。

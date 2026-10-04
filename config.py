@@ -15,6 +15,12 @@ from common import i18n
 # The values here are placeholders only; the program does NOT read them.
 # They merely document the expected format — put real values in config.json.
 available_setting = {
+    # Subject/purpose mappings only; values live in the existing credential store.
+    # Each item: tenant_id, agent_id, optional user_id, env, credential,
+    # resource_kind="tool", resource_id="builtin:bash", optional JSON field.
+    "execution_credentials": [],
+    # Same explicit subject selectors, with nonsecret business settings in values.
+    "execution_environment": [],
     "image_input": {},
     # global UI language for CLI, startup logs, error messages, agent prompts
     # and channel replies. Options: "auto" (detect from system locale, default),
@@ -719,7 +725,7 @@ def load_config():
         if name.startswith("_"):
             continue
         if name in available_setting:
-            logger.info("[INIT] override config by environ args: {}={}".format(name, value))
+            logger.info("[INIT] override config by environment: {}".format(name))
             try:
                 # SECURITY: Use ast.literal_eval instead of eval().
                 # ast.literal_eval only parses Python literals (strings, numbers,

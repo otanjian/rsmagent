@@ -1,69 +1,47 @@
-FROM python:3.10-slim-bullseye
-
-LABEL maintainer="foo@bar.com"
-ARG TZ='Asia/Shanghai'
-
-ARG CHATGPT_ON_WECHAT_VER
-# Set to "false" to skip Playwright/Chromium and produce a smaller image
-ARG INSTALL_BROWSER=true
-# Set to "true" to use China mirrors for apt / pip / playwright (faster in CN)
-ARG USE_CN_MIRROR=false
-
-ENV PLAYWRIGHT_BROWSERS_PATH=/app/ms-playwright
-ENV BUILD_PREFIX=/app
-# Make the TZ env var effective at runtime (slim base has no tzdata by default)
-ENV TZ=${TZ}
-
-# Optionally switch apt and pip to China mirrors.
-# bullseye is EOL: its debian-security pool returns 404 on removed versions, so
-# drop the debian-security lines and pull only from the still-mirrored main suite.
-RUN sed -i '/security/d' /etc/apt/sources.list \
-    && if [ "$USE_CN_MIRROR" = "true" ]; then \
-        sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list; \
-        pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple/; \
-    fi
-
-ADD . ${BUILD_PREFIX}
-
-# All heavy installs + user creation in ONE layer to avoid chown duplication.
-# The base image ships perl-base from security (now 404 after EOL); downgrade it
-# to whatever version the main suite still offers so perl-dependent packages
-# resolve cleanly. Detect the candidate version dynamically to avoid pinning.
+# The only maintained production Dockerfile. Digest is the official multiarch
+# Python 3.11/bookworm index, verified against registry-1.docker.io.
+FROM node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS node-runtime
+FROM python:3.11-slim-bookworm@sha256:2333bd330d12de02514770b3585cad313644316047cdee24a7acfdece6de6efb
+ARG COW_BUILD_REVISION=unknown
+ARG COW_SOURCE_TREE=unknown
+ARG TZ=Asia/Shanghai
+LABEL org.opencontainers.image.title="rsmagent" \
+      org.opencontainers.image.revision="${COW_BUILD_REVISION}" \
+      org.opencontainers.image.source-tree="${COW_SOURCE_TREE}"
+ENV TZ=${TZ} \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/app/ms-playwright \
+    HOME=/home/agent \
+    COW_DATA_DIR=/home/agent/.cow \
+    WEB_HOST=0.0.0.0
+# Node/npm preserve the bundled script and browser CLI runtime.
+COPY --from=node-runtime /usr/local/ /usr/local/
+WORKDIR /app
+# Keep Debian's normal AND security sources. No source deletion or downgrade.
 RUN apt-get update \
-    && PERL_BASE_VER="$(apt-cache madison perl-base | awk '{print $3}' | head -n1)" \
-    && apt-get install -y --allow-downgrades "perl-base=${PERL_BASE_VER}" \
-    && apt-get install -y --no-install-recommends bash ffmpeg espeak libavcodec-extra tzdata \
+    && apt-get install -y --no-install-recommends bash bubblewrap ca-certificates \
+       ffmpeg espeak libavcodec-extra tzdata fonts-wqy-zenhei \
     && ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
-    && echo ${TZ} > /etc/timezone \
-    && cd ${BUILD_PREFIX} \
-    && cp config-template.json config.json \
-    && /usr/local/bin/python -m pip install --no-cache --upgrade pip \
-    && pip install --no-cache -r requirements.txt \
-    && pip install --no-cache -r requirements-optional.txt \
-    && pip install --no-cache -e . \
-    && if [ "$INSTALL_BROWSER" = "true" ]; then \
-        apt-get install -y --no-install-recommends fonts-wqy-zenhei \
-        && pip install --no-cache "playwright==1.52.0" \
-        && python -m playwright install-deps chromium \
-        && mkdir -p /app/ms-playwright \
-        && if [ "$USE_CN_MIRROR" = "true" ]; then \
-            PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright \
-            python -m playwright install chromium; \
-        else \
-            python -m playwright install chromium; \
-        fi; \
-    fi \
-    && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /home/agent/cow \
-    && groupadd -r agent \
-    && useradd -r -g agent -s /bin/bash -d /home/agent agent \
-    && chown -R agent:agent /home/agent ${BUILD_PREFIX} /usr/local/lib
-
-WORKDIR ${BUILD_PREFIX}
-
-ADD docker/entrypoint.sh /entrypoint.sh
-
-RUN chmod +x /entrypoint.sh \
-    && chown agent:agent /entrypoint.sh
-
-ENTRYPOINT ["/entrypoint.sh"]
+    && echo "${TZ}" > /etc/timezone \
+    && rm -rf /var/lib/apt/lists/*
+COPY requirements/ /app/requirements/
+RUN lock=production-linux-py311.lock \
+    && if [ "$(dpkg --print-architecture)" = arm64 ]; then lock=production-linux-arm64-py311.lock; fi \
+    && python -m pip install --no-cache-dir --require-hashes -r "requirements/${lock}" \
+    && python -m playwright install-deps chromium \
+    && python -m playwright install chromium \
+    && rm -rf /var/lib/apt/lists/*
+# .dockerignore is a runtime allowlist; no instance data enters any layer.
+COPY . /app
+RUN python -m pip install --no-deps --no-build-isolation /app \
+    && groupadd --gid 10001 agent \
+    && useradd --uid 10001 --gid agent --shell /bin/bash --create-home agent \
+    && mkdir -p /home/agent/cow /home/agent/.cow \
+    && chown agent:agent /home/agent/cow /home/agent/.cow \
+    && chmod 700 /home/agent/.cow \
+    && chmod 755 /app/docker/entrypoint.sh
+USER 10001:10001
+EXPOSE 9899
+ENTRYPOINT ["/app/docker/entrypoint.sh"]
+CMD ["python", "app.py"]

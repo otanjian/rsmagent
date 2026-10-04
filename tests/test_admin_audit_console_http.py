@@ -226,6 +226,16 @@ def test_a_successful_action_carries_the_success_badge():
     assert row["changes"] == {}
 
 
+def test_audit_actor_shows_resolved_name_and_preserves_recorded_identity():
+    row = _project({"actor_user_id": "usr_1", "actor_username": "alice",
+                    "actor_display_name": "张三"})
+    assert row["actor"] == "张三"
+    assert row["actor_display_name"] == "张三"
+    assert row["actor_username"] == "alice"
+    assert row["actor_user_id"] == "usr_1"
+    assert _project({"actor_user_id": "missing-user"})["actor"] == ""
+
+
 def test_an_estimated_call_is_marked_on_the_log_row():
     assert _log_row({"estimated": 1})["estimated"] is True
     assert _log_row({})["estimated"] is False

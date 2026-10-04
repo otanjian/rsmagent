@@ -3,6 +3,8 @@
 支持设备/订单双视图切换的交互式甘特图
 """
 
+from Scene.catalog import skill_path
+
 import json
 import os
 from datetime import datetime, timedelta
@@ -21,10 +23,8 @@ def _load_template() -> str:
         return _TEMPLATE_CACHE
 
     possible_paths = [
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "skills", "pmc-scheduler", "assets", "gantt_template.html"),
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "skills", "pmc-scheduler", "gantt_template.html"),
-        os.path.join(os.getcwd(), "skills", "pmc-scheduler", "assets", "gantt_template.html"),
-        "skills/pmc-scheduler/assets/gantt_template.html",
+        str(skill_path('pmc-scheduler').joinpath('assets', 'gantt_template.html')),
+        str(skill_path('pmc-scheduler').joinpath('gantt_template.html')),
     ]
 
     for path in possible_paths:

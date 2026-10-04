@@ -102,11 +102,11 @@ def _origin_ok() -> bool:
         return True
     from urllib.parse import urlparse
     try:
-        origin_host = urlparse(origin).netloc
+        parsed = urlparse(origin)
+        origin_value = "%s://%s" % (parsed.scheme.lower(), parsed.netloc)
     except Exception:
         return False
-    host = web.ctx.env.get("HTTP_HOST", "")
-    return origin_host == host
+    return origin_value == _request_origin_exact()
 
 
 def _select_credential() -> "CredentialSelection":
@@ -417,7 +417,8 @@ class DbAuthLoginHandler:
             # identity store unusable -> 503, never fall back to legacy auth
             return _identity_unavailable()
         web.setcookie("cow_session", result.token, expires=7 * 86400, path="/",
-                      httponly=True, samesite="Lax")
+                      httponly=True, samesite="Lax",
+                      secure=_request_origin_exact().startswith("https://"))
         # The compatibility ``token`` field stays in the payload but is ALWAYS
         # empty (design D8). Handing a reusable Bearer token out of the Web login
         # response made one readable response an authorization grant for a native
@@ -922,9 +923,8 @@ class DesktopAuthorizeHandler:
         user = session["user"]
         if user.get("must_change_password") or session["session"]["restricted"]:
             return _html(render_notice_page(
-                title="Password change required",
-                message="Change the temporary password before authorizing the "
-                        "Desktop app.",
+                title="请先更新登录密码",
+                message="为保障账号安全，请前往 Web 控制台修改临时密码，再继续授权桌面端。",
             ), "403 Forbidden")
 
         try:
@@ -1020,10 +1020,11 @@ def _request_origin_exact() -> str:
     env = web.ctx.env
     host = env.get("HTTP_HOST", "") or env.get("SERVER_NAME", "") or ""
     forwarded = (env.get("HTTP_X_FORWARDED_PROTO", "") or "").split(",")[0].strip().lower()
-    if forwarded in ("http", "https"):
+    peer = env.get("REMOTE_ADDR", "") or getattr(web.ctx, "ip", "") or ""
+    if peer in config_trusted_proxies() and forwarded in ("http", "https"):
         scheme = forwarded
     else:
-        scheme = "https" if env.get("HTTPS") else "http"
+        scheme = "https" if (str(env.get("HTTPS", "")).lower() in ("on", "1", "true") or env.get("wsgi.url_scheme") == "https") else "http"
     return "%s://%s" % (scheme, host)
 
 

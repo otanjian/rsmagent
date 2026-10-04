@@ -98,6 +98,10 @@ UPSTREAM_OR_SHARED_SYMBOLS = {
 #: Golden snapshot of today's credential contract. If a reorder ever changes
 #: one of these values, that is a behavioural change, not a move.
 GOLDEN_REQUIRED_CREDENTIAL_KEYS = {
+    "wechatcom_app": ("wechatcom_corp_id", "wechatcomapp_agent_id", "wechatcomapp_secret",
+                      "wechatcomapp_token", "wechatcomapp_aes_key"),
+    "wechat_kf": ("wechat_kf_corp_id", "wechat_kf_secret", "wechat_kf_token", "wechat_kf_aes_key"),
+    "wechatmp": ("wechatmp_app_id", "wechatmp_app_secret", "wechatmp_token"),
     "feishu": ("feishu_app_id", "feishu_app_secret"),
     "wecom_bot": ("wecom_bot_id", "wecom_bot_secret"),
     "qq": ("qq_app_id", "qq_app_secret"),
@@ -109,6 +113,10 @@ GOLDEN_REQUIRED_CREDENTIAL_KEYS = {
 #: One value per *declared* channel type (i.e. every key of ``CREDENTIAL_KEYS``),
 #: including the types deliberately left without a verified minimum set.
 GOLDEN_PER_DECLARED_TYPE = {
+    "wechatcom_app": ("wechatcom_corp_id", "wechatcomapp_agent_id", "wechatcomapp_secret",
+                      "wechatcomapp_token", "wechatcomapp_aes_key"),
+    "wechat_kf": ("wechat_kf_corp_id", "wechat_kf_secret", "wechat_kf_token", "wechat_kf_aes_key"),
+    "wechatmp": ("wechatmp_app_id", "wechatmp_app_secret", "wechatmp_token"),
     "feishu": ("feishu_app_id", "feishu_app_secret"),
     "dingtalk": (),
     "wecom_bot": ("wecom_bot_id", "wecom_bot_secret"),

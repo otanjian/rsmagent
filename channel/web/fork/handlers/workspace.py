@@ -53,9 +53,9 @@ def _workspace_system_service(ctx, svc):
     instead; when the tenant has no Agent at all, reuse the session workspace
     root (already tenant-scoped) rather than a global directory.
     """
-    from channel.web.web_channel import _db_path_owner_forbidden
-    from channel.web.web_channel import _resolve_tenant_default_agent
-    from channel.web.web_channel import _system_workspace_service
+    from channel.web.fork.handlers.files import _db_path_owner_forbidden
+    from channel.web.fork.common import _resolve_tenant_default_agent
+    from channel.web.fork.runtime import _system_workspace_service
     if ctx is None:
         return _system_workspace_service()
     from agent.workspace.service import WorkspaceService
@@ -80,7 +80,7 @@ def _workspace_request_scope(ctx, session_id: str, agent_id: Optional[str]) -> s
     session the caller does not own is refused too, mirroring the other
     session-scoped console routes.
     """
-    from channel.web.web_channel import _require_owned_session
+    from channel.web.fork.authorization import _require_owned_session
     from channel.web.web_channel import _require_private_owner
     from channel.web.web_channel import _require_tenant_agent_binding
     resolved = _require_tenant_agent_binding(ctx, agent_id)
@@ -150,7 +150,7 @@ def _panel_service(ctx, session_id, agent_id):
     the server directory, which is the "回落默认目录" the requirement forbids.
     """
     from agent.workspace.service import WorkspaceService
-    from channel.web.web_channel import _workspace_service
+    from channel.web.fork.runtime import _workspace_service
 
     source = _panel_source(ctx, session_id, agent_id)
     if source.is_desktop:
@@ -231,7 +231,7 @@ class WorkspaceTreeHandler:
     def GET(self):
         from channel.web.web_channel import _db_file_root_owners
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _decorate_entry
+        from channel.web.fork.runtime import _decorate_entry
         from channel.web.web_channel import _visible_entries
         web.header('Content-Type', 'application/json; charset=utf-8')
         with _db_scope() as ctx:
@@ -292,7 +292,7 @@ class WorkspaceSearchHandler:
     def GET(self):
         from channel.web.web_channel import _db_file_root_owners
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _decorate_entry
+        from channel.web.fork.runtime import _decorate_entry
         from channel.web.web_channel import _visible_entries
         web.header('Content-Type', 'application/json; charset=utf-8')
         with _db_scope() as ctx:
@@ -341,12 +341,12 @@ class WorkspaceResolveHandler:
     """
 
     def GET(self):
-        from channel.web.web_channel import _authorize_db_file_path
+        from channel.web.fork.handlers.files import _authorize_db_file_path
         from channel.web.web_channel import _build_preview_url
         from channel.web.web_channel import _db_path_visible
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _is_system_asset_rel
-        from channel.web.web_channel import _workspace_service
+        from channel.web.fork.runtime import _is_system_asset_rel
+        from channel.web.fork.runtime import _workspace_service
         web.header('Content-Type', 'application/json; charset=utf-8')
         with _db_scope() as ctx:
             try:
@@ -466,7 +466,7 @@ class WorkspaceReadHandler:
     def GET(self):
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _editable_target
-        from channel.web.web_channel import _is_system_asset_rel
+        from channel.web.fork.runtime import _is_system_asset_rel
         web.header('Content-Type', 'application/json; charset=utf-8')
         with _db_scope() as ctx:
             try:
@@ -521,7 +521,7 @@ class WorkspaceWriteHandler:
         from channel.web.web_channel import _db_scope
         from channel.web.web_channel import _editable_target
         from agent.tools.utils.memory_path import indexes_rel_path
-        from channel.web.web_channel import _is_system_asset_rel
+        from channel.web.fork.runtime import _is_system_asset_rel
         from channel.web.web_channel import _mark_memory_dirty
         web.header('Content-Type', 'application/json; charset=utf-8')
         with _db_scope() as ctx:
@@ -1370,7 +1370,7 @@ class ProjectsHandler:
 
     def GET(self):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _project_state
+        from channel.web.fork.runtime import _project_state
         web.header('Content-Type', 'application/json; charset=utf-8')
         with _db_scope() as ctx:
             try:
@@ -1398,9 +1398,9 @@ class ProjectSelectHandler:
 
     def POST(self):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _project_state
-        from channel.web.web_channel import _render_project_refusal
-        from channel.web.web_channel import _require_owned_session
+        from channel.web.fork.runtime import _project_state
+        from channel.web.fork.common import _render_project_refusal
+        from channel.web.fork.authorization import _require_owned_session
         web.header('Content-Type', 'application/json; charset=utf-8')
         with _db_scope() as ctx:
             try:
@@ -1450,8 +1450,8 @@ class ProjectCreateHandler:
 
     def POST(self):
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _project_state
-        from channel.web.web_channel import _require_owned_session
+        from channel.web.fork.runtime import _project_state
+        from channel.web.fork.authorization import _require_owned_session
         web.header('Content-Type', 'application/json; charset=utf-8')
         with _db_scope() as ctx:
             try:
@@ -1615,7 +1615,7 @@ def _project_require_session(ctx, params) -> str:
     path is read, and it is re-checked at redemption, so a handle issued for one
     session cannot be redeemed for another.
     """
-    from channel.web.web_channel import _require_owned_session
+    from channel.web.fork.authorization import _require_owned_session
     session_id = _project_session_id(params)
     if session_id:
         _require_owned_session(ctx, session_id,
@@ -1693,9 +1693,9 @@ class ProjectBrowseHandler:
     """
 
     def GET(self):
-        from channel.web.web_channel import _DRIVES_SENTINEL
+        from channel.web.fork.runtime import _DRIVES_SENTINEL
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _render_project_refusal
+        from channel.web.fork.common import _render_project_refusal
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             with _db_scope() as ctx:
@@ -1743,10 +1743,10 @@ class ProjectImportPreviewHandler:
     """
 
     def POST(self):
-        from channel.web.web_channel import _chat_body
-        from channel.web.web_channel import _chat_error
+        from channel.web.fork.handlers.chat import _chat_body
+        from channel.web.fork.handlers.chat import _chat_error
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _render_project_refusal
+        from channel.web.fork.common import _render_project_refusal
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             with _db_scope() as ctx:
@@ -1810,10 +1810,10 @@ class ProjectImportHandler:
     """
 
     def POST(self):
-        from channel.web.web_channel import _chat_body
-        from channel.web.web_channel import _chat_error
+        from channel.web.fork.handlers.chat import _chat_body
+        from channel.web.fork.handlers.chat import _chat_error
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _render_project_refusal
+        from channel.web.fork.common import _render_project_refusal
         from channel.web.web_channel import _require_chat_csrf
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
@@ -1886,9 +1886,9 @@ class ProjectImportCancelHandler:
     """
 
     def POST(self):
-        from channel.web.web_channel import _chat_body
+        from channel.web.fork.handlers.chat import _chat_body
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _render_project_refusal
+        from channel.web.fork.common import _render_project_refusal
         from channel.web.web_channel import _require_chat_csrf
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:

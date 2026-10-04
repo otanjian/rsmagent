@@ -485,15 +485,15 @@ class ReadinessTests(_Fixture):
     def test_an_unknown_type_is_refused_with_an_actionable_reason(self):
         from channel.channel_instances import personal_channel_ready
 
-        ready, reason = personal_channel_ready("wechat_kf")
+        ready, reason = personal_channel_ready("unknown_channel")
         self.assertFalse(ready)
         self.assertIn(reason, {"not_multi_instance", "no_credential_contract"})
         _expect_error(
             self, "channel_type_not_ready", 403,
             self.svc.create_personal_channel_instance,
             actor_user_id=self.alice, tenant_id=self.ta,
-            channel_type="wechat_kf", display_name="Weird", agent_id="agent-a",
-            credentials={"wechat_kf_token": "x"},
+            channel_type="unknown_channel", display_name="Weird", agent_id="agent-a",
+            credentials={"unknown_token": "x"},
             recent_password=self.MEMBER_PW)
 
     def test_configuration_can_narrow_the_ready_set_but_never_widen_it(self):

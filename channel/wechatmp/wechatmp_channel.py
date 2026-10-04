@@ -20,7 +20,6 @@ from common.log import logger
 from common.media_download import download_bytes
 from common.singleton import singleton
 from common.utils import split_string_by_utf8_length, remove_markdown_symbol
-from config import conf
 
 try:
     from voice.audio_convert import any_to_mp3, split_audio
@@ -104,15 +103,20 @@ def _sniff_image_type(storage) -> str:
 
 @singleton
 class WechatMPChannel(ChatChannel):
-    def __init__(self, passive_reply=True):
+    def __init__(self, passive_reply=True, defer_init=False):
         super().__init__()
         self.passive_reply = passive_reply
         self.NOT_SUPPORT_REPLYTYPE = []
         self._http_server = None
-        appid = conf().get("wechatmp_app_id")
-        secret = conf().get("wechatmp_app_secret")
-        token = conf().get("wechatmp_token")
-        aes_key = conf().get("wechatmp_aes_key")
+        self.client = None
+        if not defer_init:
+            self._configure()
+
+    def _configure(self):
+        appid = self.cfg("wechatmp_app_id")
+        secret = self.cfg("wechatmp_app_secret")
+        token = self.cfg("wechatmp_token")
+        aes_key = self.cfg("wechatmp_aes_key")
         self.client = WechatMPClient(appid, secret)
         self.crypto = None
         if aes_key:
@@ -131,22 +135,24 @@ class WechatMPChannel(ChatChannel):
             t.start()
 
     def startup(self):
-        if self.passive_reply:
-            urls = ("/wx", "channel.wechatmp.passive_reply.Query")
-        else:
-            urls = ("/wx", "channel.wechatmp.active_reply.Query")
-        app = web.application(urls, globals(), autoreload=False)
-        port = conf().get("wechatmp_port", 8080)
-        func = web.httpserver.StaticMiddleware(app.wsgifunc())
-        func = web.httpserver.LogMiddleware(func)
-        server = web.httpserver.WSGIServer(("0.0.0.0", port), func)
-        self._http_server = server
         try:
-            server.start()
-        except (KeyboardInterrupt, SystemExit):
-            server.stop()
+            if self.client is None:
+                self._configure()
+            if self.passive_reply:
+                from channel.wechatmp.passive_reply import Query
+            else:
+                from channel.wechatmp.active_reply import Query
+            from channel.instance_webhook import run_webhook
+            run_webhook(self, Query)
+        except Exception as error:
+            self.report_startup_error(str(error))
+            raise
+        finally:
+            self.stop()
 
     def stop(self):
+        from channel.instance_webhook import stop_webhook
+        stop_webhook(self)
         if self._http_server:
             try:
                 self._http_server.stop()
@@ -154,6 +160,10 @@ class WechatMPChannel(ChatChannel):
             except Exception as e:
                 logger.warning(f"[wechatmp] Error stopping HTTP server: {e}")
             self._http_server = None
+
+        loop = getattr(self, "delete_media_loop", None)
+        if loop and loop.is_running():
+            loop.call_soon_threadsafe(loop.stop)
 
     def start_loop(self, loop):
         asyncio.set_event_loop(loop)

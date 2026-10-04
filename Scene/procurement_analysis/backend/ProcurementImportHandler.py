@@ -1,3 +1,11 @@
+
+from Scene._shared.host import _require_auth
+from Scene._shared.host import _require_permission
+import json
+from common.log import logger
+import os
+import web
+
 class ProcurementImportHandler:
     """POST /api/procurement/import - Parse Excel/CSV for procurement workbench."""
 

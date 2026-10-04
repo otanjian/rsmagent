@@ -2,6 +2,16 @@
    Split out of console.js. These are classic scripts sharing one global
    scope; see channel/web/README.md before changing the load order. */
 
+// Optional host adapter; scoped to this modal, including asynchronous rebuilds.
+let taskModalDropdown = (...args) => initDropdown(...args);
+function registerTaskModalAdapter({ dropdown }) {
+    if (typeof dropdown !== 'function') throw new TypeError('dropdown must be a function');
+    taskModalDropdown = dropdown;
+}
+function initTaskDropdown(...args) {
+    return taskModalDropdown(...args);
+}
+
 // =====================================================================
 // Task Edit Modal
 // =====================================================================
@@ -131,14 +141,14 @@ function loadTaskInstances(preselect) {
         if (options.length === 0) {
             // No instances at all — leave the picker showing a placeholder and
             // the recipient step hidden. Save will block with a clear message.
-            initDropdown(instEl, [], '', () => {}, { placeholder: t('task_instance_empty') });
+            initTaskDropdown(instEl, [], '', () => {}, { placeholder: t('task_instance_empty') });
             filterTaskRecipients('');
             return;
         }
         // Only preselect an instance we actually offer (it may have been removed).
         const initialInstance = options.some(o => o.value === preInstance) ? preInstance : '';
         selectedTaskInstanceId = initialInstance;
-        initDropdown(instEl, options, initialInstance, (iid) => {
+        initTaskDropdown(instEl, options, initialInstance, (iid) => {
             selectedTaskInstanceId = iid;
             filterTaskRecipients(iid);
             // Ownership follows the delivery instance — repaint the header chip
@@ -188,7 +198,7 @@ function filterTaskRecipients(instanceId, preReceiver) {
     // Restore the task's current recipient when editing; else default to the
     // first so the common case needs no extra click.
     const selectValue = preKey || (options.length ? options[0].value : '');
-    initDropdown(el, options, selectValue, () => updateRecipientPreview(), {
+    initTaskDropdown(el, options, selectValue, () => updateRecipientPreview(), {
         placeholder: options.length ? t('task_recipient_placeholder') : t('task_recipient_empty_hint'),
     });
     updateRecipientPreview();
@@ -271,7 +281,7 @@ function initTaskScheduleDropdown(value) {
         { value: 'interval', label: t('task_schedule_interval') },
         { value: 'once', label: t('task_schedule_once') },
     ];
-    initDropdown(el, opts, value || 'cron', () => updateTaskScheduleFields());
+    initTaskDropdown(el, opts, value || 'cron', () => updateTaskScheduleFields());
 }
 
 function initTaskActionDropdown(value) {
@@ -281,7 +291,7 @@ function initTaskActionDropdown(value) {
         { value: 'send_message', label: t('task_action_send_message') },
         { value: 'agent_task', label: t('task_action_agent_task') },
     ];
-    initDropdown(el, opts, value || 'send_message', () => updateTaskActionLabel());
+    initTaskDropdown(el, opts, value || 'send_message', () => updateTaskActionLabel());
 }
 
 // Edit mode only: the channel is frozen, so this just paints a single read-only
@@ -291,7 +301,7 @@ function loadTaskChannelOptions(selectedChannelType) {
     const el = document.getElementById('task-edit-channel-type');
     if (!el) return;
     const ct = selectedChannelType || 'web';
-    const paint = (label) => initDropdown(el, [{ value: ct, label: label }], ct, () => {});
+    const paint = (label) => initTaskDropdown(el, [{ value: ct, label: label }], ct, () => {});
     // Web has no channel record; label it directly.
     if (ct === 'web') { paint('Web'); return; }
     fetch('/api/channels').then(r => r.json()).then(data => {

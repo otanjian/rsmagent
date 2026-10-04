@@ -110,7 +110,7 @@ def _require_knowledge_write(ctx: "Optional[RequestContext]",
     ``_require_tenant_agent_binding`` / ``_require_private_owner`` *before* this
     gate runs, so a refusal here is always a genuine write denial.
     """
-    from channel.web.web_channel import _knowledge_write_authorized
+    from channel.web.fork.handlers.knowledge import _knowledge_write_authorized
     if _knowledge_write_authorized(ctx, agent_id):
         return
     raise web.HTTPError("403 Forbidden", {"Content-Type": "application/json"},
@@ -290,10 +290,10 @@ def _require_agent_action(ctx: "Optional[RequestContext]", agent_id: str, action
     separately by the caller; here we only require the resource grant for the
     action. An agent already bound to the tenant is checked by resource_id.
     """
-    from channel.web.web_channel import _private_agent_owned_by_another
+    from channel.web.fork.authorization import _private_agent_owned_by_another
     from channel.web.web_channel import _require_resource_action
-    from channel.web.web_channel import _tenant_admin_owns_agent
-    from channel.web.web_channel import _tenant_shared_default_agent
+    from channel.web.fork.authorization import _tenant_admin_owns_agent
+    from channel.web.fork.common import _tenant_shared_default_agent
     if ctx is None:
         return
     # Ownership precedes the administrator shortcut (task 3.2): a private Agent is
@@ -451,7 +451,7 @@ def _require_configured_capabilities(ctx: "Optional[RequestContext]",
     is asked. Administrators and legacy mode are unrestricted, exactly as they
     are at run time.
     """
-    from channel.web.web_channel import _private_agent_owned_by_another
+    from channel.web.fork.authorization import _private_agent_owned_by_another
     if ctx is None:
         return
     if getattr(ctx, "is_platform_admin", False) or getattr(ctx, "is_tenant_admin", False):
@@ -620,7 +620,7 @@ def _require_session_owner(ctx: "Optional[RequestContext]", session_id: str,
     tenant from reading another tenant's conversation by naming its agent or by
     relying on the global default fallback. Legacy mode is a no-op.
     """
-    from channel.web.web_channel import _resolve_tenant_default_agent
+    from channel.web.fork.common import _resolve_tenant_default_agent
     from channel.web.web_channel import _tenant_ids_for_context
     if ctx is None:
         return
@@ -783,7 +783,7 @@ def _require_session_scope(ctx: "Optional[RequestContext]", session_id: str,
     tenant-bound Agent rather than the raw request parameter. Legacy mode
     (``ctx is None``) is a no-op.
     """
-    from channel.web.web_channel import _require_session_owner
+    from channel.web.fork.authorization import _require_session_owner
     from channel.web.web_channel import _require_tenant_agent_binding
     resolved = _require_tenant_agent_binding(ctx, agent_id)
     _require_session_owner(ctx, session_id, agent_id)
@@ -801,7 +801,7 @@ def _require_tenant_agent_binding(ctx: "Optional[RequestContext]", agent_id: Opt
     must resolve unambiguously, mirroring ``_require_session_owner``). Legacy
     mode (``ctx is None``) is a no-op and returns the id as-is.
     """
-    from channel.web.web_channel import _resolve_tenant_default_agent
+    from channel.web.fork.common import _resolve_tenant_default_agent
     if ctx is None:
         return agent_id
     from auth.service import get_identity_service
@@ -824,7 +824,7 @@ def _require_tenant_agent_binding(ctx: "Optional[RequestContext]", agent_id: Opt
 
 def _require_private_owner(ctx: "Optional[RequestContext]", agent_id: str) -> None:
     """Enforce private-owner read scoping for an agent's assets (task 3.10)."""
-    from channel.web.web_channel import _db_path_owner_forbidden
+    from channel.web.fork.handlers.files import _db_path_owner_forbidden
     if _db_path_owner_forbidden(ctx, agent_id):
         raise web.HTTPError("403 Forbidden", {"Content-Type": "application/json"},
                             json.dumps({"status": "error", "message": "forbidden"}))

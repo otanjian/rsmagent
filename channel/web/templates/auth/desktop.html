@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="same-origin">
+    <meta name="color-scheme" content="light">
+    <title>{title} · 容大 AI</title>
+    <link rel="icon" href="/assets/rongda-ai-mark.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/assets/css/desktop-auth.css">
+    <script defer src="/assets/js/desktop-consent.js"></script>
+</head>
+<body>
+    <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+            <symbol id="icon-arrow" viewBox="0 0 24 24">
+                <path d="M5 12h14m-6-6 6 6-6 6"/>
+            </symbol>
+            <symbol id="icon-shield" viewBox="0 0 24 24">
+                <path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/>
+                <path d="m8.5 11.5 2.5 2.5 4.5-4.5"/>
+            </symbol>
+            <symbol id="icon-desktop" viewBox="0 0 24 24">
+                <rect x="3" y="4" width="18" height="13" rx="2"/>
+                <path d="M8 21h8m-4-4v4"/>
+            </symbol>
+        </defs>
+    </svg>
+    <main class="auth-shell">
+        <aside class="brand-panel" aria-label="容大 AI 桌面端">
+            <div class="brand-lockup">
+                <img src="/assets/rongda-ai-mark.svg" width="38" height="38" alt="">
+                <span>容大 <b>AI</b></span><span class="brand-divider"></span><span class="brand-edition">桌面端</span>
+            </div>
+            <div class="brand-copy">
+                <span class="eyebrow">YOUR INTELLIGENT WORKSPACE</span>
+                <h2>让灵感落地，<br>让工作向前。</h2>
+                <p>连接你的智能工作空间，<br>从每一个想法，到每一次完成。</p>
+            </div>
+            <div class="workspace-art" aria-hidden="true">
+                <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+                <div class="orbit-dot"></div>
+                <div class="art-window">
+                    <div class="art-toolbar"><span></span><span></span><span></span><i></i></div>
+                    <div class="art-content">
+                        <div class="art-sidebar"><i></i><i></i><i></i><i></i></div>
+                        <div class="art-workspace">
+                            <div class="art-greeting"><img src="/assets/rongda-ai-mark.svg" alt=""><span></span></div>
+                            <div class="art-line"></div><div class="art-line short"></div>
+                            <div class="art-tiles"><span></span><span></span><span></span></div>
+                            <div class="art-input"><span></span><b>↑</b></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="art-badge"><svg class="icon"><use href="#icon-desktop"></use></svg><span>为专注而生</span><i></i></div>
+            </div>
+            <div class="brand-bottom"><span class="brand-rule"></span>有容乃大 · 智创未来</div>
+        </aside>
+        <section class="auth-panel" aria-labelledby="auth-title">
+            <ol class="auth-steps" aria-label="桌面端登录进度">
+                <li {login_state}><span class="step-number">{login_number}</span>登录账号</li>
+                <li {consent_state}><span class="step-number">2</span>确认授权</li>
+            </ol>
+            <div class="auth-content">
+                <div class="app-icon" aria-hidden="true"><svg class="icon"><use href="#icon-desktop"></use></svg></div>
+                {body}
+            </div>
+            <div class="panel-footer"><span></span>容大 AI · 桌面工作空间</div>
+        </section>
+    </main>
+    <footer class="page-footer">以智能连接可能，以专注创造价值</footer>
+</body>
+</html>

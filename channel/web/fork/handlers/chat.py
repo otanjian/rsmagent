@@ -75,7 +75,7 @@ def _authorize_chat_session(ctx, session_id, agent_id, *, create=False) -> str:
     (``ctx is None``) stays open.
     """
     from channel.web.web_channel import _require_agent_action
-    from channel.web.web_channel import _require_chat_use
+    from channel.web.fork.handlers.chat import _require_chat_use
     from channel.web.web_channel import _require_private_owner
     from channel.web.web_channel import _require_tenant_agent_binding
     if not isinstance(session_id, str) or not session_id.strip() or len(session_id) > 256:
@@ -187,7 +187,7 @@ def _owned_chat_request(channel, request_id):
 
 
 def _authorize_chat_request(ctx, channel, request_id):
-    from channel.web.web_channel import _authorize_chat_session
+    from channel.web.fork.handlers.chat import _authorize_chat_session
     tenant_id, user_id, agent_id, session_id = _owned_chat_request(channel, request_id)
     if tenant_id != ctx.tenant_id or user_id != ctx.user_id:
         _chat_error("request not found", "404 Not Found", "not_found")
@@ -251,9 +251,9 @@ class MessageHandler:
     # for the worker thread.
     def POST(self):
         from channel.web.web_channel import WebChannel
-        from channel.web.web_channel import _authorize_chat_session
+        from channel.web.fork.handlers.chat import _authorize_chat_session
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         web.header("Content-Type", "application/json; charset=utf-8")
         web.header("Cache-Control", "no-store")
         with _db_scope() as ctx:
@@ -279,9 +279,9 @@ class MessageHandler:
 class PollHandler:
     def POST(self):
         from channel.web.web_channel import WebChannel
-        from channel.web.web_channel import _authorize_chat_session
+        from channel.web.fork.handlers.chat import _authorize_chat_session
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         web.header("Content-Type", "application/json; charset=utf-8")
         web.header("Cache-Control", "no-store")
         with _db_scope() as ctx:
@@ -297,9 +297,9 @@ class PollHandler:
 class CancelHandler:
     def POST(self):
         from channel.web.web_channel import WebChannel
-        from channel.web.web_channel import _authorize_chat_session
+        from channel.web.fork.handlers.chat import _authorize_chat_session
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _request_agent_id
+        from channel.web.fork.runtime import _request_agent_id
         web.header("Content-Type", "application/json; charset=utf-8")
         web.header("Cache-Control", "no-store")
         with _db_scope() as ctx:
@@ -326,8 +326,8 @@ class StreamHandler:
         # supplies the tenant for fresh membership and personal-owner checks.
         from channel.web.web_channel import WebChannel
         from channel.web.web_channel import _is_database_identity
-        from channel.web.web_channel import _parse_sse_cursor
-        from channel.web.web_channel import _stream_identity_scope
+        from channel.web.fork.runtime import _parse_sse_cursor
+        from channel.web.fork.handlers.chat import _stream_identity_scope
         params = web.input(request_id='', after_seq='')
         request_id = params.request_id
         if not request_id:

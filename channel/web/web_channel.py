@@ -257,6 +257,7 @@ from channel.web.fork.handlers.memory import (
 from channel.web.fork.handlers.models import (
     ModelsHandler,
 )
+from channel.web.fork.handlers.operations import ReadyHandler
 from channel.web.fork.handlers.pages import (
     AssetsHandler,
     ChatHandler,
@@ -526,6 +527,7 @@ from channel.web.fork.handlers.coding import (
     CodingSessionSyncHandler,
     CodingSettingsHandler,
 )
+from channel.web.fork.handlers.operations import ReadyHandler
 from channel.web.fork.handlers.pages import (
     AssetsHandler,
     ChatHandler,

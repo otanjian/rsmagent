@@ -595,7 +595,7 @@ class OfferedActionAgreesWithTheSurfaceTests(_Fixture):
                 caps["user_private_agent_management"] = False
             return caps
 
-        with patch("auth.service.personal_page_capabilities",
+        with patch("auth.console_projection.personal_page_capabilities",
                    side_effect=withdrawn):
             entry = self._pages(self.member_token)["admin.agents"]
         self.assertFalse(entry["actions"]["create"])

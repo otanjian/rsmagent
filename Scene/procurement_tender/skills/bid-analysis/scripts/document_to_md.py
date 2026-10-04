@@ -139,7 +139,7 @@ def _convert_doc(file_path: str) -> str:
 
 
 def _convert_pdf(file_path: str) -> str:
-    """将 PDF 转为 Markdown，优先使用 pdfplumber，回退到 PyPDF2/pdfminer。"""
+    """将 PDF 转为 Markdown，优先使用 pdfplumber，回退到 pypdf/pdfminer。"""
     errors = []
 
     try:
@@ -150,7 +150,7 @@ def _convert_pdf(file_path: str) -> str:
     try:
         return _convert_pdf_with_pypdf2(file_path)
     except Exception as e:
-        errors.append(f"PyPDF2: {e}")
+        errors.append(f"pypdf: {e}")
 
     try:
         return _convert_pdf_with_pdfminer(file_path)
@@ -180,11 +180,11 @@ def _convert_pdf_with_pdfplumber(file_path: str) -> str:
 
 
 def _convert_pdf_with_pypdf2(file_path: str) -> str:
-    import PyPDF2
+    import pypdf
 
     chunks = []
     with open(file_path, "rb") as f:
-        reader = PyPDF2.PdfReader(f)
+        reader = pypdf.PdfReader(f)
         for i, page in enumerate(reader.pages):
             text = page.extract_text() or ""
             text = text.strip()

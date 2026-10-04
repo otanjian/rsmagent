@@ -41,8 +41,8 @@ def _uploads_identity_scope():
     caller cannot probe which ids are bound. Object-level ownership and the
     authoritative ``agent.read`` check stay in the handler.
     """
-    from channel.web.web_channel import _chat_error
-    from channel.web.web_channel import _request_agent_id
+    from channel.web.fork.handlers.chat import _chat_error
+    from channel.web.fork.runtime import _request_agent_id
     from auth.runtime import resolve_context, to_runtime_identity, IdentityContextError
     from channel.web.auth_handlers import _get_service, _session_token
     from common.runtime_identity import use_identity
@@ -98,8 +98,8 @@ def _file_identity_scope():
     — the same shape as ``_uploads_identity_scope``. A supplied selection is only
     cross-checked; the resource stays authoritative.
     """
-    from channel.web.web_channel import _chat_error
-    from channel.web.web_channel import _tenant_owning_path
+    from channel.web.fork.handlers.chat import _chat_error
+    from channel.web.fork.common import _tenant_owning_path
     from auth.runtime import resolve_context, to_runtime_identity, IdentityContextError
     from channel.web.auth_handlers import _get_service, _session_token
     from common.runtime_identity import use_identity
@@ -311,7 +311,7 @@ class UploadHandler:
         from channel.web.web_channel import _require_chat_csrf
         from channel.web.web_channel import _require_private_owner
         from channel.web.web_channel import _require_tenant_agent_binding
-        from channel.web.web_channel import _scoped_agent_id
+        from channel.web.fork.runtime import _scoped_agent_id
         web.header('Content-Type', 'application/json; charset=utf-8')
         web.header('Cache-Control', 'no-store')
         with _db_scope() as ctx:
@@ -340,7 +340,7 @@ class VoiceAsrHandler:
         from channel.web.web_channel import _require_agent_action
         from channel.web.web_channel import _require_private_owner
         from channel.web.web_channel import _require_tenant_agent_binding
-        from channel.web.web_channel import _scoped_agent_id
+        from channel.web.fork.runtime import _scoped_agent_id
         web.header('Content-Type', 'application/json; charset=utf-8')
 
         saved_path = None
@@ -764,7 +764,7 @@ def _db_path_visible(ctx, real_path: str, roots: list = None,
     through ordinary browse/preview, even to the owner (task 11.2).
     """
     from channel.web.web_channel import _db_file_root_owners
-    from channel.web.web_channel import _db_path_owner_forbidden
+    from channel.web.fork.handlers.files import _db_path_owner_forbidden
     from integrations.desktop.publish import path_is_unpublished_staging
     if not real_path:
         return False
@@ -827,7 +827,7 @@ def _authorize_db_file_path(ctx, real_path: str) -> tuple:
     then address another member's private Agent workspace (absolute or nested).
     """
     from channel.web.web_channel import _db_file_serve_roots
-    from channel.web.web_channel import _db_path_owner_forbidden
+    from channel.web.fork.handlers.files import _db_path_owner_forbidden
     from channel.web.web_channel import _platform_file_root
     if not getattr(ctx, "tenant_id", None):
         raise web.HTTPError("403 Forbidden")
@@ -904,7 +904,7 @@ def _authorize_db_file_path(ctx, real_path: str) -> tuple:
 
 class FileServeHandler:
     def GET(self):
-        from channel.web.web_channel import _authorize_db_file_path
+        from channel.web.fork.handlers.files import _authorize_db_file_path
         from channel.web.web_channel import _require_agent_action
         from channel.web.web_channel import _require_private_owner
         from channel.web.web_channel import _require_tenant_agent_binding
@@ -969,9 +969,9 @@ class PreviewHandler:
         # directory token because the sandboxed iframe (opaque origin) cannot
         # send the session cookie. This holds in database mode too, so the old
         # blanket 503 gate is gone (task 2.4, open-database-runtime).
-        from channel.web.web_channel import _decode_dir_token
-        from channel.web.web_channel import _inject_preview_chrome
-        from channel.web.web_channel import _is_path_allowed
+        from channel.web.fork.runtime import _decode_dir_token
+        from channel.web.fork.runtime import _inject_preview_chrome
+        from channel.web.fork.runtime import _is_path_allowed
         try:
             token, _, rel_path = (path_info or "").partition("/")
             if not token or not rel_path:

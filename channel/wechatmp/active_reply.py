@@ -16,14 +16,14 @@ from config import conf, subscribe_msg
 # This class is instantiated once per query
 class Query:
     def GET(self):
-        return verify_server(web.input())
+        return verify_server(web.input(), getattr(self, "channel", None))
 
     def POST(self):
         # Make sure to return the instance that first created, @singleton will do that.
         try:
             args = web.input()
-            verify_server(args)
-            channel = WechatMPChannel()
+            channel = getattr(self, "channel", None) or WechatMPChannel()
+            verify_server(args, channel)
             message = web.data()
             encrypt_func = lambda x: x
             if args.get("encrypt_type") == "aes":
@@ -70,6 +70,8 @@ class Query:
             else:
                 logger.info("暂且不处理")
             return "success"
+        except web.HTTPError:
+            raise
         except Exception as exc:
             logger.exception(exc)
             return exc

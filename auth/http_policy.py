@@ -94,24 +94,6 @@ def _match_policy(path: str, method: str) -> Tuple[Optional[dict], bool]:
     return None, False
 
 
-def _gate_fail_closed() -> bool:
-    """Whether an *unexpected* resolution failure must deny instead of defer.
-
-    Staged rollout (design D2 / task 3.7): a deterministic failure (no session,
-    no tenant selection, no membership, not a platform admin, missing
-    permission) is denied immediately, because that is the security hole this
-    gate closes. Only an *unexpected* failure -- the identity store being
-    unreachable, say -- is initially logged and deferred to the handler so a
-    transient outage is observed before it becomes a hard 503. Set
-    ``http_policy_gate_fail_closed: true`` to deny those too.
-    """
-    try:
-        from config import conf
-        return bool(conf().get("http_policy_gate_fail_closed", False))
-    except Exception:
-        return False
-
-
 def _normalize_gate_error(exc: web.HTTPError) -> str:
     """Re-emit a gate resolution error through :func:`_json_error`.
 
@@ -158,13 +140,10 @@ def _enforce_context_gate(handler, policy: str, entry: dict):
     except IdentityContextError as exc:
         return _json_error(str(exc), exc.status, exc.code)
     except Exception as exc:
-        if _gate_fail_closed():
-            logger.warning("[http-gate] identity resolution failed closed: %r", exc)
-            return _json_error("identity resolution failed", 503, "identity_unavailable")
-        # Deferred: the handler keeps its historical behaviour for this request
-        # only. This is the observation window, not a grant.
-        logger.warning("[http-gate] identity resolution failed, deferring to handler: %r", exc)
-        return handler()
+        # The obsolete observation-mode flag cannot grant access on failure.
+        # Exception text may contain credentials or database paths.
+        logger.warning("[http-gate] identity resolution failed closed (%s)", type(exc).__name__)
+        return _json_error("identity resolution failed", 503, "identity_unavailable")
 
     if policy == "platform" and not ctx.is_platform_admin:
         _record_gate_denial("platform-domain", web.ctx.path, ctx)

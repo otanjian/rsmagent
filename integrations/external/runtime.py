@@ -908,7 +908,7 @@ class ConnectionRuntime:
             # branch can report anything about a connection the caller does not
             # own.
             raise not_found(_NOT_FOUND_MESSAGE)
-        if maintenance.paused(scope=snapshot.scope,
+        if maintenance.paused(scope=snapshot.scope, owner_user_id=snapshot.owner_user_id,
                               tenant_id=snapshot.tenant_id,
                               service=self._service):
             # A maintenance window pauses *new executions* in its scope as well

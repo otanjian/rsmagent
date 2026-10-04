@@ -394,7 +394,7 @@ def _is_path_allowed(real_path: str) -> bool:
     qualify.
     """
     from channel.web.web_channel import _platform_file_root
-    from channel.web.web_channel import _tenant_workspace_roots
+    from channel.web.fork.handlers.files import _tenant_workspace_roots
     roots = [os.path.realpath(_platform_file_root())]
     # Tenant/Agent roots come from the *static* workspace list rather than
     # ``_get_workspace_root()``: the latter refuses (raises ``web.HTTPError``)
@@ -422,7 +422,7 @@ def _build_preview_url(abs_path: str) -> str:
     Preview URL that mounts the file's *directory*, so relative assets
     referenced by an HTML page (./style.css, ./img/a.png) resolve correctly.
     """
-    from channel.web.web_channel import _encode_dir_token
+    from channel.web.fork.runtime import _encode_dir_token
     directory = os.path.dirname(abs_path)
     name = os.path.basename(abs_path)
     return f"/preview/{_encode_dir_token(directory)}/{quote(name)}"
@@ -1533,7 +1533,7 @@ class WebChannel(ChatChannel):
     @classmethod
     def _tts_provider_ready(cls) -> bool:
         """True if user picked a provider OR any suggested vendor has an API key."""
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         from channel.web.web_channel import conf
         if (conf().get("text_to_voice") or "").strip():
             return True
@@ -1830,14 +1830,14 @@ class WebChannel(ChatChannel):
         router from the request body.
         """
         from channel.web.web_channel import Queue
-        from channel.web.web_channel import SSEStreamState
-        from channel.web.web_channel import _addressed_agent_id
+        from channel.web.fork.runtime import SSEStreamState
+        from channel.web.fork.runtime import _addressed_agent_id
         from channel.web.web_channel import _get_workspace_root
         from channel.web.web_channel import _require_agent_action
         from channel.web.web_channel import _require_private_owner
         from channel.web.web_channel import _require_tenant_agent_binding
         from channel.web.web_channel import _session_roster
-        from channel.web.web_channel import _web_runtime_identity_snapshot
+        from channel.web.fork.authorization import _web_runtime_identity_snapshot
         from channel.web.web_channel import conf
         target = authorized_target()
         auth_context = target.get("auth_context")
@@ -2438,8 +2438,8 @@ class WebChannel(ChatChannel):
 
     def chat_page(self):
         """Serve the chat HTML page."""
-        from channel.web.web_channel import _web_navigation_mode
-        from channel.web.web_channel import _workbench_sidebar_launch_v2
+        from channel.web.fork.common import _web_navigation_mode
+        from channel.web.fork.common import _workbench_sidebar_launch_v2
         file_path = os.path.join(_WEB_ROOT, 'chat.html')  # 使用绝对路径
         with open(file_path, 'r', encoding='utf-8') as f:
             html = f.read()
@@ -2454,7 +2454,7 @@ class WebChannel(ChatChannel):
         )
 
     def startup(self):
-        from channel.web.web_channel import SERVING
+        from channel.web.fork.runtime import SERVING
         from channel.web.web_channel import _WEB_URLS
         from channel.web.web_channel import build_web_app
         from channel.web.web_channel import conf
@@ -3202,9 +3202,9 @@ def _list_sessions_across_agents(page: int, page_size: int,
     """One page of every Agent's conversations, merged.
 
     Sessions are stored one database per Agent, so "all conversations" is a
-    merge across files rather than a query. Each Agent is asked for as many rows
-    as the requested page could possibly draw from it, because any of them can
-    supply the row that sorts into that page.
+    merge across files rather than a query. Gather lightweight summaries from
+    all visible Agents, deduplicate once, then count and paginate. Counting a
+    per-page prefix gives different totals on different pages.
 
     Presenting them in one list is what keeps a second Agent from feeling like a
     second account: the alternative, switching the whole console to look at
@@ -3213,9 +3213,8 @@ def _list_sessions_across_agents(page: int, page_size: int,
     In database mode ``ctx`` limits the merge to the tenant-bound agents and,
     when a user is present, filters each Agent's sessions to that user.
 
-    A title search gathers all matching summaries before deduplication and
-    pagination, so duplicates outside an early candidate page cannot inflate
-    the result count or leave later pages short. Message bodies are not read.
+    The same merge handles title search and the unfiltered history. Message
+    bodies are not read; cost is proportional to matching session summaries.
     """
     from channel.web.web_channel import _tenant_ids_for_context
     from agent.memory import get_conversation_store
@@ -3225,9 +3224,7 @@ def _list_sessions_across_agents(page: int, page_size: int,
     from common.state_dir import state_root_str
 
     q = normalize_session_search_query(q)
-    take = max(1, page) * page_size
     merged: List[dict] = []
-    total = 0
     space_paths = set()
     uses_default = False
     user_id = ctx.user_id if ctx else None
@@ -3244,23 +3241,19 @@ def _list_sessions_across_agents(page: int, page_size: int,
             continue
         try:
             store = get_conversation_store(profile.workspace)
-            if q:
-                matches = []
-                search_page = 1
-                while True:
-                    batch = store.list_sessions(
-                        channel_type="web", page=search_page, page_size=500,
-                        user_id=user_id, q=q, archived=archived,
-                    )
-                    rows = batch.get("sessions") or []
-                    matches.extend(rows)
-                    if not batch.get("has_more") or not rows:
-                        break
-                    search_page += 1
-                chunk = {"sessions": matches, "total": len(matches)}
-            else:
-                chunk = store.list_sessions(channel_type="web", page=1, page_size=take,
-                                            user_id=user_id, archived=archived)
+            matches = []
+            search_page = 1
+            while True:
+                batch = store.list_sessions(
+                    channel_type="web", page=search_page, page_size=500,
+                    user_id=user_id, q=q, archived=archived,
+                )
+                rows = batch.get("sessions") or []
+                matches.extend(rows)
+                if not batch.get("has_more") or not rows:
+                    break
+                search_page += 1
+            chunk = {"sessions": matches}
             project_map = project_store.get_project_map(profile.id)
             session_ids = store.list_session_ids(channel_type="web", user_id=user_id,
                                                  archived=archived)
@@ -3272,7 +3265,6 @@ def _list_sessions_across_agents(page: int, page_size: int,
             )
             continue
 
-        total += chunk.get("total", 0)
         # The type comes from the badge and the link state from the store: both
         # markers the console needs, applied to the same dicts the loop below
         # appends to the merged list.
@@ -3316,7 +3308,7 @@ def _list_sessions_across_agents(page: int, page_size: int,
             > (int(kept.get("msg_count") or 0), _as_epoch(kept.get("last_active")))
         ):
             by_id[sid] = session
-    total -= len(merged) - len(by_id)
+    total = len(by_id)
     merged = list(by_id.values())
 
     # Same ordering the per-Agent query applies, so a merged page looks exactly
@@ -3350,7 +3342,7 @@ def _session_model_catalog() -> List[dict]:
     The globally active provider is always included, even if its key lives in
     the environment rather than in config.json.
     """
-    from channel.web.web_channel import ConfigHandler
+    from channel.web.fork.handlers.config import ConfigHandler
     from channel.web.web_channel import conf
     local_config = conf()
     active_bot_type = local_config.get("bot_type") or ""
@@ -3431,8 +3423,8 @@ def _session_settings_state(session_id: str, agent_id: Optional[str]) -> dict:
     and ``agent`` carries the Agent's default when it has one, so a fresh chat
     with a specialist Agent shows the model it will really answer with.
     """
-    from channel.web.web_channel import _authorized_model_codes
-    from channel.web.web_channel import _current_db_identity
+    from channel.web.fork.authorization import _authorized_model_codes
+    from channel.web.fork.authorization import _current_db_identity
     from channel.web.web_channel import _is_database_identity
     from channel.web.web_channel import _session_model_catalog
     from channel.web.web_channel import conf
@@ -3650,9 +3642,9 @@ def _editable_target(raw_path: str, session_id: str = None, agent_id: str = None
     An absolute path outside both roots is invisible (404): it must never fall
     back to the global default Agent's workspace or an arbitrary host path.
     """
-    from channel.web.web_channel import _authorize_db_file_path
+    from channel.web.fork.handlers.files import _authorize_db_file_path
     from channel.web.web_channel import _db_path_visible
-    from channel.web.web_channel import _workspace_system_service
+    from channel.web.fork.handlers.workspace import _workspace_system_service
     svc = _workspace_service(session_id, agent_id)
     system = _workspace_system_service(ctx, svc)
     raw = (raw_path or "").strip()
@@ -3775,4 +3767,3 @@ def _project_state(session_id: str, agent_id: str = None) -> dict:
 
 
 _DRIVES_SENTINEL = "__DRIVES__"
-

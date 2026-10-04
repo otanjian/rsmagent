@@ -13,10 +13,8 @@ ACTIONS = frozenset(("preview", "confirm", "discard", "install", "delete"))
 
 
 def _authorize(ctx, agent_id):
-    from channel.web.web_channel import (
-        _require_read_permission, _require_skill_write_scope,
-        _require_tenant_agent_binding,
-    )
+    from channel.web.web_channel import _require_read_permission, _require_tenant_agent_binding
+    from channel.web.fork.authorization import _require_skill_write_scope
     _require_read_permission(ctx, "skill.edit")
     if agent_id:
         agent_id = _require_tenant_agent_binding(ctx, agent_id)
@@ -64,9 +62,9 @@ def _create_preview(ctx, agent_id):
 
 
 def apply(ctx, body):
-    from channel.web.web_channel import (
-        _request_agent_id, _resolved_skill, _require_resource_action, _skill_service,
-    )
+    from channel.web.fork.runtime import _request_agent_id
+    from channel.web.fork.authorization import _resolved_skill
+    from channel.web.web_channel import _require_resource_action, _skill_service
     from cli.commands.skill import commit_staged, stage_skill
 
     action = body.get("action")
@@ -133,7 +131,8 @@ class SkillUploadHandler:
     MAX_FILES = 2000
 
     def POST(self):
-        from channel.web.web_channel import _db_scope, _scoped_agent_id
+        from channel.web.web_channel import _db_scope
+        from channel.web.fork.runtime import _scoped_agent_id
         from channel.web.core._common import _multipart_lists
         from channel.web.api.knowledge import _read_uploaded_file_bytes_limited
         from cli.commands.skill import stage_skill_upload

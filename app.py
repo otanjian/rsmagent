@@ -7,6 +7,12 @@ import signal
 import sys
 import time
 
+# A frozen executable cannot accept Python's -c. Keep the fixed readiness probe
+# before application imports so it cannot recursively boot another instance.
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--execution-environment-probe":
+    from common.readiness import probe_entrypoint
+    raise SystemExit(probe_entrypoint(sys.argv[2:]))
+
 # --- desktop local worker dispatch ----------------------------------------
 # This must stay *before* the channel/plugin imports below. A packaged install
 # ships a single frozen executable, so the execution end cannot be started with
@@ -920,12 +926,18 @@ def run():
         bundle = ensure_ca_bundle()
         if bundle:
             logger.debug(f"[App] using certifi CA bundle: {bundle}")
+        # Acquire before load_config can write or migrate instance data.
+        from common.maintenance import start as start_instance_lifecycle
+        from config import get_data_root
+        start_instance_lifecycle(get_data_root())
         # load config
         load_config()
         _verify_required_seams()
         _guard_identity_mode_consistency()
         _ensure_database_bootstrap()
         _register_pid_file()
+        from common.startup_hooks import run_startup_hook, HOOK_EXECUTION_SANDBOX
+        run_startup_hook(HOOK_EXECUTION_SANDBOX)
         _migrate_team_roster()
         _migrate_conversations()
         _migrate_conversation_tenancy()

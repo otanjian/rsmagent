@@ -13,7 +13,7 @@ import time
 from typing import Dict, Any, Callable, Optional
 
 from agent.tools.base_tool import BaseTool, ToolResult
-from agent.tools.bash import background, exit_codes
+from agent.tools.bash import background, exit_codes, launcher
 from agent.tools.bash.decode import decode_output
 from agent.tools.utils.truncate import truncate_tail, format_size, DEFAULT_MAX_LINES, DEFAULT_MAX_BYTES
 from common.log import logger
@@ -58,7 +58,7 @@ class Bash(BaseTool):
     name: str = "bash"
     description: str = f"""Execute a {'command' if _IS_WIN else 'bash command'} in the current working directory. Returns stdout and stderr. Output is truncated to last {DEFAULT_MAX_LINES} lines or {DEFAULT_MAX_BYTES // 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file.
 {_PLATFORM_LINE}
-ENVIRONMENT: All API keys from env_config are auto-injected. Use $VAR_NAME directly.
+ENVIRONMENT: Authorized task credentials retain their configured variable names. Use $VAR_NAME directly.
 
 SAFETY:
 - Freely create/modify/delete files within the workspace
@@ -296,21 +296,8 @@ SAFETY:
                 try:
                     parts = shlex.split(command)
                     if len(parts) > 0:
-                        logger.info(f"[Bash] Retrying with argument list: {parts[:3]}...")
-                        raw = subprocess.run(
-                            parts,
-                            cwd=self.cwd,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            timeout=timeout,
-                            env=env
-                        )
-                        from types import SimpleNamespace
-                        retry_result = SimpleNamespace(
-                            returncode=raw.returncode,
-                            stdout=decode_output(raw.stdout),
-                            stderr=decode_output(raw.stderr),
-                        )
+                        logger.info(f"[Bash] Retrying with argument list ({len(parts)} arguments)")
+                        retry_result = self._run_streaming(parts, timeout, env, dotenv_vars)
                         logger.debug(f"[Bash] Retry exit code: {retry_result.returncode}, stdout: {len(retry_result.stdout)}, stderr: {len(retry_result.stderr)}")
                         
                         # If retry succeeded, use retry result
@@ -351,7 +338,7 @@ SAFETY:
                 # cp936/GBK on Chinese Windows), which raises UnicodeEncodeError
                 # for output containing emoji or other non-locale characters and
                 # would discard an otherwise successful command result.
-                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.log', prefix='bash-', encoding='utf-8') as f:
+                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.log', prefix='bash-', encoding='utf-8', dir=launcher.output_directory()) as f:
                     f.write(output)
                     temp_file_path = f.name
 
@@ -451,9 +438,10 @@ SAFETY:
         return f"Error: no background command with id {bash_id}. Currently tracked: {known}."
 
     def _run_streaming(self, command: str, timeout: int, env: dict, dotenv_vars: dict):
-        process = subprocess.Popen(
+        from agent.tools.bash.redaction import StreamRedactor
+        process = launcher.popen(
             command,
-            shell=True,
+            shell=isinstance(command, str),
             cwd=self.cwd,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
@@ -469,20 +457,23 @@ SAFETY:
                 self.process_group_hook(process.pid)
             except Exception:
                 pass
+        dotenv_vars = dict(dotenv_vars, **getattr(process, "execution_secrets", {}))
         stdout_chunks, stderr_chunks = [], []
         recent = bytearray()
         recent_lock = threading.Lock()
 
         def drain(stream, chunks):
+            redactor = StreamRedactor(dotenv_vars.values())
             while True:
                 chunk = os.read(stream.fileno(), 4096)
-                if not chunk:
-                    break
-                chunks.append(chunk)
+                filtered = redactor.feed(chunk, final=not chunk)
+                chunks.append(filtered)
                 with recent_lock:
-                    recent.extend(chunk)
+                    recent.extend(filtered)
                     if len(recent) > self._PROGRESS_MAX_BYTES:
                         del recent[:-self._PROGRESS_MAX_BYTES]
+                if not chunk:
+                    break
 
         readers = [
             threading.Thread(target=drain, args=(process.stdout, stdout_chunks), daemon=True),
@@ -507,25 +498,27 @@ SAFETY:
                 if elapsed >= self._PROGRESS_INTERVAL and now - last_reported_at >= self._PROGRESS_INTERVAL:
                     with recent_lock:
                         snapshot = decode_output(bytes(recent))
-                    snapshot = self._redact_progress(snapshot, dotenv_vars)
+                    snapshot = self._redact_progress(snapshot, {})
                     if snapshot and snapshot != last_snapshot:
                         self.report_progress(snapshot)
                         last_snapshot = snapshot
                     last_reported_at = now
                 time.sleep(0.1)
         finally:
-            if process.poll() is None:
+            # Reap descendants even when the command shell exited normally.
+            if not self._IS_WIN or process.poll() is None:
                 self._kill_process(process)
             process.wait()
             join_deadline = time.monotonic() + 5
             for reader in readers:
                 reader.join(timeout=max(0, join_deadline - time.monotonic()))
+            launcher.release(process)
 
         from types import SimpleNamespace
         return SimpleNamespace(
             returncode=process.returncode,
-            stdout=decode_output(b"".join(stdout_chunks)),
-            stderr=decode_output(b"".join(stderr_chunks)),
+            stdout=self._redact_progress(decode_output(b"".join(stdout_chunks)), {}),
+            stderr=self._redact_progress(decode_output(b"".join(stderr_chunks)), {}),
         )
 
     def _kill_process(self, process):
@@ -557,7 +550,7 @@ SAFETY:
         )
         for value in dotenv_vars.values():
             value = str(value or "")
-            if len(value) >= 6:
+            if value:
                 text = text.replace(value, "[REDACTED]")
         return text
 

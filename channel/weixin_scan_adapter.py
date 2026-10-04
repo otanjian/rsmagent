@@ -31,9 +31,9 @@ What this module refuses to do
 * It never lets a caller move the vendor endpoint. The base URL a QR was minted
   against is bound to the session; a commit that names a different one is
   refused rather than followed (:func:`resolve_base_url`).
-* It never binds an arbitrary external subject to a member. The personal path
-  goes through the delivered owner-forced create and the delivered binding
-  challenge; the scan only proves control of the *bot*.
+* It never binds a caller-supplied external subject to a member. Scanner binding
+  uses the identity returned by the authenticated vendor scan and the delivered
+  ownership checks; the binding challenge remains available when it is absent.
 """
 
 from __future__ import annotations
@@ -367,7 +367,8 @@ def default_display_name(service: Any, *, scope: str, tenant_id: str,
     return scan_default_display_name(CHANNEL_TYPE, taken)
 
 
-def create_instance_callable(service: Any, *, scope: str) -> Callable[..., Any]:
+def create_instance_callable(service: Any, *, scope: str,
+                             scanner: Optional[Mapping[str, Any]] = None) -> Callable[..., Any]:
     """The create the scan pipeline calls, wired to the identity service.
 
     ``commit_scan_binding`` passes exactly the identity service's own keyword
@@ -388,6 +389,12 @@ def create_instance_callable(service: Any, *, scope: str) -> Callable[..., Any]:
         if personal:
             service.require_personal_capability("personal_channel_onboarding")
         created = service.create_tenant_channel_instance(**kwargs)
+        if scanner and isinstance(created, Mapping) and created.get("id"):
+            # Bind the verified scanner before any connection can receive its
+            # first message and claim the freshly created instance.
+            bind_scanner_identity(
+                service, instance_id=str(created["id"]),
+                tenant_id=str(kwargs.get("tenant_id") or ""), identity=scanner)
         if personal and isinstance(created, Mapping) and created.get("id"):
             # The delivered personal path reconciles here; reuse the same public
             # seam (never the service's private helper) so a connection that

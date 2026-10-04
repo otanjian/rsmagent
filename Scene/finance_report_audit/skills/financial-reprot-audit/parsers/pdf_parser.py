@@ -48,7 +48,7 @@ class PDFParser(BaseParser):
             except ImportError:
                 pass
             
-            # 方法2: 使用 PyPDF2
+            # 方法2: 使用 pypdf
             try:
                 return self._parse_with_pypdf2(file_path)
             except ImportError:
@@ -62,7 +62,7 @@ class PDFParser(BaseParser):
             
             return self.create_error_result(
                 file_path,
-                "缺少PDF解析库，请安装 pdfplumber 或 PyPDF2 (pip install pdfplumber)"
+                "缺少PDF解析库，请安装 pdfplumber 或 pypdf (pip install pdfplumber)"
             )
             
         except Exception as e:
@@ -103,8 +103,8 @@ class PDFParser(BaseParser):
         return result
     
     def _parse_with_pypdf2(self, file_path: str) -> ParseResult:
-        """使用 PyPDF2 解析PDF"""
-        import PyPDF2
+        """使用 pypdf 解析PDF"""
+        import pypdf
         
         result = self.create_success_result(file_path)
         result.file_type = 'PDF'
@@ -113,7 +113,7 @@ class PDFParser(BaseParser):
         result.data.source_software = 'GENERIC'
         
         with open(file_path, 'rb') as file:
-            reader = PyPDF2.PdfReader(file)
+            reader = pypdf.PdfReader(file)
             
             # 确定页面范围
             if self.page_range:

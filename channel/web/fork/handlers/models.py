@@ -27,6 +27,7 @@ import web
 # catalog overlay is upstream's shared runtime module, and the console handler
 # is the only web surface that reads and writes it.
 from models import model_catalog
+from channel.web.api.models import ModelsHandler as UpstreamModelsHandler
 
 
 class ModelsHandler:
@@ -482,7 +483,7 @@ class ModelsHandler:
         guaranteeing backward compatibility with the flat
         ``custom_api_key`` / ``custom_api_base`` config.
         """
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         try:
             from models.custom_provider import get_custom_providers, parse_custom_bot_type
             providers = get_custom_providers()
@@ -634,7 +635,7 @@ class ModelsHandler:
         user has an overlay, the provider's effective list (preset base minus
         tombstones, plus overrides) is filtered to `capability` ("text" for the
         main chat model) so only models that can serve this role are offered."""
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         provider_models = ConfigHandler.PROVIDER_MODELS
         merged = dict(presets)
         catalog_map = model_catalog.get_catalog_map()
@@ -661,7 +662,7 @@ class ModelsHandler:
         list -> "text", the vision list -> "vision", etc. Tags merge across
         lists (gpt-4o -> text+vision, mimo-v2.5 -> text+vision+tts), so the
         catalog editor seeds each preset with its real capabilities."""
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         merged: "OrderedDict[str, dict]" = OrderedDict()
 
         def add(name, cap):
@@ -748,7 +749,7 @@ class ModelsHandler:
         ``_custom_provider_cards``). Otherwise the legacy single ``custom``
         card is shown unchanged.
         """
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         from channel.web.web_channel import conf
         local_config = conf()
         custom_cards = cls._custom_provider_cards(local_config)
@@ -822,63 +823,12 @@ class ModelsHandler:
     # `model`) is still recognized as "configured" by the models handler and
     # doesn't wrongly trigger the onboarding wizard. Prefix rules are ordered
     # most-specific first; the returned ids are the PROVIDER_MODELS keys.
-    @staticmethod
-    def _infer_provider_from_model(model: str) -> str:
-        """Best-effort provider id from a model name. Returns "" when unknown.
-
-        Kept deliberately tolerant: any unexpected input yields "" rather than
-        raising, so callers can treat "no inference" and "bad input" the same.
-        """
-        try:
-            if not model or not isinstance(model, str):
-                return ""
-            m = model.strip().lower()
-            if not m:
-                return ""
-            # Exact matches first (models whose name isn't a clean prefix).
-            exact = {
-                "wenxin": "qianfan",
-                "wenxin-4": "qianfan",
-                "abab6.5": "minimax",
-                "abab6.5-chat": "minimax",
-            }
-            if m in exact:
-                return exact[m]
-            # Prefix rules — order matters where prefixes could overlap.
-            prefix_rules = (
-                ("deepseek", "deepseek"),
-                ("gemini", "gemini"),
-                ("glm", "zhipu"),
-                ("claude", "claudeAPI"),
-                ("kimi", "moonshot"),
-                ("moonshot", "moonshot"),
-                ("doubao", "doubao"),
-                ("mimo-", "mimo"),
-                ("qwen", "dashscope"),
-                ("qwq", "dashscope"),
-                ("qvq", "dashscope"),
-                ("ernie", "qianfan"),
-                ("minimax", "minimax"),
-                ("gpt", "openai"),
-                ("o1", "openai"),
-                ("o3", "openai"),
-                ("o4", "openai"),
-            )
-            for prefix, pid in prefix_rules:
-                if m.startswith(prefix):
-                    return pid
-            # `qianfan` is sometimes used directly as the model name.
-            if m == "qianfan":
-                return "qianfan"
-            return ""
-        except Exception:
-            # Never let inference break the models endpoint / startup.
-            return ""
+    _infer_provider_from_model = staticmethod(UpstreamModelsHandler._infer_provider_from_model)
 
     @classmethod
     def _chat_capability(cls, local_config: dict) -> dict:
         """Main chat model — drives the agent. bot_type maps to a provider id."""
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         bot_type = local_config.get("bot_type") or ""
         provider_id = "openai" if bot_type == "chatGPT" else bot_type
         is_custom_id = provider_id.startswith("custom:")
@@ -931,7 +881,7 @@ class ModelsHandler:
         picker wants only the lists. Kept as its own helper so the two chat
         cards can never drift apart.
         """
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         out = {}
         for pid, meta in ConfigHandler.PROVIDER_MODELS.items():
             models = (meta or {}).get("models")
@@ -1029,7 +979,7 @@ class ModelsHandler:
         no tools.vision.model is set. Mirrors the fallback order in
         agent/tools/vision/vision.py::_resolve_providers so the UI hint
         matches reality."""
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         chat = cls._chat_capability(local_config)
         main_provider = chat["current_provider"]
         main_model = chat["current_model"]
@@ -1155,7 +1105,7 @@ class ModelsHandler:
         # current selection. `suggested_provider` previews which vendor
         # the bridge auto-picker would land on (purely a UX hint, NOT
         # persisted). Once the user saves a vendor, we lock onto it.
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         explicit = (local_config.get("voice_to_text") or "").strip().lower()
         suggested = ""
         if not explicit:
@@ -1182,7 +1132,7 @@ class ModelsHandler:
 
     @classmethod
     def _tts_capability(cls, local_config: dict) -> dict:
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         explicit = (local_config.get("text_to_voice") or "").strip().lower()
         # Custom (OpenAI-compatible) vendors are selectable too; accept them
         # (expanded custom:<id> or legacy flat "custom") as the current
@@ -1215,13 +1165,7 @@ class ModelsHandler:
             "reply_mode": cls._tts_reply_mode(local_config),
         }
 
-    @staticmethod
-    def _tts_reply_mode(local_config: dict) -> str:
-        if local_config.get("always_reply_voice", False):
-            return "always"
-        if local_config.get("voice_reply_voice", False):
-            return "voice_if_voice"
-        return "off"
+    _tts_reply_mode = staticmethod(UpstreamModelsHandler._tts_reply_mode)
 
     @classmethod
     def _embedding_capability(cls, local_config: dict) -> dict:
@@ -1230,7 +1174,7 @@ class ModelsHandler:
         # `suggested_provider` is a UI-only hint (NOT persisted) that
         # preselects the dropdown to whichever configured vendor we'd
         # recommend, so users don't have to expand the menu to find it.
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         explicit = (local_config.get("embedding_provider") or "").strip().lower()
         suggested = ""
         if not explicit:
@@ -1298,7 +1242,7 @@ class ModelsHandler:
         When use_linkai is enabled the hint is suppressed entirely — LinkAI
         proxies to whichever backend it deems appropriate and surfacing
         "LinkAI" alone tells the user nothing actionable."""
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         use_linkai_flag = bool(local_config.get("use_linkai", False))
         linkai_configured = cls._is_real_key(local_config.get("linkai_api_key", ""))
         if use_linkai_flag and linkai_configured:
@@ -1442,7 +1386,7 @@ class ModelsHandler:
         Providers reuse model-vendor keys (zhipu/qianfan/linkai) so they show
         up as configured once the user adds those vendors; bocha keeps its
         own key under tools.web_search."""
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         tools_cfg = local_config.get("tools") or {}
         ws_cfg = tools_cfg.get("web_search") or {} if isinstance(tools_cfg, dict) else {}
         if not isinstance(ws_cfg, dict):
@@ -1573,7 +1517,7 @@ class ModelsHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def _handle_set_provider(self, data: dict) -> str:
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         from channel.web.web_channel import conf
         provider_id = (data.get("provider_id") or "").strip()
         meta = ConfigHandler.PROVIDER_MODELS.get(provider_id)
@@ -1621,7 +1565,7 @@ class ModelsHandler:
         return json.dumps({"status": "success", "provider": provider_id})
 
     def _handle_delete_provider(self, data: dict) -> str:
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         from channel.web.web_channel import conf
         provider_id = (data.get("provider_id") or "").strip()
         meta = ConfigHandler.PROVIDER_MODELS.get(provider_id)
@@ -1655,16 +1599,7 @@ class ModelsHandler:
     # by setting ``bot_type`` to ``"custom:<id>"``.  There is no separate
     # ``custom_active_provider`` field — a single source of truth.
 
-    @staticmethod
-    def _normalize_custom_providers(raw) -> List[dict]:
-        """Return a clean list of provider dicts (drops malformed entries)."""
-        if not isinstance(raw, list):
-            return []
-        out = []
-        for p in raw:
-            if isinstance(p, dict) and (p.get("id") or "").strip():
-                out.append(p)
-        return out
+    _normalize_custom_providers = staticmethod(UpstreamModelsHandler._normalize_custom_providers)
 
     def _persist_custom_providers(self, providers: List[dict], bot_type=None) -> None:
         """Write the providers list to both in-memory conf and the on-disk
@@ -1876,7 +1811,7 @@ class ModelsHandler:
         provider_id = (data.get("provider_id") or "").strip()
         if not provider_id:
             return json.dumps({"status": "error", "message": "provider_id is required"})
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         if (provider_id not in ConfigHandler.PROVIDER_MODELS
                 and not provider_id.startswith("custom:")):
             return json.dumps({"status": "error", "message": f"unknown provider: {provider_id}"})
@@ -2005,7 +1940,7 @@ class ModelsHandler:
         # Accept expanded custom provider ids ("custom:<id>") as well as the
         # built-in vendors, so the chat capability card and the custom
         # providers section behave consistently.
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         from channel.web.web_channel import conf
         custom_provider = None
         if provider_id.startswith("custom:"):
@@ -2055,7 +1990,7 @@ class ModelsHandler:
         separate so a fallback chain can reuse the lookup per link instead of
         duplicating it.
         """
-        from channel.web.web_channel import ConfigHandler
+        from channel.web.fork.handlers.config import ConfigHandler
         from channel.web.web_channel import conf
         if not provider_id:
             return None, None
@@ -2196,30 +2131,9 @@ class ModelsHandler:
         logger.info(f"[ModelsHandler] vision updated: provider={provider_id!r} model={model!r}")
         return json.dumps({"status": "success", "provider": provider_id, "model": model})
 
-    @staticmethod
-    def _set_nested_namespace_value(cfg, top: str, name: str, key: str, value):
-        """Set ``cfg[top][name][key] = value``, creating missing dicts."""
-        bucket = cfg.get(top)
-        if not isinstance(bucket, dict):
-            bucket = {}
-        node = bucket.get(name)
-        if not isinstance(node, dict):
-            node = {}
-        node[key] = value
-        bucket[name] = node
-        cfg[top] = bucket
+    _set_nested_namespace_value = staticmethod(UpstreamModelsHandler._set_nested_namespace_value)
 
-    @staticmethod
-    def _drop_legacy_namespace(cfg, legacy: str, canonical: str, child: str) -> None:
-        """Strip the deprecated singular key so config.json stays single-source."""
-        legacy_section = cfg.get(legacy)
-        if not isinstance(legacy_section, dict):
-            return
-        legacy_section.pop(child, None)
-        if legacy_section:
-            cfg[legacy] = legacy_section
-        else:
-            cfg.pop(legacy, None)
+    _drop_legacy_namespace = staticmethod(UpstreamModelsHandler._drop_legacy_namespace)
 
     def _handle_set_voice_reply_mode(self, data: dict) -> str:
         # UI picker (off / voice_if_voice / always) maps to the legacy

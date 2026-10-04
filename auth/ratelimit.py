@@ -22,6 +22,7 @@ caller so reject traffic never becomes unbounded identity-db writes.
 from __future__ import annotations
 
 import os
+import math
 import threading
 import time
 from collections import deque
@@ -76,6 +77,8 @@ class LoginRateLimiter:
         #: (category, key) -> window epoch already audited (bounded by capacity).
         self._audited: set = set()
         self._total_events = 0
+        self._next_cleanup = float("inf")
+        self._audit_epoch = None
 
     # --- introspection (for tests / capacity verification) ----------------
     def window_seconds(self) -> int:
@@ -104,12 +107,38 @@ class LoginRateLimiter:
             self._source_buckets.clear()
             self._audited.clear()
             self._total_events = 0
+            self._next_cleanup = float("inf")
+            self._audit_epoch = None
 
     # --- core ------------------------------------------------------------
     def _prune(self, bucket: Deque[float], now: float) -> None:
         cutoff = now - self._window
         while bucket and bucket[0] <= cutoff:
             bucket.popleft()
+
+    def _cleanup(self, now: float) -> None:
+        """Reclaim empty keys under the caller's lock, without scanning per request.
+
+        A key can only become empty when its *last* failure expires. Keep the
+        earliest such deadline; refreshing a key may cause one harmless early
+        sweep, but never postpone reclaiming another key or evict a live limit.
+        """
+        epoch = int(now // self._window)
+        if epoch != self._audit_epoch:
+            self._audited.clear()
+            self._audit_epoch = epoch
+        if now < self._next_cleanup:
+            return
+        self._next_cleanup = float("inf")
+        for category, buckets in (("account", self._account_buckets),
+                                  ("source", self._source_buckets)):
+            for key, bucket in list(buckets.items()):
+                self._prune(bucket, now)
+                if not bucket:
+                    del buckets[key]
+                    self._audited.discard((category, key, epoch))
+                else:
+                    self._next_cleanup = min(self._next_cleanup, bucket[-1] + self._window)
 
     def should_audit_denial(self, account: str, source: str) -> bool:
         """True when this is the first blocked attempt in the active window.
@@ -122,6 +151,7 @@ class LoginRateLimiter:
         now = self._clock()
         epoch = int(now // self._window)
         with self._lock:
+            self._cleanup(now)
             for category, key in (("account", account), ("source", source)):
                 marker = (category, key, epoch)
                 if marker in self._audited:
@@ -134,9 +164,7 @@ class LoginRateLimiter:
                 limit = self._account_max if category == "account" else self._source_max
                 if len(bucket) >= limit:
                     self._audited.add(marker)
-                    # Bound _audited by capacity.
-                    while len(self._audited) > self._capacity:
-                        self._audited.pop()
+                    # At most one marker per live key in each dimension.
                     return True
         return False
 
@@ -153,6 +181,7 @@ class LoginRateLimiter:
             buckets[key] = bucket
         self._prune(bucket, now)
         bucket.append(now)
+        self._next_cleanup = min(self._next_cleanup, now + self._window)
         self._total_events += 1
 
     def _count(self, buckets: Dict[str, Deque[float]], key: str, now: float) -> int:
@@ -169,6 +198,7 @@ class LoginRateLimiter:
         """Record a failed login for both the account and source dimension."""
         now = self._clock()
         with self._lock:
+            self._cleanup(now)
             self._record(self._account_buckets, account, now)
             self._record(self._source_buckets, source, now)
 
@@ -182,6 +212,7 @@ class LoginRateLimiter:
         """
         now = self._clock()
         with self._lock:
+            self._cleanup(now)
             acct_count = self._count(self._account_buckets, account, now)
             acct_full = (self._account_buckets.get(account) is None
                          and len(self._account_buckets) >= self._capacity)
@@ -198,25 +229,21 @@ class LoginRateLimiter:
 
     def _retry_hint(self, buckets: Dict[str, Deque[float]], key: str,
                     now: float, limit: int) -> int:
-        """Seconds until the oldest recorded failure ages out of the window."""
+        """Seconds until this limit, or one full-capacity slot, can expire."""
         bucket = buckets.get(key)
         if bucket:
             self._prune(bucket, now)
             if bucket:
-                age = now - bucket[0]
-                if age < self._window:
-                    return max(1, int(self._window - age))
+                expiry = bucket[-limit] if limit and len(bucket) >= limit else bucket[0]
+                return max(1, math.ceil(expiry + self._window - now))
+        if len(buckets) >= self._capacity:
+            expiry = min(values[-1] for values in buckets.values() if values)
+            return max(1, math.ceil(expiry + self._window - now))
         return 1
 
     def retry_after_for(self, account: str, source: str) -> Optional[int]:
         """Best-effort retry hint for an already-blocked key."""
-        now = self._clock()
-        with self._lock:
-            for buckets, key in ((self._account_buckets, account),
-                                 (self._source_buckets, source)):
-                if key in buckets:
-                    return self._retry_hint(buckets, key, now, 0)
-        return 1
+        return self.check(account, source).retry_after
 
 
 class DeploymentError(RuntimeError):

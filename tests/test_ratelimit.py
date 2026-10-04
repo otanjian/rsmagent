@@ -4,6 +4,7 @@
 import os
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 from auth.ratelimit import (LoginRateLimiter, RateLimitDecision,
@@ -22,6 +23,69 @@ class FakeClock:
 
 
 class LoginRateLimiterTests(unittest.TestCase):
+    def test_full_capacity_recovers_both_dimensions_and_audit_markers(self):
+        clock = FakeClock()
+        limiter = LoginRateLimiter(account_max=1, source_max=1,
+                                   window_seconds=10, max_capacity=2, clock=clock)
+        for key in ("old-a", "old-b"):
+            limiter.record_failure(key, key)
+            self.assertTrue(limiter.should_audit_denial(key, key))
+        self.assertEqual(limiter.check("new", "new").retry_after, 10)
+        clock.advance(10)
+        self.assertTrue(limiter.check("new", "new").allowed)
+        self.assertEqual(limiter.live_account_keys(), 0)
+        self.assertEqual(limiter.live_source_keys(), 0)
+        self.assertFalse(limiter._audited)
+        limiter.record_failure("new", "new")
+        self.assertFalse(limiter.check("new", "new").allowed)
+        self.assertTrue(limiter.should_audit_denial("new", "new"))
+
+    def test_partial_expiry_preserves_live_limit_and_recovers_in_record(self):
+        clock = FakeClock()
+        limiter = LoginRateLimiter(account_max=1, source_max=1,
+                                   window_seconds=10, max_capacity=2, clock=clock)
+        limiter.record_failure("old", "old")
+        clock.advance(5)
+        limiter.record_failure("live", "live")
+        clock.advance(5)
+        limiter.record_failure("new", "new")
+        self.assertEqual(limiter.live_account_keys(), 2)
+        self.assertEqual(limiter.check("live", "live").retry_after, 5)
+        self.assertFalse(limiter.check("new", "new").allowed)
+        self.assertEqual(limiter.check("overflow", "overflow").retry_after, 5)
+
+    def test_capacity_hint_waits_for_last_failure_and_rounds_up(self):
+        clock = FakeClock()
+        limiter = LoginRateLimiter(account_max=2, source_max=100,
+                                   window_seconds=10, max_capacity=1, clock=clock)
+        limiter.record_failure("old", "old")
+        clock.advance(2.5)
+        limiter.record_failure("old", "old")
+        self.assertEqual(limiter.check("new", "new").retry_after, 10)
+        self.assertEqual(limiter.check("old", "old").retry_after, 8)
+        clock.advance(7.5)
+        self.assertTrue(limiter.check("old", "old").allowed)
+        self.assertEqual(limiter.retry_after_for("new", "new"), 3)
+
+    def test_concurrent_expiry_and_record_remain_bounded(self):
+        clock = FakeClock()
+        limiter = LoginRateLimiter(account_max=5, source_max=5,
+                                   window_seconds=10, max_capacity=8, clock=clock)
+        for i in range(8):
+            limiter.record_failure(f"old{i}", f"old{i}")
+        clock.advance(10)
+        def record(i):
+            key = f"new{i % 8}"
+            limiter.check(key, key)
+            limiter.record_failure(key, key)
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(record, range(80)))
+        self.assertEqual(limiter.live_account_keys(), 8)
+        self.assertEqual(limiter.live_source_keys(), 8)
+        for i in range(8):
+            self.assertFalse(limiter.check(f"new{i}", f"new{i}").allowed)
+            self.assertEqual(len(limiter._account_buckets[f"new{i}"]), 10)
+
     def test_below_account_limit_allowed(self):
         clock = FakeClock()
         limiter = LoginRateLimiter(account_max=3, source_max=100,

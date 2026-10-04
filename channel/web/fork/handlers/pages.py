@@ -72,7 +72,7 @@ class ChatHandler:
         # Content-Type must be explicit: behind a reverse proxy that sends
         # X-Content-Type-Options: nosniff, a missing type makes browsers
         # refuse to sniff and render the page as plain text source.
-        from channel.web.web_channel import _web_navigation_mode
+        from channel.web.fork.common import _web_navigation_mode
         web.header('Content-Type', 'text/html; charset=utf-8')
         web.header('Cache-Control', 'no-cache, no-store, must-revalidate')
         web.header('Pragma', 'no-cache')

@@ -46,13 +46,13 @@ def _normalize_type(channel_type: str) -> str:
     return channel_type
 
 
-def _fresh(factory):
+def _fresh(factory, **kwargs):
     """Return a non-singleton instance when the class is @singleton-wrapped,
     else just call it. Lets several instances of one channel type coexist."""
     new_instance = getattr(factory, "new_instance", None)
     if new_instance is not None:
-        return new_instance()
-    return factory()
+        return new_instance(**kwargs)
+    return factory(**kwargs)
 
 
 def _build_channel(channel_type, multi_instance) -> Channel:
@@ -70,16 +70,18 @@ def _build_channel(channel_type, multi_instance) -> Channel:
         ch = WebChannel()
     elif channel_type == "wechatmp":
         from channel.wechatmp.wechatmp_channel import WechatMPChannel
-        ch = WechatMPChannel(passive_reply=True)
+        ch = (_fresh(WechatMPChannel, passive_reply=True, defer_init=True)
+              if multi_instance else WechatMPChannel(passive_reply=True))
     elif channel_type == "wechatmp_service":
         from channel.wechatmp.wechatmp_channel import WechatMPChannel
-        ch = WechatMPChannel(passive_reply=False)
+        ch = (_fresh(WechatMPChannel, passive_reply=False, defer_init=True)
+              if multi_instance else WechatMPChannel(passive_reply=False))
     elif channel_type == "wechatcom_app":
         from channel.wechatcom.wechatcomapp_channel import WechatComAppChannel
-        ch = WechatComAppChannel()
+        ch = _fresh(WechatComAppChannel, defer_init=True) if multi_instance else WechatComAppChannel()
     elif channel_type == const.WECHAT_KF:
         from channel.wechat_kf.wechat_kf_channel import WechatKfChannel
-        ch = WechatKfChannel()
+        ch = _fresh(WechatKfChannel, defer_init=True) if multi_instance else WechatKfChannel()
     elif channel_type == const.FEISHU:
         from channel.feishu.feishu_channel import FeiShuChanel
         ch = _fresh(FeiShuChanel) if multi_instance else FeiShuChanel()

@@ -1,7 +1,7 @@
 """Bridge original OneAgent handlers to verified rsmagent request identity.
 
-These functions are injected only into scene modules. They do not restore the
-old authentication stack or change global Python modules.
+Scene modules import these adapters explicitly. Identity is supplied by the
+request boundary; no global modules or imports are modified.
 """
 import json
 from contextvars import ContextVar

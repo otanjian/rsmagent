@@ -353,16 +353,16 @@ class TelegramChannel(ChatChannel):
                 # fallthrough to the TEXT branch below
 
             elif ctype == ContextType.IMAGE:
-                file_cache.add(session_id, content, file_type="image")
+                file_cache.add(self.file_cache_key(session_id), content, file_type="image")
                 logger.info(f"[Telegram] Image cached for session {session_id}, waiting for query...")
                 return
             elif ctype == ContextType.FILE:
-                file_cache.add(session_id, content, file_type="file")
+                file_cache.add(self.file_cache_key(session_id), content, file_type="file")
                 logger.info(f"[Telegram] File cached for session {session_id}: {content}")
                 return
 
             if ctype == ContextType.TEXT:
-                cached_files = file_cache.get(session_id)
+                cached_files = file_cache.get(self.file_cache_key(session_id))
                 if cached_files:
                     refs = []
                     for fi in cached_files:
@@ -370,7 +370,7 @@ class TelegramChannel(ChatChannel):
                         tag = ftype if ftype in ("image", "video") else "file"
                         refs.append(f"[{tag}: {fi['path']}]")
                     tg_msg.content = (tg_msg.content or "") + "\n" + "\n".join(refs)
-                    file_cache.clear(session_id)
+                    file_cache.clear(self.file_cache_key(session_id))
                     logger.info(f"[Telegram] Attached {len(cached_files)} cached file(s) to query")
 
             # Dispatch to cow main pipeline (reuses ChatChannel._compose_context routing)

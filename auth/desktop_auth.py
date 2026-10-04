@@ -200,33 +200,63 @@ def render_consent_page(*, backend_origin: str, username: str,
                         request_id: str, csrf: str) -> str:
     """The explicit Desktop confirmation page (never approves on a bare GET)."""
     host = urlsplit(redirect_uri).netloc
-    body = (
-        "<h1>Authorize the Desktop app</h1>"
-        "<p>Backend: <b>{origin}</b></p>"
-        "<p>Account: <b>{account}</b> (<code>{user}</code>)</p>"
-        "<p>This lets the Desktop app on <b>{host}</b> act as this account. "
-        "Only continue if you started this from the Desktop app.</p>"
-        "<form method=\"post\" action=\"{path}\">"
-        "<input type=\"hidden\" name=\"request_id\" value=\"{request_id}\">"
-        "<input type=\"hidden\" name=\"csrf\" value=\"{csrf}\">"
-        "<button type=\"submit\" name=\"decision\" value=\"allow\">Authorize</button>"
-        "<button type=\"submit\" name=\"decision\" value=\"deny\">Cancel</button>"
-        "</form>"
-    ).format(origin=html.escape(backend_origin),
+    body = """
+        <div class="auth-heading">
+            <span class="eyebrow">DESKTOP ACCESS</span>
+            <h1 id="auth-title">连接你的桌面工作空间</h1>
+            <p>确认以下账号，让容大 AI 在桌面端与你继续协作。</p>
+        </div>
+        <div class="account-card">
+            <div class="account-avatar" aria-hidden="true">{initial}</div>
+            <div class="account-identity"><strong>{account}</strong><span>@{user}</span></div>
+            <span class="account-status"><i aria-hidden="true"></i>已登录</span>
+        </div>
+        <div class="account-actions">
+            <button id="desktop-switch-account" class="account-switch" type="button">换个账号登录</button>
+        </div>
+        <p id="desktop-switch-error" class="form-error" role="alert" hidden></p>
+        <dl class="connection-details">
+            <div><dt>服务地址</dt><dd>{origin}</dd></div>
+            <div><dt>桌面客户端</dt><dd>{host}</dd></div>
+        </dl>
+        <div class="auth-notice">
+            <svg class="icon" aria-hidden="true"><use href="#icon-shield"></use></svg>
+            <p>授权后，桌面端将以此账号访问服务。<br>请仅在你主动发起桌面端登录时确认。</p>
+        </div>
+        <form method="post" action="{path}" class="consent-form">
+            <input type="hidden" name="request_id" value="{request_id}">
+            <input type="hidden" name="csrf" value="{csrf}">
+            <button class="button button-primary" type="submit" name="decision" value="allow">
+                确认授权并继续<svg class="icon" aria-hidden="true"><use href="#icon-arrow"></use></svg>
+            </button>
+            <button class="button button-secondary" type="submit" name="decision" value="deny">取消授权</button>
+        </form>
+        <p class="form-footer">确认后，将自动返回桌面端</p>
+    """.format(origin=html.escape(backend_origin),
              account=html.escape(display_name or username),
+             initial=html.escape((display_name or username or "U")[0].upper()),
              user=html.escape(username), host=html.escape(host),
              path=html.escape(AUTHORIZE_PATH),
              request_id=html.escape(request_id), csrf=html.escape(csrf))
-    return _page("Desktop authorization", body)
+    return _page("确认桌面端授权", body, step="consent")
 
 
 def render_notice_page(*, title: str, message: str,
                        console_path: str = "/chat") -> str:
-    """A plain browser notice (finish the password change / session expired)."""
-    body = (
-        "<h1>{title}</h1><p>{message}</p>"
-        "<p><a href=\"{console}\">Open the Web console</a></p>"
-    ).format(title=html.escape(title), message=html.escape(message),
+    """A browser notice sharing the sign-in and consent presentation."""
+    body = """
+        <div class="auth-heading">
+            <span class="eyebrow">ACCOUNT VERIFICATION</span>
+            <h1 id="auth-title">{title}</h1><p>{message}</p>
+        </div>
+        <div class="auth-notice">
+            <svg class="icon" aria-hidden="true"><use href="#icon-shield"></use></svg>
+            <p>完成账号验证后，请从桌面端重新发起登录。</p>
+        </div>
+        <a class="button button-primary" href="{console}">前往 Web 控制台
+            <svg class="icon" aria-hidden="true"><use href="#icon-arrow"></use></svg>
+        </a>
+    """.format(title=html.escape(title), message=html.escape(message),
              console=html.escape(console_path))
     return _page(title, body)
 
@@ -240,58 +270,25 @@ def render_sign_in_page() -> str:
     users stuck. Collecting the password here keeps the Cookie on the exact
     host the consent POST will need, then reloads this authorize URL.
     """
-    body = (
-        "<h1>Sign in to continue</h1>"
-        "<p>Sign in on this page to authorize the Desktop app. "
-        "Use the same account you use in the Web console.</p>"
-        "<form id=\"desktop-auth-login\">"
-        "<p><label>Username <input name=\"username\" autocomplete=\"username\" "
-        "required></label></p>"
-        "<p><label>Password <input name=\"password\" type=\"password\" "
-        "autocomplete=\"current-password\" required></label></p>"
-        "<p id=\"desktop-auth-login-error\" style=\"color:#b91c1c\" hidden></p>"
-        "<p><button type=\"submit\">Sign in</button></p>"
-        "</form>"
-        "<script>(function(){"
-        "var f=document.getElementById('desktop-auth-login');"
-        "var err=document.getElementById('desktop-auth-login-error');"
-        "f.addEventListener('submit',function(ev){"
-        "ev.preventDefault();"
-        "err.hidden=true;"
-        "var fd=new FormData(f);"
-        "fetch('/auth/login',{"
-        "method:'POST',"
-        "credentials:'same-origin',"
-        "headers:{'Content-Type':'application/json','Accept':'application/json'},"
-        "body:JSON.stringify({"
-        "username:String(fd.get('username')||''),"
-        "password:String(fd.get('password')||'')"
-        "})"
-        "}).then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})"
-        ".then(function(x){"
-        "if(x.ok&&x.j&&x.j.status==='success'){location.reload();return;}"
-        "err.textContent=(x.j&&x.j.message)||'Sign-in failed';"
-        "err.hidden=false;"
-        "}).catch(function(){"
-        "err.textContent='Sign-in failed';"
-        "err.hidden=false;"
-        "});"
-        "});"
-        "})();</script>"
-    )
-    return _page("Sign in to continue", body)
+    from channel.web.core import template
+
+    # Share the Web console's login markup and stylesheet. Only the completion
+    # action differs: reload this validated authorize URL to ask for consent.
+    return template.render("templates/auth/desktop-login.html")
 
 
-def _page(title: str, body: str) -> str:
+def _page(title: str, body: str, *, step: str = "login") -> str:
+    from channel.web.core import template
+
     # ``same-origin`` (not ``no-referrer``): the Authorize form POST is
     # same-origin and needs a Referer/Origin for browsers that omit Origin on
     # navigational form posts, while the redirect to the loopback callback is
     # cross-origin so the referrer (and the authorize query string) is stripped.
-    return (
-        "<!doctype html><html><head><meta charset=\"utf-8\">"
-        "<meta name=\"referrer\" content=\"same-origin\">"
-        "<title>%s</title></head><body>%s</body></html>"
-        % (html.escape(title), body)
+    return template.render("templates/auth/desktop.html").format(
+        title=html.escape(title), body=body,
+        login_state='class="is-complete"' if step == "consent" else 'aria-current="step"',
+        consent_state='aria-current="step"' if step == "consent" else '',
+        login_number='&#10003;' if step == "consent" else '1',
     )
 
 

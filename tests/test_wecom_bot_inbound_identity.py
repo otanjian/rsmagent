@@ -161,6 +161,11 @@ def test_an_unbound_sender_is_unbound_and_not_unsupported(f, monkeypatch):
     as "channel not open" and the administrator had nothing to bind, because
     the missing triple is refused before any binding is consulted."""
     monkeypatch.setattr("bridge.bridge.Bridge", _FakeBridge)
+    # An established instance must reject a stranger. A new instance instead
+    # claims its first private sender by the existing automatic binding rule.
+    with f.service._tx() as con:
+        con.execute("UPDATE tenant_channel_instances SET sender_binding_at=1 WHERE id=?",
+                    (f.instance["id"],))
     context = _context(_channel(), _body())
     context["instance_id"] = f.instance["id"]
 

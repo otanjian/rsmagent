@@ -116,3 +116,39 @@ that silently writes your git configuration is a surprise, not a convenience.)
    it fails when a fork symbol has been written into an upstream module, which
    is how the next sync turns back into a whole-file conflict.
 
+
+### Keeping `master` and `rdai` independently mergeable
+
+Keep generic changes and tenant-specific changes in separate commits when
+preparing a PR. For the simplification work, the boundary is:
+
+- `channel/web/static/js/views/tasks-modal.js` adds a generic, optional
+  `registerTaskModalAdapter({ dropdown })` hook. Without an adapter it uses
+  the original `initDropdown`. This small change can be cherry-picked to
+  `master` independently; task permissions and delivery rules stay in
+  `static/js/fork/tasks-console.js`. Do not replace the global dropdown.
+- `channel/web/api/` and `channel/web/core/` retain upstream implementations.
+  The rdai model handler reuses five explicit, pure value transforms from the
+  upstream handler; it does not inherit HTTP methods or authorization. Review
+  these named transforms when upstream changes their contract.
+- Ordinary fork helpers import their owner modules directly. The remaining
+  `web_channel` imports are compatibility/injection seams; preserve their
+  existing callers while migrating a seam deliberately. New helpers should
+  not route dependencies back through the HTTP entry module.
+- `auth/`, `integrations/external/`, `Scene/` and personal memory contain rdai
+  policy. Console display projection lives in `auth/console_projection.py`;
+  authorization and database transactions remain in the identity service.
+  Merge upstream algorithms into the scene modules using their recorded
+  source hashes and explicit host/resource imports.
+
+The personal-maintenance upgrade appends migration 46. Existing windows are
+qualified by their opening member, without changing connection IDs or the
+migration ledger's aggregate scope keys. Append future migrations; do not
+rewrite the recorded upgrade. Resolve migration-number conflicts before
+shipping branches that independently appended migrations.
+
+A master merge must retain rdai route policy and owner filtering even when an
+upstream handler has the same name. The task-modal drift guard removes only the
+small adapter hook before comparing the original upstream digest, so unrelated
+upstream changes still require review. Run the route and module seam checks,
+then the affected behavior tests, including `tests/test_rdai_simplification.py`.

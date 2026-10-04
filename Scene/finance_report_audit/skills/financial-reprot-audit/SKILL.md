@@ -572,7 +572,7 @@ pip install openpyxl>=3.0.0      # Excel .xlsx 格式
 pip install xlrd>=2.0.0          # Excel .xls 格式
 pip install python-docx>=0.8.11  # Word .docx 格式
 pip install pdfplumber>=0.6.0    # PDF 格式（推荐，支持表格提取）
-pip install PyPDF2>=3.0.0        # PDF 格式（备选）
+pip install pypdf>=3.9.0        # PDF 格式（备选）
 
 # 其他
 pip install jieba>=0.42.1        # 中文分词

@@ -32,7 +32,7 @@ from datetime import datetime, timedelta
 
 import web
 
-from channel.web.web_channel_utils import (
+from Scene._shared.host import (
     _get_workspace_root,
     _require_auth,
     _require_permission,
@@ -89,7 +89,7 @@ DEFAULT_RULES = {
 # ---------------------------------------------------------------------------
 def _project_root():
     """项目根目录（handlers → web → channel → root 四层 dirname）。"""
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _scheduling_config_dir():

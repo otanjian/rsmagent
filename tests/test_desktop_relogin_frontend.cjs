@@ -91,6 +91,7 @@ function environment({ desktopAccount, host } = {}) {
     const reloads = [];
     const toasts = [];
     const fetches = [];
+    const memoryResets = [];
     const win = {};
     if (host) win.CowDesktopHost = host;
 
@@ -107,6 +108,8 @@ function environment({ desktopAccount, host } = {}) {
         _invalidateAccountIdentity: () => undefined,
         _resetHistorySearch: () => undefined,
         _desktopContextClear: () => undefined,
+        // Supplied by the memory page module in the real console.
+        resetMemoryView: () => memoryResets.push('reset'),
         location: { reload: () => { reloads.push(1); } },
         fetch: async (url, options) => {
             fetches.push({ url, options });
@@ -135,7 +138,7 @@ function environment({ desktopAccount, host } = {}) {
             'desktopRelogin'].map(extract).join('\n\n'),
         ctx,
     );
-    return { ctx, document, node: (id) => document.getElementById(id), reloads, toasts, fetches };
+    return { ctx, document, node: (id) => document.getElementById(id), reloads, toasts, fetches, memoryResets };
 }
 
 const visible = (h, id) => h.node(id).classList.contains('hidden') === false;
@@ -195,6 +198,7 @@ test('the desktop re-login ends the Web session first, the host second, and neve
     h.node('login-recovery-btn').disabled = false;
     await h.ctx.desktopRelogin();
     assert.deepEqual(order, ['logout', 'signOut']);
+    assert.deepEqual(h.memoryResets, ['reset'], 'account switching clears the previous memory view');
     assert.equal(h.fetches[0].url, '/auth/logout', 'the Web session is what is confirmed');
     assert.deepEqual(h.reloads, [], 'a reload would be the plain Web form this change removes');
     assert.equal(visible(h, 'login-recovery-error'), false, 'success says nothing');

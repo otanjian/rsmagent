@@ -19,10 +19,6 @@ from wechatpy.enterprise import WeChatClient
 from channel.wechatcom import wechatcomapp_client as client_mod
 
 
-class _Stop(Exception):
-    """Raised from the patched ``time.sleep`` to end the refresh loop."""
-
-
 def _wait_for(predicate, timeout=5.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -38,24 +34,28 @@ def test_refresh_loop_keeps_going_after_a_failed_fetch(monkeypatch):
     The refresh thread reaching ``time.sleep`` a second time is the observable
     proof that it swallowed the error and went round again.
     """
-    sleeps = []
+    waits = []
 
-    def fake_sleep(seconds):
-        sleeps.append(seconds)
-        if len(sleeps) >= 2:
-            raise _Stop
+    class FastStopEvent:
+        def is_set(self):
+            return len(waits) >= 2
 
-    monkeypatch.setattr(time, "sleep", fake_sleep)
+        def wait(self, seconds):
+            waits.append(seconds)
 
+        def set(self):
+            waits.extend([60, 60])
+
+    with patch.object(client_mod.WechatComAppClient, "_active_refresh"):
+        client = client_mod.WechatComAppClient("ww-test", "secret")
+    client._stop_event = FastStopEvent()
     with patch.object(
         WeChatClient, "fetch_access_token", side_effect=RuntimeError("network down")
     ):
-        client_mod.WechatComAppClient("ww-test", "secret")
-
-    assert _wait_for(lambda: len(sleeps) >= 2), (
-        "the refresh thread stopped after the first failed fetch; the access "
-        "token will never be renewed again in this process"
-    )
+        client._active_refresh()
+        assert _wait_for(lambda: len(waits) >= 2), (
+            "the refresh thread must survive a failed fetch")
+    client.stop()
 
 
 def test_one_refresh_pass_does_not_propagate_the_error():
@@ -65,6 +65,7 @@ def test_one_refresh_pass_does_not_propagate_the_error():
     ):
         client = client_mod.WechatComAppClient("ww-test", "secret")
         client._refresh_once_if_needed()
+        client.stop()
 
     # Reaching this line means the exception never left the refresh body.
     assert client is not None
@@ -76,4 +77,5 @@ def test_a_healthy_pass_still_fetches_when_the_token_is_stale():
         client = client_mod.WechatComAppClient("ww-test", "secret")
         client.session.set(f"{client.corp_id}_expires_at", 0)
         client._refresh_once_if_needed()
+        client.stop()
     assert fetch.called

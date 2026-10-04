@@ -1,30 +1,8 @@
 # encoding:utf-8
-"""Channel types whose inbound can never prove a sender (task 7.7).
+"""Admissibility gates, including a simulated deployment missing adapters.
 
-The type catalogue offered 8 types, but only three adapters stamp the inbound
-author's external identity triple. In database identity mode
-``chat_channel._preflight_external_inbound`` refuses an unstamped context *before*
-any binding lookup and without recording the attempt, so for the other five the
-first message is refused for good — while the instance could be created, was
-really started, and was reported ``connected``. The filter existed
-(``personal_channel_ready``) but keyed on ``MULTI_INSTANCE_READY``, whose meaning
-is "can run several instances", not "can prove the sender".
-
-These tests pin the new declaration and every place it has to be visible:
-
-* the predicate is the stamping set in database mode, and self-disables in form;
-* the personal readiness verdict carries its own reason code;
-* the *catalogue* keeps the field contract of an inadmissible type (dropping the
-  entry would render an existing row's form with no fields) and carries a
-  separate verdict instead;
-* the write path refuses to *create* an inadmissible instance, and leaves
-  nothing half-written;
-* existing inadmissible rows keep being editable and rotatable — the deliberate
-  consequence of putting the backstop in the create branch only.
-
-Control cases are part of the design: the three stamping types must stay
-creatable, and an inadmissible type's stored row must keep its field contract, so
-"refuse everything" cannot pass.
+All master types now stamp identity. The gate tests deliberately withdraw the
+new adapters to retain coverage of refusal, repair and re-enable boundaries.
 """
 
 import os
@@ -86,9 +64,11 @@ def _db_path():
 class DeclarationTests(unittest.TestCase):
     """The declaration itself: one set, and a predicate derived from it."""
 
-    def test_the_stamping_set_is_the_three_adapters_that_call_the_stamp(self):
+    def test_the_stamping_set_covers_every_master_adapter(self):
         self.assertEqual(INBOUND_IDENTITY_STAMPING_TYPES,
-                         {"feishu", "dingtalk", "wecom_bot"})
+                         {"feishu", "dingtalk", "wecom_bot", "weixin", "qq",
+                          "telegram", "slack", "discord", "wechatcom_app",
+                          "wechat_kf", "wechatmp"})
 
     def test_the_stamping_set_is_a_subset_of_what_can_run_instances(self):
         # The two declarations answer different questions, and both have to hold
@@ -113,7 +93,9 @@ class DeclarationTests(unittest.TestCase):
             self.assertEqual(personal_channel_ready("slack"), (True, ""))
         # ...and the default is the narrowed one, so the test above is not
         # passing because the predicate ignores the mode entirely.
-        self.assertFalse(inbound_identity_admissible("slack"))
+        with patch("channel.channel_instances.INBOUND_IDENTITY_STAMPING_TYPES",
+                   frozenset({"feishu", "dingtalk", "wecom_bot"})):
+            self.assertFalse(inbound_identity_admissible("slack"))
 
     def test_the_new_reason_code_is_a_declared_one(self):
         self.assertIn("no_inbound_identity", PERSONAL_NOT_READY_REASONS)
@@ -123,6 +105,8 @@ class DeclarationTests(unittest.TestCase):
             self.assertIn(reason, PERSONAL_NOT_READY_REASONS | {""}, channel_type)
 
 
+@patch("channel.channel_instances.INBOUND_IDENTITY_STAMPING_TYPES",
+       frozenset({"feishu", "dingtalk", "wecom_bot"}))
 class CatalogueTests(unittest.TestCase):
     """The catalogue serves candidates *and* the field contract; keep both."""
 
@@ -222,6 +206,8 @@ class _WriteFixture(unittest.TestCase):
         return int(rows[0]["c"])
 
 
+@patch("channel.channel_instances.INBOUND_IDENTITY_STAMPING_TYPES",
+       frozenset({"feishu", "dingtalk", "wecom_bot"}))
 class MemberWriteGateTests(_WriteFixture):
     """The one gate member create *and* enable both pass through."""
 
@@ -243,6 +229,8 @@ class MemberWriteGateTests(_WriteFixture):
                     con, self.ta, "feishu", self.root["id"])
 
 
+@patch("channel.channel_instances.INBOUND_IDENTITY_STAMPING_TYPES",
+       frozenset({"feishu", "dingtalk", "wecom_bot"}))
 class CreateBackstopTests(_WriteFixture):
     """A caller posting past the console must not be able to store a dead type."""
 
@@ -325,6 +313,8 @@ class CreateBackstopTests(_WriteFixture):
         return instance_id
 
 
+@patch("channel.channel_instances.INBOUND_IDENTITY_STAMPING_TYPES",
+       frozenset({"feishu", "dingtalk", "wecom_bot"}))
 class ReEnableBackstopTests(_WriteFixture):
     """Task 7.8: the last door into the 7.7 defect, closed at the switch.
 

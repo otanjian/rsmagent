@@ -1,3 +1,11 @@
+
+from Scene._shared.host import _require_auth
+from Scene._shared.host import _require_permission
+from Scene._shared.host import get_current_tenant_id
+import json
+from common.log import logger
+import web
+
 class ProcurementErpSyncHandler:
     """POST /api/procurement/erp-sync - Test connection or sync data from ERP."""
 

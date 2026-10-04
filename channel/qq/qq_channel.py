@@ -456,7 +456,7 @@ class QQChannel(ChatChannel):
 
         if qq_msg.ctype == ContextType.IMAGE:
             if hasattr(qq_msg, "image_path") and qq_msg.image_path:
-                file_cache.add(session_id, qq_msg.image_path, file_type="image")
+                file_cache.add(self.file_cache_key(session_id), qq_msg.image_path, file_type="image")
                 logger.info(f"[QQ] Image cached for session {session_id}")
             return
 
@@ -471,14 +471,14 @@ class QQChannel(ChatChannel):
                 # FileCache understands image/video/other; map voice to a generic
                 # file bucket so it still renders as [文件: ...] downstream.
                 cache_type = ftype if ftype in ("image", "video") else "file"
-                file_cache.add(session_id, fpath, file_type=cache_type)
+                file_cache.add(self.file_cache_key(session_id), fpath, file_type=cache_type)
                 logger.info(f"[QQ] {ftype} cached for session {session_id}: {fpath}")
             else:
                 logger.warning("[QQ] File message had no downloadable attachment")
             return
 
         if qq_msg.ctype == ContextType.TEXT:
-            cached_files = file_cache.get(session_id)
+            cached_files = file_cache.get(self.file_cache_key(session_id))
             if cached_files:
                 file_refs = []
                 for fi in cached_files:
@@ -492,7 +492,7 @@ class QQChannel(ChatChannel):
                         file_refs.append(f"[文件: {fpath}]")
                 qq_msg.content = qq_msg.content + "\n" + "\n".join(file_refs)
                 logger.info(f"[QQ] Attached {len(cached_files)} cached file(s)")
-                file_cache.clear(session_id)
+                file_cache.clear(self.file_cache_key(session_id))
 
         context = self._compose_context(
             qq_msg.ctype,

@@ -10,7 +10,8 @@ gTTS>=2.3.1 # google text to speech
 dulwich
 
 # xunfei spark
-websocket-client==1.2.0
+# Shares the main channel requirement; the old 1.2 pin made clean installs unsatisfiable.
+websocket-client>=1.4.0
 
 # google
 google-generativeai

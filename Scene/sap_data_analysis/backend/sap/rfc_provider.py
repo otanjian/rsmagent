@@ -4,6 +4,7 @@
 支持字段选择、WHERE 条件、分批读取，适合生产环境大数据量抽取。
 """
 
+
 import logging
 import os
 import platform
@@ -640,23 +641,15 @@ class RfcProvider(SAPDataProvider):
 
     def _load_query_catalog(self) -> Dict[str, Any]:
         """加载 SAP 查询能力目录。"""
-        import json
+        from .config import get_catalog
+        return get_catalog()
 
-        paths = [
-            os.path.join(os.path.dirname(__file__), "..", "..", "..", "skills", "sap-integration", "references", "sap_query_catalog.json"),
-            os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "skills", "sap-integration", "references", "sap_query_catalog.json"),
-        ]
-        for path in paths:
-            if os.path.isfile(path):
-                with open(path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-        return {}
 
     def fetch_by_plan(self, plan) -> List[Dict[str, Any]]:
         """根据 QueryPlan 读取 SAP 表数据。
 
         Args:
-            plan: channel.web.sap.query_planner.QueryPlan 实例
+            plan: Scene.sap_data_analysis.backend.sap.query_planner.QueryPlan 实例
 
         Returns:
             字段名已映射为中文表头的字典列表

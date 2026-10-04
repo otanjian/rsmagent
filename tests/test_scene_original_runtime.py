@@ -58,6 +58,26 @@ class OriginalSceneRuntimeTests(unittest.TestCase):
         denied = self.request('/upload', {'session_id': '../escape', 'files': {'a': {'filename': '../oops', 'content': 'x'}}})
         self.assertEqual(denied.status, '400 Bad Request')
 
+    def test_upload_validates_derived_filename_before_writing_any_file(self):
+        denied = self.request('/upload', {'session_id': 'guard', 'files': {
+            'valid': {'filename': 'valid.csv', 'content': 'must not be written'},
+            '../../../escaped': {'content': 'escape'},
+        }})
+        self.assertEqual(denied.status, '400 Bad Request')
+        self.assertFalse((Path(self.scratch.name) / 'escaped.csv').exists())
+        self.assertFalse((Path(self.scratch.name) / 'tmp/workbench/guard/valid.csv').exists())
+
+    def test_upload_does_not_follow_a_symlinked_session_directory(self):
+        root = Path(self.scratch.name)
+        outside = root / 'outside'; outside.mkdir()
+        parent = root / 'tmp/workbench'; parent.mkdir(parents=True)
+        (parent / 'linked').symlink_to(outside, target_is_directory=True)
+        denied = self.request('/upload', {'session_id': 'linked', 'files': {
+            'data': {'content': 'must not escape'},
+        }})
+        self.assertEqual(denied.status, '400 Bad Request')
+        self.assertEqual(list(outside.iterdir()), [])
+
     def test_original_excel_parser(self):
         from openpyxl import Workbook
         wb = Workbook(); ws = wb.active

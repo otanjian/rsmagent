@@ -85,7 +85,7 @@ def _ps_quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def _pruned_dirs(root: str, max_depth: int = 2) -> List[str]:
+def _pruned_dirs(root: str, max_depth: int = 2, allowed=None) -> List[str]:
     """Denylisted directory names actually present under ``root``.
 
     The external backends prune inside their own subprocess and cannot report
@@ -101,6 +101,8 @@ def _pruned_dirs(root: str, max_depth: int = 2) -> List[str]:
         except OSError:
             return
         for entry in entries:
+            if allowed and not allowed(entry.path):
+                continue
             try:
                 if not entry.is_dir(follow_symlinks=False):
                     continue
@@ -179,7 +181,7 @@ class SearchFiles(BaseTool):
 
     # --------------------------------------------------------- file-name search
     def _find_by_name(self, pattern: str, root: str, ignore_case: bool,
-                      no_ignore: bool, max_results: int) -> ToolResult:
+                      no_ignore: bool, max_results: int, allowed=None) -> ToolResult:
         """Find files whose name matches a glob.
 
         Answers "where is that file?", which content search cannot: grepping for
@@ -216,7 +218,7 @@ class SearchFiles(BaseTool):
             for d in dirnames:
                 if d in _SKIP_DIR_NAMES and not no_ignore:
                     continue
-                if self._is_credential_path(os.path.join(dirpath, d)):
+                if self._is_credential_path(os.path.join(dirpath, d)) or (allowed and not allowed(os.path.join(dirpath, d))):
                     continue
                 kept.append(d)
             dirnames[:] = sorted(kept)
@@ -227,7 +229,7 @@ class SearchFiles(BaseTool):
                 if not matcher(filename, pattern):
                     continue
                 full = os.path.join(dirpath, filename)
-                if self._is_credential_path(full):
+                if self._is_credential_path(full) or (allowed and not allowed(full)):
                     continue
                 try:
                     mtime = os.path.getmtime(full)
@@ -310,6 +312,10 @@ class SearchFiles(BaseTool):
                 return ToolResult.fail(f"Error: invalid regex pattern: {e}")
 
         root = self._resolve_path(path)
+        from agent.tools.bash import launcher
+        allowed = launcher.read_filter()
+        if allowed and not allowed(root):
+            return ToolResult.fail('Error: search path outside authorized scope')
         if self._is_credential_path(root):
             return ToolResult.fail(
                 "Error: Access denied. API keys and credentials must be accessed through the env_config tool only."
@@ -321,15 +327,18 @@ class SearchFiles(BaseTool):
             )
 
         if target == "files":
-            return self._find_by_name(pattern, root, ignore_case, no_ignore, max_results)
+            return self._find_by_name(pattern, root, ignore_case, no_ignore, max_results, allowed)
 
         opts = _SearchOptions(
             pattern=pattern, root=root, file_glob=file_glob,
             output_mode=output_mode, ignore_case=ignore_case,
             no_ignore=no_ignore, max_results=max_results, deadline=time.monotonic() + self.timeout,
         )
+        opts.allowed = allowed
 
-        backend = self._pick_backend()
+        # External recursive scanners cannot honor per-owner descendants. The
+        # existing Python backend prunes before reading, preserving all modes.
+        backend = self._backend_python if allowed else self._pick_backend()
         used = _BACKEND_LABELS.get(backend.__name__, backend.__name__)
         try:
             outcome = backend(opts)
@@ -600,7 +609,7 @@ class SearchFiles(BaseTool):
             for d in dirnames:
                 if d in _SKIP_DIR_NAMES and not opts.no_ignore:
                     continue
-                if self._is_credential_path(os.path.join(dirpath, d)):
+                if self._is_credential_path(os.path.join(dirpath, d)) or (getattr(opts, 'allowed', None) and not opts.allowed(os.path.join(dirpath, d))):
                     continue
                 kept.append(d)
             dirnames[:] = sorted(kept)
@@ -615,7 +624,7 @@ class SearchFiles(BaseTool):
                 if opts.file_glob and opts.file_glob != "*" and not fnmatch.fnmatch(filename, opts.file_glob):
                     continue
                 fp = os.path.join(dirpath, filename)
-                if self._is_credential_path(fp):
+                if self._is_credential_path(fp) or (getattr(opts, 'allowed', None) and not opts.allowed(fp)):
                     continue
                 file_rows, hit_deadline, hit_pattern_timeout = self._python_scan_file(fp, compiled, opts)
                 rows.extend(file_rows)
@@ -703,7 +712,7 @@ class SearchFiles(BaseTool):
         # directory is really there: otherwise it is noise on every call, and
         # in a tree without one it is simply untrue.
         if not rows and not opts.no_ignore:
-            pruned = _pruned_dirs(opts.root)
+            pruned = _pruned_dirs(opts.root, allowed=opts.allowed)
             if pruned:
                 notices.append(
                     f"Skipped {', '.join(pruned)}. Use no_ignore=true to search them too."
@@ -726,10 +735,11 @@ class _BackendResult:
 class _SearchOptions:
     """Plain container for a single search invocation's resolved options."""
     __slots__ = ("pattern", "root", "file_glob", "output_mode",
-                 "ignore_case", "no_ignore", "max_results", "deadline")
+                 "ignore_case", "no_ignore", "max_results", "deadline", "allowed")
 
     def __init__(self, pattern, root, file_glob, output_mode,
                  ignore_case, no_ignore, max_results, deadline):
+        self.allowed = None
         self.pattern = pattern
         self.root = root
         self.file_glob = file_glob
