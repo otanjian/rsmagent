@@ -181,7 +181,7 @@
     function renderTabs() {
         const tabsEl = getEl('scenes-tabs');
         if (!tabsEl) return;
-        if (!_activeCategory) _activeCategory = (_catalogCache.categories[0] || { id: 'all' }).id || 'all';
+        if (!_activeCategory) _activeCategory = 'all';
         tabsEl.replaceChildren();
         tabsEl.classList.remove('hidden');
 
@@ -228,33 +228,66 @@
 
         scenes.forEach(function (scene) {
             const cat = categoryById(scene.category) || {};
-            const card = document.createElement('button');
-            card.type = 'button';
+            const accent = scene.color || cat.color || '#64748b';
+            // A scene that offers its own configuration gets a real 配置 control
+            // in place of the category tag. That control has to be a nested
+            // button, and a <button> may not contain another one, so such a card
+            // is a div carrying button semantics instead.
+            const configurable = scene.card_action === 'configure';
+            const card = document.createElement(configurable ? 'div' : 'button');
+            if (!configurable) card.type = 'button';
             card.className = 'scene-card text-left flex flex-col rounded-2xl border border-slate-200 dark:border-white/10 ' +
                 'bg-white dark:bg-[#1c1c1c] p-5 hover:shadow-lg hover:border-slate-300 dark:hover:border-white/20 ' +
                 'transition-all duration-200 cursor-pointer';
+            if (configurable) { card.setAttribute('role', 'button'); card.tabIndex = 0; }
             card.dataset.sceneId = scene.id;
             card.innerHTML =
                 '<div class="flex items-start justify-between mb-3">' +
                     '<div class="w-11 h-11 rounded-xl flex items-center justify-center" style="background:' +
-                        (scene.color || cat.color || '#64748b') + '1a;">' +
+                        accent + '1a;">' +
                         '<i class="fas ' + (scene.icon || cat.icon || 'fa-cube') + ' text-lg" style="color:' +
-                        (scene.color || cat.color || '#64748b') + ';"></i></div>' +
+                        accent + ';"></i></div>' +
                     (scene.has_workbench
                         ? '<span class="scene-badge text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 ' +
                           'text-indigo-500 dark:text-indigo-300">' + t('scenes_workbench') + '</span>' : '') +
                 '</div>' +
                 '<div class="font-semibold text-slate-800 dark:text-slate-100 mb-1">' + escapeHtml(scene.name) + '</div>' +
-                '<p class="text-sm text-slate-500 dark:text-slate-400 line-clamp-2 flex-1">' +
+                '<p class="text-sm text-slate-500 dark:text-slate-400 ' + (scene.id === 'sap_workbench' ? '' : 'line-clamp-2 ') + 'flex-1">' +
                     escapeHtml(scene.description || '') + '</p>' +
                 '<div class="mt-3 flex items-center justify-between">' +
-                    '<span class="text-[11px] px-2 py-0.5 rounded-full" style="color:' +
-                        (cat.color || '#64748b') + ';background:' + (cat.color || '#64748b') + '1a;">' +
-                        escapeHtml(cat.name || '') + '</span>' +
+                    (configurable
+                        ? '<button type="button" class="scene-configure text-xs px-3 py-1 rounded-full border font-medium ' +
+                          'border-slate-300 dark:border-white/20 text-slate-600 dark:text-slate-300 ' +
+                          'hover:border-primary-400 hover:text-primary-500 transition-colors">' +
+                          escapeHtml(t('scenes_configure')) + '</button>'
+                        : '<span class="text-[11px] px-2 py-0.5 rounded-full" style="color:' +
+                          (cat.color || '#64748b') + ';background:' + (cat.color || '#64748b') + '1a;">' +
+                          escapeHtml(cat.name || '') + '</span>') +
                     '<span class="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1">' +
                         '<i class="fas fa-arrow-right text-[10px]"></i>' + t('scenes_go_chat') + '</span>' +
                 '</div>';
-            card.addEventListener('click', function () { onSceneCardClick(scene); });
+            // One delegated listener: the 配置 control lives in markup set via
+            // innerHTML, so the routing is done on the event target rather than
+            // on a node reference that only a real parser would produce.
+            card.addEventListener('click', function (event) {
+                if (configurable && event.target && typeof event.target.closest === 'function'
+                    && event.target.closest('.scene-configure')) {
+                    onSceneConfigureClick(scene);
+                    return;
+                }
+                onSceneCardClick(scene);
+            });
+            if (configurable) {
+                card.addEventListener('keydown', function (event) {
+                    // The nested control handles its own keys; only the card
+                    // itself activates here.
+                    if (event.target !== card) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onSceneCardClick(scene);
+                    }
+                });
+            }
             grid.appendChild(card);
         });
     }
@@ -293,8 +326,17 @@
         openSceneById(scene.id);
     }
 
+    // 卡片上的「配置」入口：与普通打开共用同一条准备路径，只把最后一步分发
+    // 换成配置面，避免出现两个入口行为不一致。
+    function onSceneConfigureClick(scene) {
+        return openSceneById(scene.id, 'configure');
+    }
+
     // ---- 激活场景 / 工作台分发 -------------------------------------------
-    function openSceneById(sceneId) {
+    // ``action`` 为 ``'configure'`` 时走卡片的「配置」入口：准备步骤与普通打开
+    // 完全一致（否则首次点击时运行时还没加载，会误退化成普通打开），只有最后
+    // 一步分发不同——声明了配置面的场景打开配置，其余场景照常打开。
+    function openSceneById(sceneId, action) {
         // 允许在进入场景中心前直接被调用（工作台/选择器/直链）：先确保目录数据。
         return ensureSceneData(false).then(function () {
             return ensureRegistry();
@@ -305,7 +347,13 @@
             const wbType = registry && registry.resolveWorkbenchType
                 ? registry.resolveWorkbenchType(scene) : 'base';
             return ensureWorkbenches().then(function () {
-                if (window.SceneOriginal) return window.SceneOriginal.open(scene);
+                const original = window.SceneOriginal;
+                if (original && action === 'configure' && typeof original.configure === 'function') {
+                    return original.configure(scene);
+                }
+                if (original) return original.open(scene);
+                // A missing SAP runtime must never activate a normal Agent.
+                if (scene.id === 'sap_workbench') throw new Error(t('scenes_activate_failed'));
                 if (scene.has_workbench && registry && registry.hasRenderer && registry.hasRenderer(wbType)) {
                     return registry.render(wbType, scene);
                 }

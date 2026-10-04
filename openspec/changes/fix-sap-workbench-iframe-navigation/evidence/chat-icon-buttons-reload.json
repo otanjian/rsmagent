@@ -1,0 +1,8 @@
+{
+  "web_port": 9899,
+  "old_pid": 14676,
+  "new_pid": 16421,
+  "health": 200,
+  "original_command_and_environment_preserved": true,
+  "existing_history_preserved": true
+}

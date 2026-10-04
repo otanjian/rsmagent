@@ -1,0 +1,32 @@
+name: sap-workbench-display
+services:
+  browser:
+    image: sap-workbench-display:154.0.8037.92-novnc1.7.0
+    build:
+      context: .
+      dockerfile: browser.Dockerfile
+    init: true
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./chrome-seccomp.json
+    shm_size: 1gb
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m,mode=1777
+    ports:
+      - "127.0.0.1:${SAP_WORKBENCH_NOVNC_PORT:-6080}:6080"
+    environment:
+      SAP_BROWSER_WIDTH: "1280"
+      SAP_BROWSER_HEIGHT: "800"
+    secrets:
+      - vnc_password
+    pids_limit: 256
+    cpus: 2.0
+    mem_limit: 2g
+    restart: "no"
+    stop_grace_period: 15s
+secrets:
+  vnc_password:
+    file: ${SAP_WORKBENCH_VNC_SECRET_FILE:?Set an external x11vnc auth-file path}

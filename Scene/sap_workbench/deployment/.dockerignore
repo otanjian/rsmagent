@@ -1,0 +1,6 @@
+*
+!browser-versions.json
+!fetch-browser-assets.py
+!entrypoint.py
+!healthcheck.py
+!browser.Dockerfile

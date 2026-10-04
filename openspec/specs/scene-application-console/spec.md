@@ -17,11 +17,25 @@ TBD - created by archiving change port-scene-applications. Update Purpose after 
 
 ### Requirement: 场景中心分类与卡片展示
 
-系统 SHALL 从 `GET /api/scenes` 读取场景数据并按分类分组展示。每个分类 SHALL 有页签，每个分类下 SHALL 展示对应场景卡片。卡片 SHALL 显示场景名称、描述、分类标签与图标，用分类颜色渲染。分类为空时 SHALL 显示空态与返回可用页面指引。场景数据缓存 SHALL 在场景中心加载时复用，避免重复请求。
+系统 SHALL 从 `GET /api/scenes` 读取场景数据并按分类分组展示。每个分类 SHALL 有页签，每个分类下 SHALL 展示对应场景卡片。卡片 SHALL 显示场景名称、描述与图标，用分类颜色渲染。首次进入场景中心 SHALL 默认选中「全部」，其后保留用户所选的分类。
+
+卡片底部的分类标签位 SHALL 展示分类名；当场景在自己的定义中声明了配置入口（`card_action: "configure"`）时，该位置 SHALL 改为展示「配置」控件，卡片上的其他区域 SHALL 保持该场景原有的打开行为。点击「配置」SHALL 走与该场景普通打开相同的准备与校验路径，并只把最后一步分发替换为该场景的配置界面，MUST NOT 创建会话、调用普通 activate 或发送 greeting；未声明配置入口的场景 MUST NOT 出现该控件。分类为空时 SHALL 显示空态与返回可用页面指引。场景数据缓存 SHALL 在场景中心加载时复用，避免重复请求。
 
 #### Scenario: 加载场景数据成功
 - **WHEN** `GET /api/scenes` 返回成功且含分类与场景
-- **THEN** 渲染分类页签与场景卡片，默认选中第一个分类，卡片含名称/描述/分类标签/图标
+- **THEN** 渲染分类页签与场景卡片，首次进入默认选中「全部」，卡片含名称/描述/图标
+
+#### Scenario: 声明了配置入口的场景卡片
+- **WHEN** 用户点击某场景卡片上的「配置」控件，且该场景声明了配置入口
+- **THEN** 直接打开该场景的配置界面，不创建会话、不调用 activate、不注入 greeting
+
+#### Scenario: 点击卡片上除「配置」以外的区域
+- **WHEN** 用户点击卡片的其他区域
+- **THEN** 按该场景分发逻辑打开（工作台或激活）；SAP 工作台在配置/能力就绪后直接新建专属会话，其他场景行为保持
+
+#### Scenario: 未声明配置入口的场景
+- **WHEN** 场景定义没有配置入口
+- **THEN** 卡片只显示分类标签与原有打开入口，不出现「配置」控件
 
 #### Scenario: 当前分类无场景
 - **WHEN** 选中分类没有可展示场景
@@ -29,7 +43,9 @@ TBD - created by archiving change port-scene-applications. Update Purpose after 
 
 ### Requirement: 场景选择器与激活交互
 
-系统 SHALL 支持场景选择器通过 `/场景` 命令触发（与场景中心卡片共用同一分发逻辑）。激活场景 SHALL 创建新会话并向 `POST /api/scenes/activate` 提交 `scene_id` 与 `session_id`。激活成功后 SHALL 在对话中注入场景 greeting，并切换为场景上下文；失败 SHALL 显示失败/网络错误提示，不改变现有会话。
+系统 SHALL 支持场景选择器通过 `/场景` 命令触发（与场景中心卡片共用同一分发逻辑）。普通场景激活 SHALL 创建新会话并向 `POST /api/scenes/activate` 提交 `scene_id` 与 `session_id`。激活成功后 SHALL 在对话中注入场景 greeting，并切换为场景上下文；失败 SHALL 显示失败/网络错误提示，不改变现有会话。
+
+选择 `sap_workbench` 的普通入口时 SHALL 在配置/能力就绪后直接新建获授权的场景/OpenCode 关联；卡片上的「配置」入口 SHALL 只打开配置界面，不创建会话。系统 MUST NOT 为此创建普通会话、调用通用 activate 接口或自动发送 greeting。新建和恢复 SHALL 由明确入口区分，恢复不能隐式新建。此分发例外 SHALL 同时适用于卡片、选择器和已登记的工作台直达入口，且保持原会话离页保护。
 
 #### Scenario: 通过场景中心卡片激活
 - **WHEN** 用户点击某场景卡片且该场景不启用工作台
@@ -42,4 +58,16 @@ TBD - created by archiving change port-scene-applications. Update Purpose after 
 #### Scenario: 激活失败或网络错误
 - **WHEN** activate 返回失败或网络异常
 - **THEN** 显示失败/网络错误提示，不创建场景上下文，不破坏当前会话
+
+#### Scenario: 选择 SAP 工作台
+- **WHEN** 获授权用户从卡片或选择器选择 SAP 工作台
+- **THEN** 打开同一专属场景入口，配置/能力就绪后直接新建关联，不要求额外点击新建按钮，不执行普通场景激活或自动调用模型；恢复仍由独立入口执行
+
+#### Scenario: 恢复已有 SAP 场景
+- **WHEN** 用户通过工作台的已有会话入口恢复场景
+- **THEN** 验证并恢复原 OpenCode 与浏览器关联，不生成新普通会话或重复远端会话
+
+#### Scenario: 进入 SAP 场景失败
+- **WHEN** 工作台创建或恢复失败，或者原视图离页保护阻止导航
+- **THEN** 明确显示失败或保留原视图，不更改原普通对话上下文、不清空其草稿
 

@@ -1,0 +1,12 @@
+{
+  "transaction": "ME21N",
+  "prompt": "打开me21n",
+  "left_src": "https://sap.goodsap.cn:44300/sap/bc/gui/sap/its/webgui/?sap-client=200&sap-language=zh&~transaction=ME21N",
+  "left_headings": [
+    "创建采购订单"
+  ],
+  "top_level_tab_count_before": 14,
+  "top_level_tab_count_after": 14,
+  "new_tab_ids": [],
+  "workbench_tab_id": "2015398816"
+}

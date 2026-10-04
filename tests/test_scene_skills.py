@@ -15,7 +15,7 @@ class SceneMigrationTests(unittest.TestCase):
     def test_catalog_uses_per_scene_definitions(self):
         catalog = scenes_config.load_config()
         self.assertEqual(len(catalog['categories']), 10)
-        self.assertEqual(len(catalog['scenes']), 26)
+        self.assertEqual(len(catalog['scenes']), 27)
         self.assertEqual(sum(len(s.get('sub_scenes', [])) for s in catalog['scenes']), 81)
         for scene in catalog['scenes']:
             self.assertEqual(scene, json.loads((ROOT / scene['id'] / 'scene.json').read_text()))

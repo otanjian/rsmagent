@@ -1,0 +1,3 @@
+# Optional SAP MCP login adapter; install in the dedicated scene runtime.
+mcp==1.29.0
+httpx==0.28.1

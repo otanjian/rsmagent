@@ -161,8 +161,10 @@
     {
       "path": "catalog.json",
       "source": "scenes_config.json",
-      "sha256": "1d2b8fca80cc11c83a514b91f272994d1a8377079806ae1404311f53dc64c722",
-      "format": "json value preserved"
+      "sha256": "faf74d8a0cfdc191ea2858ecbd1adfd7d3055fe7b931ba043a346a81c998904e",
+      "format": "json value preserved",
+      "source_sha256": "1d2b8fca80cc11c83a514b91f272994d1a8377079806ae1404311f53dc64c722",
+      "adapted": "add-sap-workbench-scene: append dedicated SAP workbench; original catalog entries unchanged"
     },
     {
       "path": "procurement_supplier/skills/procurement-supplier-risk/SKILL.md",
@@ -1391,6 +1393,24 @@
       ],
       "adapted": "add-external-system-access task 6.5: read-only picker; the second writable ERP form was removed in favour of the console page",
       "provenance": "rewritten"
+    },
+    {
+      "path": "sap_workbench/scene.json",
+      "source": "rsmagent:original",
+      "sha256": "44646a7ecd3e855484094c914b7d25efafe90ab24dc92b1ad7a979abd3074e49",
+      "format": "authored in add-sap-workbench-scene"
+    },
+    {
+      "path": "sap_workbench/frontend/workbench.js",
+      "source": "rsmagent:original",
+      "sha256": "7fd42769f4e651f4e41d1100a40faafea0e5ec4caac1a2b624f496fd3d735d86",
+      "format": "authored in add-sap-workbench-scene"
+    },
+    {
+      "path": "sap_workbench/frontend/workbench.css",
+      "source": "rsmagent:original",
+      "sha256": "a632fc8e3963afcc3daaa689161d188add654146b3ef94233976ea3fffdcd1a8",
+      "format": "authored in add-sap-workbench-scene"
     }
   ]
 }

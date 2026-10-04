@@ -155,6 +155,10 @@ from scenes.api import ScenesHandler, SceneActivateHandler
 from scenes.api_workbench import SceneWorkbenchImportHandler
 from Scene._shared.http import HANDLERS as _SCENE_HANDLERS, SceneCapabilitiesHandler
 from Scene._shared.frontend import SceneAssetHandler
+from Scene.sap_workbench.backend.http import (
+    SapWorkbenchConfigHandler, SapWorkbenchCheckHandler, SapWorkbenchSessionsHandler,
+    SapWorkbenchBrowserHandler,
+)
 
 
 # Handlers that moved into the fork package; imported so web.py can resolve

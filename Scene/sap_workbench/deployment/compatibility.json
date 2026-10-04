@@ -1,0 +1,69 @@
+{
+  "format_version": 1,
+  "baseline_id": "sap-workbench-local-2026-10-03",
+  "recorded_date": "2026-10-03",
+  "policy": {
+    "deployment_expectations": "exact_recorded_versions",
+    "complete_deployment_lock": false,
+    "runtime_enforced": false,
+    "system_browser_updates_managed": false,
+    "on_drift": "review_and_revalidate_before_expanding_verified_scope"
+  },
+  "runtime_expectations": [
+    {"id": "chrome", "expected": "154.0.8037.95"},
+    {"id": "macos", "expected": "26.4"},
+    {"id": "main_python", "expected": "3.14.3"},
+    {"id": "aiohttp", "expected": "3.14.3"},
+    {"id": "opencode_source", "expected": "0442518883", "comparison": "commit_prefix"},
+    {"id": "opencode_web", "expected": "1.18.34"},
+    {"id": "bun", "expected": "1.3.14"},
+    {"id": "mcp_python", "expected": "3.10.0"},
+    {"id": "mcp_sdk", "expected": "1.29.0"},
+    {"id": "anyio", "expected": "4.14.2"}
+  ],
+  "sap_observation": {
+    "basis": "historical_real_page_observation",
+    "system_id": "S4H",
+    "client": "200",
+    "language": "ZH",
+    "product": "SAP NetWeaver 758",
+    "gui": "SAP GUI for HTML",
+    "screen_label": "原始屏幕",
+    "theme_id": null,
+    "kernel_patch": null,
+    "sso_status": "unverified",
+    "redirect_domains_status": "unverified",
+    "transactions": [
+      {
+        "code": "SPRO",
+        "verified_scope": "read_only_navigation_to_reference_img",
+        "result": "SIMG / SAPLSHI01/0200"
+      },
+      {
+        "code": "ME21N",
+        "verified_scope": "navigate_date_roundtrip_f4_first_row_text_quantity_and_error_readback_without_save"
+      }
+    ],
+    "evidence": [
+      "openspec/changes/archive/2026-10-04-add-sap-workbench-scene/evidence/integration.md",
+      "openspec/changes/archive/2026-10-04-add-sap-workbench-scene/evidence/runtime-regression.md",
+      "openspec/changes/archive/2026-10-04-add-sap-workbench-scene/evidence/live-workbench.md"
+    ]
+  },
+  "display_observation": {
+    "implementation": "scene_owned_chrome_cdp_screenshot_and_input_bridge",
+    "separate_webdriver": "not_used",
+    "remote_vnc_novnc": "not_deployed_or_verified"
+  },
+  "worker_evidence": "openspec/changes/archive/2026-10-04-add-sap-workbench-scene/evidence/worker-compatibility.json",
+  "not_verified": [
+    "exact_sap_kernel_patch_and_theme_identifier",
+    "sso_login_and_redirect_domain_inventory",
+    "remote_browser_display_and_novnc_deployment",
+    "all_transactions_and_controls_including_full_table_pagination",
+    "complete_valid_document_and_business_submission",
+    "two_real_sap_users_and_representative_concurrent_load",
+    "desktop_dual_pane_after_platform_login",
+    "compatibility_after_version_drift"
+  ]
+}

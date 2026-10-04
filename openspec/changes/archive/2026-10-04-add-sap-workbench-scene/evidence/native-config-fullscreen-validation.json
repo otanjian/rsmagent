@@ -1,0 +1,41 @@
+{
+  "checked_at": "2026-10-04T09:12:24+08:00",
+  "python": {
+    "passed": 234,
+    "seconds": 1.39
+  },
+  "node": {
+    "passed": 102
+  },
+  "bun": {
+    "passed": 6,
+    "assertions": 129
+  },
+  "chrome": {
+    "native_header_display": "none",
+    "native_header_height": 0,
+    "viewport": [
+      1441,
+      698
+    ],
+    "assistant_width_before_drag": 485,
+    "assistant_width_after_drag": 685,
+    "restore_width": 685,
+    "minimum_width": 320,
+    "maximum_width": 1115,
+    "final_width": 680,
+    "native_frames_preserved": true
+  },
+  "metadata_catalog_equal": true,
+  "model_count": 40,
+  "source_assets_match_web_and_desktop": true,
+  "sap_manifest": "pass",
+  "change_tasks": {
+    "complete": 49,
+    "total": 64,
+    "remaining": 15
+  },
+  "real_sap_business_tests": "deferred",
+  "real_provider_prompt_tests": "deferred",
+  "credentials_in_record": false
+}

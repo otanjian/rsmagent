@@ -1,0 +1,44 @@
+{
+  "enabled": false,
+  "automation_enabled": false,
+  "commit_enabled": false,
+  "coding_agent_id": "sap-coder",
+  "sap": {
+    "system_id": "S4H",
+    "web_gui_url": "https://sap.example.test/sap/bc/gui/sap/its/webgui/?sap-client=200&sap-language=zh",
+    "client": "200",
+    "language": "ZH",
+    "allowed_origins": [
+      "https://sap.example.test"
+    ],
+    "login_mode": "manual"
+  },
+  "mcp": {
+    "username": "SAP_TEST_USER",
+    "connections": [
+      {
+        "id": "sap-abap",
+        "transport": "remote",
+        "url": "http://127.0.0.1:8100/mcp",
+        "profile_ref": "",
+        "enabled": true,
+        "credential_source": "scene_config",
+        "transport_auth": "none",
+        "service_credential_ref": ""
+      },
+      {
+        "id": "sap-pyrfc",
+        "transport": "remote",
+        "url": "http://127.0.0.1:8200/mcp",
+        "profile_ref": "",
+        "enabled": true,
+        "credential_source": "scene_config",
+        "transport_auth": "none",
+        "service_credential_ref": ""
+      }
+    ]
+  },
+  "browser_service_ref": "sap-browser-worker",
+  "max_sessions": 4,
+  "idle_seconds": 900
+}

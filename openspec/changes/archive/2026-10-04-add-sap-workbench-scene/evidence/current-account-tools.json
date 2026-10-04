@@ -1,0 +1,1479 @@
+{
+  "date": "2026-10-03",
+  "scope": "Current-account real SAP tools. No saves/posts/deletes. Tool success means execution, not valid business document.",
+  "events": [
+    {
+      "seq": 14,
+      "tool": "sap_mcp_read",
+      "status": "success",
+      "input": {
+        "connection": "sap-abap",
+        "tool": "adt_discover"
+      }
+    },
+    {
+      "seq": 15,
+      "tool": "sap_mcp_read",
+      "status": "success",
+      "input": {
+        "connection": "sap-pyrfc",
+        "tool": "healthcheck"
+      }
+    },
+    {
+      "seq": 33,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "28:b17ddfb15451ceebbb4202363ce2c03b2ed320b6d311d9f292955ddc4a6544ac",
+        "title": "SAP 轻松访问",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 43,
+      "tool": "sap_page_navigate",
+      "status": "success",
+      "input": {
+        "transaction": "SPRO"
+      },
+      "page": {
+        "revision": "28:57f0555a788b40e15e92c4e3db38f2ae5fe84410a9b0938dbdebb3fd8d8e4c38",
+        "title": "定制：执行项目",
+        "login": false,
+        "control": "automatic",
+        "verification": "page_changed",
+        "business_validated": false,
+        "test_fields": [],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 53,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "28:57f0555a788b40e15e92c4e3db38f2ae5fe84410a9b0938dbdebb3fd8d8e4c38",
+        "title": "定制：执行项目",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 63,
+      "tool": "sap_page_interact",
+      "status": "success",
+      "input": {
+        "revision": "28:57f0555a788b40e15e92c4e3db38f2ae5fe84410a9b0938dbdebb3fd8d8e4c38",
+        "target": "0:control:14",
+        "operation": "reference_img"
+      },
+      "page": {
+        "revision": "28:1714d129931235ce573f4373fa5d91c1ec3426ad69bb4033e3ffc3e39761a991",
+        "title": "显示实施指南",
+        "login": false,
+        "control": "automatic",
+        "verification": "page_changed",
+        "business_validated": false,
+        "test_fields": [],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 73,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "28:1714d129931235ce573f4373fa5d91c1ec3426ad69bb4033e3ffc3e39761a991",
+        "title": "显示实施指南",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 91,
+      "tool": "sap_page_navigate",
+      "status": "success",
+      "input": {
+        "transaction": "ME21N"
+      },
+      "page": {
+        "revision": "28:2a1f79257e612ba243ccac4285d5634b11f94af2fbff867af506eeecf4f84964",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "verification": "page_changed",
+        "business_validated": false,
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 101,
+      "tool": "sap_page_interact",
+      "status": "success",
+      "input": {
+        "revision": "28:2a1f79257e612ba243ccac4285d5634b11f94af2fbff867af506eeecf4f84964",
+        "target": "0:3",
+        "operation": "help"
+      },
+      "page": {
+        "revision": "28:22713a15592392eb24acdbd4f121e8dc08cd350084e1d971b33d5f2b582187ce",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "verification": "page_changed",
+        "business_validated": false,
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          }
+        ],
+        "dialog_labels": [
+          "限制值范围 (1)\n搜索并选择\n\n\n\n\nA: 供应商（常规）\n执行\n 加重\n隐藏过滤器\n\n\n\n搜索词:\n国家/地区代码:\n邮政编码:\n城市:\n名称:\n供应商:\n集中删除标志:\n\n\n项目 (0)\n\n\n取消"
+        ],
+        "errors": [
+          "A: 供应商（常规）",
+          "供应商:"
+        ]
+      }
+    },
+    {
+      "seq": 111,
+      "tool": "sap_page_interact",
+      "status": "success",
+      "input": {
+        "revision": "28:22713a15592392eb24acdbd4f121e8dc08cd350084e1d971b33d5f2b582187ce",
+        "target": "",
+        "operation": "dismiss"
+      },
+      "page": {
+        "revision": "28:9904ec33c470788aba780100fd2cd28908ad8428938498a2b8c51dd52a3499c0",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "verification": "page_changed",
+        "business_validated": false,
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 121,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "28:9904ec33c470788aba780100fd2cd28908ad8428938498a2b8c51dd52a3499c0",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 133,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "31:9904ec33c470788aba780100fd2cd28908ad8428938498a2b8c51dd52a3499c0",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "manual",
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 145,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "32:9904ec33c470788aba780100fd2cd28908ad8428938498a2b8c51dd52a3499c0",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "manual",
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 155,
+      "tool": "sap_page_interact",
+      "status": "failed",
+      "input": {
+        "revision": "32:9904ec33c470788aba780100fd2cd28908ad8428938498a2b8c51dd52a3499c0",
+        "target": "0:control:18",
+        "operation": "validate"
+      }
+    },
+    {
+      "seq": 171,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "38:9904ec33c470788aba780100fd2cd28908ad8428938498a2b8c51dd52a3499c0",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 183,
+      "tool": "sap_page_interact",
+      "status": "success",
+      "input": {
+        "revision": "38:9904ec33c470788aba780100fd2cd28908ad8428938498a2b8c51dd52a3499c0",
+        "target": "0:control:18",
+        "operation": "validate"
+      },
+      "page": {
+        "revision": "38:a879e189dde47f5fd0f87ffb6a902ddb8db818bbb5c04d281b0c8a6c5de1414c",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "verification": "page_changed",
+        "business_validated": false,
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          }
+        ],
+        "dialog_labels": [
+          "消息\n类>\n消息文本\n类型\n凭证不包含项\nE\n\t\n \n编辑\n \n \n \n \n \n \n \n \n \n \n \n \n0\n1\n0\n0"
+        ],
+        "errors": [
+          "凭证不包含项"
+        ]
+      }
+    },
+    {
+      "seq": 193,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "38:a879e189dde47f5fd0f87ffb6a902ddb8db818bbb5c04d281b0c8a6c5de1414c",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          }
+        ],
+        "dialog_labels": [
+          "消息\n类>\n消息文本\n类型\n凭证不包含项\nE\n\t\n \n编辑\n \n \n \n \n \n \n \n \n \n \n \n \n0\n1\n0\n0"
+        ],
+        "errors": [
+          "凭证不包含项"
+        ]
+      }
+    },
+    {
+      "seq": 213,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "38:a879e189dde47f5fd0f87ffb6a902ddb8db818bbb5c04d281b0c8a6c5de1414c",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          }
+        ],
+        "dialog_labels": [
+          "消息\n类>\n消息文本\n类型\n凭证不包含项\nE\n\t\n \n编辑\n \n \n \n \n \n \n \n \n \n \n \n \n0\n1\n0\n0"
+        ],
+        "errors": [
+          "凭证不包含项"
+        ]
+      }
+    },
+    {
+      "seq": 223,
+      "tool": "sap_page_interact",
+      "status": "success",
+      "input": {
+        "revision": "38:a879e189dde47f5fd0f87ffb6a902ddb8db818bbb5c04d281b0c8a6c5de1414c",
+        "target": "",
+        "operation": "dismiss"
+      },
+      "page": {
+        "revision": "38:994c3011c3f55e712d8fee808650ac48d25f4dabb164bb15e29c793b40b1d397",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "verification": "page_changed",
+        "business_validated": false,
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 235,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "38:994c3011c3f55e712d8fee808650ac48d25f4dabb164bb15e29c793b40b1d397",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 245,
+      "tool": "sap_page_fill",
+      "status": "success",
+      "input": {
+        "revision": "38:994c3011c3f55e712d8fee808650ac48d25f4dabb164bb15e29c793b40b1d397",
+        "field": "0:4",
+        "value": "2026-10-04"
+      },
+      "page": {
+        "revision": "38:e38013afe2ce9fa64e68d0bdc99e81d46f7c3c23be7da57e19f59aaa820d6579",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "verification": "page_value",
+        "business_validated": false,
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-04"
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 257,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "38:e38013afe2ce9fa64e68d0bdc99e81d46f7c3c23be7da57e19f59aaa820d6579",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-04"
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 267,
+      "tool": "sap_page_fill",
+      "status": "success",
+      "input": {
+        "revision": "38:e38013afe2ce9fa64e68d0bdc99e81d46f7c3c23be7da57e19f59aaa820d6579",
+        "field": "0:4",
+        "value": "2026-10-03"
+      },
+      "page": {
+        "revision": "38:994c3011c3f55e712d8fee808650ac48d25f4dabb164bb15e29c793b40b1d397",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "verification": "page_value",
+        "business_validated": false,
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 279,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "38:994c3011c3f55e712d8fee808650ac48d25f4dabb164bb15e29c793b40b1d397",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 297,
+      "tool": "sap_page_navigate",
+      "status": "success",
+      "input": {
+        "transaction": "ME21N"
+      },
+      "page": {
+        "revision": "4:19904ec0a70dc9a92c414733cd73b62606756156a294678a5d8e07b2c9d9844e",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "verification": "page_changed",
+        "business_validated": false,
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,7]_c",
+            "label": "短文本 [row 1]",
+            "value": "",
+            "row": 1
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,8]_c",
+            "label": "订单数量 [row 1]",
+            "value": "",
+            "row": 1
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[2,7]_c",
+            "label": "短文本 [row 2]",
+            "value": "",
+            "row": 2
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[2,8]_c",
+            "label": "订单数量 [row 2]",
+            "value": "",
+            "row": 2
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[3,7]_c",
+            "label": "短文本 [row 3]",
+            "value": "",
+            "row": 3
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[3,8]_c",
+            "label": "订单数量 [row 3]",
+            "value": "",
+            "row": 3
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[4,7]_c",
+            "label": "短文本 [row 4]",
+            "value": "",
+            "row": 4
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[4,8]_c",
+            "label": "订单数量 [row 4]",
+            "value": "",
+            "row": 4
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[5,7]_c",
+            "label": "短文本 [row 5]",
+            "value": "",
+            "row": 5
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[5,8]_c",
+            "label": "订单数量 [row 5]",
+            "value": "",
+            "row": 5
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 309,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "4:19904ec0a70dc9a92c414733cd73b62606756156a294678a5d8e07b2c9d9844e",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,7]_c",
+            "label": "短文本 [row 1]",
+            "value": "",
+            "row": 1
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,8]_c",
+            "label": "订单数量 [row 1]",
+            "value": "",
+            "row": 1
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[2,7]_c",
+            "label": "短文本 [row 2]",
+            "value": "",
+            "row": 2
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[2,8]_c",
+            "label": "订单数量 [row 2]",
+            "value": "",
+            "row": 2
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[3,7]_c",
+            "label": "短文本 [row 3]",
+            "value": "",
+            "row": 3
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[3,8]_c",
+            "label": "订单数量 [row 3]",
+            "value": "",
+            "row": 3
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[4,7]_c",
+            "label": "短文本 [row 4]",
+            "value": "",
+            "row": 4
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[4,8]_c",
+            "label": "订单数量 [row 4]",
+            "value": "",
+            "row": 4
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[5,7]_c",
+            "label": "短文本 [row 5]",
+            "value": "",
+            "row": 5
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[5,8]_c",
+            "label": "订单数量 [row 5]",
+            "value": "",
+            "row": 5
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 321,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "4:19904ec0a70dc9a92c414733cd73b62606756156a294678a5d8e07b2c9d9844e",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,7]_c",
+            "label": "短文本 [row 1]",
+            "value": "",
+            "row": 1
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,8]_c",
+            "label": "订单数量 [row 1]",
+            "value": "",
+            "row": 1
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[2,7]_c",
+            "label": "短文本 [row 2]",
+            "value": "",
+            "row": 2
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[2,8]_c",
+            "label": "订单数量 [row 2]",
+            "value": "",
+            "row": 2
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[3,7]_c",
+            "label": "短文本 [row 3]",
+            "value": "",
+            "row": 3
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[3,8]_c",
+            "label": "订单数量 [row 3]",
+            "value": "",
+            "row": 3
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[4,7]_c",
+            "label": "短文本 [row 4]",
+            "value": "",
+            "row": 4
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[4,8]_c",
+            "label": "订单数量 [row 4]",
+            "value": "",
+            "row": 4
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[5,7]_c",
+            "label": "短文本 [row 5]",
+            "value": "",
+            "row": 5
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[5,8]_c",
+            "label": "订单数量 [row 5]",
+            "value": "",
+            "row": 5
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 331,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "4:19904ec0a70dc9a92c414733cd73b62606756156a294678a5d8e07b2c9d9844e",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,7]_c",
+            "label": "短文本 [row 1]",
+            "value": "",
+            "row": 1
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,8]_c",
+            "label": "订单数量 [row 1]",
+            "value": "",
+            "row": 1
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[2,7]_c",
+            "label": "短文本 [row 2]",
+            "value": "",
+            "row": 2
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[2,8]_c",
+            "label": "订单数量 [row 2]",
+            "value": "",
+            "row": 2
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[3,7]_c",
+            "label": "短文本 [row 3]",
+            "value": "",
+            "row": 3
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[3,8]_c",
+            "label": "订单数量 [row 3]",
+            "value": "",
+            "row": 3
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[4,7]_c",
+            "label": "短文本 [row 4]",
+            "value": "",
+            "row": 4
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[4,8]_c",
+            "label": "订单数量 [row 4]",
+            "value": "",
+            "row": 4
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[5,7]_c",
+            "label": "短文本 [row 5]",
+            "value": "",
+            "row": 5
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[5,8]_c",
+            "label": "订单数量 [row 5]",
+            "value": "",
+            "row": 5
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 343,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "4:19904ec0a70dc9a92c414733cd73b62606756156a294678a5d8e07b2c9d9844e",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,7]_c",
+            "label": "短文本 [row 1]",
+            "value": "",
+            "row": 1
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,8]_c",
+            "label": "订单数量 [row 1]",
+            "value": "",
+            "row": 1
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[2,7]_c",
+            "label": "短文本 [row 2]",
+            "value": "",
+            "row": 2
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[2,8]_c",
+            "label": "订单数量 [row 2]",
+            "value": "",
+            "row": 2
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[3,7]_c",
+            "label": "短文本 [row 3]",
+            "value": "",
+            "row": 3
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[3,8]_c",
+            "label": "订单数量 [row 3]",
+            "value": "",
+            "row": 3
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[4,7]_c",
+            "label": "短文本 [row 4]",
+            "value": "",
+            "row": 4
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[4,8]_c",
+            "label": "订单数量 [row 4]",
+            "value": "",
+            "row": 4
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[5,7]_c",
+            "label": "短文本 [row 5]",
+            "value": "",
+            "row": 5
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[5,8]_c",
+            "label": "订单数量 [row 5]",
+            "value": "",
+            "row": 5
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 355,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "4:19904ec0a70dc9a92c414733cd73b62606756156a294678a5d8e07b2c9d9844e",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,7]_c",
+            "label": "短文本 [row 1]",
+            "value": "",
+            "row": 1
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,8]_c",
+            "label": "订单数量 [row 1]",
+            "value": "",
+            "row": 1
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[2,7]_c",
+            "label": "短文本 [row 2]",
+            "value": "",
+            "row": 2
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[2,8]_c",
+            "label": "订单数量 [row 2]",
+            "value": "",
+            "row": 2
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[3,7]_c",
+            "label": "短文本 [row 3]",
+            "value": "",
+            "row": 3
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[3,8]_c",
+            "label": "订单数量 [row 3]",
+            "value": "",
+            "row": 3
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[4,7]_c",
+            "label": "短文本 [row 4]",
+            "value": "",
+            "row": 4
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[4,8]_c",
+            "label": "订单数量 [row 4]",
+            "value": "",
+            "row": 4
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[5,7]_c",
+            "label": "短文本 [row 5]",
+            "value": "",
+            "row": 5
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[5,8]_c",
+            "label": "订单数量 [row 5]",
+            "value": "",
+            "row": 5
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 367,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "4:19904ec0a70dc9a92c414733cd73b62606756156a294678a5d8e07b2c9d9844e",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,7]_c",
+            "label": "短文本 [row 1]",
+            "value": "",
+            "row": 1
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,8]_c",
+            "label": "订单数量 [row 1]",
+            "value": "",
+            "row": 1
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[2,7]_c",
+            "label": "短文本 [row 2]",
+            "value": "",
+            "row": 2
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[2,8]_c",
+            "label": "订单数量 [row 2]",
+            "value": "",
+            "row": 2
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[3,7]_c",
+            "label": "短文本 [row 3]",
+            "value": "",
+            "row": 3
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[3,8]_c",
+            "label": "订单数量 [row 3]",
+            "value": "",
+            "row": 3
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[4,7]_c",
+            "label": "短文本 [row 4]",
+            "value": "",
+            "row": 4
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[4,8]_c",
+            "label": "订单数量 [row 4]",
+            "value": "",
+            "row": 4
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[5,7]_c",
+            "label": "短文本 [row 5]",
+            "value": "",
+            "row": 5
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[5,8]_c",
+            "label": "订单数量 [row 5]",
+            "value": "",
+            "row": 5
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 387,
+      "tool": "sap_page_navigate",
+      "status": "success",
+      "input": {
+        "transaction": "ME21N"
+      },
+      "page": {
+        "revision": "4:6db7fb748d1d8996e05172d261f1b42b2f6e609fbee90320d2199165f597b990",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "verification": "page_changed",
+        "business_validated": false,
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,7]_c",
+            "label": "短文本 [row 1]",
+            "value": "",
+            "row": 1
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,8]_c",
+            "label": "订单数量 [row 1]",
+            "value": "",
+            "row": 1
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 400,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {
+        "query": "短文本",
+        "row": 1
+      },
+      "page": {
+        "revision": "4:6db7fb748d1d8996e05172d261f1b42b2f6e609fbee90320d2199165f597b990",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,7]_c",
+            "label": "短文本 [row 1]",
+            "value": "",
+            "row": 1
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 401,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {
+        "query": "数量",
+        "row": 1
+      },
+      "page": {
+        "revision": "4:6db7fb748d1d8996e05172d261f1b42b2f6e609fbee90320d2199165f597b990",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,8]_c",
+            "label": "订单数量 [row 1]",
+            "value": "",
+            "row": 1
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 411,
+      "tool": "sap_page_fill",
+      "status": "success",
+      "input": {
+        "revision": "4:6db7fb748d1d8996e05172d261f1b42b2f6e609fbee90320d2199165f597b990",
+        "field": "0:grid:M0:46:1:3:2:1:1[1,7]_c",
+        "value": "SAP工作台测试（不保存）"
+      },
+      "page": {
+        "revision": "4:81578ddb42ab0e8747e0625ec34a7584145d51ae84e61cfbf897baba01a353d4",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "verification": "page_value",
+        "business_validated": false,
+        "test_fields": [
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,7]_c",
+            "label": "短文本 [row 1]",
+            "value": "SAP工作台测试（不保存）",
+            "row": 1
+          },
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,8]_c",
+            "label": "订单数量 [row 1]",
+            "value": "",
+            "row": 1
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 421,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {
+        "query": "短文本",
+        "row": 1
+      },
+      "page": {
+        "revision": "4:81578ddb42ab0e8747e0625ec34a7584145d51ae84e61cfbf897baba01a353d4",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,7]_c",
+            "label": "短文本 [row 1]",
+            "value": "SAP工作台测试（不保存）",
+            "row": 1
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 431,
+      "tool": "sap_page_fill",
+      "status": "success",
+      "input": {
+        "revision": "4:81578ddb42ab0e8747e0625ec34a7584145d51ae84e61cfbf897baba01a353d4",
+        "field": "0:grid:M0:46:1:3:2:1:1[1,8]_c",
+        "value": "1"
+      },
+      "page": {
+        "revision": "4:848d6cb1fce6f2596ef2a203126d3977d0d6455346c3e1cf99c618d3a4187e91",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "verification": "page_value",
+        "business_validated": false,
+        "test_fields": [
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,8]_c",
+            "label": "订单数量 [row 1]",
+            "value": "1",
+            "row": 1
+          },
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          },
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,7]_c",
+            "label": "短文本 [row 1]",
+            "value": "SAP工作台测试（不保存）",
+            "row": 1
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 441,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {
+        "query": "数量",
+        "row": 1
+      },
+      "page": {
+        "revision": "4:848d6cb1fce6f2596ef2a203126d3977d0d6455346c3e1cf99c618d3a4187e91",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [
+          {
+            "id": "0:grid:M0:46:1:3:2:1:1[1,8]_c",
+            "label": "订单数量 [row 1]",
+            "value": "1",
+            "row": 1
+          }
+        ],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 461,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {
+        "query": "检查"
+      },
+      "page": {
+        "revision": "4:848d6cb1fce6f2596ef2a203126d3977d0d6455346c3e1cf99c618d3a4187e91",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [],
+        "dialog_labels": [],
+        "errors": []
+      }
+    },
+    {
+      "seq": 471,
+      "tool": "sap_page_interact",
+      "status": "success",
+      "input": {
+        "revision": "4:848d6cb1fce6f2596ef2a203126d3977d0d6455346c3e1cf99c618d3a4187e91",
+        "target": "0:control:18",
+        "operation": "validate"
+      },
+      "page": {
+        "revision": "4:62386c73140fcd4b5b35e42f5f0a0cfd08750864ff680c296190b4e7094f9bb9",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "verification": "page_changed",
+        "business_validated": false,
+        "test_fields": [
+          {
+            "id": "0:4",
+            "label": "采购凭证日期",
+            "value": "2026-10-03"
+          }
+        ],
+        "dialog_labels": [
+          "消息\n类>\n消息文本\n长>\n类型\nPO抬头数据仍有错\nE\n请输入采购组织\nE\n项目 10\n请输入物料编号或科目分配类别\nE\n项目 10 计划行 1\n可以满足交货期限吗？\nW\n\t\n \n编辑\n \n \n \n \n \n \n \n \n \n \n \n \n0\n3\n1\n2"
+        ],
+        "errors": [
+          "请输入采购组织",
+          "请输入物料编号或科目分配类别"
+        ]
+      }
+    },
+    {
+      "seq": 484,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {
+        "query": "消息"
+      },
+      "page": {
+        "revision": "4:62386c73140fcd4b5b35e42f5f0a0cfd08750864ff680c296190b4e7094f9bb9",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [],
+        "dialog_labels": [
+          "消息\n类>\n消息文本\n长>\n类型\nPO抬头数据仍有错\nE\n请输入采购组织\nE\n项目 10\n请输入物料编号或科目分配类别\nE\n项目 10 计划行 1\n可以满足交货期限吗？\nW\n\t\n \n编辑\n \n \n \n \n \n \n \n \n \n \n \n \n0\n3\n1\n2"
+        ],
+        "errors": [
+          "请输入采购组织",
+          "请输入物料编号或科目分配类别"
+        ]
+      }
+    },
+    {
+      "seq": 485,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {
+        "query": "采购组织"
+      },
+      "page": {
+        "revision": "4:62386c73140fcd4b5b35e42f5f0a0cfd08750864ff680c296190b4e7094f9bb9",
+        "title": "创建采购订单",
+        "login": false,
+        "control": "automatic",
+        "test_fields": [],
+        "dialog_labels": [
+          "消息\n类>\n消息文本\n长>\n类型\nPO抬头数据仍有错\nE\n请输入采购组织\nE\n项目 10\n请输入物料编号或科目分配类别\nE\n项目 10 计划行 1\n可以满足交货期限吗？\nW\n\t\n \n编辑\n \n \n \n \n \n \n \n \n \n \n \n \n0\n3\n1\n2"
+        ],
+        "errors": [
+          "请输入采购组织",
+          "请输入物料编号或科目分配类别"
+        ]
+      }
+    },
+    {
+      "seq": 505,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {
+        "query": "消息"
+      },
+      "page": {
+        "revision": "2:4235aeaef3f4423d6f5ad52d16a2321d549171704bb2e1431eb1f7a9ac13c718",
+        "title": "登录",
+        "login": true,
+        "control": "manual"
+      }
+    },
+    {
+      "seq": 521,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {},
+      "page": {
+        "revision": "19:bc191de344a99246876040de17b06ab39593637a41808d5c9be5e8b6be9c6fc8",
+        "title": "SAP 轻松访问",
+        "login": false,
+        "control": "automatic"
+      }
+    },
+    {
+      "seq": 531,
+      "tool": "sap_page_navigate",
+      "status": "success",
+      "input": {
+        "transaction": "SPRO"
+      },
+      "page": {
+        "revision": "19:d9108e371ec76b3b78f9a88f57d04f5a1164cb4bee2c54424d81981196da4260",
+        "title": "定制：执行项目",
+        "login": false,
+        "control": "automatic",
+        "verification": "page_changed",
+        "business_validated": false
+      }
+    },
+    {
+      "seq": 541,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {
+        "query": "参考 IMG"
+      },
+      "page": {
+        "revision": "19:d9108e371ec76b3b78f9a88f57d04f5a1164cb4bee2c54424d81981196da4260",
+        "title": "定制：执行项目",
+        "login": false,
+        "control": "automatic"
+      }
+    },
+    {
+      "seq": 551,
+      "tool": "sap_page_interact",
+      "status": "success",
+      "input": {
+        "revision": "19:d9108e371ec76b3b78f9a88f57d04f5a1164cb4bee2c54424d81981196da4260",
+        "target": "0:control:14",
+        "operation": "reference_img"
+      },
+      "page": {
+        "revision": "19:acff166454894aa92fa89484d95a927457da906fff66d745bbd85c0800135448",
+        "title": "显示实施指南",
+        "login": false,
+        "control": "automatic",
+        "verification": "page_changed",
+        "business_validated": false
+      }
+    },
+    {
+      "seq": 561,
+      "tool": "sap_page_read",
+      "status": "success",
+      "input": {
+        "query": "实施指南"
+      },
+      "page": {
+        "revision": "19:acff166454894aa92fa89484d95a927457da906fff66d745bbd85c0800135448",
+        "title": "显示实施指南",
+        "login": false,
+        "control": "automatic"
+      }
+    }
+  ]
+}
