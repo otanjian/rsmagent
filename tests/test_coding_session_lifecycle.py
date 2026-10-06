@@ -42,8 +42,9 @@ class _FakeClient:
         self.fail_once = fail_once
         self.created = {}
 
-    def create_session(self, session_id, project_dir):
-        self.calls.append({"op": "create", "id": session_id, "dir": project_dir})
+    def create_session(self, session_id, project_dir, permission=None):
+        self.calls.append({"op": "create", "id": session_id, "dir": project_dir,
+                           "permission": permission})
         if self.fail_once is not None:
             error, self.fail_once = self.fail_once, None
             raise error
@@ -57,6 +58,10 @@ class _FakeClient:
             created_ms=created_ms,
             updated_ms=created_ms,
         )
+
+    def set_permission(self, session_id, project_dir, permission):
+        self.calls.append({"op": "set_permission", "id": session_id,
+                           "dir": project_dir, "permission": permission})
 
 
 def _settings(**overrides):
@@ -154,7 +159,8 @@ def test_a_first_request_reserves_then_confirms_the_session(store, client):
     assert result["session_id"] == session_id
     assert result["state"] == "ready"
     assert result["iframe_url"].startswith("https://code.example.com/")
-    assert client.calls == [{"op": "create", "id": external_id, "dir": PROJECT}]
+    assert client.calls == [{"op": "create", "id": external_id, "dir": PROJECT,
+                             "permission": None}]
 
     link = store.get_coding_link(session_id)
     assert (link["state"], link["project_dir"]) == ("ready", PROJECT)

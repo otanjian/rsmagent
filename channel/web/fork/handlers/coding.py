@@ -99,6 +99,19 @@ def _requested_agent(body: dict, params=None) -> str:
     return body_agent or query_agent
 
 
+def _permission_profile(body: dict) -> str:
+    """The named session permission profile, or ``""``.
+
+    Only the *name* is read from the body. The ruleset it stands for lives on the
+    server (``agent.coding.permissions``), so a caller cannot use this field to
+    grant itself an arbitrary tool permission — the worst it can do is name an
+    allowlisted profile, and the service still authorizes every tool call against
+    the session's own binding.
+    """
+    value = body.get("permission_profile")
+    return str(value).strip() if isinstance(value, str) else ""
+
+
 def _conversation_store(agent_id: str):
     """The addressed Agent's conversation store — the one the list reads from."""
     from channel.web.fork.handlers.sessions import _conversation_store_for
@@ -253,6 +266,7 @@ class CodingSessionsHandler:
                     request_id=str(body.get("request_id") or "").strip(),
                     tenant_id=getattr(ctx, "tenant_id", "") or "",
                     user_id=getattr(ctx, "user_id", "") or "",
+                    permission_profile=_permission_profile(body),
                 )
                 return _success(result)
 
@@ -322,6 +336,7 @@ class CodingSessionAttachHandler:
                     agent_id=agent_id,
                     tenant_id=getattr(ctx, "tenant_id", "") or "",
                     user_id=getattr(ctx, "user_id", "") or "",
+                    permission_profile=_permission_profile(body),
                 )
                 return _success(result)
 

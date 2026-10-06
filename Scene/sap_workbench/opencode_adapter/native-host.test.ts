@@ -72,6 +72,13 @@ test.skipIf(!root)("native listener exposes the bound transaction tool alongside
     expect(seen).toContain("sap_transaction_open")
     expect(seen).toContain("bash")
     expect(seen).toContain("read")
+    // The left SAP page is a cross-origin iframe, so the configured read-only MCP
+    // tools are the model's only way to read SAP data and must stay registered.
+    expect(seen).toContain("sap_mcp_read")
+    expect(seen).toContain("sap_purchase_order_read")
+    // Page tools have no bound page in this display mode and must not appear.
+    expect(seen).not.toContain("sap_page_read")
+    expect(seen).not.toContain("sap_page_fill")
     expect(systems.join("\n")).toContain("sap_transaction_open")
     expect(systems.join("\n")).toContain("Keep my original project instructions.")
     // Exercise the V1 plugin entry directly; its cold CLI config loader may
@@ -89,6 +96,19 @@ test.skipIf(!root)("native listener exposes the bound transaction tool alongside
     expect(asked).toBe(true)
     expect(calls).toHaveLength(2)
     expect(calls[1]).toMatchObject({service_id: "service-test", session_id: session.id, message_id: "message-v1", call_id: "call-v1", action: "transaction_open", input: {transaction: "ME23N"}})
+    // A native V1 UI builds its tool list from these hooks, so the same read
+    // tools must be reachable there and keep their own permission prompt.
+    expect(Object.keys(hooks.tool).sort()).toEqual(["sap_mcp_read", "sap_purchase_order_read", "sap_transaction_open"])
+    let readAsked: any
+    const readOutput = await hooks.tool.sap_mcp_read.execute({connection: "sap-pyrfc", tool: "healthcheck", arguments: {}}, {
+      sessionID: session.id, messageID: "message-v1-read", callID: "call-v1-read", agent: "build", abort: new AbortController().signal,
+      async ask(input: any) {readAsked = input},
+    })
+    expect(readAsked.permission).toBe("sap_mcp_read")
+    expect(JSON.parse(readOutput).status).toBe("navigation_applied")
+    expect(calls).toHaveLength(3)
+    expect(calls[2]).toMatchObject({service_id: "service-test", session_id: session.id, message_id: "message-v1-read", call_id: "call-v1-read",
+      action: "mcp_read", input: {connection: "sap-pyrfc", tool: "healthcheck", arguments: {}}})
   } finally {
     await host.stop(true); bridge.stop(true); provider.stop(true)
     await rm(dir, {recursive: true, force: true})

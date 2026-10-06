@@ -7,6 +7,19 @@ const path=require('node:path');
 const vm=require('node:vm');
 const {spawnSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
+// The project ships a POSIX venv, but these assertions must also run where
+// that path exists yet is not executable (e.g. a Windows host reading a WSL
+// venv). Probe candidates and use the first interpreter that actually runs.
+const python=(()=>{
+    const candidates=[process.env.SAP_WORKBENCH_PYTHON,
+        path.join(root,'.venv/bin/python'),path.join(root,'.venv/Scripts/python.exe'),
+        process.env.PYTHON,'python3','python'];
+    for(const candidate of candidates){
+        if(!candidate) continue;
+        if(spawnSync(candidate,['-c','print(1)'],{encoding:'utf8'}).status===0) return candidate;
+    }
+    return path.join(root,'.venv/bin/python');
+})();
 const source=fs.readFileSync(path.join(root,'Scene/sap_workbench/browser_service/dom.py'),'utf8');
 const snapshotScript=source.match(/SNAPSHOT = r"""([\s\S]*?)"""/)[1];
 
@@ -30,7 +43,7 @@ function observe({normal=null, editor=null, cell=null, active=false}={}) {
 
 function project(observed) {
     const script='import json,sys\nfrom Scene.sap_workbench.browser_service.page import model_observation\nprint(json.dumps(model_observation(json.load(sys.stdin), {})))';
-    const child=spawnSync(path.join(root,'.venv/bin/python'),['-B','-c',script],
+    const child=spawnSync(python,['-B','-c',script],
         {cwd:root,input:JSON.stringify(observed),encoding:'utf8',timeout:10000});
     assert.equal(child.status,0,child.stderr||String(child.error));return JSON.parse(child.stdout);
 }

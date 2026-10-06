@@ -27,10 +27,14 @@ class MetadataPaths:
 
 
 def metadata_paths():
+    # Imported lazily: this inspection stays usable without the scene's logger or
+    # data-directory imports. Both interpreter layouts sit two levels above the
+    # executable, so the venv root is derived the same way on Windows and POSIX.
+    from .environment import mcp_python
     root = Path(__file__).resolve().parents[3]
     chrome = os.environ.get('SAP_WORKBENCH_CHROME', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
     bun = shutil.which('bun')
-    python = Path(os.environ.get('SAP_MCP_PYTHON', str(root.parent / 'rsmcode/sap-connect/sap-pyrfc/.venv/bin/python')))
+    python = Path(mcp_python())
     return MetadataPaths(Path(chrome) if chrome else None,
                          Path('/System/Library/CoreServices/SystemVersion.plist'),
                          Path(os.environ.get('SAP_OPENCODE_ROOT', str(root.parent / 'rsmcode/opencode'))),

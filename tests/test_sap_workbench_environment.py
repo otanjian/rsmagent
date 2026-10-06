@@ -105,6 +105,27 @@ def test_chrome_override_is_shared_with_browser_worker(monkeypatch):
     assert environment.chrome_executable() == _chrome_executable() == '/missing/explicit/chrome'
 
 
+@pytest.mark.parametrize('platform,first', [('win32', ('Scripts', 'python.exe')), ('darwin', ('bin', 'python')),
+                                           ('linux', ('bin', 'python'))])
+def test_mcp_worker_interpreter_follows_the_platform_venv_layout(platform, first):
+    """A POSIX-only default reports mcp_runtime_missing on Windows and disables
+    the whole configured MCP read path, so the layout must follow the platform."""
+    candidates = [Path(path) for path in environment.mcp_python_candidates(platform)]
+    assert candidates[0].parts[-2:] == first
+    # The other layout stays available for a venv provisioned differently.
+    assert candidates[1].parts[-2:] != first
+    assert candidates[1].name in ('python', 'python.exe')
+    assert all(path.parent.name in ('bin', 'Scripts') and path.parent.parent.name == '.venv' for path in candidates)
+
+
+def test_mcp_python_override_stays_authoritative(monkeypatch):
+    monkeypatch.setenv(environment.MCP_PYTHON_ENV, '/custom/python')
+    assert environment.mcp_python() == '/custom/python'
+    monkeypatch.delenv(environment.MCP_PYTHON_ENV)
+    assert environment.runtime_paths(None, data_root='/unused').mcp_python == environment.mcp_python()
+    assert environment.mcp_python() in environment.mcp_python_candidates()
+
+
 @pytest.mark.parametrize('missing_mcp', [False, True])
 def test_offline_cli_reports_machine_readable_result(runtime_paths, monkeypatch, capsys, missing_mcp):
     paths = replace(runtime_paths, mcp_python='') if missing_mcp else runtime_paths
@@ -126,3 +147,97 @@ def test_offline_cli_does_not_create_log_data_or_runtime_directories(tmp_path):
     assert result.returncode == 1 and json.loads(result.stdout)['network_tested'] is False
     assert not data.exists() and not logging.exists() and not project.exists()
     assert not list(tmp_path.iterdir())
+
+
+def test_service_account_session_reads_the_deployment_opencode_profile(tmp_path, monkeypatch):
+    """A service account profile holds no OpenCode stores, so the deployment's win.
+
+    Started there, a session saw only the public catalogue -- and the free tier
+    refuses to serve even that ("OpenCode's free tier can only be used from
+    within OpenCode"), which is what the workbench used to report.
+    """
+    deployment = tmp_path / 'Administrator'
+    deployment.mkdir()
+    monkeypatch.setattr(environment, 'PROFILE_DEFAULT', str(deployment))
+    monkeypatch.setenv('USERPROFILE', r'C:\Windows\system32\config\systemprofile')
+    monkeypatch.setenv('HOME', r'C:\Windows\system32\config\systemprofile')
+    env = environment.opencode_host_env()
+    assert env['HOME'] == env['USERPROFILE'] == str(deployment)
+    if os.name == 'nt':
+        assert env['HOMEDRIVE'] + env['HOMEPATH'] == str(deployment)
+
+
+@pytest.mark.parametrize('profile', [r'C:\Windows\ServiceProfiles\LocalService',
+                                     r'C:\Windows\ServiceProfiles\NetworkService'])
+def test_every_service_account_profile_is_recognised(tmp_path, monkeypatch, profile):
+    deployment = tmp_path / 'Administrator'
+    deployment.mkdir()
+    monkeypatch.setattr(environment, 'PROFILE_DEFAULT', str(deployment))
+    monkeypatch.setenv('USERPROFILE', profile)
+    assert environment.opencode_home() == str(deployment)
+
+
+def test_developer_session_keeps_its_own_profile(tmp_path, monkeypatch):
+    """Only a service profile is replaced; a real one already holds the stores."""
+    monkeypatch.setattr(environment, 'PROFILE_DEFAULT', str(tmp_path / 'Administrator'))
+    monkeypatch.setenv('USERPROFILE', r'C:\Users\dev')
+    monkeypatch.setenv('HOME', r'C:\Users\dev')
+    env = environment.opencode_host_env()
+    assert env['HOME'] == env['USERPROFILE'] == r'C:\Users\dev'
+
+
+def test_missing_deployment_profile_keeps_the_inherited_home(tmp_path, monkeypatch):
+    monkeypatch.setattr(environment, 'PROFILE_DEFAULT', str(tmp_path / 'absent'))
+    monkeypatch.setenv('USERPROFILE', r'C:\Windows\system32\config\systemprofile')
+    assert environment.opencode_home() == r'C:\Windows\system32\config\systemprofile'
+
+
+def test_explicit_profile_setting_wins(tmp_path, monkeypatch):
+    monkeypatch.setenv(environment.PROFILE_ENV, str(tmp_path))
+    monkeypatch.setenv('USERPROFILE', r'C:\Users\dev')
+    assert environment.opencode_home() == str(tmp_path)
+
+
+def test_pinning_the_profile_does_not_widen_the_inherited_environment(monkeypatch):
+    """The MCP process, and every other child, keeps the service profile."""
+    monkeypatch.setenv('USERPROFILE', r'C:\Windows\system32\config\systemprofile')
+    monkeypatch.setenv('SAP_MCP_PASSWORD', 'scene-secret')
+    assert environment.subprocess_env()['USERPROFILE'] == r'C:\Windows\system32\config\systemprofile'
+    assert set(environment.opencode_host_env()) <= set(environment.SUBPROCESS_ENV_KEEP)
+    assert 'SAP_MCP_PASSWORD' not in environment.opencode_host_env()
+
+
+def test_a_shared_transpiler_cache_is_offered_to_every_host_start(tmp_path, monkeypatch):
+    """Re-transpiling the engine is the create wait (19s cold against 3.4s warm).
+
+    A shared directory lets a later start -- and the session that cancels the
+    catalog warm-up -- reuse what an earlier start already transpiled.
+    """
+    monkeypatch.delenv(environment.TRANSPILER_CACHE_SWITCH, raising=False)
+    cache = tmp_path / 'runtime' / '.transpiler-cache'
+    env = environment.opencode_host_env(str(cache))
+    assert env[environment.TRANSPILER_CACHE_ENV] == str(cache)
+    assert cache.is_dir()
+
+
+def test_the_transpiler_cache_never_widens_the_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv('SAP_MCP_PASSWORD', 'scene-secret')
+    env = environment.opencode_host_env(str(tmp_path / 'cache'))
+    assert set(env) <= set(environment.SUBPROCESS_ENV_KEEP) | {environment.TRANSPILER_CACHE_ENV}
+    assert 'SAP_MCP_PASSWORD' not in env
+
+
+def test_the_transpiler_cache_can_be_turned_off(tmp_path, monkeypatch):
+    monkeypatch.setenv(environment.TRANSPILER_CACHE_SWITCH, '0')
+    env = environment.opencode_host_env(str(tmp_path / 'cache'))
+    assert environment.TRANSPILER_CACHE_ENV not in env
+
+
+def test_no_cache_variable_without_a_directory(monkeypatch):
+    monkeypatch.delenv(environment.TRANSPILER_CACHE_SWITCH, raising=False)
+    assert environment.TRANSPILER_CACHE_ENV not in environment.opencode_host_env()
+
+
+def test_the_cache_directory_is_shared_under_the_data_root(tmp_path):
+    cache = environment.transpiler_cache_dir(tmp_path)
+    assert cache == tmp_path / 'scenes/sap_workbench_runtime/.transpiler-cache'

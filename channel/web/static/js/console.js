@@ -8920,7 +8920,12 @@ function sendVoiceMessage(text, audioUrl) {
         .then(data => {
             if (!isCurrentIdentity()) return;
             if (data.status === 'success') {
-                if (!data.inline_reply) _refreshHistoryList();
+                if (!data.inline_reply) {
+                    _touchHistorySession(ownerContext.sid, ownerContext.agentId, {
+                        last_active: Math.floor(Date.now() / 1000),
+                        optimistic: false,
+                    });
+                }
                 const ownerVisible = ownerContext.sid === sessionId && ownerContext.agentId === activeAgentId;
                 rememberLiveSpeaker(data);
                 setLoadingSpeaker(loadingEl, data.request_id);
@@ -9290,7 +9295,12 @@ function sendMessage() {
         .then(data => {
             if (!isCurrentIdentity()) return;
             if (data.status === 'success') {
-                if (!data.inline_reply) _refreshHistoryList();
+                if (!data.inline_reply) {
+                    _touchHistorySession(ownerContext.sid, ownerContext.agentId, {
+                        last_active: Math.floor(Date.now() / 1000),
+                        optimistic: false,
+                    });
+                }
                 const ownerVisible = ownerContext.sid === sessionId && ownerContext.agentId === activeAgentId;
                 rememberLiveSpeaker(data);
                 // The turn has now persisted the session: the context entry can
@@ -10011,7 +10021,9 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
             // is intentionally skipped. Notify for both foreground and
             // background sessions, before the render guard below.
             if (item.type === 'done') {
-                _refreshHistoryList();
+                _touchHistorySession(ownerSession, ownerAgent, {
+                    last_active: Math.floor(Date.now() / 1000),
+                });
                 const firstTitle = buffer.titleInfo;
                 buffer.titleInfo = null;
                 if (firstTitle) {
@@ -10158,7 +10170,6 @@ function startPolling() {
             pollInFlight = false;
             if (!isCurrent()) return;
             if (data.status === 'success' && data.has_content) {
-                _refreshHistoryList();
                 const rid = data.request_id;
                 if (loadingContainers[rid]) {
                     loadingContainers[rid].remove();
@@ -11605,10 +11616,7 @@ function commitPreparedSession(preparedSessionId, { optimistic = true, inherit =
     // would just spawn another).
     _historyDirty = true;
     if (optimistic && typeof openSessionPanel === 'function') openSessionPanel();
-    if (_historyVisible) {
-        if (!_sessionLoading) loadSessionList();
-        if (optimistic) _addOptimisticSessionItem(sessionId);
-    }
+    if (_historyVisible && optimistic) _addOptimisticSessionItem(sessionId);
     if (typeof finishSessionPanelSelection === 'function') finishSessionPanelSelection();
     // A fresh session has no server-side context row yet: keep the usage entry
     // quiet until the first turn persists it.
@@ -11708,6 +11716,7 @@ function _sessionTimeGroup(ts) {
 let _sessionPage = 1;
 let _sessionHasMore = false;
 let _sessionLoading = false;
+let _historyRefreshQueued = false;
 const _SESSION_PAGE_SIZE = 50;
 
 // Every session loaded so far, in backend order (pinned first, then recency).
@@ -11810,6 +11819,14 @@ function _cancelHistoryRequest() {
     _historyRequestController = null;
     _sessionReqSeq++;
     _sessionLoading = false;
+    _historyRefreshQueued = false;
+}
+
+function _historyLoadSettled() {
+    _sessionLoading = false;
+    if (!_historyRefreshQueued) return;
+    _historyRefreshQueued = false;
+    _refreshHistoryList();
 }
 
 function _resetHistorySearch() {
@@ -11931,12 +11948,19 @@ function clearHistorySearch() {
     return _submitHistorySearch();
 }
 
-function loadSessionList(onDone) {
+function loadSessionList(onDone, opts) {
     if (_sidebarRecentDenied()) return;
     const container = document.getElementById('session-list');
     if (!container || _historySearchComposing) return;
+    const silent = !!(opts && opts.silent);
+    const fill = opts && Object.prototype.hasOwnProperty.call(opts, 'fill') ? !!opts.fill : !silent;
     if (container.querySelector('.session-title-input') || _dragSpaceKey !== null) {
         _historyDirty = true;
+        _historyRefreshQueued = false;
+        return;
+    }
+    if (silent && _sessionLoading) {
+        _historyRefreshQueued = true;
         return;
     }
     _syncHistorySearchQuery();
@@ -11945,28 +11969,76 @@ function loadSessionList(onDone) {
         return;
     }
 
-    // A fresh (re)load supersedes any in-flight read: reset loading so the new
-    // request starts, and bump the sequence so a stale response is dropped.
-    _cancelHistoryRequest();
-    _sessionPage = 1;
-    _sessionHasMore = false;
+    // A user-facing (re)load supersedes any in-flight read. Silent refreshes
+    // keep the in-flight request and queue a trailing read instead.
+    if (!silent) {
+        _cancelHistoryRequest();
+        _sessionPage = 1;
+        _sessionHasMore = false;
+        _historyTotal = null;
+        container.scrollTop = 0;
+    } else {
+        _sessionReqSeq++;
+    }
     _historyDirty = false;
     _historyPageFailed = false;
-    _historyTotal = null;
     _sessionReqAgent = _sessionListContext();
     const seq = _sessionReqSeq;
-    container.scrollTop = 0;
 
-    return _fetchSessionPage(1, true, onDone, seq);
+    return _fetchSessionPage(1, true, onDone, seq, { silent, fill });
+}
+
+function _findSessionItem(sid, agentId) {
+    if (typeof _sessionItems === 'undefined' || !Array.isArray(_sessionItems)) return null;
+    return _sessionItems.find(s => s.session_id === sid
+        && (!agentId || (s.agent && s.agent.id) === agentId)) || null;
+}
+
+// Chat send / complete / auto-title only change one row. Patch it in place so
+// the open list does not re-enter the loading state or discard later pages.
+function _touchHistorySession(sid, agentId, patch) {
+    if (!sid) return;
+    if (typeof _sessionItems === 'undefined' || !Array.isArray(_sessionItems)) {
+        _historyDirty = true;
+        return;
+    }
+    const owner = agentId || (typeof activeAgentId !== 'undefined' ? activeAgentId : '');
+    const entry = _findSessionItem(sid, owner) || _findSessionItem(sid);
+    if (!entry) {
+        if (_historyQuery) return;
+        if (typeof _historyVisible !== 'undefined' && _historyVisible) _refreshHistoryList();
+        else _historyDirty = true;
+        return;
+    }
+    patch = patch || {};
+    if (Object.prototype.hasOwnProperty.call(patch, 'optimistic') && !patch.optimistic) {
+        delete entry.optimistic;
+    }
+    Object.keys(patch).forEach(key => {
+        if (key === 'optimistic' || patch[key] === undefined) return;
+        entry[key] = patch[key];
+    });
+    if (patch.last_active != null || patch.pinned != null) {
+        if (typeof _sortSessionItems === 'function') _sortSessionItems();
+    }
+    if (typeof _historyVisible !== 'undefined' && _historyVisible
+            && typeof _renderSessionList === 'function') _renderSessionList();
 }
 
 // Refresh the list for session operations that happen while the user may not be
 // on the history page: reload only if it is the active view, otherwise mark it
-// dirty so the next visit re-reads.
+// dirty so the next visit re-reads. In-flight reads are not aborted; a trailing
+// silent reload runs once they finish.
 function _refreshHistoryList() {
-    if (_historyVisible) loadSessionList();
-    else _historyDirty = true;
-
+    if (typeof _historyVisible === 'undefined' || !_historyVisible) {
+        _historyDirty = true;
+        return;
+    }
+    if (typeof _sessionLoading !== 'undefined' && _sessionLoading) {
+        _historyRefreshQueued = true;
+        return;
+    }
+    loadSessionList(undefined, { silent: true, fill: false });
 }
 
 // === SIDEBAR_RECENT_BEGIN ===
@@ -12218,8 +12290,11 @@ function restoreArchivedSession(sessionId, agentId) {
 }
 // === ARCHIVED_SESSIONS_END ===
 
-function _fetchSessionPage(page, clear, onDone, seq) {
+function _fetchSessionPage(page, clear, onDone, seq, opts) {
     if (_sessionLoading) return;
+    opts = opts || {};
+    const silent = !!opts.silent;
+    const fill = !!opts.fill;
     const existingList = document.getElementById('session-list');
     if (existingList && (existingList.querySelector('.session-title-input') || _dragSpaceKey !== null)) {
         _historyDirty = true;
@@ -12231,7 +12306,10 @@ function _fetchSessionPage(page, clear, onDone, seq) {
     if (seq !== _sessionReqSeq) return;
     _sessionLoading = true;
     _historyPageFailed = false;
-    _setHistoryState(_historyQuery ? 'history_search_loading' : 'session_history_loading');
+    const keepRows = silent && clear && _sessionItems.length;
+    if (!keepRows) {
+        _setHistoryState(_historyQuery ? 'history_search_loading' : 'session_history_loading');
+    }
     _updateHistorySearchControls();
 
     const container = document.getElementById('session-list');
@@ -12243,19 +12321,21 @@ function _fetchSessionPage(page, clear, onDone, seq) {
     const current = () => seq === _sessionReqSeq && ctx === _sessionListContext();
     const fail = (key, message) => {
         if (!current()) return;
-        _sessionLoading = false;
         _historyRequestController = null;
         if (container.querySelector('.session-title-input') || _dragSpaceKey !== null) {
             _historyDirty = true;
+            _historyRefreshQueued = false;
+            _sessionLoading = false;
             _setHistoryState('');
             _updateHistorySearchControls();
             return;
         }
         _historyPageFailed = true;
-        if (clear) { _sessionItems = []; _historyTotal = null; }
-        _setHistoryState(key, true, () => _fetchSessionPage(page, clear, onDone, seq), message);
+        if (clear && !keepRows) { _sessionItems = []; _historyTotal = null; }
+        _setHistoryState(key, true, () => _fetchSessionPage(page, clear, onDone, seq, opts), message);
         _renderSessionList();
         _updateHistorySearchControls();
+        _historyLoadSettled();
     };
     const url = `/api/sessions?page=${page}&page_size=${_SESSION_PAGE_SIZE}&scope=all`
         + (query ? `&q=${encodeURIComponent(query)}` : '');
@@ -12272,9 +12352,10 @@ function _fetchSessionPage(page, clear, onDone, seq) {
             // Editing can begin after this request was sent. Defer its result
             // rather than replacing a focused editor or a dragged project.
             if (container.querySelector('.session-title-input') || _dragSpaceKey !== null) {
-                _sessionLoading = false;
                 _historyRequestController = null;
                 _historyDirty = true;
+                _historyRefreshQueued = false;
+                _sessionLoading = false;
                 _setHistoryState('');
                 _updateHistorySearchControls();
                 return;
@@ -12288,33 +12369,44 @@ function _fetchSessionPage(page, clear, onDone, seq) {
                 fail('history_search_unsupported');
                 return;
             }
-            _sessionLoading = false;
             _historyRequestController = null;
 
             const pending = _sessionItems.find(s => s.optimistic && s.session_id === sessionId
                 && s.agent?.id === activeAgentId);
-            if (clear) _sessionItems = [];
-
+            const sessionKey = s => `${(s.agent && s.agent.id) || ''}::${s.session_id}`;
             const sessions = data.sessions || [];
-            _sessionPage = page;
-            _sessionHasMore = !!data.has_more;
+
+            if (clear && keepRows && !query) {
+                const incoming = new Set(sessions.map(sessionKey));
+                const rest = _sessionPage > 1
+                    ? _sessionItems.filter(s => !incoming.has(sessionKey(s)))
+                    : [];
+                _sessionItems = sessions.concat(rest);
+                if (typeof _sortSessionItems === 'function') _sortSessionItems();
+                if (page >= _sessionPage) _sessionPage = page;
+                if (_sessionPage <= 1) _sessionHasMore = !!data.has_more;
+            } else {
+                if (clear) _sessionItems = [];
+                _sessionPage = page;
+                _sessionHasMore = !!data.has_more;
+                const seen = new Set(_sessionItems.map(sessionKey));
+                sessions.forEach(s => {
+                    const key = sessionKey(s);
+                    if (seen.has(key)) {
+                        const index = _sessionItems.findIndex(item => item.optimistic && sessionKey(item) === key);
+                        if (index >= 0) _sessionItems[index] = s;
+                        return;
+                    }
+                    seen.add(key);
+                    _sessionItems.push(s);
+                });
+            }
+
             _historyTotal = Number.isFinite(data.total) ? data.total : null;
             _sessionGroupMode = data.group_mode === 'project' ? 'project' : 'time';
             if (Array.isArray(data.project_order)) _projectOrder = data.project_order;
 
-            const sessionKey = s => `${(s.agent && s.agent.id) || ''}::${s.session_id}`;
             const seen = new Set(_sessionItems.map(sessionKey));
-            sessions.forEach(s => {
-                const key = sessionKey(s);
-                if (seen.has(key)) {
-                    const index = _sessionItems.findIndex(item => item.optimistic && sessionKey(item) === key);
-                    if (index >= 0) _sessionItems[index] = s;
-                    return;
-                }
-                seen.add(key);
-                _sessionItems.push(s);
-            });
-
             if (pending && !query && !seen.has(sessionKey(pending))) _sessionItems.unshift(pending);
             _sessionItems = _sessionItems.filter(s => !s.optimistic
                 || (s.session_id === sessionId && s.agent?.id === activeAgentId));
@@ -12325,9 +12417,12 @@ function _fetchSessionPage(page, clear, onDone, seq) {
             _renderSessionList();
             _updateHistorySearchControls();
             if (typeof onDone === 'function') onDone();
+            _historyLoadSettled();
             // A tall screen may not produce a scroll event after the first page.
             // Fill until scrolling is possible or all matching sessions arrived.
-            requestAnimationFrame(() => {
+            // Silent refreshes keep already-loaded later pages instead of
+            // chaining another full scan.
+            if (fill) requestAnimationFrame(() => {
                 if (current() && _historyVisible && _sessionHasMore && !_sessionLoading
                         && container.clientHeight > 0 && container.scrollHeight <= container.clientHeight + 60) {
                     _fetchSessionPage(_sessionPage + 1, false, undefined, seq);
@@ -12712,7 +12807,7 @@ function toggleSessionPin(sid, agentId) {
     })
         .then(r => r.json())
         .then(data => {
-            if (data.status === 'success') { _refreshHistoryList(); return; }
+            if (data.status === 'success') return;
             // Most often an empty brand-new chat: it has no row to pin until the
             // first message is stored.
             _wsToast(data.message || t('session_settings_failed'));
@@ -12966,7 +13061,7 @@ function wireCodingModule() {
             markActiveSessionRow();
             if (options?.isNew && typeof openSessionPanel === 'function') openSessionPanel();
             if (typeof finishSessionPanelSelection === 'function') finishSessionPanelSelection();
-            if (typeof _historyVisible !== 'undefined' && _historyVisible) loadSessionList();
+            if (typeof _refreshHistoryList === 'function') _refreshHistoryList();
         },
         redrawList: () => {
             _refreshHistoryList();
@@ -13368,7 +13463,7 @@ function generateSessionTitle(sid, userMsg, assistantReply, agentId = activeAgen
         .then(data => {
             if (data.status !== 'success' || authEpoch !== _authEpoch
                 || tenantId !== (sessionStorage.getItem('cow_tenant_id') || '')) return;
-            _refreshHistoryList();
+            _touchHistorySession(sid, agentId, { title: data.title });
         })
         .catch(() => {});
 }

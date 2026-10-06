@@ -2178,31 +2178,36 @@ class ConversationStore:
 
     def list_session_ids(self, channel_type: Optional[str] = None,
                          user_id: Optional[str] = None,
-                         archived: bool = False) -> List[str]:
-        """Every session id, optionally filtered by channel and/or owner.
+                         archived: bool = False,
+                         q: str = "") -> List[str]:
+        """Every session id, optionally filtered by channel, owner, and title.
 
-        One cheap single-column scan, used to work out how many distinct project
-        spaces are actually in play without paging through full session rows.
-        Archived sessions are excluded by default so a hidden conversation does
-        not keep inflating the space count that decides how the list groups.
+        One cheap id scan, used to count distinct project spaces and unique
+        merged totals without paging through full session rows. Archived
+        sessions are excluded by default so a hidden conversation does not keep
+        inflating the space count that decides how the list groups.
         """
+        q = normalize_session_search_query(q)
         scope_sql, scope_params = dimension_clause(
             values=self._dimensions(), keys=("agent_id", "tenant_id"))
-        archived_param = 1 if archived else 0
+        clauses = ["owner = ?", "archived = ?"]
+        params: List[Any] = [user_id or "", 1 if archived else 0]
+        if scope_sql:
+            clauses.append(scope_sql[len(" AND "):])
+            params.extend(scope_params)
+        if channel_type:
+            clauses.append("channel_type = ?")
+            params.append(channel_type)
+        if q:
+            clauses.append("instr(lower(title), lower(?)) > 0")
+            params.append(q)
+        where = " AND ".join(clauses)
         with self._lock:
             conn = self._connect()
             try:
-                if channel_type:
-                    rows = conn.execute(
-                        "SELECT session_id FROM sessions"
-                        f" WHERE channel_type = ? AND owner = ? AND archived = ?{scope_sql}",
-                        (channel_type, user_id or "", archived_param) + scope_params,
-                    ).fetchall()
-                else:
-                    rows = conn.execute(
-                        f"SELECT session_id FROM sessions WHERE owner = ? AND archived = ?{scope_sql}",
-                        (user_id or "", archived_param) + scope_params,
-                    ).fetchall()
+                rows = conn.execute(
+                    f"SELECT session_id FROM sessions WHERE {where}", params,
+                ).fetchall()
             finally:
                 conn.close()
         return [r[0] for r in rows]

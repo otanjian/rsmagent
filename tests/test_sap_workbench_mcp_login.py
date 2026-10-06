@@ -94,12 +94,52 @@ def test_failed_second_login_closes_both_partial_connections(failure):
         gateways = {"sap-abap": Gateway("adt"), "sap-pyrfc": Gateway("pyrfc", connected=failure != "soft_ping_failure",
                                                                 user="BOB" if failure == "identity_mismatch" else "ALICE")}
         bridge, _ = setup(gateways)
-        with pytest.raises(McpLoginError) as error:
-            await bridge.connect([config("sap-abap"), config("sap-pyrfc")], "https://sap.example/webgui", "test-only-password")
-        assert error.value.code in {"mcp_login_failed", "mcp_identity_mismatch"}
-        assert all(gateway.closed for gateway in gateways.values())
-        assert all(gateway.calls[-1][0] == "sap_disconnect" for gateway in gateways.values())
-        assert not bridge._connections
+        if failure == "identity_mismatch":
+            with pytest.raises(McpLoginError) as error:
+                await bridge.connect([config("sap-abap"), config("sap-pyrfc")], "https://sap.example/webgui", "test-only-password")
+            assert error.value.code == "mcp_identity_mismatch"
+            assert all(gateway.closed for gateway in gateways.values())
+            assert all(gateway.calls[-1][0] == "sap_disconnect" for gateway in gateways.values())
+            assert not bridge._connections
+            return
+        saved = await bridge.connect([config("sap-abap"), config("sap-pyrfc")], "https://sap.example/webgui", "test-only-password")
+        assert saved["connections"] == ["sap-abap"]
+        assert "sap-pyrfc" not in bridge._connections
+        await bridge.call("sap-abap", "adt_discover", {})
+        await bridge.close()
+    asyncio.run(run())
+
+
+def test_unreachable_abap_gateway_does_not_block_pyrfc():
+    async def run():
+        class DeadAbap(Gateway):
+            async def list_tools(self):
+                raise ConnectionError("8110 refused")
+        gateways = {"sap-abap": DeadAbap("adt"), "sap-pyrfc": Gateway("pyrfc")}
+        bridge, _ = setup(gateways)
+        saved = await bridge.connect([config("sap-abap"), config("sap-pyrfc")], "https://sap.example/webgui", "test-only-password")
+        assert saved["connections"] == ["sap-pyrfc"]
+        await bridge.call("sap-pyrfc", "read_table", {"table": "EKKO"})
+        with pytest.raises(McpLoginError, match="mcp_connection_unavailable"):
+            await bridge.call("sap-abap", "adt_discover", {})
+        await bridge.close()
+        assert gateways["sap-pyrfc"].closed
+    asyncio.run(run())
+
+
+def test_abap_connect_closed_does_not_block_pyrfc():
+    async def run():
+        class ClosedAbap(Gateway):
+            async def call_tool(self, name, args):
+                if name == "sap_connect":
+                    return result({"error": "Connection closed"}, error=True)
+                return await super().call_tool(name, args)
+        gateways = {"sap-abap": ClosedAbap("adt"), "sap-pyrfc": Gateway("pyrfc")}
+        bridge, _ = setup(gateways)
+        saved = await bridge.connect([config("sap-abap"), config("sap-pyrfc")], "https://sap.example/webgui", "test-only-password")
+        assert saved["connections"] == ["sap-pyrfc"]
+        await bridge.call("sap-pyrfc", "read_table", {"table": "EKKO"})
+        await bridge.close()
     asyncio.run(run())
 
 

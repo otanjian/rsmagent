@@ -164,10 +164,16 @@ def configuration_checks(config, coding=None, opencode=None, *, mcp_password_con
              "verification": "not_run"} for key, present in configured.items()]
 
 
-def capabilities(config):
+def capabilities(config, *, mcp_credentials=False):
     # This is the implemented feature set. Individual sessions still verify
     # the real browser, login state and control lease before page operations.
-    blockers = ["business_submission_unavailable"]
+    #
+    # `business_submission_unavailable` was dropped when the scene-mediated
+    # business channel landed: `sap_data_call` reaches BAPIs through
+    # `call_rfc`, so "no submission path exists" is no longer true. The scene's
+    # *own* commit channel is still absent, which is what `commit: False`
+    # records -- these are two different paths and must not be conflated.
+    blockers = []
     if not config["enabled"]:
         blockers.insert(0, "disabled")
     node_ready = config['browser_service_ref'] in BROWSER_SERVICE_REFS
@@ -175,6 +181,16 @@ def capabilities(config):
         blockers.insert(0, 'browser_service_unavailable')
     # Node selection only identifies the implementation. Allocation verifies
     # the executable, project and assets before starting either side.
+    #
+    # `notes` is the capability table shown to the operator. It must stay
+    # honest: a delivered skill, a registered MCP tool or an installed
+    # project artifact never upgrades a row by itself. The business row is
+    # therefore published from the *stored* credential state rather than from
+    # the channel's existence: with no saved MCP account the server cannot
+    # establish the connection and every call fails with `mcp_login_failed`.
+    notes = ["navigation_limited",
+             "mcp_business_available" if mcp_credentials else "mcp_credentials_missing",
+             "page_readwrite_unavailable"]
     return {"configuration": True, "visual": bool(config["enabled"] and node_ready),
             "automation": bool(config["enabled"] and node_ready and config["automation_enabled"]),
-            "commit": False, "blockers": blockers}
+            "commit": False, "blockers": blockers, "notes": notes}

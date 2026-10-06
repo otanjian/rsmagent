@@ -138,6 +138,26 @@ class ConsoleUploadTransportTests(unittest.TestCase):
         return headers
 
     def _upload(self, *, tenant=None, agent_id=None, content=b"hello-attachment"):
+        """POST /upload, selecting the Agent the way the clients do: the query.
+
+        ``/upload`` follows the master branch's interaction — the handler never
+        reads the multipart body, because ``WebChannel.upload_file`` does the one
+        and only parse of a one-shot ``wsgi.input``. Scoping therefore rides the
+        query string, where the console's fetch wrapper and the desktop client's
+        ``postFormData`` both append ``agent_id`` while keeping it out of the
+        body. ``_upload_with_body_agent`` covers the path they do not take.
+        """
+        fields = {"session_id": "ses-upload"}
+        body, content_type = _multipart(fields, "file", "shot.png", content)
+        path = "/upload" + (f"?agent_id={agent_id}" if agent_id else "")
+        return self.app.request(
+            path, method="POST", data=body,
+            headers=self._headers(tenant=tenant, extra={"Content-Type": content_type}),
+        )
+
+    def _upload_with_body_agent(self, *, tenant=None, agent_id=None,
+                                content=b"hello-attachment"):
+        """POST /upload with the Agent named in the multipart body instead."""
         fields = {"session_id": "ses-upload"}
         if agent_id:
             fields["agent_id"] = agent_id
@@ -186,6 +206,27 @@ class ConsoleUploadTransportTests(unittest.TestCase):
         self.assertTrue(
             os.path.realpath(body["file_path"]).startswith(expected),
             body["file_path"])
+
+    def test_a_form_field_agent_id_cannot_steer_the_write(self):
+        """The body is not a scoping channel: only the URL names the Agent.
+
+        This is the security half of the master interaction. The handler never
+        reads the multipart body, so a form field cannot select the Agent the
+        write is authorized for and lands in — an Agent named that way is
+        ignored and the request anchors to the tenant's default Agent, exactly
+        as an Agent-less request does. Without this, a hand-crafted body could
+        aim an upload at whatever Agent it named.
+        """
+        body = self._json(
+            self._upload_with_body_agent(tenant=self.tenant_id, agent_id="second-agent"))
+        self.assertEqual(body["status"], "success")
+        default_uploads = os.path.join(
+            os.path.realpath(self.agent_workspace),
+            "user", self.admin_id, "uploads") + os.sep
+        self.assertTrue(
+            os.path.realpath(body["file_path"]).startswith(default_uploads),
+            body["file_path"])
+        self.assertNotIn("?agent_id=second-agent", body["preview_url"])
 
     # -- GET /uploads/(.*) ----------------------------------------------
 

@@ -19,7 +19,7 @@
       {
         "id": "sap-abap",
         "transport": "remote",
-        "url": "http://127.0.0.1:8100/mcp",
+        "url": "http://127.0.0.1:8110/mcp",
         "profile_ref": "",
         "enabled": true,
         "credential_source": "scene_config",

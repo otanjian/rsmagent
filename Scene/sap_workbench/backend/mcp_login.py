@@ -4,6 +4,7 @@ The trusted caller authorizes scene use and revalidates the configuration versio
 This module never stores the password or exposes connection IDs to the model.
 MCP identity is independent of the browser login until unified login is wired.
 """
+import asyncio
 from contextlib import AsyncExitStack, asynccontextmanager, suppress
 from dataclasses import dataclass
 import json
@@ -14,6 +15,14 @@ from .deadline import task_timeout
 
 MCP_DISCONNECT_TIMEOUT = 5
 MCP_STACK_CLOSE_TIMEOUT = 5
+# A single enabled gateway that is down or whose sap_connect fails must not
+# roll back a sibling that already authenticated. Identity / config errors
+# still abort the whole login: the password and target are shared.
+_FATAL_GATEWAY_ERRORS = frozenset({
+    "sap_login_invalid", "sap_tls_required", "mcp_configuration_unsupported",
+    "mcp_transport_auth_unsupported", "mcp_connection_fixed",
+    "mcp_duplicate_connection", "mcp_identity_mismatch", "sap_login_changed",
+})
 
 
 class McpLoginError(RuntimeError):
@@ -72,6 +81,12 @@ def _result(result):
 
 class SapMcpLogin:
     READ_TOOLS = frozenset({"adt_discover", "adt_search", "adt_read_source", "healthcheck", "read_table"})
+    #: Business-data tools the workbench scene mediates through its own credential.
+    #: ``call_rfc`` can reach a BAPI that writes business documents, so this set is
+    #: deliberately *not* bundled with READ_TOOLS: it is a separate, explicitly
+    #: audited capability, and it still excludes every ADT tool that changes the
+    #: system itself (``adt_write_source`` / ``adt_activate`` / transports / ``bw_*``).
+    BUSINESS_TOOLS = frozenset({"read_table", "run_query", "call_rfc"})
     IDENTITY_KEYS = frozenset({"connection_id", "user", "password", "client", "host", "url", "tenant_id", "session_id"})
 
     def __init__(self, identity, *, revalidate, session_factory=sdk_session):
@@ -99,8 +114,9 @@ class SapMcpLogin:
 
         Credentials come from the trusted login handler, never a model tool's
         arguments. TLS is verified except for the explicitly approved test SAP
-        origin. Authentication failures tear down partially created
-        connections instead of reporting a returned connection_id as success.
+        origin.         Authentication failures on one gateway do not report a connection_id as
+        success for that gateway. A sibling gateway that already authenticated
+        is kept unless the failure is an identity or configuration error.
         """
         await self._check()
         if self._connections or not isinstance(password, str) or not password:
@@ -108,11 +124,13 @@ class SapMcpLogin:
         target = urlsplit(sap_url)
         if target.scheme != "https" or not target.hostname or target.username or target.password:
             raise McpLoginError("sap_tls_required")
+        enabled = 0
         try:
             tls_verify = verify_sap_tls(sap_url)
             for config in configurations:
                 if not config.get("enabled"):
                     continue
+                enabled += 1
                 if config.get("transport") != "remote" or config.get("credential_source") != "scene_config":
                     raise McpLoginError("mcp_configuration_unsupported")
                 if config.get("transport_auth", "none") != "none":
@@ -123,80 +141,101 @@ class SapMcpLogin:
                     raise McpLoginError("mcp_connection_fixed")
                 if name in self._connections:
                     raise McpLoginError("mcp_duplicate_connection")
-                session = await self._stack.enter_async_context(self._session_factory(endpoint))
-                listing = await session.list_tools()
-                tools = {tool.name: tool for tool in listing.tools}
-                if not {"sap_connect", "sap_disconnect", "sap_whoami"} <= tools.keys():
-                    raise McpLoginError("mcp_identity_tools_missing")
-                properties = tools["sap_connect"].inputSchema.get("properties", {})
-                args = {"user": self.identity.user, "password": password, "client": self.identity.client}
-                if "host" in properties and "adt_discover" in tools:
-                    args.update(host=target.hostname, port=target.port or 443, https=True, insecure=not tls_verify, timeout=30)
-                    kind = "adt"
-                elif "url" in properties and "healthcheck" in tools:
-                    args.update(url=f"https://{target.netloc}", backend="adt", tls_verify=tls_verify, timeout=30)
-                    kind = "pyrfc"
-                else:
-                    raise McpLoginError("mcp_login_protocol_unsupported")
-                result = _result(await session.call_tool("sap_connect", args))
-                connection_id = result.get("connection_id")
-                if not isinstance(connection_id, str) or not connection_id:
-                    raise McpLoginError("mcp_login_failed")
-                self._connections[name] = (session, connection_id, tools)
-                if kind == "pyrfc" and result.get("connected") is not True:
-                    raise McpLoginError("mcp_login_failed")
-                who = _result(await session.call_tool("sap_whoami", {"connection_id": connection_id}))
-                # PyRFC metadata nests the SAP identity under rfc / adt.
-                account = who if kind == 'adt' else who.get('adt')
-                if (not isinstance(account, dict) or not isinstance(account.get('user'), str)
-                        or account['user'].upper() != self.identity.user.upper()
-                        or str(account.get('client', '')) != self.identity.client
-                        or who.get('connection_id', connection_id) != connection_id):
-                    raise McpLoginError("mcp_identity_mismatch")
-                # These gateways report registry metadata from sap_connect,
-                # not a SAP SID read from the server. Check the reported target
-                # without fabricating verification of the configured system.
-                target_reported = False
-                if kind == 'adt' and any(key in account for key in ('host', 'port', 'https')):
-                    target_reported = True
-                    if (not isinstance(account.get('host'), str)
-                            or account['host'].lower() != target.hostname.lower()
-                            or account.get('port') != (target.port or 443)
-                            or account.get('https') is not True):
-                        raise McpLoginError('mcp_identity_mismatch')
-                elif kind == 'pyrfc' and 'url' in account:
-                    reported = urlsplit(account['url']) if isinstance(account['url'], str) else None
-                    target_reported = True
-                    if (reported is None or reported.scheme != 'https'
-                            or reported.hostname != target.hostname
-                            or (reported.port or 443) != (target.port or 443)
-                            or reported.username or reported.password or reported.query or reported.fragment):
-                        raise McpLoginError('mcp_identity_mismatch')
-                self._verification[name] = {'account': 'gateway_metadata',
-                    'target': 'gateway_metadata' if target_reported else 'unverified', 'system': 'unverified'}
-                probe = "adt_discover" if kind == "adt" else "healthcheck"
-                live = await session.call_tool(probe, {"connection_id": connection_id})
-                if getattr(live, "isError", False):
-                    raise McpLoginError("mcp_login_failed")
-                # Some gateways encode a failure in a JSON text result without
-                # setting MCP's isError flag. Never treat that as authenticated.
-                if kind == "adt":
-                    _result(live)
-                if kind == "pyrfc" and _result(live).get("status") != "connected":
-                    raise McpLoginError("mcp_login_failed")
-                await self._check()
+                try:
+                    await self._open_gateway(name, endpoint, target, tls_verify, password)
+                except McpLoginError as error:
+                    await self._abandon(name)
+                    if error.code in _FATAL_GATEWAY_ERRORS:
+                        raise
+                except (KeyboardInterrupt, SystemExit, asyncio.CancelledError):
+                    raise
+                except Exception:
+                    await self._abandon(name)
             if not self._connections:
-                raise McpLoginError("mcp_not_configured")
+                raise McpLoginError("mcp_login_failed" if enabled else "mcp_not_configured")
             return {"ready": True, "connections": list(self._connections),
                     "identity_verification": dict(self._verification)}
         except BaseException as error:
             await self.close()
-            if isinstance(error, (McpLoginError, KeyboardInterrupt, SystemExit)):
-                raise
-            import asyncio
-            if isinstance(error, asyncio.CancelledError):
+            if isinstance(error, (McpLoginError, KeyboardInterrupt, SystemExit, asyncio.CancelledError)):
                 raise
             raise McpLoginError("mcp_login_failed") from None
+
+    async def _open_gateway(self, name, endpoint, target, tls_verify, password):
+        session = await self._stack.enter_async_context(self._session_factory(endpoint))
+        listing = await session.list_tools()
+        tools = {tool.name: tool for tool in listing.tools}
+        if not {"sap_connect", "sap_disconnect", "sap_whoami"} <= tools.keys():
+            raise McpLoginError("mcp_identity_tools_missing")
+        properties = tools["sap_connect"].inputSchema.get("properties", {})
+        args = {"user": self.identity.user, "password": password, "client": self.identity.client}
+        if "host" in properties and "adt_discover" in tools:
+            args.update(host=target.hostname, port=target.port or 443, https=True, insecure=not tls_verify, timeout=30)
+            kind = "adt"
+        elif "url" in properties and "healthcheck" in tools:
+            args.update(url=f"https://{target.netloc}", backend="adt", tls_verify=tls_verify, timeout=30)
+            kind = "pyrfc"
+        else:
+            raise McpLoginError("mcp_login_protocol_unsupported")
+        result = _result(await session.call_tool("sap_connect", args))
+        connection_id = result.get("connection_id")
+        if not isinstance(connection_id, str) or not connection_id:
+            raise McpLoginError("mcp_login_failed")
+        self._connections[name] = (session, connection_id, tools)
+        if kind == "pyrfc" and result.get("connected") is not True:
+            raise McpLoginError("mcp_login_failed")
+        who = _result(await session.call_tool("sap_whoami", {"connection_id": connection_id}))
+        # PyRFC metadata nests the SAP identity under rfc / adt.
+        account = who if kind == 'adt' else who.get('adt')
+        if (not isinstance(account, dict) or not isinstance(account.get('user'), str)
+                or account['user'].upper() != self.identity.user.upper()
+                or str(account.get('client', '')) != self.identity.client
+                or who.get('connection_id', connection_id) != connection_id):
+            raise McpLoginError("mcp_identity_mismatch")
+        # These gateways report registry metadata from sap_connect,
+        # not a SAP SID read from the server. Check the reported target
+        # without fabricating verification of the configured system.
+        target_reported = False
+        if kind == 'adt' and any(key in account for key in ('host', 'port', 'https')):
+            target_reported = True
+            if (not isinstance(account.get('host'), str)
+                    or account['host'].lower() != target.hostname.lower()
+                    or account.get('port') != (target.port or 443)
+                    or account.get('https') is not True):
+                raise McpLoginError('mcp_identity_mismatch')
+        elif kind == 'pyrfc' and 'url' in account:
+            reported = urlsplit(account['url']) if isinstance(account['url'], str) else None
+            target_reported = True
+            if (reported is None or reported.scheme != 'https'
+                    or reported.hostname != target.hostname
+                    or (reported.port or 443) != (target.port or 443)
+                    or reported.username or reported.password or reported.query or reported.fragment):
+                raise McpLoginError('mcp_identity_mismatch')
+        self._verification[name] = {'account': 'gateway_metadata',
+            'target': 'gateway_metadata' if target_reported else 'unverified', 'system': 'unverified'}
+        probe = "adt_discover" if kind == "adt" else "healthcheck"
+        live = await session.call_tool(probe, {"connection_id": connection_id})
+        if getattr(live, "isError", False):
+            raise McpLoginError("mcp_login_failed")
+        # Some gateways encode a failure in a JSON text result without
+        # setting MCP's isError flag. Never treat that as authenticated.
+        if kind == "adt":
+            _result(live)
+        if kind == "pyrfc" and _result(live).get("status") != "connected":
+            raise McpLoginError("mcp_login_failed")
+        await self._check()
+
+    async def _abandon(self, name):
+        self._verification.pop(name, None)
+        entry = self._connections.pop(name, None)
+        if not entry:
+            return
+        session, connection_id, _ = entry
+        try:
+            async with task_timeout(MCP_DISCONNECT_TIMEOUT):
+                await session.call_tool("sap_disconnect", {"connection_id": connection_id})
+        except Exception:
+            pass
 
     async def connect_from_config(self, store, tenant_id, expected_version):
         """Trusted runtime entry; no password argument is exposed to a model."""
@@ -216,6 +255,15 @@ class SapMcpLogin:
 
     async def call(self, name, tool, arguments):
         return await self._call(name, tool, arguments, self.READ_TOOLS)
+
+    async def call_business(self, name, tool, arguments):
+        """The scene-mediated business-data channel (see ``BUSINESS_TOOLS``).
+
+        The caller still cannot name a connection id or any identity field: the
+        id is attached by :meth:`_call` from the connection the scene itself
+        established, so the model only ever supplies business arguments.
+        """
+        return await self._call(name, tool, arguments, self.BUSINESS_TOOLS)
 
     async def call_json(self, name, tool, arguments):
         """Scene-owned PO checks; this is absent from model tool registration."""
@@ -244,7 +292,6 @@ class SapMcpLogin:
         return result
 
     async def close(self):
-        import asyncio
         self._closed = True
         self._verification = {}
         entries, self._connections = self._connections, {}

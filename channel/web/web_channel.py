@@ -157,7 +157,7 @@ from Scene._shared.http import HANDLERS as _SCENE_HANDLERS, SceneCapabilitiesHan
 from Scene._shared.frontend import SceneAssetHandler
 from Scene.sap_workbench.backend.http import (
     SapWorkbenchConfigHandler, SapWorkbenchCheckHandler, SapWorkbenchSessionsHandler,
-    SapWorkbenchBrowserHandler,
+    SapWorkbenchBrowserHandler, SapWorkbenchBridgeHandler, SapWorkbenchDataBridgeHandler,
 )
 
 

@@ -3214,7 +3214,8 @@ def _list_sessions_across_agents(page: int, page_size: int,
     when a user is present, filters each Agent's sessions to that user.
 
     The same merge handles title search and the unfiltered history. Message
-    bodies are not read; cost is proportional to matching session summaries.
+    bodies are not read. Row payloads are only the prefix needed for the
+    requested page; unique totals and space grouping use id-only scans.
     """
     from channel.web.web_channel import _tenant_ids_for_context
     from agent.memory import get_conversation_store
@@ -3224,11 +3225,21 @@ def _list_sessions_across_agents(page: int, page_size: int,
     from common.state_dir import state_root_str
 
     q = normalize_session_search_query(q)
+    page = max(1, page)
+    page_size = max(1, page_size)
+    offset = (page - 1) * page_size
+    # Each store is already pinned-then-recency ordered. The globally ordered
+    # page is contained in the prefix of length offset+page_size from every
+    # store (duplicates only shrink that prefix). Titles and badges are applied
+    # to the returned page, not to every matching row.
+    need = offset + page_size
     merged: List[dict] = []
     space_paths = set()
     uses_default = False
+    match_ids: set = set()
     user_id = ctx.user_id if ctx else None
     visible = _tenant_ids_for_context(ctx)
+    stores_by_id: Dict[str, Any] = {}
     try:
         members_index = session_prefs.members_index()
     except Exception as e:
@@ -3241,22 +3252,19 @@ def _list_sessions_across_agents(page: int, page_size: int,
             continue
         try:
             store = get_conversation_store(profile.workspace)
-            matches = []
-            search_page = 1
-            while True:
-                batch = store.list_sessions(
-                    channel_type="web", page=search_page, page_size=500,
-                    user_id=user_id, q=q, archived=archived,
-                )
-                rows = batch.get("sessions") or []
-                matches.extend(rows)
-                if not batch.get("has_more") or not rows:
-                    break
-                search_page += 1
-            chunk = {"sessions": matches}
+            stores_by_id[profile.id] = store
+            chunk = store.list_sessions(
+                channel_type="web", page=1, page_size=need,
+                user_id=user_id, q=q, archived=archived,
+            )
             project_map = project_store.get_project_map(profile.id)
             session_ids = store.list_session_ids(channel_type="web", user_id=user_id,
                                                  archived=archived)
+            if q:
+                match_ids.update(store.list_session_ids(
+                    channel_type="web", user_id=user_id, archived=archived, q=q))
+            else:
+                match_ids.update(session_ids)
         except Exception as e:
             # One unreadable workspace must not blank out the whole list; the
             # other Agents' conversations are still perfectly readable.
@@ -3265,26 +3273,8 @@ def _list_sessions_across_agents(page: int, page_size: int,
             )
             continue
 
-        # The type comes from the badge and the link state from the store: both
-        # markers the console needs, applied to the same dicts the loop below
-        # appends to the merged list.
-        _annotate_coding_sessions(store, chunk, profile.id)
-        badge = _agent_badge(profile)
         for session in chunk.get("sessions") or []:
-            path = project_map.get(session["session_id"])
-            session["agent"] = badge
-            # Only a conversation with more than one Agent in it needs faces in
-            # the list; a solo one reads better as a plain row, exactly as it
-            # did before there was a roster.
-            roster = _roster_from_members(
-                profile.id, members_index.get((profile.id, session["session_id"]))
-            )
-            if len(roster) > 1:
-                session["participants"] = roster
-            session["project"] = (
-                {"path": path, "name": project_store.display_name_for(path)}
-                if path else None
-            )
+            session["_agent_id"] = profile.id
             merged.append(session)
 
         for sid in session_ids:
@@ -3308,7 +3298,7 @@ def _list_sessions_across_agents(page: int, page_size: int,
             > (int(kept.get("msg_count") or 0), _as_epoch(kept.get("last_active")))
         ):
             by_id[sid] = session
-    total = len(by_id)
+    total = len(match_ids)
     merged = list(by_id.values())
 
     # Same ordering the per-Agent query applies, so a merged page looks exactly
@@ -3319,11 +3309,43 @@ def _list_sessions_across_agents(page: int, page_size: int,
             -_as_epoch(s.get("last_active")),
         )
     )
-    offset = (max(1, page) - 1) * page_size
+    page_rows = merged[offset:offset + page_size]
+    by_agent: Dict[str, List[dict]] = {}
+    for session in page_rows:
+        agent_id = session.pop("_agent_id", None)
+        if not agent_id:
+            continue
+        by_agent.setdefault(agent_id, []).append(session)
+    for profile in get_agent_registry().list(include_disabled=False):
+        rows = by_agent.get(profile.id)
+        if not rows:
+            continue
+        store = stores_by_id.get(profile.id)
+        if store is None:
+            continue
+        try:
+            project_map = project_store.get_project_map(profile.id)
+        except Exception:
+            project_map = {}
+        badge = _agent_badge(profile)
+        _annotate_coding_sessions(store, {"sessions": rows}, profile.id)
+        for session in rows:
+            session["agent"] = badge
+            roster = _roster_from_members(
+                profile.id, members_index.get((profile.id, session["session_id"]))
+            )
+            if len(roster) > 1:
+                session["participants"] = roster
+            path = project_map.get(session["session_id"])
+            session["project"] = (
+                {"path": path, "name": project_store.display_name_for(path)}
+                if path else None
+            )
+
     result = {
-        "sessions": merged[offset:offset + page_size],
+        "sessions": page_rows,
         "total": total,
-        "page": max(1, page),
+        "page": page,
         "page_size": page_size,
         "has_more": total > offset + page_size,
         "space_count": len(space_paths) + (1 if uses_default else 0),

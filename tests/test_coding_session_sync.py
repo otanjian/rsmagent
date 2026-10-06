@@ -59,11 +59,14 @@ class FakeOpenCode:
             return None
         return self.remote[session_id]
 
-    def create_session(self, session_id, project_dir):
+    def create_session(self, session_id, project_dir, permission=None):
         now = int(time.time() * MS)
         return self.remote.setdefault(session_id, RemoteSession(
             id=session_id, title="New session", directory=project_dir,
             created_ms=now, updated_ms=now))
+
+    def set_permission(self, session_id, project_dir, permission):
+        return None
 
     def get_session(self, session_id, project_dir=""):
         with self._lock:

@@ -306,7 +306,6 @@ class UploadHandler:
     def POST(self):
         from channel.web.web_channel import WebChannel
         from channel.web.web_channel import _db_scope
-        from channel.web.web_channel import _raw_web_input
         from channel.web.web_channel import _require_agent_action
         from channel.web.web_channel import _require_chat_csrf
         from channel.web.web_channel import _require_private_owner
@@ -319,11 +318,20 @@ class UploadHandler:
             # dir, so the target agent must be bound to the caller's tenant and
             # execution-authorized (attachments belong to the chat workflow).
             _require_chat_csrf()
-            params = _raw_web_input()
-            # The client keeps agent_id out of the multipart body (a field in
-            # both query and body arrives as a list), so resolve it across both:
-            # reading the body alone scopes the write to the default Agent.
-            agent_id = _require_tenant_agent_binding(ctx, _scoped_agent_id(params))
+            # This route follows the master branch's interaction: it never reads
+            # the request body, and ``WebChannel.upload_file`` does the one and
+            # only parse. ``wsgi.input`` is a one-shot stream, so a parse here
+            # left the channel an exhausted stream ("Unexpected end of multipart
+            # stream (parser closed)") — the console reads that as a failed
+            # upload and answers by dropping the file the user just picked.
+            #
+            # Scoping therefore rides the query string, which is where every
+            # client already puts it: the console's fetch wrapper and the desktop
+            # client's ``postFormData`` both keep ``agent_id`` out of a multipart
+            # body (a field present in both arrives as a list). Passing an empty
+            # mapping says there are no body fields to read, so the resolver
+            # takes the Agent from the URL.
+            agent_id = _require_tenant_agent_binding(ctx, _scoped_agent_id({}))
             _require_private_owner(ctx, agent_id)
             _require_agent_action(ctx, agent_id, "use", "agent.use")
             with authorized_target_scope(agent_id=agent_id):

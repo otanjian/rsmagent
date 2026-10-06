@@ -4,7 +4,10 @@ from urllib.parse import urlsplit
 
 
 MCP_ENDPOINTS = MappingProxyType({
-    "sap-abap": "http://127.0.0.1:8100/mcp",
+    # On this deployment host port 8100 is owned by weknora-lite, so the
+    # sap-abap gateway from C:\\rdai\\scripts\\start-sap-mcp.ps1 listens on 8110
+    # instead. sap-pyrfc keeps its default 8200.
+    "sap-abap": "http://127.0.0.1:8110/mcp",
     "sap-pyrfc": "http://127.0.0.1:8200/mcp",
 })
 SAP_TEST_ORIGIN = "https://sap.goodsap.cn:44300"

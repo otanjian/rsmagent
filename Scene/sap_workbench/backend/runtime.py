@@ -14,6 +14,7 @@ from urllib.parse import urlencode, urlsplit
 from aiohttp import web, ClientSession, ClientTimeout, WSMsgType
 
 from .configuration import WorkbenchError
+from .legacy import engine_enabled
 from .model_relay import configured_model, relay
 from ..browser_service.gateway import build_app
 from ..browser_service.page import PageController, model_observation
@@ -28,7 +29,16 @@ SHUTDOWN_CHILD_KILL_TIMEOUT = 2
 COMMIT_ACTIONS = frozenset({'commit_prepare', 'commit_execute', 'commit_status', 'commit_reconcile'})
 READ_ACTIONS = frozenset({'read', 'mcp_read', 'purchase_order_read'})
 BACKEND_READ_ACTIONS = frozenset({'mcp_read', 'purchase_order_read'})
-BRIDGE_ACTIONS = READ_ACTIONS | frozenset({'navigate', 'fill', 'interact', 'scroll', 'transaction_open'}) | COMMIT_ACTIONS
+#: The scene-mediated business-data channel. ``call_rfc`` can reach a BAPI that
+#: writes a business document, so this is deliberately *not* folded into
+#: ``READ_ACTIONS``: an ambiguous failure must stay recorded as ``unknown``
+#: rather than be reported as a clean failure, as for any possibly-writing act.
+DATA_ACTIONS = frozenset({'sap_data_call'})
+#: Actions that reach SAP directly instead of driving the visible pane. They
+#: stay available in ``iframe`` display mode, where page control is refused.
+BACKEND_ACTIONS = BACKEND_READ_ACTIONS | DATA_ACTIONS
+BRIDGE_ACTIONS = (READ_ACTIONS | frozenset({'navigate', 'fill', 'interact', 'scroll', 'transaction_open'})
+                  | COMMIT_ACTIONS | DATA_ACTIONS)
 BRIDGE_KEYS = frozenset({'service_id', 'session_id', 'message_id', 'call_id', 'action', 'input'})
 
 
@@ -153,6 +163,11 @@ class WorkbenchRuntime:
         self.gateway, self.store, self.row = gateway, store, row
         self.tenant, self.user = row["tenant_id"], row["user_id"]
         self.id, self.remote = row["id"], row["remote_session_id"]
+        # The platform's own session id for this conversation. The page needs it
+        # to ask the platform coding entry to re-open the session on resume; the
+        # scene never serves that page and never mints the id itself.
+        self.coding_session = row.get('coding_session_id')
+        self.agent_id = row['agent_id']
         self.config = row["snapshot"]["config"]
         self.display_mode = row.get('display_mode', 'screen')
         self.project = row["snapshot"]["project"]
@@ -169,6 +184,9 @@ class WorkbenchRuntime:
         self.runner = None
         self.port = None
         self.public_origin = None
+        self.public_base = None
+        self.base_path = ''
+        self._catalog_ready = False
         self.upstream = None
         self.controller = None
         self.lease = None
@@ -224,27 +242,56 @@ class WorkbenchRuntime:
 
     async def start(self):
         from config import get_data_root
-        from .environment import runtime_paths, require_local_runtime
+        from .environment import (base_path, opencode_host_env, public_origin,
+                                  require_local_runtime, runtime_paths,
+                                  transpiler_cache_dir)
         await self.authorize()
+        if self.display_mode == 'iframe':
+            # No scene engine starts here. The conversation is a platform coding
+            # session the page mounts from its own ``iframe_url``; this binding
+            # owns only the SAP pane, its navigation channel and the MCP
+            # credential boundary. Opening the workbench is therefore a registry
+            # write, not a process launch -- which is what removed the
+            # multi-second engine start and the timeout that used to guard it.
+            self.store.recover_actions(self.id)
+            self.allocation('ready', state='ready')
+            self.guard = asyncio.create_task(self.monitor())
+            return self
+        # The card entry opens the workbench and creates a session in the same
+        # breath, so a warm-up started by that read is very often still running
+        # here. Two engine starts on one CPU and disk made the create this user
+        # is waiting on measurably slower, so the real start wins. A warm-up is
+        # an optimisation; it must never be able to fail a session.
+        #
+        # Everything below this point is the retired self-managed engine path.
+        # It is only reachable when the rollback switch reserved 'screen' (or
+        # for a binding created before the switch existed); every other session
+        # returned above. Say so in the log rather than let a rollback look
+        # like normal operation.
+        from common.log import logger
+        logger.warning('[SapWorkbench] session=%s legacy self-managed engine path active', self.id)
+        with suppress(Exception):
+            from . import prewarm
+            prewarm.cancel()
         self.allocation('host_starting', state='creating')
+        started = time.monotonic()
         paths = runtime_paths(self.project)
         require_local_runtime(paths, self.config['browser_service_ref'], require_browser=self.display_mode != 'iframe')
         root = Path(__file__).resolve().parents[3]
-        runtime_root = Path(get_data_root()) / "scenes/sap_workbench_runtime" / self.id
+        data_root = get_data_root()
+        runtime_root = Path(data_root) / "scenes/sap_workbench_runtime" / self.id
         runtime_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.assets = paths.assets
         self.client = ClientSession(timeout=ClientTimeout(total=30), trust_env=False)
         if self.display_mode != 'iframe':
             self.model = await configured_model(self.client)
         self.store.recover_actions(self.id)
+        # The base path is fixed for the deployment before any route is added:
+        # the assets are built with it and the runtime strips it, so it is the
+        # single source of truth for both local and public entry.
+        self.base_path = base_path()
         app = build_app(tokens=self.views, node_factory=self.attach)
-        app.middlewares.append(self.boundary)
-        app.router.add_post('/bootstrap', self.bootstrap)
-        app.router.add_post('/bridge/call', self.bridge)
-        app.router.add_post('/bridge/cancel', self.cancel)
-        if self.display_mode != 'iframe':
-            app.router.add_post('/model/chat/completions', lambda request: relay(self, request))
-        app.router.add_route('*', '/{tail:.*}', self.proxy)
+        self.register_routes(app)
         # This loopback IPC has explicit request deadlines and a session
         # heartbeat. Some macOS local transports reject SO_KEEPALIVE during
         # accept, preventing Bun tool calls from reaching any route.
@@ -252,13 +299,29 @@ class WorkbenchRuntime:
         await self.runner.setup()
         await web.TCPSite(self.runner, '127.0.0.1', 0).start()
         self.port = self.runner.addresses[0][1]
+        # A browser reaches this session one of two ways: on this machine, where
+        # the ephemeral loopback port is the address; or through the public entry
+        # that fronts the dispatcher. Both carry the same path prefix, so the
+        # base-asset and API paths stay absolute under it; anything else is
+        # refused rather than half-served, and remote display only opens when the
+        # deployment configured a public origin.
         hostname = urlsplit(self.origin).hostname
-        if hostname not in {'localhost', '127.0.0.1'}:
-            raise WorkbenchError('local_runtime_origin_required', 503)
-        self.public_origin = f'http://{hostname}:{self.port}'
+        if hostname in {'localhost', '127.0.0.1'}:
+            self.public_origin = f'http://{hostname}:{self.port}'
+        else:
+            origin = public_origin()
+            if not origin:
+                raise WorkbenchError('local_runtime_origin_required', 503)
+            self.public_origin = origin
+        self.public_base = self.public_origin + self.base_path
         # Only essential environment is inherited. Platform/SAP/provider
-        # credentials are never inherited by the model execution process.
-        env = {key: os.environ[key] for key in ('PATH', 'HOME', 'TMPDIR', 'LANG') if key in os.environ}
+        # credentials are never inherited by the model execution process. The
+        # OpenCode profile is pinned because the console runs as a service
+        # account whose empty profile would otherwise decide the catalogue. The
+        # transpiler cache is shared across sessions so the engine is not
+        # re-transpiled on every create; the warm-up writes to the same
+        # directory, so its work is not lost when this start cancels it.
+        env = opencode_host_env(transpiler_cache_dir(data_root))
         if self.display_mode == 'iframe':
             for key in ('OPENCODE_CONFIG', 'OPENCODE_CONFIG_DIR', 'OPENCODE_CONFIG_CONTENT',
                         'OPENCODE_DB', 'OPENCODE_DISABLE_CHANNEL_DB',
@@ -276,12 +339,15 @@ class WorkbenchRuntime:
         self._spawn_task.add_done_callback(self._host_spawned)
         self.process = await asyncio.shield(self._spawn_task)
         setup = {"directory": str(runtime_root), "project": self.project, "root": source, "token": self.secret,
-                 "modelURL": f'http://127.0.0.1:{self.port}/model', "model": getattr(self, 'model', {}).get('model'),
-                 "bridgeURL": f'http://127.0.0.1:{self.port}/bridge/', "service": self.row["service_id"],
+                 "modelURL": self.loopback_url('/model'), "model": getattr(self, 'model', {}).get('model'),
+                 "bridgeURL": self.loopback_url('/bridge/'), "service": self.row["service_id"],
                  "displayMode": self.display_mode}
-        self.process.stdin.write(json.dumps(setup).encode())
+        # One line, then this pipe stays open for the host's whole life: its
+        # end-of-file is how the host notices that this interpreter is gone.
+        # Closing it here used to be the only way to end the host's read, and it
+        # left nothing for an orphan to notice (see server.ts).
+        self.process.stdin.write(json.dumps(setup).encode() + b'\n')
         await self.process.stdin.drain()
-        self.process.stdin.close()
         async with asyncio.timeout(45):
             while True:
                 line = await self.process.stdout.readline()
@@ -294,6 +360,11 @@ class WorkbenchRuntime:
                         break
                 except (ValueError, AttributeError):
                     pass
+        # The engine start dominates the create request the user is waiting on,
+        # so record how long each phase actually took before anything else can
+        # hide it behind a later failure.
+        from common.log import logger
+        logger.info('[SapWorkbench] session=%s stage=host_ready elapsed=%.2fs', self.id, time.monotonic() - started)
         async def drain_output():
             while await self.process.stdout.read(8192):
                 pass
@@ -307,6 +378,7 @@ class WorkbenchRuntime:
                     break
                 await asyncio.sleep(0.1)
         await self.ensure_conversation()
+        logger.info('[SapWorkbench] session=%s stage=conversation_ready elapsed=%.2fs', self.id, time.monotonic() - started)
         self.store.update_session(self.tenant, self.user, self.id, state='creating', control='manual',
                                   allocation_stage='conversation_ready', allocation_error='',
                                   generation=self.row['generation'] + 1)
@@ -376,25 +448,91 @@ class WorkbenchRuntime:
                 return None
             return await result.json()
 
+    async def ensure_catalog(self, timeout=8.0):
+        """The native Web UI paints an empty model/provider selector until its
+        models.dev catalog is hydrated after a cold start. Poll the two catalog
+        endpoints briefly so the embedded page shows the full list on first
+        paint instead of flashing empty. Short-circuits once confirmed and
+        never raises; a genuinely empty catalog simply stops after the budget."""
+        if self._catalog_ready:
+            return
+        deadline = time.monotonic() + timeout
+        query = '?' + urlencode({'location[directory]': self.project})
+        while time.monotonic() < deadline:
+            try:
+                models = await self.api('/api/model' + query)
+                providers = await self.api('/api/provider' + query)
+                if models.get('data') and providers.get('data'):
+                    self._catalog_ready = True
+                    return
+            except Exception:
+                pass
+            await asyncio.sleep(0.25)
+
     def projection(self):
-        grant = self.boot.issue(self.tenant, self.user, origin=self.origin)
         if self.display_mode == 'iframe':
-            return {'binding_id': self.id, 'remote_session_id': self.remote, 'port': self.port,
-                    'bootstrap_token': grant, 'origin': self.public_origin, 'display_mode': 'iframe',
+            # The page mounts the conversation from the platform coding entry, not
+            # from here: this names *which* session to reopen (and under which
+            # Agent), and the entry answers with the embed address. Publishing an
+            # address here would invite a mount that skips the reservation that
+            # gives the frame its session.
+            return {'binding_id': self.id, 'remote_session_id': self.remote,
+                    'coding_session_id': self.coding_session, 'agent_id': self.agent_id,
+                    'display_mode': 'iframe',
                     'sap_url': self.config['sap']['web_gui_url'], 'gui_automation': False, 'control': 'manual'}
+        grant = self.boot.issue(self.tenant, self.user, origin=self.origin)
         view = self.views.issue(self.tenant, self.user, origin=self.origin, url=self.config['sap']['web_gui_url'])
         return {'binding_id': self.id, 'remote_session_id': self.remote, 'port': self.port,
-                'bootstrap_token': grant, 'token': view, 'origin': self.public_origin,
+                'bootstrap_token': grant, 'token': view, 'origin': self.public_origin, 'base_url': self.public_base,
                 'control': self.controller.control if self.controller else 'manual', 'readonly': False}
+
+    def register_routes(self, app):
+        """Register every runtime route under the deployment prefix.
+
+        The prefix is a single source of truth: the assets are built with it, the
+        middleware strips it, and the native host's IPC URLs are derived from it
+        through :meth:`loopback_url`. Routing still matches the raw request path,
+        so a route and the URL meant to reach it must share the same prefix."""
+        path = self.base_path
+        app.middlewares.append(self.boundary)
+        app.router.add_post(path + '/bootstrap', self.bootstrap)
+        app.router.add_post(path + '/bridge/call', self.bridge)
+        app.router.add_post(path + '/bridge/cancel', self.cancel)
+        if self.display_mode != 'iframe':
+            app.router.add_post(path + '/model/chat/completions', lambda request: relay(self, request))
+        app.router.add_route('*', path + '/{tail:.*}', self.proxy)
+
+    def loopback_url(self, suffix):
+        """Loopback IPC URL for the native host, carrying the deployment prefix.
+
+        Every route is registered under :func:`base_path` and the middleware only
+        inspects the stripped path; routing still matches the raw request path.
+        A host that posted to an unprefixed ``/bridge/call`` therefore matched no
+        route and failed before the scene saw the tool call. Derive both IPC URLs
+        from the single prefix so the host and the runtime cannot disagree."""
+        return f'http://127.0.0.1:{self.port}{self.base_path}{suffix}'
+
+    def _unprefixed(self, path):
+        """Strip the base path, returning the root-relative route the handler
+        and upstream expect. Requests outside the prefix fall through to a 404."""
+        prefix = self.base_path
+        if not prefix:
+            return path
+        if path == prefix:
+            return '/'
+        if path.startswith(prefix + '/'):
+            return path[len(prefix):]
+        return path
 
     @web.middleware
     async def boundary(self, request, handler):
         try:
             await self.authorize()
-            if request.path.startswith(('/bridge/', '/model/')):
+            path = self._unprefixed(request.path)
+            if path.startswith(('/bridge/', '/model/')):
                 if not hmac.compare_digest(request.headers.get('Authorization', ''), 'Bearer ' + self.secret):
                     raise web.HTTPUnauthorized()
-            elif request.path not in {'/bootstrap', '/screen'}:
+            elif path not in {'/bootstrap', '/screen'}:
                 if not hmac.compare_digest(request.cookies.get(self.cookie, ''), self.browser_secret):
                     raise web.HTTPUnauthorized()
                 if (request.method not in {'GET', 'HEAD'} or request.headers.get('Upgrade', '').lower() == 'websocket') and request.headers.get('Origin') != self.public_origin:
@@ -418,9 +556,15 @@ class WorkbenchRuntime:
             raise web.HTTPUnauthorized()
         self.boot.revoke(token)
         directory = base64.urlsafe_b64encode(self.project.encode()).decode().rstrip('=')
-        query = urlencode({'rsm_embed': '1', 'rsm_parent_origin': self.origin, 'rsm_channel': self.id})
-        response = web.Response(status=303, headers={'Location': f'/{directory}/session/{self.remote}?{query}'})
-        response.set_cookie(self.cookie, self.browser_secret, httponly=True, samesite='Lax', path='/')
+        # The 303 is the first navigation the browser performs after the cookie is
+        # set. A SameSite=Lax cookie is not reliably sent on this nested-frame
+        # redirect (the form posts into the iframe), so carry the binding in the
+        # query as well: the dispatcher resolves it without needing the cookie,
+        # and the session cookie takes over for every later request.
+        query = urlencode({'binding': self.id, 'rsm_embed': '1', 'rsm_parent_origin': self.origin, 'rsm_channel': self.id})
+        response = web.Response(status=303, headers={'Location': f'{self.base_path}/{directory}/session/{self.remote}?{query}'})
+        response.set_cookie(self.cookie, self.browser_secret, httponly=True, samesite='Lax', path=self.base_path or '/',
+                            secure=self.public_origin.startswith('https://'))
         return response
 
     async def attach(self, claims):
@@ -474,25 +618,68 @@ class WorkbenchRuntime:
         return {'control': mode}
 
     async def bridge(self, request):
-        from auth.service import get_identity_service
         body = await bridge_body(request, action_required=True)
         if body.get('service_id') != self.row['service_id'] or body.get('session_id') != self.remote:
             raise web.HTTPForbidden()
+        result = await self.dispatch(body['action'], body.get('input'), body.get('call_id'))
+        # ``dispatch`` returns the execution output, or a prepared response for
+        # the commit actions that own their own envelope.
+        return result if isinstance(result, web.Response) else web.json_response({'output': result})
+
+    async def navigate(self, transaction, call):
+        """Owner-resolved navigation entry for the project-plugin channel.
+
+        The plugin can name nothing but its OpenCode session and a transaction
+        code, so this reuses :meth:`dispatch` unchanged: :meth:`authorize`
+        re-checks the owner's live platform authorization from the token
+        captured when the binding opened (never from the caller), and the
+        ledger, meter and audit apply exactly as for the in-process bridge.
+        Only delivery of the navigation command is reported back -- never a
+        claim about login state or page contents.
+        """
+        result = await self.dispatch('transaction_open', {'transaction': transaction}, call)
+        return result if isinstance(result, web.Response) else {'output': result}
+
+    async def data_call(self, connection, tool, arguments, call):
+        """Owner-resolved business-data entry for the project-plugin channel.
+
+        Same re-derivation as :meth:`navigate`: the plugin can name nothing but
+        its OpenCode session, a registered connection, a tool and business
+        arguments. :meth:`dispatch` re-checks the owner's live platform
+        authorization, the ledger, the meter and the audit, and
+        :meth:`ConfiguredMcp.call_business` refuses anything outside the
+        business allowlist before a single byte reaches SAP.
+        """
+        result = await self.dispatch('sap_data_call',
+                                     {'connection': connection, 'tool': tool,
+                                      'arguments': arguments}, call)
+        return result if isinstance(result, web.Response) else {'output': result}
+
+    async def dispatch(self, action, arguments, call):
+        """Owner-authorised execution shared by the host bridge and the plugin
+        channel. Caller framing (service/session match, or the coding-service
+        credential) is the caller's job; ownership is re-derived here."""
+        from auth.service import get_identity_service
         await self.authorize()
-        if self.display_mode == 'iframe' and body['action'] not in BACKEND_READ_ACTIONS | {'transaction_open'}:
+        if self.display_mode == 'iframe' and action not in BACKEND_ACTIONS | {'transaction_open'}:
             raise WorkbenchError('iframe_page_control_unavailable', 409)
-        if body['action'] == 'transaction_open' and self.display_mode != 'iframe':
+        if action == 'transaction_open' and self.display_mode != 'iframe':
             raise WorkbenchError('iframe_navigation_unavailable', 409)
-        if body['action'] in COMMIT_ACTIONS:
-            return await self.commit_bridge(body)
+        if action in COMMIT_ACTIONS:
+            return await self.commit_bridge({'action': action, 'input': arguments, 'call_id': call})
         if self.display_mode != 'iframe' and (not self.controller or not self.lease or not self.lease._node.attached):
             raise WorkbenchError('browser_not_connected', 409)
-        action, arguments, call = body.get('action'), body.get('input'), body.get('call_id')
         if action == 'transaction_open':
             from .navigation import transaction_url
             if set(arguments) != {'transaction'}:
                 raise WorkbenchError('invalid_request', 400)
             transaction_url(self.config['sap']['web_gui_url'], arguments['transaction'])
+        if action == 'sap_data_call' and (set(arguments) != {'connection', 'tool', 'arguments'}
+                                          or not isinstance(arguments['arguments'], dict)):
+            # Framing is checked here, before the ledger, for the same reason as
+            # the transaction code above: a body that is not even shaped like
+            # the call must not consume a meter unit or leave a ledger row.
+            raise WorkbenchError('invalid_request', 400)
         if action == 'purchase_order_read' and (set(arguments) != {'document_number'} or
                 not isinstance(arguments['document_number'], str) or
                 not re.fullmatch(r'[0-9]{10}', arguments['document_number']) or
@@ -526,6 +713,11 @@ class WorkbenchRuntime:
             operation = PurchaseOrderReader(self.mcp, self.config['sap']['client']).read(arguments['document_number'])
         elif action == 'mcp_read':
             operation = self.mcp.call(arguments)
+        elif action == 'sap_data_call':
+            # The caller names business arguments only. The connection, the
+            # account and the tool allowlist are all decided below this layer.
+            operation = self.mcp.call_business(arguments['connection'], arguments['tool'],
+                                               arguments['arguments'])
         else:
             operation = self.controller.execute(action, arguments, epoch=epoch)
         task = asyncio.create_task(operation)
@@ -533,7 +725,7 @@ class WorkbenchRuntime:
         try:
             result = await task
             await self.authorize()
-            if action not in BACKEND_READ_ACTIONS and action != 'transaction_open':
+            if action not in BACKEND_ACTIONS and action != 'transaction_open':
                 result = model_observation(result, arguments if action in {'read', 'fill'} else {})
             output = json.dumps(result, ensure_ascii=False, allow_nan=False)
             # Complete private table reads are never clipped into a partial
@@ -543,8 +735,8 @@ class WorkbenchRuntime:
             self.store.finish_action(record, 'succeeded')
             self.audit('action.succeeded', {'action_id': record, 'kind': action,
                        **({'effect': result['action_effect']['effect'], 'risk': result['action_effect']['risk']}
-                          if action not in BACKEND_READ_ACTIONS and result.get('action_effect') else {})})
-            return web.json_response({'output': output})
+                          if action not in BACKEND_ACTIONS and result.get('action_effect') else {})})
+            return output
         except WorkbenchError:
             self.store.finish_action(record, 'unknown' if action not in READ_ACTIONS else 'failed')
             if self.controller:
@@ -671,12 +863,14 @@ class WorkbenchRuntime:
         return web.json_response({'ok': True})
 
     async def proxy(self, request):
-        path = request.path
+        path = self._unprefixed(request.path)
         native = self.display_mode == 'iframe'
         # The native UI must use the canonical Session V2 runner; the CLI also
         # exposes legacy health, which would incorrectly select V1 prompts.
         if path == '/global/health':
             raise web.HTTPNotFound()
+        if native and request.method == 'GET' and path in {'/api/model', '/api/provider', '/api/model/default'}:
+            await self.ensure_catalog()
         if native and path == '/api/model/default' and request.method == 'GET':
             # This pinned Web build asks for a default route absent in the CLI.
             # Resolve the native configuration; do not shrink its model catalog.
@@ -754,12 +948,15 @@ class WorkbenchRuntime:
             finally:
                 upstream.close()
         # Assets are immutable native OpenCode build output. SPA routes never
-        # fall back for /api, files, terminal or unknown backend requests.
-        if request.method == 'GET' and (path.startswith('/assets/') or path in {'/favicon.ico', '/favicon.svg', '/manifest.webmanifest'}):
+        # fall back for /api, files, terminal or unknown backend requests. The
+        # bundle is built with base=base_path, so it references root files too
+        # (favicon-v3.*, oc-theme-preload.js, site.webmanifest, …) in addition
+        # to /assets/*; serve every static file that exists under the assets
+        # root and let anything missing fall through to the SPA index or 403.
+        if request.method == 'GET':
             asset = (self.assets / path.lstrip('/')).resolve()
-            if self.assets.resolve() not in asset.parents or not asset.is_file() or asset.suffix == '.map':
-                raise web.HTTPNotFound()
-            return web.FileResponse(asset)
+            if self.assets.resolve() in asset.parents and asset.is_file() and asset.suffix != '.map':
+                return web.FileResponse(asset)
         directory = base64.urlsafe_b64encode(self.project.encode()).decode().rstrip('=')
         spa_route = path in {'/', f'/{directory}/session/{self.remote}'}
         if native:
@@ -1088,6 +1285,10 @@ async def open_workbench_runtime(gateway, store, tenant, user, coding, saved, to
     if not hasattr(gateway, 'session_locks'):
         gateway.session_locks = WeakValueDictionary()
         gateway.session_requests = {}
+    # One switch decides which path a new binding takes. Off (the default) is
+    # the platform coding entry; on reserves the retired engine mode and skips
+    # the migration below so a rollback behaves exactly like the old release.
+    legacy_engine = engine_enabled()
     owner = (str(store.path.resolve()), tenant, user)
     key = (*owner, 'resume', row['id']) if row else (*owner, coding['id'], request_id)
     pending = gateway.session_requests.get(key)
@@ -1097,14 +1298,19 @@ async def open_workbench_runtime(gateway, store, tenant, user, coding, saved, to
         async def replace():
             async with lock:
                 current = store.session(tenant, user, row['id']) if row else store.reserve_session(
-                    tenant, user, coding['id'], request_id, saved, coding['project_dir'], display_mode='iframe')
+                    tenant, user, coding['id'], request_id, saved, coding['project_dir'],
+                    display_mode='screen' if legacy_engine else 'iframe')
                 if current['state'] == 'closed':
                     raise WorkbenchError('session_closed', 410)
                 others = [old for old in store.active_sessions(tenant, user) if old['id'] != current['id']]
                 # Begin every old host's idempotent cleanup together. Capacity
                 # for the new host is checked only after every cleanup joins.
                 await asyncio.gather(*(close_runtime(gateway, store, old, terminal=True) for old in others))
-                if current['display_mode'] != 'iframe':
+                # A binding reserved before the engine path was retired is moved
+                # to the platform entry instead of starting an engine the scene
+                # no longer runs. Old rows and their databases are left in
+                # place; only the mode changes.
+                if not legacy_engine and current['display_mode'] != 'iframe':
                     await close_runtime(gateway, store, current)
                     store.update_session(tenant, user, current['id'], display_mode='iframe')
                     current = store.session(tenant, user, current['id'])

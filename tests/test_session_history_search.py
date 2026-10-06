@@ -225,3 +225,23 @@ def test_single_agent_search_scopes_project_metadata_to_user(agent_environment, 
     assert result["space_count"] == 1
     assert result["sessions"][0]["session_id"] == "mine"
     assert result["sessions"][0]["project"]["name"] == "My project"
+
+
+def test_merged_page_reads_only_the_needed_prefix(agent_environment, monkeypatch):
+    env = agent_environment
+    _seed(env.stores["a"], [
+        (f"a{i}", f"title {i}", "u1", "web", 2000 - i, 1, 0)
+        for i in range(80)
+    ])
+    sizes = []
+    original = ConversationStore.list_sessions
+
+    def wrapped(self, *args, **kwargs):
+        sizes.append(kwargs.get("page_size", args[2] if len(args) > 2 else 50))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(ConversationStore, "list_sessions", wrapped)
+    first = web_channel._list_sessions_across_agents(1, 8, env.ctx)
+    assert first["total"] == 80
+    assert [s["session_id"] for s in first["sessions"]] == [f"a{i}" for i in range(8)]
+    assert sizes and max(sizes) == 8

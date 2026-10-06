@@ -37,6 +37,8 @@ class FakeOpenCode:
         self.gone = set()
         self.active = set()
         self.calls = []
+        self.permissions = {}
+        self.offered_on_create = {}
         self.fail_create = False
         self.fail_rename = False
         self.fail_delete = False
@@ -47,13 +49,23 @@ class FakeOpenCode:
 
         raise CodingError(CODING_UPSTREAM_UNAVAILABLE, "service unreachable", 502)
 
-    def create_session(self, session_id, project_dir):
+    def create_session(self, session_id, project_dir, permission=None):
         if self.fail_create:
             self._fail()
         now = int(time.time() * 1000)
+        # The real service accepts ``permission`` here and does not store it: a
+        # session created with the ruleset in this body reads back with none, so
+        # the project ``deny`` keeps hiding the tool. Recording it here would let
+        # a test pass while the deployed tool stayed invisible, so the fake keeps
+        # only what ``set_permission`` wrote and remembers the offer separately.
+        self.offered_on_create[session_id] = permission
+        self.permissions.setdefault(session_id, None)
         return self.remote.setdefault(session_id, RemoteSession(
             id=session_id, title="New session", directory=project_dir,
             created_ms=now, updated_ms=now))
+
+    def set_permission(self, session_id, project_dir, permission):
+        self.permissions[session_id] = permission
 
     def get_session(self, session_id, project_dir=""):
         if session_id in self.gone or session_id not in self.remote:
@@ -926,3 +938,104 @@ def test_the_settings_projection_never_carries_a_credential(web):
     assert "erp-coder" in body["agents"]
     for forbidden in ("password", "password_env", "api_url", "username"):
         assert forbidden not in body
+
+
+# -- session permission profiles (tool visibility) ------------------------
+
+SAP_PROFILE = "sap_workbench"
+# Hard-coded rather than read back from `permissions.ruleset`, so the profile is
+# asserted against what the service is supposed to send rather than against
+# whatever it happens to send. Both installed tools are hidden by the project
+# config and both are re-allowed by the scene-issued session.
+SAP_RULESET = [
+    {"permission": "sap_transaction_open", "pattern": "*", "action": "allow"},
+    {"permission": "sap_data_call", "pattern": "*", "action": "allow"},
+]
+
+
+def test_a_named_permission_profile_reaches_the_session_creation(web):
+    """The scene names a server-defined profile; the service sends its ruleset.
+
+    The tool is hidden by the project config for every session of the project;
+    this session-level ``allow`` is what makes it visible again in the
+    conversation the scene created. The rules live on the server, so the name is
+    the only thing the caller controls.
+
+    It has to arrive as an *update*: the service accepts ``permission`` on the
+    create call and then does not store it, so a ruleset that only travelled
+    with the create -- which is what this path used to do -- left the tool
+    hidden while every call still answered 200.
+    """
+    token = _member_with_coding_access(web, "alice")
+    created = _json(web.post("/api/coding/sessions",
+                             {"agent_id": "erp-coder", "request_id": REQUEST_ID,
+                              "permission_profile": SAP_PROFILE},
+                             token=token))
+
+    external = created["external_session_id"]
+    assert web.opencode.permissions[external] == SAP_RULESET
+
+
+def test_reopening_a_ready_session_reapplies_the_profile(web):
+    """A session that became ready without the ruleset heals on the next open.
+
+    Links made before the ruleset was applied -- and sessions whose ruleset was
+    lost -- are already ``ready``, so ``reserve`` returns early and never reaches
+    the create path again. Without re-applying here the tool would stay hidden
+    for the whole life of that conversation, which is the failure this guards.
+    """
+    token = _member_with_coding_access(web, "alice")
+    created = _json(web.post("/api/coding/sessions",
+                             {"agent_id": "erp-coder", "request_id": REQUEST_ID,
+                              "permission_profile": SAP_PROFILE},
+                             token=token))
+    external = created["external_session_id"]
+    # A link that became ready before the ruleset was applied carries none.
+    web.opencode.permissions[external] = None
+
+    reopened = _json(web.post("/api/coding/sessions",
+                              {"agent_id": "erp-coder", "request_id": REQUEST_ID,
+                               "permission_profile": SAP_PROFILE},
+                              token=token))
+
+    assert reopened["external_session_id"] == external
+    assert web.opencode.permissions[external] == SAP_RULESET
+
+
+def test_no_permission_profile_leaves_the_session_without_one(web):
+    """An ordinary coding session must not be handed the SAP grant."""
+    token = _member_with_coding_access(web, "alice")
+    created = _create(web, token)
+
+    assert web.opencode.permissions[created["external_session_id"]] in (None, [])
+
+
+def test_an_unknown_permission_profile_is_refused(web):
+    """A caller cannot smuggle rule content or name a profile we do not define."""
+    token = _member_with_coding_access(web, "alice")
+
+    response = web.post("/api/coding/sessions",
+                        {"agent_id": "erp-coder", "request_id": REQUEST_ID,
+                         "permission_profile": "make_me_admin"},
+                        token=token)
+
+    assert _status(response) == 400
+    assert _json(response)["code"] == "coding_invalid_request"
+    # Nothing was reserved or created for the refused name.
+    assert web.opencode.remote == {}
+
+
+def test_attach_puts_the_profile_on_the_adopted_session(web):
+    """A session opened inside OpenCode was created without the profile."""
+    token = _member_with_coding_access(web, "alice")
+    created = _create(web, token)
+    external = _remote_session(web)
+
+    body = _json(web.post(
+        "/api/coding/sessions/attach",
+        {"agent_id": "erp-coder", "source_session_id": created["session_id"],
+         "external_session_id": external, "permission_profile": SAP_PROFILE},
+        token=token))
+
+    assert body["external_session_id"] == external
+    assert web.opencode.permissions[external] == SAP_RULESET

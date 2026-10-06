@@ -34,12 +34,30 @@ def _require_management_write():
     return require_management_write()
 
 
+def _warm_workbench(ctx):
+    """预热 SAP 工作台引擎（若本租户已配置且可用）。
+
+    场景目录渲染在用户点开卡片之前，是唯一还有人类操作时间可利用的时刻：
+    卡片本身是"读配置后立刻建会话"，从那条路径预热只会和用户等待的启动抢
+    资源。预热只是一个优化，任何失败都不能影响目录本身。
+    """
+    try:
+        from Scene.sap_workbench.backend.http import prewarm_if_configured
+
+        prewarm_if_configured(ctx)
+    except Exception:  # noqa: BLE001 - 预热失败不影响场景目录
+        from common.log import logger
+
+        logger.debug("[Scenes] workbench prewarm skipped", exc_info=True)
+
+
 class ScenesHandler:
     def GET(self):
         web.header("Content-Type", "application/json; charset=utf-8")
         with _db_scope() as ctx:
             _require_chat_use(ctx)
             catalog = scenes_service.get_catalog()
+            _warm_workbench(ctx)
         return json.dumps(
             {
                 "status": "success",

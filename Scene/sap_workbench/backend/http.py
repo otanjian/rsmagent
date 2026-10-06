@@ -1,6 +1,8 @@
 """Tenant-authorized SAP scene setup. No normal-agent activation or execution."""
+import base64
 from functools import wraps
 from http import HTTPStatus
+import hmac
 import json
 from pathlib import Path
 
@@ -9,6 +11,7 @@ import web
 from .configuration import WorkbenchError, capabilities, configuration_checks, validate_config
 from .deployment import BROWSER_SERVICE_REFS
 from .store import WorkbenchStore
+from common.log import logger
 
 
 def _json(payload):
@@ -50,13 +53,24 @@ def _body(keys):
     return value
 
 
-def _store(ctx):
+def _scene_store():
+    """The scene database, addressed without an identity.
+
+    Only the plugin bridge may need a store before ownership is known: it looks
+    up the owner *from* that store, so requiring a tenant to open it would be
+    circular. Every other caller keeps :func:`_store`, which insists on an
+    authenticated identity.
+    """
     from config import get_data_root
+    return WorkbenchStore(Path(get_data_root()) / "scenes" / "sap_workbench.sqlite3")
+
+
+def _store(ctx):
     if not ctx.tenant_id or not ctx.user_id:
         raise WorkbenchError("missing_identity", 403)
     # Platform state is outside agent-browsable shared/project directories.
     # Rows are independently tenant scoped; this is not a global scene config.
-    return WorkbenchStore(Path(get_data_root()) / "scenes" / "sap_workbench.sqlite3")
+    return _scene_store()
 
 
 def _can_manage(ctx):
@@ -82,6 +96,30 @@ def _coding(ctx, agent_id):
         raise WorkbenchError("coding_disabled", 403)
     return {"id": profile.id, "name": profile.name,
             "project_dir": profile.coding_project_dir or ""}
+
+
+def _install_project_toolkit(ctx, agent_id):
+    """Install the skill and plugin into the coding project; never fatal.
+
+    A configuration that names a coding Agent is still a valid configuration
+    when the project directory is unreachable or files are read-only, so the
+    install reports its outcome instead of failing the save. It must report
+    honestly: a file left untouched because a user edited it is a difference,
+    not a success. Nothing here claims a capability is available.
+    """
+    from . import project_toolkit
+    try:
+        project = _coding(ctx, agent_id)["project_dir"]
+    except WorkbenchError as error:
+        return {"artifacts": [], "conflicts": [], "error": error.code}
+    if not project:
+        return {"artifacts": [], "conflicts": [], "error": "project_directory_missing"}
+    try:
+        return project_toolkit.install(project)
+    except ValueError as error:
+        return {"artifacts": [], "conflicts": [], "error": str(error)}
+    except OSError:
+        return {"artifacts": [], "conflicts": [], "error": "project_directory_unwritable"}
 
 
 def _coding_options(ctx):
@@ -143,8 +181,10 @@ def _projection(ctx, saved):
             # receive the inaccessible Agent's profile/project data.
             selected = _optional_coding(ctx, config["coding_agent_id"])
     oc = settings_for_console()
+    mcp_credentials = bool(config["mcp"]["username"] and saved.get("mcp_password_configured", False))
     payload = {"version": saved["version"], "can_manage": _can_manage(ctx),
-               "coding": selected, "opencode": oc, "capabilities": capabilities(config),
+               "coding": selected, "opencode": oc,
+               "capabilities": capabilities(config, mcp_credentials=mcp_credentials),
                "checks": configuration_checks(config, selected, oc,
                                                 mcp_password_configured=saved.get("mcp_password_configured", False)),
                "credential_source": "scene_config"}
@@ -159,6 +199,19 @@ def _projection(ctx, saved):
     return payload
 
 
+def prewarm_if_configured(ctx):
+    """No engine to warm any more, so this does nothing.
+
+    It used to spawn a throwaway Bun host from the scene catalog read, because
+    the create that followed paid for an engine start. The conversation is now a
+    platform coding session mounted from its own ``iframe_url`` and the scene
+    starts no engine at all, so there is nothing to warm. Kept as a named hook
+    for ``scenes/api.py`` until the warm-up module is retired with the rest of
+    the self-managed engine path.
+    """
+    return None
+
+
 class SapWorkbenchConfigHandler:
     @_endpoint
     def GET(self):
@@ -168,7 +221,8 @@ class SapWorkbenchConfigHandler:
         with _db_scope() as ctx:
             _require_chat_use(ctx)
             saved = _store(ctx).read_config(ctx.tenant_id)
-            return _json(_projection(ctx, saved))
+            projected = _projection(ctx, saved)
+            return _json(projected)
 
     @_endpoint
     def PUT(self):
@@ -197,7 +251,14 @@ class SapWorkbenchConfigHandler:
             saved = _store(ctx).save_config(ctx.tenant_id, ctx.user_id, body.get("version"),
                                            clean, audit=audit, mcp_password=body.get("mcp_password"),
                                            clear_mcp_password=body.get("clear_mcp_password", False))
-            return _json(_projection(ctx, saved))
+            payload = _projection(ctx, saved)
+            if clean["coding_agent_id"]:
+                # The skill and the plugin are what the shared coding service
+                # discovers from the project directory, so they are installed
+                # when the binding that names that project is saved -- not when
+                # a session opens, which has no time budget for file writes.
+                payload["project_toolkit"] = _install_project_toolkit(ctx, clean["coding_agent_id"])
+            return _json(payload)
 
 
 class SapWorkbenchCheckHandler:
@@ -291,6 +352,10 @@ class SapWorkbenchSessionsHandler:
             # config to remain enabled or accessible. It never opens resources.
             if action == 'close':
                 return _json(browser_gateway.submit(close_runtime(browser_gateway, store, row), timeout=15))
+            if row and row['state'] == 'closed':
+                # A superseded binding is terminal. Answer before reading the
+                # current configuration or touching anything external.
+                raise WorkbenchError('session_closed', 410)
             saved = store.read_config(ctx.tenant_id)
             config = saved['config']
             if not config['enabled']:
@@ -303,10 +368,30 @@ class SapWorkbenchSessionsHandler:
             elif not isinstance(body.get('request_id'), str) or not 8 <= len(body['request_id']) <= 128:
                 raise WorkbenchError('invalid_request_id')
             if action == 'open':
+                # The project artifacts are part of this scene's delivery, and an
+                # install that ran only when the configuration was last saved
+                # leaves every deployment configured earlier on whatever revision
+                # was current then. That is not cosmetic: the previous revision
+                # gates itself on an environment variable the retired per-session
+                # host sets, so a stale install registers no navigation tool at
+                # all while the workbench still looks saved and enabled. Re-running
+                # is idempotent and refuses to overwrite a user's edit, so doing it
+                # on open is what lets the delivery heal instead of rot.
+                refreshed = _install_project_toolkit(
+                    ctx, row['agent_id'] if row else config['coding_agent_id'])
+                if refreshed.get('conflicts'):
+                    logger.warning('[SapWorkbench] project artifacts left untouched (user edits): %s',
+                                   ', '.join(refreshed['conflicts']))
+                elif refreshed.get('error'):
+                    logger.warning('[SapWorkbench] project artifacts not installed: %s',
+                                   refreshed['error'])
                 try:
+                    # No engine start is inside this budget any more: the binding
+                    # is a registry write. The headroom is for the owner's older
+                    # bindings to finish closing, not for a cold start.
                     result = browser_gateway.submit(open_workbench_runtime(browser_gateway, store,
                         ctx.tenant_id, ctx.user_id, coding, saved, _session_token(), _request_origin(),
-                        request_id=body.get('request_id'), row=row), timeout=125)
+                        request_id=body.get('request_id'), row=row), timeout=25)
                 except WorkbenchError:
                     raise
                 except Exception:
@@ -335,3 +420,133 @@ class SapWorkbenchSessionsHandler:
                 return _json(browser_gateway.submit(acknowledge(), timeout=15))
             if action == 'control':
                 return _json(browser_gateway.submit(instance.set_control(body.get('control')), timeout=15))
+
+
+def _require_coding_service():
+    """Authenticate the caller as the OpenCode coding service itself.
+
+    The project plugin runs inside the shared coding service, which has no
+    console session, so the ordinary identity gate cannot apply. It must not be
+    replaced with a token-less "trusted caller" shortcut either: the caller
+    proves itself with the service's own HTTP credential, which only a process
+    that already holds it can present. This step decides *who is calling* only;
+    the handler still resolves *whose workbench* from the session id, so this
+    credential is never what authorizes a particular binding's browser.
+    """
+    from agent.coding import resolve_settings
+    settings = resolve_settings()
+    if not settings.enabled or not settings.password:
+        raise WorkbenchError('bridge_unavailable', 503)
+    scheme, _, payload = web.ctx.env.get('HTTP_AUTHORIZATION', '').partition(' ')
+    if scheme.lower() != 'basic' or not payload:
+        raise WorkbenchError('bridge_unauthorized', 401)
+    try:
+        decoded = base64.b64decode(payload, validate=True).decode('utf-8')
+    except Exception:
+        raise WorkbenchError('bridge_unauthorized', 401) from None
+    username, separator, password = decoded.partition(':')
+    if not separator or not (hmac.compare_digest(username, settings.username)
+                             and hmac.compare_digest(password, settings.password)):
+        raise WorkbenchError('bridge_unauthorized', 401)
+    # A direct loopback call from the co-located service carries no forwarding
+    # headers; the public reverse proxy always adds them. Without this check the
+    # service credential alone would be enough to drive SAP navigation from the
+    # network, which is more than "the coding service on this host may ask".
+    for key in ('HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'HTTP_X_FORWARDED_HOST'):
+        if web.ctx.env.get(key):
+            raise WorkbenchError('bridge_unauthorized', 401)
+    if web.ctx.env.get('REMOTE_ADDR') not in {'127.0.0.1', '::1'}:
+        raise WorkbenchError('bridge_unauthorized', 401)
+
+
+class SapWorkbenchBridgeHandler:
+    """Left-pane navigation channel for the project plugin.
+
+    The plugin knows only its OpenCode session id and a transaction code. Every
+    identifier that decides *whose* pane is driven is resolved here from that
+    session id: a caller cannot name a user, a SAP account or a binding, and an
+    unresolved session is refused rather than served from a nearby binding.
+    Execution then runs through the live binding's own ``dispatch``, so the
+    existing owner authorization, action ledger and meter still decide the
+    outcome -- an absent or closed binding yields no SAP operation at all.
+    """
+
+    @_endpoint
+    def POST(self):
+        import asyncio
+
+        from ..browser_service.runner import browser_gateway
+
+        _require_coding_service()
+        body = _body({"session_id", "transaction", "call_id"})
+        session_id, transaction, call = body.get('session_id'), body.get('transaction'), body.get('call_id')
+        if not isinstance(session_id, str) or not 1 <= len(session_id) <= 128:
+            raise WorkbenchError('invalid_request', 400)
+        if not isinstance(transaction, str) or not 1 <= len(transaction) <= 32:
+            raise WorkbenchError('invalid_request', 400)
+        if not isinstance(call, str) or not 1 <= len(call) <= 128:
+            raise WorkbenchError('invalid_request', 400)
+        row = _scene_store().binding_for_session(session_id)
+        if not row:
+            # Unbound, ambiguous or closed: never borrow another binding.
+            raise WorkbenchError('session_not_bound', 403)
+        instance = browser_gateway.runtimes.get(row['id'])
+        if isinstance(instance, asyncio.Task) or not instance or getattr(instance, 'closed', False):
+            raise WorkbenchError('session_not_running', 409)
+        # The navigation itself waits for the visible pane to acknowledge the
+        # command (bounded inside IframeNavigation); this outer budget only has
+        # to outlast it so a real scene refusal is not reported as a gateway
+        # timeout.
+        return _json(browser_gateway.submit(instance.navigate(transaction, call), timeout=35))
+
+
+class SapWorkbenchDataBridgeHandler:
+    """Business-data channel for the project plugin.
+
+    Same ownership rule as the navigation channel: the plugin presents its
+    OpenCode session id plus *business* arguments, and every identifier that
+    decides whose SAP account is used -- the binding, the registered connection
+    and the stored credential -- is resolved here from that session id. The
+    plugin, and therefore the model, never receives an account, a password or a
+    connection id; the connection id is attached inside the runtime's own MCP
+    worker (``SapMcpLogin._call``).
+
+    The reachable surface is the business set (``read_table`` / ``run_query`` /
+    ``call_rfc``), not the whole gateway catalogue. ``call_rfc`` can reach a
+    BAPI that writes a business document, which is why every call is admitted
+    through the ordinary ledger, meter and audit path; the ADT tools that change
+    the system itself are not reachable through here at all.
+    """
+
+    @_endpoint
+    def POST(self):
+        import asyncio
+
+        from ..browser_service.runner import browser_gateway
+
+        _require_coding_service()
+        body = _body({"session_id", "connection", "tool", "arguments", "call_id"})
+        session_id, call = body.get('session_id'), body.get('call_id')
+        connection, tool = body.get('connection'), body.get('tool')
+        arguments = body.get('arguments')
+        if not isinstance(session_id, str) or not 1 <= len(session_id) <= 128:
+            raise WorkbenchError('invalid_request', 400)
+        if not isinstance(call, str) or not 1 <= len(call) <= 128:
+            raise WorkbenchError('invalid_request', 400)
+        if (not isinstance(connection, str) or not 1 <= len(connection) <= 64
+                or not isinstance(tool, str) or not 1 <= len(tool) <= 64
+                or not isinstance(arguments, dict)):
+            raise WorkbenchError('invalid_request', 400)
+        row = _scene_store().binding_for_session(session_id)
+        if not row:
+            # Unbound, ambiguous or closed: never borrow another binding.
+            raise WorkbenchError('session_not_bound', 403)
+        instance = browser_gateway.runtimes.get(row['id'])
+        if isinstance(instance, asyncio.Task) or not instance or getattr(instance, 'closed', False):
+            raise WorkbenchError('session_not_running', 409)
+        # The first call of a binding also starts the private MCP worker, which
+        # is allowed 60s to establish the SAP connections; this outer budget has
+        # to outlast both that start and the worker's own 30s call budget so a
+        # real refusal is not reported as a gateway timeout.
+        return _json(browser_gateway.submit(
+            instance.data_call(connection, tool, arguments, call), timeout=75))

@@ -25,7 +25,7 @@ code and stops.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional, Set
+from typing import Any, Dict, List, Mapping, Optional, Set
 
 import requests
 
@@ -184,20 +184,60 @@ class OpenCodeClient:
 
     # -- operations --------------------------------------------------------
 
-    def create_session(self, session_id: str, project_dir: str) -> RemoteSession:
+    def create_session(
+        self,
+        session_id: str,
+        project_dir: str,
+        permission: Optional[List[Mapping[str, str]]] = None,
+    ) -> RemoteSession:
         """Create the session under a caller-chosen id, or adopt the existing one.
 
         ``session_id`` is derived from the verified identity plus the request id,
         so a retry after a lost response lands on the same session instead of
         creating a second one. The directory is the project recorded at creation
         time and is never the Agent's platform workspace.
+
+        ``permission`` is a server-derived session ruleset (see
+        ``agent.coding.permissions``): a ``deny`` in the project config hides a
+        project tool from every session, and this ``allow`` makes it visible in
+        the sessions the caller created. The service *accepts* it here and does
+        not store it -- a session created with the ruleset in this body reads
+        back with none -- so the caller must follow up with
+        :meth:`set_permission`; this argument is kept only because the field is
+        part of the route and costs nothing to send.
+        """
+        body: Dict[str, Any] = {
+            "id": session_id,
+            "location": {"directory": project_dir},
+        }
+        if permission:
+            body["permission"] = [dict(rule) for rule in permission]
+        response = self._request("POST", "/api/session", json=body)
+        return self._remote(self._json(response, "create the session"))
+
+    def set_permission(
+        self,
+        session_id: str,
+        project_dir: str,
+        permission: List[Mapping[str, str]],
+    ) -> None:
+        """Replace a session's own permission ruleset upstream.
+
+        This is the only route that *persists* a ruleset, so it carries every
+        ruleset the platform applies: for a session created through
+        :meth:`create_session`, where the create body's ``permission`` is
+        accepted and dropped, and for a conversation the user opened inside
+        OpenCode and then attached, which was created with no ruleset at all.
+        The ruleset is server-derived, never client-supplied. The directory is
+        the one recorded on the link, mirroring :meth:`rename_session`.
         """
         response = self._request(
-            "POST",
-            "/api/session",
-            json={"id": session_id, "location": {"directory": project_dir}},
+            "PATCH",
+            f"/session/{session_id}",
+            params={"directory": project_dir},
+            json={"permission": [dict(rule) for rule in permission]},
         )
-        return self._remote(self._json(response, "create the session"))
+        self._no_content(response, "set the session permission")
 
     def get_session(self, session_id: str, project_dir: str = "") -> Optional[RemoteSession]:
         """Read one session, or ``None`` when OpenCode confirms it is gone.

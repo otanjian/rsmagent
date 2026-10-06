@@ -2,14 +2,18 @@
 (function () {
     'use strict';
     const API = '/api/scenes/sap-workbench';
+    // The session permission profile the platform maps to a server-defined
+    // ruleset, re-enabling the SAP tool for sessions this scene creates. It is a
+    // *name*: the rules live on the server so a page cannot grant itself a tool.
+    const CODING_PERMISSION_PROFILE = 'sap_workbench';
     const messages = {
         zh: {
-            title: 'SAP智能工作台', subtitle: 'SAP Web GUI 与 OpenCode', close: '关闭',
+            title: 'SAP智能工作台', subtitle: 'SAP Web GUI 与高级智能体', close: '关闭',
             settings: '连接配置', back: '返回工作台', refresh: '刷新状态', pending: '运行环境待就绪',
-            sap: 'SAP 页面', opencode: 'OpenCode 对话', browser: '浏览器执行节点', project: '项目目录',
+            sap: 'SAP 页面', opencode: '高级智能体对话', browser: '浏览器执行节点', project: '项目目录',
             mcp: 'MCP 连接', start: '新建工作台会话', resume: '恢复已有会话', login: '登录 SAP',
             emptySap: 'SAP 页面将在专属浏览器就绪后显示',
-            emptyCode: 'OpenCode 对话将在会话绑定完成后显示',
+            emptyCode: '高级智能体对话将在会话绑定完成后显示',
             setupHint: '先完成连接配置。当前版本尚未接通浏览器和工具执行，保存配置不会启动会话。',
             memberHint: '请联系租户管理员配置连接。', loading: '正在读取配置…', failure: '请求失败，请重试。',
             unavailable: '运行组件未就绪', not_run: '未联调', configured: '已填写', missing: '未配置',
@@ -27,8 +31,8 @@
             fixedMcp: 'MCP 地址已固定，只需选择是否启用。仅连接测试 SAP https://sap.goodsap.cn:44300 时跳过后台证书校验；其他 SAP 地址仍校验，不复用浏览器证书设置。',
             mcp_connection_fixed: 'MCP 地址和连接方式已固定，请刷新配置后重试。',
             loginHint: 'SAP 页面仍单独登录；当前 MCP 使用配置中的账号密码。',
-            agent: 'OpenCode coding 配置', select: '请选择', webUrl: 'OpenCode Web 地址',
-            projectHint: '当前使用本机 OpenCode 执行环境，项目目录须在本机存在。请在已有 coding 配置中维护。',
+            agent: '高级智能体配置', select: '请选择', webUrl: '高级智能体 Web 地址',
+            projectHint: '当前使用本机高级智能体 执行环境，项目目录须在本机存在。请在已有 coding 配置中维护。',
             node: '浏览器执行节点引用', capacity: '并发会话上限', idle: '空闲回收秒数',
             flags: '启用意向', enabled: '可视工作台', automation: '自动页面操作', commit: '业务提交',
             flagsHint: '这些开关只保存配置意向；未实现或未验收的运行能力始终关闭。',
@@ -37,8 +41,8 @@
             auth: '传输认证', none: '无额外认证', sap_session: '当前 SAP 登录', service_ref: '网关服务凭据引用',
             credentialRef: '网关服务凭据引用', connectionEnabled: '启用此连接', ratio: 'SAP 页面宽度比例',
             disabled: '场景尚未启用', browser_runtime_unavailable: '浏览器运行组件尚未接通',
-            opencode_adapter_unverified: 'OpenCode 工具适配尚未验收', session_access_unverified: '上游会话访问隔离尚未验收',
-            sap_login_adapter_unavailable: 'SAP 与 MCP 同源登录尚未接通', opencode_quota_unverified: 'OpenCode 模型配额接入尚未验收',
+            opencode_adapter_unverified: '高级智能体工具适配尚未验收', session_access_unverified: '上游会话访问隔离尚未验收',
+            sap_login_adapter_unavailable: 'SAP 与 MCP 同源登录尚未接通', opencode_quota_unverified: '高级智能体模型配额接入尚未验收',
             config_conflict: '配置已被更新，请刷新后重新编辑。', config_forbidden: '没有配置管理权限。',
             invalid_url: '地址必须是完整 HTTP(S) URL，且不能含账号、密码或令牌。',
             sap_parameter_conflict: 'URL 中的 SAP Client / 语言与表单不一致。', invalid_config: '配置格式不正确。',
@@ -53,11 +57,11 @@
             viewMemberOnly: '实时页面当前仅向租户管理员开放。',
         },
         en: {
-            title: 'SAP Intelligent Workbench', subtitle: 'SAP Web GUI and OpenCode', close: 'Close', settings: 'Connections',
+            title: 'SAP Intelligent Workbench', subtitle: 'SAP Web GUI and Advanced Agent', close: 'Close', settings: 'Connections',
             back: 'Back to workbench', refresh: 'Refresh status', pending: 'Runtime not ready', sap: 'SAP page',
-            opencode: 'OpenCode chat', browser: 'Browser worker', project: 'Project directory', mcp: 'MCP connections',
+            opencode: 'Advanced Agent chat', browser: 'Browser worker', project: 'Project directory', mcp: 'MCP connections',
             start: 'New workbench session', resume: 'Resume session', login: 'Sign in to SAP',
-            emptySap: 'The SAP page will appear when its browser is ready', emptyCode: 'OpenCode will appear after session binding',
+            emptySap: 'The SAP page will appear when its browser is ready', emptyCode: 'The Advanced Agent will appear after session binding',
             setupHint: 'Configure connections first. Browser and tool execution are not connected in this build. Saving does not start a session.',
             memberHint: 'Ask your tenant administrator to configure connections.', loading: 'Loading configuration…',
             failure: 'Request failed. Please retry.', unavailable: 'Runtime unavailable', not_run: 'Not verified',
@@ -76,8 +80,8 @@
             fixedMcp: 'MCP endpoints are fixed; only enablement is editable. Backend certificate verification is skipped only for test SAP https://sap.goodsap.cn:44300. Other SAP endpoints are verified; browser certificate settings are not reused.',
             mcp_connection_fixed: 'MCP endpoints and transport are fixed. Refresh the configuration and retry.',
             loginHint: 'Sign in to the SAP page separately. MCP currently uses its configured credentials.',
-            agent: 'OpenCode coding configuration', select: 'Select', webUrl: 'OpenCode Web URL',
-            projectHint: 'This workbench runs OpenCode locally. The project must exist on this host. Manage it in the existing coding configuration.',
+            agent: 'Advanced Agent configuration', select: 'Select', webUrl: 'Advanced Agent Web URL',
+            projectHint: 'This workbench runs the Advanced Agent locally. The project must exist on this host. Manage it in the existing coding configuration.',
             node: 'Browser worker reference', capacity: 'Maximum concurrent sessions', idle: 'Idle timeout (seconds)',
             flags: 'Requested features', enabled: 'Visual workbench', automation: 'Page automation', commit: 'Business submission',
             flagsHint: 'Flags record intent only. Unimplemented or unverified runtime features remain disabled.',
@@ -86,8 +90,8 @@
             none: 'No additional authentication', sap_session: 'Current SAP sign-in', service_ref: 'Gateway credential reference',
             credentialRef: 'Gateway credential reference', connectionEnabled: 'Enable connection', ratio: 'SAP pane width',
             disabled: 'Scene is disabled', browser_runtime_unavailable: 'Browser runtime is not connected',
-            opencode_adapter_unverified: 'OpenCode tool adapter is unverified', session_access_unverified: 'Upstream session isolation is unverified',
-            sap_login_adapter_unavailable: 'Shared SAP / MCP sign-in is not connected', opencode_quota_unverified: 'OpenCode model quota integration is unverified',
+            opencode_adapter_unverified: 'Advanced Agent tool adapter is unverified', session_access_unverified: 'Upstream session isolation is unverified',
+            sap_login_adapter_unavailable: 'Shared SAP / MCP sign-in is not connected', opencode_quota_unverified: 'Advanced Agent model quota integration is unverified',
             config_conflict: 'Configuration changed. Refresh before editing again.', config_forbidden: 'Configuration management is not permitted.',
             invalid_url: 'Use a full HTTP(S) URL without a username, password or token.', sap_parameter_conflict: 'SAP Client / language in the URL conflicts with the form.',
             invalid_config: 'Invalid configuration.', invalid_flags: 'Enable the preceding feature first.',
@@ -101,11 +105,11 @@
             viewMemberOnly: 'The live page is currently available to tenant administrators only.',
         },
         'zh-Hant': {
-            title: 'SAP智能工作台', subtitle: 'SAP Web GUI 與 OpenCode', close: '關閉', settings: '連線設定',
+            title: 'SAP智能工作台', subtitle: 'SAP Web GUI 與高級智能體', close: '關閉', settings: '連線設定',
             back: '返回工作台', refresh: '重新整理狀態', pending: '執行環境尚未就緒', sap: 'SAP 頁面',
-            opencode: 'OpenCode 對話', browser: '瀏覽器執行節點', project: '專案目錄', mcp: 'MCP 連線',
+            opencode: '高級智能體對話', browser: '瀏覽器執行節點', project: '專案目錄', mcp: 'MCP 連線',
             start: '新增工作台工作階段', resume: '恢復工作階段', login: '登入 SAP',
-            emptySap: '專屬瀏覽器就緒後將顯示 SAP 頁面', emptyCode: '完成工作階段綁定後將顯示 OpenCode',
+            emptySap: '專屬瀏覽器就緒後將顯示 SAP 頁面', emptyCode: '完成工作階段綁定後將顯示高級智能體',
             setupHint: '請先完成連線設定。目前版本尚未接通瀏覽器與工具執行，儲存設定不會啟動工作階段。',
             memberHint: '請聯絡租戶管理員設定連線。', loading: '正在讀取設定…', failure: '請求失敗，請重試。',
             unavailable: '執行元件尚未就緒', not_run: '尚未驗證', configured: '已填寫', missing: '未設定',
@@ -122,8 +126,8 @@
             fixedMcp: 'MCP 位址已固定，只需選擇是否啟用。僅連接測試 SAP https://sap.goodsap.cn:44300 時略過後端憑證驗證；其他 SAP 位址仍驗證，不共用瀏覽器憑證設定。',
             mcp_connection_fixed: 'MCP 位址與連線方式已固定，請重新整理設定後重試。',
             loginHint: 'SAP 頁面仍單獨登入；目前 MCP 使用設定中的帳號密碼。',
-            agent: 'OpenCode coding 設定', select: '請選擇', webUrl: 'OpenCode Web 位址',
-            projectHint: '目前使用本機 OpenCode 執行環境，專案目錄須在本機存在。請在既有 coding 設定中維護。',
+            agent: '高級智能體設定', select: '請選擇', webUrl: '高級智能體 Web 位址',
+            projectHint: '目前使用本機高級智能體執行環境，專案目錄須在本機存在。請在既有 coding 設定中維護。',
             node: '瀏覽器執行節點參照', capacity: '同時工作階段上限', idle: '閒置回收秒數', flags: '啟用意向',
             enabled: '可視工作台', automation: '自動頁面操作', commit: '業務提交',
             flagsHint: '開關僅儲存設定意向；尚未實作或驗證的執行能力一律關閉。',
@@ -132,8 +136,8 @@
             none: '無額外驗證', sap_session: '目前 SAP 登入', service_ref: '閘道服務憑據參照',
             credentialRef: '閘道服務憑據參照', connectionEnabled: '啟用此連線', ratio: 'SAP 頁面寬度比例',
             disabled: '場景尚未啟用', browser_runtime_unavailable: '瀏覽器執行元件尚未接通',
-            opencode_adapter_unverified: 'OpenCode 工具適配尚未驗證', session_access_unverified: '上游工作階段存取隔離尚未驗證',
-            sap_login_adapter_unavailable: 'SAP 與 MCP 共用登入尚未接通', opencode_quota_unverified: 'OpenCode 模型配額接入尚未驗證',
+            opencode_adapter_unverified: '高級智能體工具適配尚未驗證', session_access_unverified: '上游工作階段存取隔離尚未驗證',
+            sap_login_adapter_unavailable: 'SAP 與 MCP 共用登入尚未接通', opencode_quota_unverified: '高級智能體模型配額接入尚未驗證',
             config_conflict: '設定已更新，請重新整理後再編輯。', config_forbidden: '沒有設定管理權限。',
             invalid_url: '請使用完整 HTTP(S) URL，且不能包含帳號、密碼或權杖。',
             sap_parameter_conflict: 'URL 中的 SAP Client / 語言與表單不一致。', invalid_config: '設定格式不正確。',
@@ -154,6 +158,15 @@
     // about fifteen seconds before the pane admits the connection is gone.
     const RETRIES = [800, 1600, 3200, 5000, 5000];
     let binding = null, pendingRequest = null, startingSession = false, codeFrame = null, chatOpen = false, chatFullscreen = false;
+    let codeOrigin = null, codeChannel = null;
+    // Identifies the current conversation mount. Every unmount and every new
+    // mount takes a fresh value, so an async step of a superseded mount can
+    // recognise itself as stale. Two rapid retries therefore produce one frame
+    // and one readiness wait instead of stacking a second of either.
+    let codeMount = 0;
+    // Session ids already reported to the scene, so a resumed frame that keeps
+    // re-announcing itself costs exactly one attach call.
+    const attachSent = new Set();
     let chatDrag = null;
     Object.assign(messages.zh, {
         sapEmbedded: '已嵌入 SAP Web GUI；请在页面中登录。',
@@ -162,33 +175,66 @@
     Object.assign(messages.en, {sapEmbedded: 'SAP Web GUI is embedded. Sign in on the page.', iframe_page_control_unavailable: 'Operate the native SAP page directly. Chat cannot control this cross-origin page yet.'});
     Object.assign(messages['zh-Hant'], {sapEmbedded: '已嵌入 SAP Web GUI，請在頁面中登入。', iframe_page_control_unavailable: '原生 SAP 頁面由你直接操作；對話尚不能控制跨來源頁面。'});
     Object.assign(messages.zh, {
-        opencode_runtime: 'OpenCode 运行环境', mcp_runtime: 'MCP 运行环境',
-        opencode_runtime_missing: '本机 Bun、OpenCode 源码或依赖尚未准备。',
-        opencode_start_timeout: '工作台对话服务启动超时，请检查运行环境后恢复会话。',
+        opencode_runtime: '高级智能体运行环境', mcp_runtime: 'MCP 运行环境',
+        opencode_runtime_missing: '本机 Bun、高级智能体源码或依赖尚未准备。',
         browser_service_unavailable: '请选择可用的本机浏览器节点。',
         mcp_check_timeout: 'MCP 连接检测超时，请检查网关服务。',
         localBrowserNode: '本机专属浏览器', unavailableBrowserNode: '当前节点不可用',
-        business_submission_unavailable: '业务保存、过账与删除尚未开放。', readyToStart: '可创建工作台会话', capabilityNotes: '当前能力说明',
-        setupHint: '新建会话会自动结束当前账号旧会话。SAP Web GUI 直接嵌入；点击右下角 AI 对话展开 OpenCode。对话可使用已配置的 MCP，原生 SAP 页面由你直接操作。',
-        manualControl: '人工接管 / 暂停', autoControl: '允许对话操作', sessionStarting: '正在准备 SAP 与 OpenCode 会话…',
+        readyToStart: '可创建工作台会话', capabilityNotes: '当前能力说明',
+        navigation_limited: '画面导航：有限可用。只确认导航指令送达，不代表已完成登录或拿到业务结果。',
+        mcp_business_available: 'SAP 业务数据：可用。对话按会话经服务端已登记的连接读写业务数据；SAP 凭据与连接标识不下发给模型。',
+        mcp_credentials_missing: 'SAP 业务数据：未就绪。尚未保存 MCP 账号口令，服务端无法建立连接，数据调用会以 mcp_login_failed 失败。',
+        page_readwrite_unavailable: '页面读写与业务提交：不可用。阅读、填写左侧 SAP 页面字段和提交业务单据均不开放。',
+        setupHint: '新建会话会自动结束当前账号旧会话。SAP Web GUI 直接嵌入；点击右下角 AI 对话展开高级智能体。对话可使用已配置的 MCP，原生 SAP 页面由你直接操作。',
+        manualControl: '人工接管 / 暂停', autoControl: '允许对话操作', sessionStarting: '正在准备 SAP 与高级智能体 会话…',
         sessionReady: '会话已连接，当前由人工控制。', automaticReady: '已允许对话操作当前 SAP 页面。',
         sessionConnecting: '对话已就绪，正在连接 SAP 页面…',
         opencode_session_mismatch: '原会话与配置的项目不一致，已停止恢复。请核对连接配置。',
         noSessions: '尚无可恢复会话，请新建。', sap_login_required: '请先在 SAP 页面完成登录。',
-        browser_not_connected: 'SAP 画面尚未连接，请稍后重试。', model_credentials_missing: '所选 OpenCode 模型尚未配置密钥。',
-        runtime_assets_or_project_missing: 'OpenCode 界面资源或配置的项目目录不存在。',
-        opencode_host_failed: 'OpenCode 场景服务启动失败，请检查场景运行日志。',
+        browser_not_connected: 'SAP 画面尚未连接，请稍后重试。', model_credentials_missing: '所选高级智能体模型尚未配置密钥。',
+        runtime_assets_or_project_missing: '高级智能体界面资源或配置的项目目录不存在。',
+        opencode_host_failed: '高级智能体场景服务启动失败，请检查场景运行日志。',
         model_configuration_unsupported: '当前模型配置暂不支持场景接入。',
         session_not_running: '会话未运行，请恢复已有会话。', control_changed: '页面已由人工接管，请重新观察。',
         check: '测试已保存连接', checkHint: '连接设置已加载。可新建或恢复会话，或在连接配置中测试连接。',
         checking: '正在测试连接，不调用模型或修改 SAP…', checked: '连接测试完成，请查看分项结果。',
         passed: '通过', failed: '失败', certificate_untrusted: '证书未受信任（后台 HTTPS 检查）',
-        embed: 'OpenCode 原生界面', endSession: '结束工作台会话', saved: '配置已保存。',
+        embed: '高级智能体原生界面', endSession: '结束工作台会话', saved: '配置已保存。',
     });
-    Object.assign(messages.en, {check:'Test saved connections', checking:'Testing connections without model calls or SAP changes…', checked:'Connection checks completed.', passed:'Passed', failed:'Failed', certificate_untrusted:'Certificate not trusted by backend HTTPS', embed:'Native OpenCode UI', endSession:'End workbench session'});
-    Object.assign(messages['zh-Hant'], {check:'測試已儲存連線', checking:'正在測試連線，不呼叫模型或修改 SAP…', checked:'連線測試完成，請查看各項結果。', passed:'通過', failed:'失敗', certificate_untrusted:'後台 HTTPS 尚未信任憑證', embed:'OpenCode 原生介面', endSession:'結束工作階段'});
-    Object.assign(messages.en, {manualControl: 'Take control / pause', autoControl: 'Allow chat control', sessionStarting: 'Preparing SAP and OpenCode…', sessionReady: 'Connected. Manual control.', automaticReady: 'Chat can now operate this SAP page.', noSessions: 'No session to resume. Create one first.'});
-    Object.assign(messages['zh-Hant'], {manualControl: '人工接管 / 暫停', autoControl: '允許對話操作', sessionStarting: '正在準備 SAP 與 OpenCode…', sessionReady: '工作階段已連線，目前由人工控制。', automaticReady: '已允許對話操作目前的 SAP 頁面。', noSessions: '尚無可恢復的工作階段，請先新增。'});
+    Object.assign(messages.en, {check:'Test saved connections', checking:'Testing connections without model calls or SAP changes…', checked:'Connection checks completed.', passed:'Passed', failed:'Failed', certificate_untrusted:'Certificate not trusted by backend HTTPS', embed:'Native Advanced Agent UI', endSession:'End workbench session'});
+    Object.assign(messages['zh-Hant'], {check:'測試已儲存連線', checking:'正在測試連線，不呼叫模型或修改 SAP…', checked:'連線測試完成，請查看各項結果。', passed:'通過', failed:'失敗', certificate_untrusted:'後台 HTTPS 尚未信任憑證', embed:'高級智能體原生介面', endSession:'結束工作階段'});
+    Object.assign(messages.en, {manualControl: 'Take control / pause', autoControl: 'Allow chat control', sessionStarting: 'Preparing SAP and Advanced Agent…', sessionReady: 'Connected. Manual control.', automaticReady: 'Chat can now operate this SAP page.', noSessions: 'No session to resume. Create one first.'});
+    Object.assign(messages['zh-Hant'], {manualControl: '人工接管 / 暫停', autoControl: '允許對話操作', sessionStarting: '正在準備 SAP 與高級智能體…', sessionReady: '工作階段已連線，目前由人工控制。', automaticReady: '已允許對話操作目前的 SAP 頁面。', noSessions: '尚無可恢復的工作階段，請先新增。'});
+    // The conversation is a platform agent session the page mounts from its own
+    // embed URL. There is no engine start left to narrate; what the user needs
+    // is whether that session is ready, and the one safe action when it is not.
+    Object.assign(messages.zh, {sessionPreparing: '正在打开智能体会话…',
+        codingLoading: '正在打开对话…', codingNotReady: '智能体会话尚未就绪。',
+        codingRetry: '重试', codingRetryHint: '重新打开同一智能体会话',
+        codingOpenFailed: '无法打开智能体会话：{reason}', codingLinkedOk: '新会话已加入历史。',
+        codingAttachFailed: '新会话未能加入历史：{reason}',
+        codingDisabled: '平台智能体能力未启用。', codingUnavailable: '平台智能体服务不可用。',
+        coding_upstream_unavailable: '平台智能体服务暂时不可达，请稍后重试。',
+        coding_invalid_request: '智能体会话请求被拒绝，请重新打开工作台。',
+        coding_not_linked: '该历史会话没有关联的平台智能体会话，无法恢复。'});
+    Object.assign(messages.en, {sessionPreparing: 'Opening the agent session…',
+        codingLoading: 'Opening the conversation…', codingNotReady: 'The agent session is not ready yet.',
+        codingRetry: 'Retry', codingRetryHint: 'Open the same agent session again',
+        codingOpenFailed: 'Could not open the agent session: {reason}', codingLinkedOk: 'The new session joined the history.',
+        codingAttachFailed: 'The new session could not join the history: {reason}',
+        codingDisabled: 'The platform agent capability is off.', codingUnavailable: 'The platform agent service is unavailable.',
+        coding_upstream_unavailable: 'The platform agent service is temporarily unreachable. Please retry shortly.',
+        coding_invalid_request: 'The agent session request was refused. Please reopen the workbench.',
+        coding_not_linked: 'This history entry has no linked platform agent session, so it cannot be reopened.'});
+    Object.assign(messages['zh-Hant'], {sessionPreparing: '正在開啟智能體工作階段…',
+        codingLoading: '正在開啟對話…', codingNotReady: '智能體工作階段尚未就緒。',
+        codingRetry: '重試', codingRetryHint: '重新開啟同一智能體工作階段',
+        codingOpenFailed: '無法開啟智能體工作階段：{reason}', codingLinkedOk: '新工作階段已加入歷史。',
+        codingAttachFailed: '新工作階段未能加入歷史：{reason}',
+        codingDisabled: '平台智能體能力未啟用。', codingUnavailable: '平台智能體服務不可用。',
+        coding_upstream_unavailable: '平台智能體服務暫時無法連線，請稍後重試。',
+        coding_invalid_request: '智能體工作階段請求遭拒，請重新開啟工作台。',
+        coding_not_linked: '該歷史工作階段沒有關聯的平台智能體工作階段，無法恢復。'});
     Object.assign(messages.zh, {
         browser_capacity_exhausted: '工作台并发已满，请结束闲置会话后重试。',
         local_runtime_origin_required: '当前浏览器节点仅支持本机 Web / 桌面工作台。',
@@ -201,19 +247,22 @@
         session_closed: '工作台已结束，请恢复已有会话。',
     });
     Object.assign(messages.en, {
-        opencode_runtime: 'OpenCode runtime', mcp_runtime: 'MCP runtime',
-        opencode_runtime_missing: 'Local Bun, OpenCode source or dependencies are missing.',
-        opencode_start_timeout: 'The conversation service timed out during startup. Check the runtime, then resume the session.',
+        opencode_runtime: 'Advanced Agent runtime', mcp_runtime: 'MCP runtime',
+        opencode_runtime_missing: 'Local Bun, Advanced Agent source or dependencies are missing.',
         browser_service_unavailable: 'Select an available local browser node.',
         mcp_check_timeout: 'MCP connection check timed out. Check the gateway services.',
         localBrowserNode: 'Dedicated local browser', unavailableBrowserNode: 'Current node unavailable',
-        business_submission_unavailable: 'Business save, posting and deletion are not available.', readyToStart: 'Ready to create a session', capabilityNotes: 'Available capabilities',
+        readyToStart: 'Ready to create a session', capabilityNotes: 'Available capabilities',
+        navigation_limited: 'Screen navigation: partially available. Delivery of a navigation command is confirmed, not a completed login or business result.',
+        mcp_business_available: 'SAP business data: available. Chat reads and writes business data through the registered server-side connection, per session; SAP credentials and connection ids are never handed to the model.',
+        mcp_credentials_missing: 'SAP business data: not ready. No MCP account password is saved, so the server cannot connect and every data call fails with mcp_login_failed.',
+        page_readwrite_unavailable: 'Page read/write and business submission: not available. Reading or filling SAP page fields and submitting documents are not offered.',
         setupHint: 'A new session ends your previous workbench sessions. SAP Web GUI is embedded directly; open AI chat at the bottom right. Chat uses configured MCP tools; operate the SAP page directly.',
         checkHint: 'Connections loaded. Create or resume a session, or test the saved connections.', saved: 'Configuration saved.',
         sap_login_required: 'Sign in on the SAP page first.', browser_not_connected: 'SAP screen is not connected yet.',
-        model_credentials_missing: 'The selected OpenCode model has no API credential.',
-        runtime_assets_or_project_missing: 'OpenCode Web assets or the configured project directory are missing.',
-        opencode_host_failed: 'The scene OpenCode service could not start.', model_configuration_unsupported: 'This model configuration is not supported.',
+        model_credentials_missing: 'The selected Advanced Agent model has no API credential.',
+        runtime_assets_or_project_missing: 'Advanced Agent Web assets or the configured project directory are missing.',
+        opencode_host_failed: 'The scene Advanced Agent service could not start.', model_configuration_unsupported: 'This model configuration is not supported.',
         session_not_running: 'Resume the workbench session first.', control_changed: 'Manual control took over. Read the page again.',
         browser_capacity_exhausted: 'Workbench capacity reached. End an idle session and retry.',
         local_runtime_origin_required: 'This browser worker currently supports the local Web and desktop workbench.',
@@ -227,19 +276,22 @@
         opencode_session_mismatch: 'The existing session does not match the configured project. Check the connection settings.',
     });
     Object.assign(messages['zh-Hant'], {
-        opencode_runtime: 'OpenCode 執行環境', mcp_runtime: 'MCP 執行環境',
-        opencode_runtime_missing: '本機 Bun、OpenCode 原始碼或依賴尚未準備。',
-        opencode_start_timeout: '工作台對話服務啟動逾時，請檢查執行環境後恢復工作階段。',
+        opencode_runtime: '高級智能體執行環境', mcp_runtime: 'MCP 執行環境',
+        opencode_runtime_missing: '本機 Bun、高級智能體原始碼或依賴尚未準備。',
         browser_service_unavailable: '請選擇可用的本機瀏覽器節點。',
         mcp_check_timeout: 'MCP 連線檢測逾時，請檢查閘道服務。',
         localBrowserNode: '本機專屬瀏覽器', unavailableBrowserNode: '目前節點不可用',
-        business_submission_unavailable: '尚未開放業務儲存、過帳與刪除。', readyToStart: '可建立工作階段', capabilityNotes: '目前能力說明',
-        setupHint: '新增工作階段會自動結束目前帳號的舊工作階段。SAP Web GUI 直接嵌入；右下角 AI 對話展開 OpenCode。對話使用已設定的 MCP，SAP 頁面由你直接操作。',
+        readyToStart: '可建立工作階段', capabilityNotes: '目前能力說明',
+        navigation_limited: '畫面導覽：有限可用。只確認導覽指令送達，不代表已完成登入或取得業務結果。',
+        mcp_business_available: 'SAP 業務資料：可用。對話按工作階段經伺服器已登記的連線讀寫業務資料；SAP 憑證與連線識別不下發給模型。',
+        mcp_credentials_missing: 'SAP 業務資料：未就緒。尚未儲存 MCP 帳號密碼，伺服器無法建立連線，資料呼叫會以 mcp_login_failed 失敗。',
+        page_readwrite_unavailable: '頁面讀寫與業務提交：不可用。讀取、填寫左側 SAP 頁面欄位與提交業務單據均不開放。',
+        setupHint: '新增工作階段會自動結束目前帳號的舊工作階段。SAP Web GUI 直接嵌入；右下角 AI 對話展開高級智能體。對話使用已設定的 MCP，SAP 頁面由你直接操作。',
         checkHint: '連線設定已載入。可新增或恢復工作階段，或測試已儲存的連線。', saved: '設定已儲存。',
         sap_login_required: '請先在 SAP 頁面登入。', browser_not_connected: 'SAP 畫面尚未連線。',
-        model_credentials_missing: '選取的 OpenCode 模型尚未設定金鑰。',
-        runtime_assets_or_project_missing: 'OpenCode 介面資源或設定的專案目錄不存在。',
-        opencode_host_failed: '場景 OpenCode 服務啟動失敗。', model_configuration_unsupported: '此模型設定尚未支援。',
+        model_credentials_missing: '選取的高級智能體模型尚未設定金鑰。',
+        runtime_assets_or_project_missing: '高級智能體介面資源或設定的專案目錄不存在。',
+        opencode_host_failed: '場景高級智能體服務啟動失敗。', model_configuration_unsupported: '此模型設定尚未支援。',
         session_not_running: '請先恢復工作階段。', control_changed: '目前由人工接管，請重新讀取頁面。',
         browser_capacity_exhausted: '工作階段已滿，請先結束閒置工作階段。',
         local_runtime_origin_required: '此瀏覽器節點目前支援本機 Web 與桌面工作台。',
@@ -253,44 +305,44 @@
         opencode_session_mismatch: '原工作階段與設定的專案不一致，已停止恢復。請核對連線設定。',
     });
     Object.assign(messages.zh, {
-        opencode_auth_failed: 'OpenCode 认证失败，请检查服务连接配置。',
-        opencode_assets_missing: '本机 OpenCode 界面资源尚未准备。', project_directory_missing: '配置的项目目录不存在。',
+        opencode_auth_failed: '高级智能体认证失败，请检查服务连接配置。',
+        opencode_assets_missing: '本机高级智能体界面资源尚未准备。', project_directory_missing: '配置的项目目录不存在。',
         mcp_runtime_missing: 'MCP 运行环境不存在。', mcp_credentials_required: '请先保存 MCP 账号密码。',
         credential_crypto_unavailable: '凭据加密服务不可用。', mcp_identity_tools_missing: 'MCP 缺少登录或身份核验工具。',
         mcp_identity_mismatch: 'MCP 返回的系统、Client 或用户与配置不一致。',
         mcp_not_configured: '尚未启用 MCP 连接。', mcp_login_protocol_unsupported: 'MCP 登录协议不受支持。',
     });
     Object.assign(messages.en, {
-        opencode_auth_failed: 'OpenCode authentication failed. Check the service connection settings.',
-        opencode_assets_missing: 'Local OpenCode UI assets are missing.', project_directory_missing: 'The configured project directory does not exist.',
+        opencode_auth_failed: 'Advanced Agent authentication failed. Check the service connection settings.',
+        opencode_assets_missing: 'Local Advanced Agent UI assets are missing.', project_directory_missing: 'The configured project directory does not exist.',
         mcp_runtime_missing: 'The MCP runtime is missing.', mcp_credentials_required: 'Save the MCP username and password first.',
         credential_crypto_unavailable: 'Credential encryption is unavailable.', mcp_identity_tools_missing: 'MCP login or identity tools are missing.',
         mcp_identity_mismatch: 'The MCP system, Client or user does not match the configuration.',
         mcp_not_configured: 'No MCP connection is enabled.', mcp_login_protocol_unsupported: 'The MCP login protocol is unsupported.',
     });
     Object.assign(messages['zh-Hant'], {
-        opencode_auth_failed: 'OpenCode 驗證失敗，請檢查服務連線設定。',
-        opencode_assets_missing: '本機 OpenCode 介面資源尚未準備。', project_directory_missing: '設定的專案目錄不存在。',
+        opencode_auth_failed: '高級智能體驗證失敗，請檢查服務連線設定。',
+        opencode_assets_missing: '本機高級智能體介面資源尚未準備。', project_directory_missing: '設定的專案目錄不存在。',
         mcp_runtime_missing: 'MCP 執行環境不存在。', mcp_credentials_required: '請先儲存 MCP 帳號密碼。',
         credential_crypto_unavailable: '憑據加密服務不可用。', mcp_identity_tools_missing: 'MCP 缺少登入或身分驗證工具。',
         mcp_identity_mismatch: 'MCP 傳回的系統、Client 或使用者與設定不一致。',
         mcp_not_configured: '尚未啟用 MCP 連線。', mcp_login_protocol_unsupported: 'MCP 登入協定不受支援。',
     });
     Object.assign(messages.zh, {opencode: 'SAP智能助手', chatToggle: 'AI 对话', chatCollapse: '收起对话', chatFullscreen: '全屏', chatRestore: '还原', chatResize: '调整助手宽度',
-        accountRule: '下方凭据用于场景连接检测及受管 MCP 桥；原生助手的 MCP 使用 OpenCode 项目配置。',
-        loginHint: 'SAP 页面单独登录；原生助手沿用 OpenCode 的 MCP 配置。',
-        flagsHint: '这些开关管理场景能力；原生 OpenCode 工具和 MCP 按自身配置及权限运行。'});
+        accountRule: '下方凭据用于场景连接检测及受管 MCP 桥；原生助手的 MCP 使用高级智能体项目配置。',
+        loginHint: 'SAP 页面单独登录；原生助手沿用高级智能体的 MCP 配置。',
+        flagsHint: '这些开关管理场景能力；原生高级智能体工具和 MCP 按自身配置及权限运行。'});
     Object.assign(messages.en, {opencode: 'SAP AI Assistant', chatToggle: 'AI chat', chatCollapse: 'Collapse chat', chatFullscreen: 'Full screen', chatRestore: 'Restore', chatResize: 'Resize assistant',
-        accountRule: 'These credentials serve scene connection checks and the managed MCP bridge. Native chat uses OpenCode project MCP configuration.',
-        loginHint: 'Sign in to SAP separately. Native chat uses OpenCode MCP configuration.',
-        flagsHint: 'These flags control scene capabilities. Native OpenCode tools and MCP use their own configuration and permissions.',
+        accountRule: 'These credentials serve scene connection checks and the managed MCP bridge. Native chat uses Advanced Agent project MCP configuration.',
+        loginHint: 'Sign in to SAP separately. Native chat uses Advanced Agent MCP configuration.',
+        flagsHint: 'These flags control scene capabilities. Native Advanced Agent tools and MCP use their own configuration and permissions.',
         setupHint: 'A new session ends your previous workbench sessions. SAP Web GUI is embedded directly; open AI chat at the bottom right. Chat uses configured MCP tools; operate the SAP page directly.',
         sap_login_required: 'Sign in on the SAP page first.'});
     Object.assign(messages['zh-Hant'], {opencode: 'SAP智慧助手', chatToggle: 'AI 對話', chatCollapse: '收起對話', chatFullscreen: '全螢幕', chatRestore: '還原', chatResize: '調整助手寬度',
-        accountRule: '下方憑據用於場景連線檢測及受管 MCP 橋；原生助手的 MCP 使用 OpenCode 專案設定。',
-        loginHint: 'SAP 頁面單獨登入；原生助手沿用 OpenCode 的 MCP 設定。',
-        flagsHint: '這些開關管理場景能力；原生 OpenCode 工具與 MCP 按自身設定及權限執行。',
-        setupHint: '新增工作階段會自動結束目前帳號的舊工作階段。SAP Web GUI 直接嵌入；右下角 AI 對話展開 OpenCode。對話使用已設定的 MCP，SAP 頁面由你直接操作。',
+        accountRule: '下方憑據用於場景連線檢測及受管 MCP 橋；原生助手的 MCP 使用高級智能體專案設定。',
+        loginHint: 'SAP 頁面單獨登入；原生助手沿用高級智能體的 MCP 設定。',
+        flagsHint: '這些開關管理場景能力；原生高級智能體工具與 MCP 按自身設定及權限執行。',
+        setupHint: '新增工作階段會自動結束目前帳號的舊工作階段。SAP Web GUI 直接嵌入；右下角 AI 對話展開高級智能體。對話使用已設定的 MCP，SAP 頁面由你直接操作。',
         sap_login_required: '請先在 SAP 頁面完成登入。'});
     const t = key => {
         const lang = typeof currentLang === 'string' ? currentLang : document.documentElement.lang;
@@ -307,6 +359,12 @@
         node.addEventListener('click', action); return node;
     };
     const find = name => dialog.querySelector('[data-sap="' + name + '"]');
+    // The embed reports from its own origin, which is the frame's origin, not
+    // this page's. Comparing against it pins the listener to the one frame the
+    // scene mounted, so a message from anywhere else is ignored unread.
+    function originOf(url) {
+        try { return new URL(url, window.location.href).origin; } catch (error) { return null; }
+    }
     async function request(path, options) {
         const response = await window.fetch(API + path, {credentials: 'same-origin', cache: 'no-store', ...options});
         const payload = await response.json();
@@ -316,14 +374,68 @@
         }
         return payload;
     }
+    function noticeText(text, error) {
+        const node = find('notice'); node.textContent = text; node.dataset.error = error ? 'true' : 'false';
+    }
     function notice(key, error) {
-        const node = find('notice'); node.textContent = t(key); node.dataset.error = error ? 'true' : 'false';
+        noticeText(t(key), error);
+    }
+    // The conversation pane is the platform's own coding iframe. The scene has no
+    // engine stage left to poll: the pane reports itself ready over the platform's
+    // embed protocol, and until it does the pane says what it knows and offers the
+    // one safe action -- open that same coding session again.
+    const READY_TIMEOUT_MS = 15000;
+    let codingReadyTimer = null;
+    // One status line per pane, found rather than remembered, so a remount can
+    // never leave a second one behind whichever element is the live pane.
+    const codeStateBox = () => find('code-pane')?.querySelectorAll('.sap-code-state')[0] || null;
+    function clearCodingState() {
+        if (codingReadyTimer !== null) { window.clearTimeout(codingReadyTimer); codingReadyTimer = null; }
+        codeStateBox()?.remove();
+    }
+    function showCodingState(text, {retry = false} = {}) {
+        const pane = find('code-pane');
+        if (!pane) return;
+        let box = codeStateBox();
+        if (!box) {
+            box = el('div', undefined, 'sap-code-state');
+            pane.append(box);
+        }
+        box.setAttribute('role', retry ? 'alert' : 'status');
+        box.replaceChildren(el('span', text));
+        if (retry) box.append(button('codingRetry', () => retryCodingSession()));
+    }
+    function markCodingReady() {
+        if (codingReadyTimer !== null) { window.clearTimeout(codingReadyTimer); codingReadyTimer = null; }
+        codeStateBox()?.remove();
+        dressCodeFrame();
+    }
+    // The scene owns this pane's chrome. Inside the frame the platform's compact
+    // session/changes tabs and Advanced Agent's own (now empty) title strip form a
+    // second header above the one this dialog already renders, so both are
+    // trimmed in the frame's own document. The frame is same-origin with this
+    // page, which is what lets the *shared* Web build stay untouched -- the same
+    // rule the retired engine used to inject while serving its own assets. A
+    // cross-origin embed cannot be dressed this way and simply keeps OpenCode's
+    // defaults rather than failing.
+    const CODE_FRAME_TRIM = 'header:has(#opencode-titlebar-right),' +
+        '[data-slot="tabs-list"]:has([data-value="session"]):has([data-value="changes"]){display:none!important}';
+    function dressCodeFrame() {
+        let doc = null;
+        try { doc = (codeFrame && codeFrame.contentDocument) || null; } catch (error) { doc = null; }
+        if (!doc || !doc.head) return;
+        const found = typeof doc.getElementById === 'function' ? doc.getElementById('sap-code-trim') : null;
+        if (found) return;
+        const style = doc.createElement('style');
+        style.id = 'sap-code-trim';
+        style.textContent = CODE_FRAME_TRIM;
+        doc.head.append ? doc.head.append(style) : doc.head.appendChild(style);
     }
     function allowDiscard() { return !dirty || window.confirm(t('unsaved')); }
     function close() {
         if (!dialog?.open) return;
         if (!allowDiscard()) return;
-        pauseSession(); generation++; startingSession = false; dirty = false; data = null; stopView(); unmountCode(); binding = null;
+        pauseSession(); generation++; startingSession = false; clearCodingState(); dirty = false; data = null; stopView(); unmountCode(); binding = null;
         dialog.dataset.live = 'false'; dialog.close();
         find('form').replaceChildren();
         previousFocus?.focus();
@@ -334,7 +446,7 @@
         style.href = '/scene-assets/sap_workbench/frontend/workbench.css'; document.head.appendChild(style);
         dialog = el('dialog'); dialog.id = 'sap-workbench-dialog';
         dialog.setAttribute('aria-labelledby', 'sap-workbench-title');
-        dialog.innerHTML = '<header><div><p class="sap-kicker">SAP · OPENCODE</p><h1 id="sap-workbench-title"></h1></div><nav data-sap="toolbar"></nav></header>' +
+        dialog.innerHTML = '<header><div><p class="sap-kicker">SAP · 高级智能体</p><h1 id="sap-workbench-title"></h1></div><nav data-sap="toolbar"></nav></header>' +
             '<p data-sap="notice" role="status" aria-live="polite"></p>' +
             '<main data-sap="main"><section class="sap-overview"><span class="sap-badge" data-sap="badge"></span><p data-sap="hint"></p>' +
             '<div data-sap="actions" class="sap-actions"></div><div data-sap="checks" class="sap-checks"></div></section>' +
@@ -342,7 +454,7 @@
             '<div class="sap-chat-resizer" data-sap="chat-resizer" role="separator" aria-orientation="vertical" aria-controls="sap-chat-pane" tabindex="0" hidden></div>' +
             '<section id="sap-chat-pane" class="sap-pane" data-sap="code-pane" role="region" aria-labelledby="sap-chat-title" hidden inert><header class="sap-chat-header"><h2 id="sap-chat-title"></h2><nav><button type="button" data-sap="chat-fullscreen" aria-pressed="false"></button><button type="button" data-sap="chat-close"></button></nav></header><div class="sap-empty"><span aria-hidden="true">◇</span><p></p></div></section>' +
             '<button type="button" class="sap-chat-toggle" data-sap="chat-toggle" aria-controls="sap-chat-pane" aria-expanded="false" hidden></button></div>' +
-            '<details class="sap-details"><summary data-sap="details-title"></summary><ul data-sap="blockers"></ul></details></main>' +
+            '<details class="sap-details"><summary data-sap="details-title"></summary><ul data-sap="notes"></ul><ul data-sap="blockers"></ul></details></main>' +
             '<form data-sap="form" hidden></form>';
         document.body.appendChild(dialog);
         dialog.addEventListener('cancel', event => {
@@ -407,6 +519,7 @@
             find(name).querySelector('h2').textContent = t(title); find(name).querySelector('p').textContent = t(text);
         }
         find('details-title').textContent = t('capabilityNotes');
+        find('notes').replaceChildren(...(data?.capabilities.notes || []).map(key => el('li', t(key))));
         find('blockers').replaceChildren(...(data?.capabilities.blockers || []).map(key => el('li', t(key))));
         find('checks').replaceChildren(...(data?.checks || []).map(check => {
             const node = el('div'); node.append(el('strong', t(check.id)), el('span', t(check.configuration)), el('small', t(check.verification))); return node;
@@ -417,7 +530,7 @@
     function renderChat() {
         const available = Boolean(binding), expanded = available && chatOpen;
         const toggle = find('chat-toggle'), pane = find('code-pane'), collapse = find('chat-close');
-        toggle.hidden = !available; toggle.textContent = t('chatToggle');
+        toggle.hidden = !available; toggle.textContent = t('chatToggle'); toggle.title = t('chatToggle');
         toggle.setAttribute('aria-expanded', String(expanded));
         pane.hidden = !expanded; pane.inert = !expanded;
         collapse.textContent = t('chatCollapse');
@@ -472,7 +585,7 @@
         startingSession = true; render(); notice('sessionStarting');
         const current = ++generation;
         try {
-            let body;
+            let body, requestId = null;
             if (resume) {
                 const list = await request('/sessions');
                 if (current !== generation || !dialog.open) return;
@@ -480,13 +593,15 @@
                 if (!previous) throw new Error('noSessions');
                 body = {binding_id: previous.id};
             } else {
-                pendingRequest = pendingRequest || window.crypto.randomUUID();
-                body = {request_id: pendingRequest};
+                requestId = pendingRequest || window.crypto.randomUUID();
+                pendingRequest = requestId;
+                body = {request_id: requestId};
             }
             const session = await sessionRequest(body);
             if (current !== generation || !dialog.open) return;
-            pendingRequest = null; binding = session;
-            stopView(); connectView(session); mountCode(session); notice(session.display_mode === 'iframe' ? 'sapEmbedded' : 'sessionConnecting');
+            pendingRequest = null; binding = session; binding.requestId = requestId;
+            stopView(); connectView(session); void mountCode(session, requestId);
+            notice(session.display_mode === 'iframe' ? 'sapEmbedded' : 'sessionConnecting');
         } catch (error) {
             if (current === generation) notice(error.message, true);
         } finally {
@@ -516,8 +631,13 @@
         } catch (error) { if (current === binding && epoch === generation) notice(error.message, true); }
     }
     function unmountCode() {
+        // Bump first: an in-flight mount for the previous frame is now stale and
+        // must not append its frame or arm its readiness wait when it resolves.
+        codeMount++;
         stopChatResize();
+        clearCodingState();
         codeFrame?.remove(); codeFrame = null;
+        codeOrigin = null; codeChannel = null; attachSent.clear();
         chatOpen = false;
         chatFullscreen = false;
         dialog.dataset.chatFullscreen = 'false';
@@ -529,32 +649,171 @@
         const empty = find('code-pane')?.querySelector('.sap-empty');
         if (empty) empty.hidden = false;
     }
-    function mountCode(session) {
+    function pageOrigin() {
+        const location = window.location;
+        return (location && location.origin) || '';
+    }
+    function codingFrameUrl(url, channel) {
+        const params = [];
+        if (!/[?&]rsm_embed=/.test(url)) params.push('rsm_embed=1');
+        params.push('rsm_parent_origin=' + encodeURIComponent(pageOrigin()));
+        params.push('rsm_channel=' + encodeURIComponent(channel));
+        return url + (url.includes('?') ? '&' : '?') + params.join('&');
+    }
+    async function codingRequest(path, options) {
+        const response = await window.fetch(path, {credentials: 'same-origin', cache: 'no-store', ...options});
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.status !== 'success') {
+            // A refusal is reported as text rather than a bare status: "coding is
+            // off" and "the service is unreachable" call for different actions.
+            const text = typeof payload.message === 'string' && payload.message;
+            throw new Error(text || t(payload.code || 'codingUnavailable'));
+        }
+        return payload;
+    }
+    // The platform coding entry owns the upstream session: it reserves one for a
+    // request id, or reopens the session a history entry already points at.
+    // Neither path sends a prompt or calls a model -- opening a conversation must
+    // never spend tokens.
+    function openCodingSession(session, requestId) {
+        if (!session.agent_id) return Promise.reject(new Error(t('codingUnavailable')));
+        if (requestId) {
+            return codingRequest('/api/coding/sessions', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({agent_id: session.agent_id, request_id: requestId,
+                    permission_profile: CODING_PERMISSION_PROFILE})});
+        }
+        if (!session.coding_session_id) return Promise.reject(new Error(t('coding_not_linked')));
+        return codingRequest('/api/coding/sessions/' + encodeURIComponent(session.coding_session_id)
+            + '/open?agent_id=' + encodeURIComponent(session.agent_id));
+    }
+    function mountCode(session, requestId) {
         const wasOpen = chatOpen, wasFullscreen = chatFullscreen;
         unmountCode();
+        // ``screen`` is the self-managed per-session engine, kept only behind the
+        // rollback switch. It authenticates with a one-use grant posted into the
+        // frame, and it is the only remaining display mode that does.
+        if (session.display_mode !== 'iframe') {
+            mountLegacyCode(session, wasOpen, wasFullscreen);
+            return;
+        }
+        void mountPlatformCode(session, requestId, wasOpen, wasFullscreen, ++codeMount);
+    }
+    function mountLegacyCode(session, wasOpen, wasFullscreen) {
         const frame = el('iframe', undefined, 'sap-opencode-frame');
         frame.title = t('opencode'); frame.name = 'sap-code-' + session.binding_id;
         frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-downloads');
         frame.referrerPolicy = 'no-referrer';
-        codeFrame = frame; find('code-pane').append(frame);
+        codeFrame = frame; codeOrigin = originOf(session.base_url || session.origin); codeChannel = session.binding_id;
+        find('code-pane').append(frame);
         find('code-pane').querySelector('.sap-empty').hidden = true;
         // A one-use, short-lived grant is posted into the iframe, never placed
         // in its URL, browser history, localStorage or the OpenCode project.
-        const form = el('form'); form.method = 'POST'; form.action = session.origin + '/bootstrap'; form.target = frame.name;
+        // The binding rides in the query: on the fixed shared origin it is the
+        // only thing that names this session before its cookie exists, and the
+        // dispatcher forwards the prefixed path straight to the session host.
+        const form = el('form'); form.method = 'POST';
+        form.action = (session.base_url || session.origin) + '/bootstrap?binding=' + encodeURIComponent(session.binding_id);
+        form.target = frame.name;
         const input = el('input'); input.type = 'hidden'; input.name = 'token'; input.value = session.bootstrap_token;
         form.append(input); document.body.append(form); form.submit(); form.remove();
         delete session.bootstrap_token;
         setChatOpen(wasOpen);
         setChatFullscreen(wasFullscreen);
     }
-    window.addEventListener('message', event => {
-        if (!binding || !codeFrame || event.source !== codeFrame.contentWindow || event.origin !== binding.origin) return;
-        const message = event.data;
-        if (!message || message.channel !== binding.binding_id) return;
-        if (binding.display_mode !== 'iframe' && message.type === 'rsm.opencode.session' && message.session_id !== binding.remote_session_id) {
-            pauseSession(); generation++; stopView(); unmountCode(); binding = null; render();
-            notice('session_not_running', true);
+    async function mountPlatformCode(session, requestId, wasOpen, wasFullscreen, mount) {
+        const current = session;
+        // The placeholder belongs to "no conversation yet". From here on the pane
+        // either shows the frame or says why it cannot, so it goes now rather than
+        // after the network round trip.
+        const empty = find('code-pane').querySelector('.sap-empty');
+        if (empty) empty.hidden = true;
+        showCodingState(t('sessionPreparing'));
+        let opened = null;
+        try {
+            opened = await openCodingSession(session, requestId);
+        } catch (error) {
+            if (mount !== codeMount || binding !== current || !dialog.open) return;
+            // The reason is already the user's language: either the platform's own
+            // sentence or a localized code from ``codingRequest``.
+            const text = t('codingOpenFailed').replace('{reason}', error.message);
+            showCodingState(text, {retry: true}); noticeText(text, true);
+            return;
         }
+        // A retry that landed while this open was in flight supersedes it: mount
+        // only the newest attempt, or the pane would grow a second frame and a
+        // second readiness wait for the same conversation.
+        if (mount !== codeMount || binding !== current || !dialog.open) return;
+        if (!opened.iframe_url) { showCodingState(t('codingNotReady'), {retry: true}); return; }
+        if (opened.session_id) binding.coding_session_id = opened.session_id;
+        if (opened.external_session_id) binding.remote_session_id = opened.external_session_id;
+        // The channel is minted here, per mount, and echoed by the client inside
+        // the frame. It is what makes "this browser tab's request_id now points at
+        // that upstream session" a first-class, auditable fact instead of a guess.
+        const channel = 'sap-ch-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+        const frame = el('iframe', undefined, 'sap-opencode-frame');
+        frame.title = t('opencode'); frame.name = 'sap-code-' + session.binding_id;
+        frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-downloads');
+        frame.referrerPolicy = 'no-referrer';
+        frame.src = codingFrameUrl(opened.iframe_url, channel);
+        frame.addEventListener('load', dressCodeFrame);
+        codeFrame = frame; codeOrigin = originOf(opened.iframe_url); codeChannel = channel;
+        find('code-pane').append(frame);
+        find('code-pane').querySelector('.sap-empty').hidden = true;
+        dressCodeFrame();
+        showCodingState(t('codingLoading'));
+        codingReadyTimer = window.setTimeout(() => {
+            codingReadyTimer = null;
+            if (mount !== codeMount) return;
+            showCodingState(t('codingNotReady'), {retry: true});
+        }, READY_TIMEOUT_MS);
+        setChatOpen(wasOpen);
+        setChatFullscreen(wasFullscreen);
+    }
+    function retryCodingSession() {
+        if (!binding || !dialog.open) return;
+        const current = binding;
+        void mountCode(current, current.requestId);
+    }
+    // A client that already had its own session reports the id it switched to.
+    // The scene records that link under the caller's own binding, so the next
+    // page load resumes the conversation the user is actually looking at.
+    async function attachCodingSession(externalId) {
+        if (!binding || !externalId || externalId === binding.remote_session_id || attachSent.has(externalId)) return;
+        const current = binding;
+        attachSent.add(externalId);
+        try {
+            const result = await codingRequest('/api/coding/sessions/attach', {method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({agent_id: binding.agent_id, source_session_id: binding.coding_session_id,
+                    external_session_id: externalId, permission_profile: CODING_PERMISSION_PROFILE})});
+            if (binding !== current) return;
+            if (result.session_id) binding.coding_session_id = result.session_id;
+            binding.remote_session_id = result.external_session_id || externalId;
+            notice('codingLinkedOk');
+        } catch (error) {
+            if (binding !== current) return;
+            attachSent.delete(externalId);
+            noticeText(t('codingAttachFailed').replace('{reason}', error.message), true);
+        }
+    }
+    window.addEventListener('message', event => {
+        if (!binding || !codeFrame || event.source !== codeFrame.contentWindow) return;
+        if (codeOrigin && event.origin !== codeOrigin) return;
+        const message = event.data;
+        if (!message || typeof message !== 'object' || message.channel !== codeChannel) return;
+        if (binding.display_mode !== 'iframe') {
+            // The retired engine reports the session it is serving through the
+            // scene's own proxy. A different one means this pane no longer shows
+            // the bound conversation, so both panes are released rather than
+            // left pointing at a session nobody asked for.
+            if (message.type === 'rsm.opencode.session' && message.session_id !== binding.remote_session_id) {
+                pauseSession(); generation++; stopView(); unmountCode(); binding = null; render();
+                notice('session_not_running', true);
+            }
+            return;
+        }
+        if (message.type === 'rsm.opencode.ready') { markCodingReady(); return; }
+        if (message.type === 'rsm.opencode.session' && message.session_id) void attachCodingSession(message.session_id);
     });
     // The left pane is a live view of a dedicated Chrome. Frames come down the
     // loopback WebSocket as JPEG; clicks and keys go back up as semantic events
@@ -585,10 +844,16 @@
         sessionRequest({binding_id: binding.binding_id})
             .then(session => {
                 if (current !== binding || !dialog.open || !view?.starting) return;
-                const hostChanged = binding.origin !== session.origin;
+                // A re-issued session can point at a different upstream
+                // conversation. Carry the request id that reopens it and reload
+                // the pane, so SAP and the conversation stay on one binding.
+                session.requestId = binding.requestId;
+                const relinked = session.remote_session_id !== binding.remote_session_id
+                    || session.coding_session_id !== binding.coding_session_id
+                    || session.origin !== binding.origin;
                 binding = session;
                 connectView(session);
-                if (hostChanged) mountCode(session);
+                if (relinked) void mountCode(session, session.requestId);
             })
             .catch(error => {
                 if (current !== binding || !dialog.open) return;
@@ -725,12 +990,15 @@
         sessionRequest({binding_id: binding.binding_id})
             .then(session => {
                 if (current !== binding || !dialog.open || view?.socket !== socket) return;
-                const hostChanged = binding.origin !== session.origin;
+                session.requestId = binding.requestId;
+                const relinked = session.remote_session_id !== binding.remote_session_id
+                    || session.coding_session_id !== binding.coding_session_id
+                    || session.origin !== binding.origin;
                 binding = session;
                 connectView(session);
-                // Idle reclamation or a host restart can change the gateway
-                // port. Restore both panes to the same binding, not only SAP.
-                if (hostChanged) mountCode(session);
+                // A re-issued session can name a new gateway or a new upstream
+                // conversation. Restore both panes to the same binding, not only SAP.
+                if (relinked) void mountCode(session, session.requestId);
             })
             .catch(error => {
                 if (current !== binding || view?.socket !== socket) return;
@@ -891,7 +1159,7 @@
     }
     async function load() {
         if (!allowDiscard()) return false;
-        const current = ++generation; startingSession = false; dirty = false; data = null; if (!binding) stopView();
+        const current = ++generation; startingSession = false; clearCodingState(); dirty = false; data = null; if (!binding) stopView();
         find('form').inert = false;
         find('form').hidden = true; find('main').hidden = false;
         render(); notice('loading');

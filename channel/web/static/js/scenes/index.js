@@ -32,23 +32,49 @@
         return _registryReady;
     }
     let _workbenchesReady = null;
+    const WORKBENCH_SCRIPT_TIMEOUT_MS = 45000;
     function ensureWorkbenches() {
+        // Already loaded by a prior visit (or a recovered page): skip re-fetch.
+        if (window.SceneOriginal && window.SapWorkbench) return Promise.resolve();
         if (_workbenchesReady) return _workbenchesReady;
-        const style = document.createElement('link');
-        style.rel = 'stylesheet';
-        style.href = '/scene-assets/_shared/frontend/host.css';
-        document.head.appendChild(style);
+        if (!document.querySelector('link[href="/scene-assets/_shared/frontend/host.css"]')) {
+            const style = document.createElement('link');
+            style.rel = 'stylesheet';
+            style.href = '/scene-assets/_shared/frontend/host.css';
+            document.head.appendChild(style);
+        }
         function script(url) {
             return new Promise(function (resolve, reject) {
                 const s = document.createElement('script');
                 s.src = url;
-                s.onload = resolve;
-                s.onerror = function () { s.remove(); reject(new Error('场景脚本加载失败')); };
+                let settled = false;
+                const timer = setTimeout(function () {
+                    if (settled) return;
+                    settled = true;
+                    s.remove();
+                    reject(new Error('场景脚本加载超时'));
+                }, WORKBENCH_SCRIPT_TIMEOUT_MS);
+                s.onload = function () {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
+                    resolve();
+                };
+                s.onerror = function () {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
+                    s.remove();
+                    reject(new Error('场景脚本加载失败'));
+                };
                 document.head.appendChild(s);
             });
         }
-        _workbenchesReady = script('/scene-assets/_shared/frontend/xlsx.full.min.js')
-            .then(function () { return script('/scene-assets/runtime.js'); })
+        // Parallel fetch: sequential xlsx→runtime made first open feel dead under load.
+        _workbenchesReady = Promise.all([
+            script('/scene-assets/_shared/frontend/xlsx.full.min.js'),
+            script('/scene-assets/runtime.js'),
+        ]).then(function () { /* ready */ })
             .catch(function (err) { _workbenchesReady = null; throw err; });
         return _workbenchesReady;
     }
@@ -315,6 +341,9 @@
             }
             renderTabs();
             renderCards();
+            // Prefetch workbench runtime while the user browses cards so the
+            // first click does not sit silently on a multi-megabyte download.
+            ensureWorkbenches().catch(function () { /* retry on click */ });
         }).catch(function () {
             // 加载失败：显示空态与引导。
             setEmptyState(true, true, false);
@@ -337,6 +366,9 @@
     // 完全一致（否则首次点击时运行时还没加载，会误退化成普通打开），只有最后
     // 一步分发不同——声明了配置面的场景打开配置，其余场景照常打开。
     function openSceneById(sceneId, action) {
+        // Immediate feedback: large workbench scripts can take seconds; without
+        // this the card click looks dead.
+        showNotice(t('scenes_opening'));
         // 允许在进入场景中心前直接被调用（工作台/选择器/直链）：先确保目录数据。
         return ensureSceneData(false).then(function () {
             return ensureRegistry();

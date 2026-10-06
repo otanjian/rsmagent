@@ -34,11 +34,14 @@ class _FakeClient:
     def __init__(self):
         self.created = []
 
-    def create_session(self, session_id, project_dir):
+    def create_session(self, session_id, project_dir, permission=None):
         self.created.append(session_id)
         return RemoteSession(id=session_id, title="Legacy upgrade session",
                              directory=project_dir, created_ms=1789890000000,
                              updated_ms=1789890000000)
+
+    def set_permission(self, session_id, project_dir, permission):
+        return None
 
 
 def _digest(path):

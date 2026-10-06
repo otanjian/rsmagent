@@ -49,7 +49,7 @@ test.skipIf(!root)("native SAP host discovers global/project configuration and e
         XDG_CACHE_HOME:join(dir,"cache"),XDG_STATE_HOME:join(dir,"state"),OPENCODE_DISABLE_MODELS_FETCH:"1",OPENCODE_DISABLE_AUTOUPDATE:"1"}})
     let stderr = ""
     const errors = (async()=>{for await(const chunk of child!.stderr) stderr += new TextDecoder().decode(chunk)})()
-    child.stdin.write(JSON.stringify({directory:runtime,root,token,displayMode:"iframe"})); child.stdin.end()
+    child.stdin.write(JSON.stringify({directory:runtime,root,token,displayMode:"iframe"}) + "\n")
     let pending="", port=0
     for await(const chunk of child.stdout) {
       pending += new TextDecoder().decode(chunk)

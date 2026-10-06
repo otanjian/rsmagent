@@ -78,6 +78,19 @@ def web_backend_py():
 
 
 @pytest.fixture(autouse=True)
+def sap_workbench_never_warms_a_real_engine(monkeypatch):
+    """Keep the scene's engine warm-up out of the suite.
+
+    Opening the workbench starts a background Bun warm-up once the visual scene
+    is configured (``Scene.sap_workbench.backend.prewarm``). That is right for a
+    deployment and wrong here: the suite would spawn and kill the real engine,
+    and load a multi-gigabyte source tree, for every test that reads the scene
+    configuration.
+    """
+    monkeypatch.setenv("SAP_WORKBENCH_PREWARM", "0")
+
+
+@pytest.fixture(autouse=True)
 def global_config_object_is_restored():
     """Put the process-global config back after a test that replaced it.
 

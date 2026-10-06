@@ -22,8 +22,7 @@ test.skipIf(!root)("two deployed canonical hosts reject direct and cross-host cr
       processes.push(process)
       process.stdin.write(JSON.stringify({directory:join(directory,String(index)),root,token:tokens[index],
         modelURL:`${deadEnd.url}model`,model:"test-only",bridgeURL:`${deadEnd.url}bridge/`,service:`test-${index}`,
-        displayMode:"screen"}))
-      process.stdin.end()
+        displayMode:"screen"}) + "\n")
       let pending=""
       for await (const chunk of process.stdout) {
         pending += new TextDecoder().decode(chunk)

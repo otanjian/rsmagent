@@ -2694,6 +2694,16 @@ function wsSendOne(upload, index, item) {
 
         const xhr = new XMLHttpRequest();
         xhr.open('POST', wsScopedPath('/api/workspace/upload'));
+        // This request is an XHR rather than a `fetch` (progress reporting needs
+        // one), so the console's wrapper never sees it: the tenant selection has
+        // to be attached here. Without it the identity gate answers 400
+        // `missing_tenant` ("tenant selection required") before the handler runs,
+        // and a drop on a database-identity deployment lands as 部分完成 with
+        // every file refused. `tenantSelectionHeader` is a console.js global on
+        // the same page; a page that has not loaded it needs no selection.
+        const tenantId = (typeof tenantSelectionHeader === 'function')
+            ? tenantSelectionHeader('/api/workspace/upload') : '';
+        if (tenantId) xhr.setRequestHeader('X-Tenant-ID', tenantId);
         xhr.upload.addEventListener('progress', (e) => {
             if (!e.lengthComputable || wsUpload !== upload) return;
             // `e.total` is the multipart body, which is the file plus framing;

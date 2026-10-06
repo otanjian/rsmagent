@@ -90,8 +90,10 @@ test('SAP respects the host unsaved-work guard before touching DOM or fetching',
     assert.doesNotThrow(()=>ctx.SapWorkbench.close());
 });
 
-function setupWorkbench({dirty = false, hostGuard = true, canManage = false, sessionPorts = [4321], browserRef = '', visual = true, nativeSap = false} = {}) {
-    const requests = [], dialogs = [], confirmations = [], sockets = [], drawn = [], frames = [], submittedForms = [];
+// The platform's own coding entry, not the scene, serves the conversation pane.
+const CODING_ORIGIN = 'https://code.example.com';
+
+function setupWorkbench({dirty = false, hostGuard = true, canManage = false, sessionPorts = [4321], browserRef = '', visual = true, nativeSap = false, notes = []} = {}) {    const requests = [], dialogs = [], confirmations = [], sockets = [], drawn = [], frames = [], submittedForms = [];
     const timers = new Map(), events = {};
     let timerId = 0, sessionCount = 0;
     const element = tag => {
@@ -121,16 +123,26 @@ function setupWorkbench({dirty = false, hostGuard = true, canManage = false, ses
                 if (!queries.has(selector)) queries.set(selector, element('div'));
                 return queries.get(selector);
             },
+            querySelectorAll(selector) {
+                const matches = node => selector.startsWith('.')
+                    ? node.className === selector.slice(1) : node.tagName === selector;
+                return this.children.filter(matches);
+            },
             showModal() {this.open = true; this.showCount++;},
             close() {this.open = false;},
         };
+    };
+    const blankDocument = () => {
+        const head = element('head');
+        return {head, createElement: tag => element(tag),
+            getElementById: id => head.children.find(child => child.id === id) || null};
     };
     const document = {
         head: element('head'), body: element('body'), activeElement: element('button'),
         createElement(tag) {
             const node = element(tag);
             if (tag === 'dialog') dialogs.push(node);
-            if (tag === 'iframe') frames.push(node);
+            if (tag === 'iframe') {node.contentDocument = blankDocument(); frames.push(node);}
             return node;
         },
     };
@@ -144,7 +156,8 @@ function setupWorkbench({dirty = false, hostGuard = true, canManage = false, ses
         send(payload) {this.sent.push(payload);}
         close() {this.closed = true; this.readyState = 3;}
     }
-    const ctx = {document, URL, currentLang: 'zh', t: key => key,
+    const ctx = {document, URL, location: {origin: 'https://console.test', href: 'https://console.test/'},
+        currentLang: 'zh', t: key => key,
         addEventListener(type, handler) {(events[type] = events[type] || []).push(handler);},
         setTimeout(fn) {timers.set(++timerId, fn); return timerId;},
         clearTimeout(id) {timers.delete(id);},
@@ -153,18 +166,32 @@ function setupWorkbench({dirty = false, hostGuard = true, canManage = false, ses
         showConfirmDialog: options => confirmations.push(options),
         WebSocket: FakeSocket, crypto: {randomUUID: () => 'test-request'},
         createImageBitmap: async () => ({width: 1280, height: 800, close() {}}),
-        fetch: async url => {
+        fetch: async (url, options) => {
             requests.push(url);
+            // The conversation is the platform's own coding session. The console
+            // contract is mirrored here: create or reopen, then mount the embed
+            // address the entry returns.
+            if (url.startsWith('/api/coding/sessions')) {
+                if (url.endsWith('/attach')) {
+                    const sent = JSON.parse(options.body);
+                    return {ok: true, json: async () => ({status: 'success', session_id: 'coding-test',
+                        external_session_id: sent.external_session_id})};
+                }
+                return {ok: true, json: async () => ({status: 'success', session_id: 'coding-test',
+                    agent_id: 'sap', external_session_id: 'ses_test',
+                    iframe_url: CODING_ORIGIN + '/L3RtcC9wcm9qZWN0/session/ses_test?rsm_embed=1'})};
+            }
             if (url.endsWith('/sessions')) {
                 const port = sessionPorts[Math.min(sessionCount++, sessionPorts.length - 1)];
                 return {ok: true, json: async () => ({status: 'success', port,
                     binding_id: 'binding-test', remote_session_id: 'ses_test',
                     origin: `http://localhost:${port}`, bootstrap_token: 'test-boot',
-                    ...(nativeSap ? {display_mode: 'iframe', sap_url: 'https://sap.example/sap/bc/gui?sap-client=200', gui_automation: false} : {}),
+                    ...(nativeSap ? {display_mode: 'iframe', sap_url: 'https://sap.example/sap/bc/gui?sap-client=200',
+                        gui_automation: false, coding_session_id: 'coding-test', agent_id: 'sap'} : {}),
                     token: 'view-token', target: 'https://sap.example/sap/bc/gui', readonly: false})};
             }
             return {ok: true, json: async () => ({status: 'success', version: 1, can_manage: canManage,
-                capabilities: {visual, blockers: []}, checks: [], coding: null, coding_options: [],
+                capabilities: {visual, blockers: [], notes}, checks: [], coding: null, coding_options: [],
                 opencode: {configured: false, web_url: ''},
                 // The real projection carries the editable config to a
                 // controller; the connection form is rendered from it.
@@ -173,7 +200,7 @@ function setupWorkbench({dirty = false, hostGuard = true, canManage = false, ses
                     sap: {system_id: '', web_gui_url: '', client: '', language: 'ZH',
                         allowed_origins: [], login_mode: 'password'},
                     mcp: {connections: [
-                        {id: 'sap-abap', url: 'http://127.0.0.1:8100/mcp', enabled: true},
+                        {id: 'sap-abap', url: 'http://127.0.0.1:8110/mcp', enabled: true},
                         {id: 'sap-pyrfc', url: 'http://127.0.0.1:8200/mcp', enabled: true},
                     ]}, max_sessions: 4, idle_seconds: 900}})};
         },
@@ -229,20 +256,56 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 test('native SAP fills an iframe without a screen socket and preserves it while chat toggles', async () => {
     const h = setupWorkbench({nativeSap:true});
     await h.ctx.SapWorkbench.open({view:'new-session'});
+    await flush();
     assert.equal(h.sockets.length,0);
     const host = h.dialogs[0].querySelector('[data-sap="view"]');
     const sap = host.children[0];
     assert.equal(sap.tagName,'iframe');
     assert.equal(sap.src,'https://sap.example/sap/bc/gui?sap-client=200');
     assert.equal(sap.className,'sap-native-frame');
-    assert.equal(h.submittedForms.length,1);
+    // The conversation is mounted from the coding entry's own embed address, and
+    // carries nothing but the parent origin and this mount's channel: there is no
+    // grant to post into a frame the scene does not serve.
+    const pane = h.dialogs[0].querySelector('[data-sap="code-pane"]');
+    const frame = pane.children.find(child => child.tagName === 'iframe');
+    const url = new URL(frame.src);
+    assert.equal(url.origin, CODING_ORIGIN);
+    assert.equal(url.pathname, '/L3RtcC9wcm9qZWN0/session/ses_test');
+    assert.equal(url.searchParams.get('rsm_embed'), '1');
+    assert.equal(url.searchParams.get('rsm_parent_origin'), 'https://console.test');
+    assert.ok(url.searchParams.get('rsm_channel'));
+    assert.equal(h.submittedForms.length,0);
     const toggle = h.dialogs[0].querySelector('[data-sap="chat-toggle"]');
     toggle.dispatch('click'); toggle.dispatch('click');
     assert.equal(host.children[0],sap);
-    assert.equal(h.submittedForms.length,1);
+    assert.equal(h.submittedForms.length,0);
     h.ctx.SapWorkbench.close();
     assert.equal(host.children.length,0);
     assert.equal(h.timers.size,0);
+});
+
+test('the shared build pane is trimmed in its own document without a proxy', async () => {
+    const h = setupWorkbench({nativeSap:true});
+    await h.ctx.SapWorkbench.open({view:'new-session'});
+    await flush();
+    const pane = h.dialogs[0].querySelector('[data-sap="code-pane"]');
+    const frame = pane.children.find(child => child.tagName === 'iframe');
+    // The scene serves no copy of the Web build; it trims the frame's own
+    // document instead, so the compact tabs and the empty title strip stop
+    // sitting above the header this dialog already renders.
+    const style = frame.contentDocument.getElementById('sap-code-trim');
+    assert.ok(style, 'the frame document must carry the scene trim');
+    assert.match(style.textContent, /header:has\(#opencode-titlebar-right\)/);
+    assert.match(style.textContent, /data-value="session"/);
+    assert.match(style.textContent, /data-value="changes"/);
+    assert.match(style.textContent, /display:none!important/);
+    // A reload of the same frame must not stack a second copy.
+    frame.dispatch('load');
+    assert.equal(frame.contentDocument.head.children.filter(child => child.id === 'sap-code-trim').length, 1);
+    // A frame this page cannot read (cross-origin) is left exactly as OpenCode
+    // ships it rather than failing the mount.
+    frame.contentDocument = null;
+    assert.doesNotThrow(() => frame.dispatch('load'));
 });
 
 test('native old session is removed after replacement and cannot recreate itself through heartbeat', async () => {
@@ -263,8 +326,146 @@ test('native old session is removed after replacement and cannot recreate itself
     assert.equal(h.sockets.length,0);
 });
 
+test('the conversation pane names its coding state, offers one retry and clears on close', async () => {
+    const h = setupWorkbench({nativeSap:true});
+    const original = h.ctx.fetch;
+    let release;
+    h.ctx.fetch = async (url, options) => {
+        // Hold the coding open so the pane can only say what it actually knows:
+        // the platform has not answered yet, so it must not claim progress.
+        if (url.startsWith('/api/coding/sessions'))
+            return new Promise(resolve => {release = () => resolve(original(url, options));});
+        return original(url, options);
+    };
+    const opening = h.ctx.SapWorkbench.open({view:'new-session'});
+    for (let i = 0; i < 4; i++) await flush();
+    const pane = h.dialogs[0].querySelector('[data-sap="code-pane"]');
+    const state = () => pane.children.find(child => child.className === 'sap-code-state');
+    assert.equal(state().children[0].textContent, '正在打开智能体会话…');
+    release();
+    await opening;
+    await flush();
+    assert.equal(state().children[0].textContent, '正在打开对话…');
+    assert.equal(state().getAttribute('role'), 'status');
+    // An embed that never reports itself ready is not narrated forever: the pane
+    // says so and offers the one action that is safe, reopening this session.
+    for (const [id, run] of [...h.timers]) {h.timers.delete(id); run();}
+    assert.equal(state().children[0].textContent, '智能体会话尚未就绪。');
+    assert.equal(state().getAttribute('role'), 'alert');
+    assert.equal(state().children[1].textContent, '重试');
+    h.ctx.SapWorkbench.close();
+    assert.equal(h.timers.size, 0);
+    assert.equal(state(), undefined, 'closing removes the state from the released pane');
+});
+
+test('resuming a history entry reopens its own coding session instead of creating one', async () => {
+    const h = setupWorkbench({nativeSap:true});
+    await h.ctx.SapWorkbench.open();
+    const original = h.ctx.fetch;
+    h.ctx.fetch = async (url, options) => {
+        if (url.endsWith('/sessions') && !options?.method)
+            return {ok:true, json:async()=>({status:'success', sessions:[{id:'binding-test', state:'paused'}]})};
+        return original(url, options);
+    };
+    h.dialogs[0].querySelector('[data-sap="actions"]').children[1].dispatch('click');
+    await flush(); await flush();
+    // A GET never creates remote state, so resuming cannot start a second
+    // conversation; the create endpoint is not called at all.
+    assert.equal(h.requests.filter(url => url === '/api/coding/sessions').length, 0);
+    assert.deepEqual(h.requests.filter(url => url.startsWith('/api/coding/sessions/')),
+        ['/api/coding/sessions/coding-test/open?agent_id=sap']);
+    const pane = h.dialogs[0].querySelector('[data-sap="code-pane"]');
+    assert.ok(pane.children.some(child => child.tagName === 'iframe'));
+    h.ctx.SapWorkbench.close();
+});
+
+test('a conversation started inside the embed is registered once, for this mount only', async () => {
+    const h = setupWorkbench({nativeSap:true});
+    await h.ctx.SapWorkbench.open({view:'new-session'});
+    await flush();
+    const dialog = h.dialogs[0];
+    const frame = dialog.querySelector('[data-sap="code-pane"]').children.find(child => child.tagName === 'iframe');
+    const channel = new URL(frame.src).searchParams.get('rsm_channel');
+    const note = {origin:CODING_ORIGIN, source:frame.contentWindow,
+        data:{channel, type:'rsm.opencode.session', session_id:'ses_fork'}};
+    // A message the parent cannot attribute to the frame it mounted is dropped
+    // unread: not this origin, not this frame, not this channel, or already bound.
+    for (const spoof of [{...note, origin:'https://other.test'}, {...note, source:{}},
+        {...note, data:{...note.data, channel:'other-channel'}},
+        {...note, data:{...note.data, session_id:'ses_test'}}]) h.emit('message', spoof);
+    await flush();
+    assert.equal(h.requests.filter(url => url === '/api/coding/sessions/attach').length, 0);
+    h.emit('message', note);
+    await flush();
+    h.emit('message', note);
+    await flush();
+    assert.equal(h.requests.filter(url => url === '/api/coding/sessions/attach').length, 1);
+    assert.equal(dialog.querySelector('[data-sap="notice"]').textContent, '新会话已加入历史。');
+    h.ctx.SapWorkbench.close();
+});
+
+test('a refused coding open states the reason and the retry resumes the same request', async () => {
+    const h = setupWorkbench({nativeSap:true});
+    const original = h.ctx.fetch, attempts = [];
+    h.ctx.fetch = async (url, options) => {
+        if (url.startsWith('/api/coding/sessions')) {
+            attempts.push({url, body: options?.body ? JSON.parse(options.body) : null});
+            return {ok:false, status:503, json:async()=>({status:'error', code:'coding_upstream_unavailable'})};
+        }
+        return original(url, options);
+    };
+    await h.ctx.SapWorkbench.open({view:'new-session'});
+    await flush();
+    const dialog = h.dialogs[0], notice = dialog.querySelector('[data-sap="notice"]');
+    const pane = dialog.querySelector('[data-sap="code-pane"]');
+    const state = () => pane.children.find(child => child.className === 'sap-code-state');
+    const reason = '无法打开智能体会话：平台智能体服务暂时不可达，请稍后重试。';
+    assert.equal(state().children[0].textContent, reason);
+    assert.equal(notice.textContent, reason);
+    assert.equal(pane.children.some(child => child.tagName === 'iframe'), false);
+    state().children[1].dispatch('click');
+    await flush();
+    assert.deepEqual(attempts, [{url: '/api/coding/sessions', body: {agent_id:'sap', request_id:'test-request', permission_profile:'sap_workbench'}},
+        {url: '/api/coding/sessions', body: {agent_id:'sap', request_id:'test-request', permission_profile:'sap_workbench'}}]);
+    h.ctx.SapWorkbench.close();
+});
+
+test('two retry clicks that overlap mount one frame and arm one readiness wait', async () => {
+    // The retry button is bound before the pane re-renders, so a double click
+    // delivers two clicks in the same tick. Both attempts name the same
+    // conversation: the superseded one must not mount its own frame, or the
+    // pane would carry two frames and two readiness waits for one session.
+    const h = setupWorkbench({nativeSap:true});
+    const original = h.ctx.fetch, releases = [];
+    let refuse = true;
+    h.ctx.fetch = async (url, options) => {
+        if (url.startsWith('/api/coding/sessions') && !url.endsWith('/attach')) {
+            if (refuse) return {ok:false, status:503, json:async()=>({status:'error',
+                code:'coding_upstream_unavailable'})};
+            await new Promise(resolve => releases.push(resolve));
+        }
+        return original(url, options);
+    };
+    await h.ctx.SapWorkbench.open({view:'new-session'});
+    await flush();
+    const dialog = h.dialogs[0], pane = dialog.querySelector('[data-sap="code-pane"]');
+    const button = pane.children.find(child => child.className === 'sap-code-state').children[1];
+    refuse = false;
+    button.dispatch('click');
+    button.dispatch('click');
+    await flush();
+    assert.equal(releases.length, 2, 'both clicks must reach the platform entry');
+    assert.equal(pane.children.some(child => child.tagName === 'iframe'), false,
+        'nothing may be mounted before the entry answers');
+    for (const release of releases) release();
+    await flush();
+    assert.equal(pane.children.filter(child => child.tagName === 'iframe').length, 1,
+        'only the newest attempt may mount a frame');
+    h.ctx.SapWorkbench.close();
+});
+
 test('native navigation updates only the existing left iframe and duplicate delivery only re-acks', async () => {
-    const h = setupWorkbench({nativeSap:true}); await h.ctx.SapWorkbench.open({view:'new-session'});
+    const h = setupWorkbench({nativeSap:true}); await h.ctx.SapWorkbench.open({view:'new-session'}); await flush();
     const sap = h.frames.find(frame => frame.className === 'sap-native-frame');
     const originalFrames = [...h.frames], forms = h.submittedForms.length, requests = [];
     const command = {id:'navigate-one',transaction:'ME21N',expires_at:Date.now()+60000,
@@ -283,7 +484,7 @@ test('native navigation updates only the existing left iframe and duplicate deli
 });
 
 test('expired and late navigation responses cannot modify the current SAP iframe', async () => {
-    const h = setupWorkbench({nativeSap:true}); await h.ctx.SapWorkbench.open({view:'new-session'});
+    const h = setupWorkbench({nativeSap:true}); await h.ctx.SapWorkbench.open({view:'new-session'}); await flush();
     let sap = h.frames.find(frame => frame.className === 'sap-native-frame'), release;
     const original = sap.src;
     h.ctx.fetch = async () => ({ok:true,json:async()=>({status:'success',binding_id:'binding-test',navigation:{
@@ -301,9 +502,11 @@ test('expired and late navigation responses cannot modify the current SAP iframe
 test('full screen restores layout without replacing SAP or conversation and Escape restores before collapsing', async () => {
     const h = setupWorkbench({nativeSap:true});
     await h.ctx.SapWorkbench.open({view:'new-session'});
+    await flush();
     const dialog = h.dialogs[0], pane = dialog.querySelector('[data-sap="code-pane"]');
     const sap = dialog.querySelector('[data-sap="view"]').children[0];
     const frame = pane.children.find(child => child.tagName === 'iframe');
+    const channel = new URL(frame.src).searchParams.get('rsm_channel');
     dialog.querySelector('[data-sap="chat-toggle"]').dispatch('click');
     const count = h.requests.length, forms = h.submittedForms.length;
     const fullscreen = dialog.querySelector('[data-sap="chat-fullscreen"]');
@@ -319,9 +522,11 @@ test('full screen restores layout without replacing SAP or conversation and Esca
     assert.equal(pane.children.find(child => child.tagName === 'iframe'), frame);
     assert.equal(frame.title, 'SAP智能助手');
     assert.equal(h.requests.length, count); assert.equal(h.submittedForms.length, forms);
-    // Native navigation/fork notifications retain the owner-scoped instance.
-    h.emit('message', {origin:'http://localhost:4321', source:frame.contentWindow,
-        data:{channel:'binding-test',type:'rsm.opencode.session',session_id:'ses_native_fork'}});
+    // Native navigation/fork notifications retain the owner-scoped instance: the
+    // conversation pane stays mounted because this tab's channel matches.
+    h.emit('message', {origin:CODING_ORIGIN, source:frame.contentWindow,
+        data:{channel,type:'rsm.opencode.session',session_id:'ses_native_fork'}});
+    await flush();
     assert.equal(dialog.dataset.live, 'true'); assert.equal(pane.hidden, false);
     dialog.dispatch('cancel', {preventDefault(){}});
     assert.equal(pane.hidden, true); assert.equal(dialog.open, true);
@@ -610,7 +815,7 @@ test('refreshing config keeps a pending reconnect attached to the same retained 
     finish();await flush();
     assert.equal(h.sockets.length,2);assert.equal(h.sockets[1].url,'ws://127.0.0.1:5432/screen');
     const forms=h.submittedForms;
-    assert.equal(forms.at(-1).action,'http://localhost:5432/bootstrap');
+    assert.equal(forms.at(-1).action,'http://localhost:5432/bootstrap?binding=binding-test');
 });
 
 test('reconnecting after host reclamation restores both SAP and OpenCode to the new origin', async () => {
@@ -619,13 +824,13 @@ test('reconnecting after host reclamation restores both SAP and OpenCode to the 
     h.dialogs[0].querySelector('[data-sap="actions"]').children[0].dispatch('click');
     await flush();
     const forms = () => h.submittedForms;
-    assert.equal(forms().at(-1).action, 'http://localhost:4321/bootstrap');
+    assert.equal(forms().at(-1).action, 'http://localhost:4321/bootstrap?binding=binding-test');
     h.sockets[0].emit('close');
     for (const retry of h.timers.values()) retry();
     h.timers.clear();
     await flush();
     assert.equal(h.sockets[1].url, 'ws://127.0.0.1:5432/screen');
-    assert.equal(forms().at(-1).action, 'http://localhost:5432/bootstrap');
+    assert.equal(forms().at(-1).action, 'http://localhost:5432/bootstrap?binding=binding-test');
     assert.equal(forms().length, 2);
     h.sockets[1].emit('message', {data: JSON.stringify({t: 'ready', viewport: {width: 1280, height: 800}})});
     assert.equal(h.dialogs[0].querySelector('[data-sap="notice"]').textContent, '会话已连接，当前由人工控制。');
@@ -935,7 +1140,7 @@ test('MCP settings show fixed read-only URLs and allow only enablement', async (
     const nodes = descendants(form);
     const endpoints = nodes.filter(node => node.name === 'url');
     assert.deepEqual(endpoints.map(node => node.value), [
-        'http://127.0.0.1:8100/mcp', 'http://127.0.0.1:8200/mcp',
+        'http://127.0.0.1:8110/mcp', 'http://127.0.0.1:8200/mcp',
     ]);
     assert.ok(endpoints.every(node => node.readOnly));
     assert.equal(nodes.filter(node => node.name === 'mcp_enabled').length, 2);
@@ -965,3 +1170,27 @@ for (const browserRef of ['', 'sap-browser-worker', 'local', 'retired-node']) {
         assert.equal(h.sockets.length, 0);
     });
 }
+
+test('capability notes state the delivered limits instead of implying page control', async () => {
+    const h = setupWorkbench({notes: ['navigation_limited', 'mcp_business_available', 'page_readwrite_unavailable']});
+    await h.ctx.SapWorkbench.open();
+    const dialog = h.dialogs[0];
+    const notes = dialog.querySelector('[data-sap="notes"]').children.map(node => node.textContent);
+    assert.deepEqual(notes, [
+        '画面导航：有限可用。只确认导航指令送达，不代表已完成登录或拿到业务结果。',
+        'SAP 业务数据：可用。对话按会话经服务端已登记的连接读写业务数据；SAP 凭据与连接标识不下发给模型。',
+        '页面读写与业务提交：不可用。阅读、填写左侧 SAP 页面字段和提交业务单据均不开放。',
+    ]);
+    assert.equal(dialog.querySelector('[data-sap="blockers"]').children.length, 0);
+});
+
+test('the business row is withheld while no MCP account is saved', async () => {
+    const h = setupWorkbench({notes: ['navigation_limited', 'mcp_credentials_missing', 'page_readwrite_unavailable']});
+    await h.ctx.SapWorkbench.open();
+    const notes = h.dialogs[0].querySelector('[data-sap="notes"]').children.map(node => node.textContent);
+    assert.deepEqual(notes, [
+        '画面导航：有限可用。只确认导航指令送达，不代表已完成登录或拿到业务结果。',
+        'SAP 业务数据：未就绪。尚未保存 MCP 账号口令，服务端无法建立连接，数据调用会以 mcp_login_failed 失败。',
+        '页面读写与业务提交：不可用。阅读、填写左侧 SAP 页面字段和提交业务单据均不开放。',
+    ]);
+});

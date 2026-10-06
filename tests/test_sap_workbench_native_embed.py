@@ -158,7 +158,7 @@ def test_resume_converts_legacy_screen_without_allocating_another_browser(tmp_pa
     asyncio.run(run())
 
 
-def test_native_projection_has_no_screen_grant_and_rejects_browser_acquisition(tmp_path):
+def test_native_projection_names_the_coding_session_and_withholds_every_grant(tmp_path):
     async def run():
         store, row = binding(tmp_path)
         row['display_mode'] = 'iframe'
@@ -169,7 +169,13 @@ def test_native_projection_has_no_screen_grant_and_rejects_browser_acquisition(t
         projected = runtime.projection()
         assert projected['display_mode'] == 'iframe'
         assert projected['sap_url'] == row['snapshot']['config']['sap']['web_gui_url']
-        assert not projected['gui_automation'] and 'token' not in projected
+        assert not projected['gui_automation']
+        # The pane reopens this exact platform session under this Agent. Nothing
+        # else is projected: no frame address (the coding entry answers with it),
+        # no posted grant, no loopback token, no port.
+        assert projected['coding_session_id'] == row['coding_session_id']
+        assert projected['agent_id'] == row['agent_id']
+        assert not ({'iframe_url', 'bootstrap_token', 'token', 'port', 'base_url', 'origin'} & set(projected))
         with pytest.raises(WorkbenchError, match='iframe_page_control_unavailable'):
             await runtime.attach({})
         with pytest.raises(WorkbenchError, match='iframe_page_control_unavailable'):

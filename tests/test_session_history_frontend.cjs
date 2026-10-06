@@ -878,3 +878,43 @@ test('temporary row survives an empty refresh, saved same-owner row replaces it 
     h.ctx.sessionId='different';await h.ctx.loadSessionList();
     assert.equal(h.run('_sessionItems.some(s=>s.optimistic)'),false);
 });
+
+test('silent refresh keeps confirmed rows and does not show the loading status', async () => {
+    const pending = deferred();
+    let calls = 0;
+    const h = setup(url => {
+        calls += 1;
+        if (calls === 1) return Promise.resolve(response([session('a'), session('b')], '', { total: 2 }));
+        return pending.promise;
+    });
+    await h.ctx.loadSessionList();
+    assert.equal(h.node('history-status').textContent, '');
+    h.ctx._refreshHistoryList();
+    await settle();
+    assert.equal(h.calls.length, 2);
+    assert.deepEqual([...h.state().ids], ['a', 'b']);
+    assert.notEqual(h.node('history-status').textContent, 'session_history_loading');
+    pending.resolve(response([session('a', { title: 'Renamed' }), session('b')], '', { total: 2 }));
+    await settle();
+    assert.equal(h.run('_sessionItems[0].title'), 'Renamed');
+    assert.equal(h.node('history-status').textContent, '');
+});
+
+test('a silent refresh queues behind an in-flight list read instead of aborting it', async () => {
+    const first = deferred();
+    let calls = 0;
+    const h = setup(url => ++calls === 1
+        ? first.promise
+        : Promise.resolve(response([session('second')], '', { total: 1 })));
+    const loading = h.ctx.loadSessionList();
+    await settle();
+    h.ctx._refreshHistoryList();
+    h.ctx._refreshHistoryList();
+    await settle();
+    assert.equal(h.calls.length, 1, 'queued silent reads must not abort the visible load');
+    first.resolve(response([session('first')], '', { total: 1 }));
+    await loading;
+    await settle();
+    assert.equal(h.calls.length, 2);
+    assert.deepEqual([...h.state().ids], ['second']);
+});

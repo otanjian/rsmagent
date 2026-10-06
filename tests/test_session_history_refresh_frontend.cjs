@@ -26,6 +26,9 @@ function setup(transport = () => response({ status: 'success', stream: true, req
         console, Date, Map, currentLang: 'zh', activeAgentId: 'agent-a', sessionId: 's1', _authEpoch: 1,
         sessionStorage: { getItem: key => storage.get(key) || null },
         _identityMode: () => 'database', _historyVisible: false, _historyDirty: false,
+        _historyQuery: '', _historyRefreshQueued: false, _sessionLoading: false,
+        _sessionItems: [{ session_id: 's1', agent: { id: 'agent-a' }, title: 'First question', last_active: 1, pinned: 0 }],
+        _sortSessionItems() {}, _renderSessionList() {},
         loadSessionList: () => refreshes.push('full'), loadSidebarRecentSessions: () => refreshes.push('sidebar'),
         chatInput: { value: 'First question' }, pendingAttachments: [], inputHistory: [],
         historyIdx: -1, historySavedDraft: '', sendBtn: { disabled: false },
@@ -52,7 +55,7 @@ function setup(transport = () => response({ status: 'success', stream: true, req
     });
     for (const [from, to] of [
         ['function runtimeSessionKey(', 'function isCurrentSessionConversationActive('],
-        ['function _refreshHistoryList(', '// === SIDEBAR_RECENT_BEGIN ==='],
+        ['function _findSessionItem(', '// === SIDEBAR_RECENT_BEGIN ==='],
         ['function sendVoiceMessage(', 'function addUserVoiceMessage('],
         ['function sendMessage(', '// Attachment markers the backend'],
         ['function generateSessionTitle(', '// ====================================================================='],
@@ -69,7 +72,8 @@ test('text and voice save acknowledgements refresh history before any model even
         pending.resolve(response({ status: 'success', stream: true, request_id: 'r1' }));
         await settle();
         assert.deepEqual(h.refreshes, []);
-        assert.equal(h.ctx._historyDirty, true);
+        assert.equal(h.ctx._historyDirty, false);
+        assert.equal(h.ctx._sessionItems[0].optimistic, undefined);
         assert.equal(h.streams.length, 1);
         assert.equal(h.rendered.length, 0);
         assert.equal(JSON.parse(h.calls[0].options.body).agent_id, 'agent-a');
@@ -96,7 +100,7 @@ test('preparing an unsent new chat does not write an empty record or prepend a s
         activeSessionStorageKey: () => 'session-key', writeScopedPreference() {},
         refreshWorkspaceSelector() {}, refreshSessionSettings() {}, startPolling() {}, renderWelcomeScreen() {},
     });
-    vm.runInContext(section('function newChat(', '// =====================================================================\n// Session History'), h.ctx);
+    vm.runInContext(section('function newChat(', '// Session History (workbench page)'), h.ctx);
     h.ctx.newChat();
     assert.equal(h.ctx.sessionId, 'unsent'); assert.equal(h.calls.length, 0);
     assert.deepEqual(h.refreshes, []);
@@ -108,15 +112,16 @@ test('later replies refresh history without generating another first title', () 
     assert.deepEqual(h.refreshes, []); assert.equal(h.calls.length, 0);
 });
 
-test('foreground completion and title success refresh the single visible history list', async () => {
+test('foreground completion and title success patch the visible row without reloading', async () => {
     const title = deferred(), h = setup(url => url.includes('generate_title') ? title.promise : response({ status: 'success' }));
     h.ctx._historyVisible = true;
     h.ctx.startSSE('r1', null, new Date(), { sid: 's1', agentId: 'agent-a', userMsg: 'Question' });
     h.streams[0].emit({ type: 'done', content: 'Answer', seq: 1 });
-    assert.deepEqual(h.refreshes, ['full']);
+    assert.deepEqual(h.refreshes, []);
     assert.deepEqual(h.rendered, ['Answer']);
-    title.resolve(response({ status: 'success' })); await settle();
-    assert.deepEqual(h.refreshes, ['full', 'full']);
+    title.resolve(response({ status: 'success', title: 'Named chat' })); await settle();
+    assert.deepEqual(h.refreshes, []);
+    assert.equal(h.ctx._sessionItems[0].title, 'Named chat');
 });
 
 test('background completion uses original owner and leaves the visible chat and draft alone', async () => {
@@ -183,7 +188,7 @@ test('old identity callbacks cannot refresh or submit titles under the new ident
     }
 });
 
-test('poll replies refresh persisted history, while empty and stale polls do not', async () => {
+test('poll replies do not reload history, while empty and stale polls still skip work', async () => {
     const h = setup(() => response({ status: 'success', has_content: true, content: 'Pushed reply', timestamp: 1 }));
     h.ctx.startPolling(); await settle();
     assert.deepEqual(h.refreshes, []); assert.deepEqual(h.rendered, ['Pushed reply']);
@@ -204,7 +209,7 @@ test('explicit new chat opens the shared panel and adds a temporary row; automat
         openSessionPanel(){h.ctx._historyVisible=true;},
         _addOptimisticSessionItem:sid=>added.push(sid),
     });
-    vm.runInContext(section('function newChat(', '// =====================================================================\n// Session History'),h.ctx);
+    vm.runInContext(section('function newChat(', '// Session History (workbench page)'),h.ctx);
     h.ctx.newChat();
     assert.equal(h.ctx._historyVisible,true);assert.deepEqual(added,['unsent']);assert.equal(h.calls.length,0);
     h.ctx.newChat(false);

@@ -64,6 +64,19 @@
     #sap-workbench-dialog .sap-form-grid, #sap-workbench-dialog .sap-mcp-row { grid-template-columns: 1fr; }
 }
 #sap-workbench-dialog .sap-opencode-frame { width:100%; height:65dvh; min-height:420px; border:0; background:var(--bg-primary,#fff); }
+/* The conversation pane states what it is doing while the platform's coding frame
+   opens, so a slow link is never a blank rectangle. The text block grows to fill
+   the pane only while no frame is mounted; once one is there the state reads as a
+   caption under it instead of pushing the frame out of view. */
+#sap-workbench-dialog .sap-code-state {
+    flex:1 1 auto; min-height:180px; display:flex; align-items:center; justify-content:center;
+    flex-wrap:wrap; gap:4px 10px; padding:20px 18px; text-align:center; line-height:1.7;
+    color:var(--sap-muted); background:var(--sap-soft);
+}
+#sap-workbench-dialog .sap-code-state[role=alert] { color:#c45527; }
+#sap-workbench-dialog .sap-opencode-frame + .sap-code-state {
+    flex:0 0 auto; min-height:0; border-top:1px solid var(--sap-line); background:var(--sap-bg);
+}
 #sap-workbench-dialog .sap-pane { min-width:0; overflow:hidden; }
 #sap-workbench-dialog[data-live=true][open] { overflow:hidden; display:flex; flex-direction:column; }
 #sap-workbench-dialog[data-live=true] main { padding:0; min-height:0; flex:1; display:flex; flex-direction:column; }
@@ -93,8 +106,47 @@
 #sap-workbench-dialog [data-sap=chat-fullscreen] { --sap-chat-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5'/%3E%3C/svg%3E"); }
 #sap-workbench-dialog [data-sap=chat-fullscreen][aria-pressed=true] { --sap-chat-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='7' width='14' height='14' rx='1'/%3E%3Cpath d='M7 7V3h14v14h-4'/%3E%3C/svg%3E"); }
 #sap-workbench-dialog [data-sap=chat-close] { --sap-chat-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M5 12h14'/%3E%3C/svg%3E"); }
-#sap-workbench-dialog .sap-chat-toggle { position:absolute; right:16px; bottom:16px; z-index:3; min-height:44px; border-radius:24px; padding:10px 20px; color:#fff; background:#1667b1; border-color:#1667b1; box-shadow:0 4px 16px #0003; }
-#sap-workbench-dialog .sap-chat-toggle:hover:not(:disabled) { color:#fff; background:#12578f; border-color:#12578f; }
+#sap-workbench-dialog .sap-chat-toggle {
+    --sap-chat-sparkle:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11.6 3.2l1.75 5.05L18.4 10l-5.05 1.75L11.6 16.8l-1.75-5.05L4.8 10l5.05-1.75z'/%3E%3Cpath d='M18.6 14.4l.72 2.08 2.08.72-2.08.72-.72 2.08-.72-2.08L15.8 17.2l2.08-.72z'/%3E%3C/svg%3E");
+    --sap-chat-size:46px;
+    /* Vertically centred on the right edge of the panes; margin, not a
+       transform, so the hover/press transforms below stay independent. */
+    position:absolute; top:50%; right:max(18px,env(safe-area-inset-right)); bottom:auto;
+    margin:calc(var(--sap-chat-size) / -2) 0 0; z-index:3;
+    display:inline-flex; align-items:center; justify-content:center; gap:0; isolation:isolate;
+    width:var(--sap-chat-size); height:var(--sap-chat-size); min-height:0; padding:0;
+    border:1px solid #ffffff33; border-radius:50%;
+    /* The label stays in the DOM for assistive tech and is surfaced as a
+       tooltip in JS; font-size collapses it out of the painted button. */
+    color:#fff; font-size:0; line-height:1;
+    background-color:#0f4f95; background-image:linear-gradient(135deg,#4aa3f0 0%,#1f74c9 48%,#0f4f95 100%);
+    box-shadow:0 10px 24px -6px #0b3a6e99, 0 3px 9px #0b3a6e3d, inset 0 1px 0 #ffffff59;
+    cursor:pointer;
+    transition:transform .2s cubic-bezier(.2,.8,.2,1), box-shadow .2s ease, filter .2s ease;
+    animation:sap-chat-pop .42s cubic-bezier(.2,.9,.3,1.25) both;
+}
+#sap-workbench-dialog .sap-chat-toggle::before {
+    content:""; width:22px; height:22px; flex:0 0 auto; background:currentColor;
+    -webkit-mask:center / contain no-repeat var(--sap-chat-sparkle);
+    mask:center / contain no-repeat var(--sap-chat-sparkle);
+}
+#sap-workbench-dialog .sap-chat-toggle::after {
+    content:""; position:absolute; inset:-6px; z-index:-1; border-radius:50%; pointer-events:none;
+    background:radial-gradient(closest-side,#5cb2f6b8,transparent 78%);
+    opacity:0; animation:sap-chat-glow 3.4s ease-in-out .7s infinite;
+}
+#sap-workbench-dialog .sap-chat-toggle:hover:not(:disabled) {
+    color:#fff; filter:brightness(1.07); transform:scale(1.08);
+    box-shadow:0 16px 32px -6px #0b3a6eab, 0 4px 12px #0b3a6e47, inset 0 1px 0 #ffffff6b;
+}
+#sap-workbench-dialog .sap-chat-toggle:active:not(:disabled) { transform:scale(.94); }
+#sap-workbench-dialog .sap-chat-toggle:focus-visible { outline:3px solid #fff; outline-offset:2px; box-shadow:0 0 0 5px #1667b180, 0 10px 24px -6px #0b3a6e99; }
+@keyframes sap-chat-pop { from { opacity:0; transform:translateX(14px) scale(.9); } to { opacity:1; transform:none; } }
+@keyframes sap-chat-glow { 0%,100% { opacity:0; } 50% { opacity:.45; } }
+@media (prefers-reduced-motion: reduce) {
+    #sap-workbench-dialog .sap-chat-toggle { animation:none; transition:none; }
+    #sap-workbench-dialog .sap-chat-toggle::after { animation:none; opacity:0; }
+}
 #sap-workbench-dialog .sap-chat-resizer { flex:0 0 6px; cursor:col-resize; touch-action:none; background:var(--sap-line); }
 #sap-workbench-dialog .sap-chat-resizer:hover, #sap-workbench-dialog .sap-chat-resizer:focus-visible,
 #sap-workbench-dialog[data-chat-resizing=true] .sap-chat-resizer { background:#338bdc; }
@@ -106,5 +158,5 @@
  #sap-workbench-dialog .sap-panes { flex-direction:column; }
  #sap-workbench-dialog .sap-chat-resizer { display:none; }
  #sap-workbench-dialog .sap-panes > [data-sap=code-pane] { flex:1; border-left:0; border-top:1px solid var(--sap-line); }
- #sap-workbench-dialog .sap-chat-toggle { right:8px; bottom:8px; }
+ #sap-workbench-dialog .sap-chat-toggle { --sap-chat-size:42px; right:max(10px,env(safe-area-inset-right)); }
 }

@@ -42,6 +42,7 @@ from agent.coding import (
     resolve_settings,
 )
 from agent.coding.opencode import OpenCodeClient, RemoteSession
+from agent.coding import permissions as coding_permissions
 
 #: Prefixes keep the two namespaces apart in a log line and make it obvious
 #: which one belongs to the platform and which one to OpenCode.
@@ -121,6 +122,22 @@ def session_url(web_url: str, external_session_id: str, project_dir: str) -> str
     )
 
 
+def _profile_ruleset(profile: str) -> Optional[list]:
+    """The server-defined ruleset for a named session permission profile.
+
+    An unknown non-empty name is a 400: the platform never guesses at a profile,
+    and never derives the rules from the request body.
+    """
+    try:
+        return coding_permissions.ruleset(profile)
+    except KeyError:
+        raise CodingError(
+            CODING_INVALID_REQUEST,
+            "unknown permission profile",
+            400,
+        ) from None
+
+
 class CodingSessionService:
     """Create, resume and refresh coding sessions for one configured service.
 
@@ -193,6 +210,7 @@ class CodingSessionService:
         request_id: str,
         tenant_id: str = "",
         user_id: str = "",
+        permission_profile: str = "",
     ) -> Dict[str, Any]:
         """Create the session for one request, or hand back the one it already has.
 
@@ -200,7 +218,13 @@ class CodingSessionService:
         ``user_id`` default to the ambient verified identity rather than to
         anything the caller's request body said: ownership is decided by who is
         asking, never by what they asked with.
+
+        ``permission_profile`` names a **server-defined** session permission
+        ruleset (``agent.coding.permissions``) that re-enables project tools the
+        project config denies. The caller may only name an allowlisted profile;
+        an unknown name is a 400, never a silently wider grant.
         """
+        permission = _profile_ruleset(permission_profile)
         settings = self._require_enabled()
         if not str(request_id or "").strip():
             raise CodingError(
@@ -242,9 +266,18 @@ class CodingSessionService:
             )
 
         if link["state"] == "ready":
+            # A link that became ready before the ruleset was applied carries
+            # none, and the project ``deny`` would keep its tools hidden for the
+            # life of the conversation. Re-applying is an idempotent update, so a
+            # session that is already correct is not disturbed, and reopening is
+            # exactly where the delivery gets its chance to heal -- the same
+            # reason the project artifacts are re-installed on open.
+            if permission:
+                self.client.set_permission(link["external_session_id"],
+                                           link["project_dir"], permission)
             return self._describe(link)
 
-        return self._create_upstream(link, external_id)
+        return self._create_upstream(link, external_id, permission)
 
     def _reserve_link(
         self,
@@ -286,7 +319,8 @@ class CodingSessionService:
                 )
             return existing
 
-    def _create_upstream(self, link: Dict[str, Any], external_id: str) -> Dict[str, Any]:
+    def _create_upstream(self, link: Dict[str, Any], external_id: str,
+                         permission: Optional[list] = None) -> Dict[str, Any]:
         """Ask for the session, then mark the reservation ready.
 
         A failure propagates untouched and the reservation stays ``creating``:
@@ -294,8 +328,21 @@ class CodingSessionService:
         leaves a reusable id rather than a duplicate session. The external id
         already exists upstream if the previous attempt got through, and
         OpenCode adopts it rather than creating a second session.
+
+        ``permission`` is the server-derived session ruleset. It is sent on the
+        create call *and* applied again as an update, because the service
+        accepts ``permission`` on create and then does not store it: a session
+        made with the ruleset in the create body reads back with none, so the
+        project-level ``deny`` keeps the project's tools hidden from the model
+        with no error anywhere. Only the update route persists it (verified
+        against the running service). A failure here propagates before the link
+        is marked ready, so a retry re-runs both steps: the create adopts the
+        session that already exists and the update is idempotent.
         """
-        remote = self.client.create_session(external_id, link["project_dir"])
+        remote = self.client.create_session(external_id, link["project_dir"],
+                                            permission=permission)
+        if permission:
+            self.client.set_permission(external_id, link["project_dir"], permission)
         self.store.set_coding_link_state(link["session_id"], "ready")
         if isinstance(remote, RemoteSession):
             self.store.touch_coding_link_cache(
@@ -341,6 +388,7 @@ class CodingSessionService:
         agent_id: str = "",
         tenant_id: str = "",
         user_id: str = "",
+        permission_profile: str = "",
     ) -> Dict[str, Any]:
         """Register a session the user opened *inside* OpenCode.
 
@@ -366,6 +414,7 @@ class CodingSessionService:
         different platform id rather than colliding on this one.
         """
         settings = self._require_enabled()
+        permission = _profile_ruleset(permission_profile)
         if not external_session_id:
             raise CodingError(
                 CODING_INVALID_REQUEST, "external_session_id required", 400)
@@ -430,6 +479,14 @@ class CodingSessionService:
                     "the coding session belongs to a different project",
                     400,
                 )
+
+        if permission:
+            # A conversation the user opened inside OpenCode was created without
+            # the profile, so the project deny would keep its SAP tools hidden.
+            # Adopting it therefore includes putting the ruleset on it; a failure
+            # here propagates and no link is written, so a retry can try again.
+            self.client.set_permission(external_session_id,
+                                       source["project_dir"], permission)
 
         identity = _ambient_identity()
         tenant_id = tenant_id or identity.get("tenant_id", "")

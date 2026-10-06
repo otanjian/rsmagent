@@ -53,6 +53,7 @@ class BrowserGatewayRunner:
 
     def __init__(self, *, executable=None, profile_root=None, allowed_origins=None):
         self.port: int | None = None
+        self.proxy_port: int | None = None
         self._executable = executable
         self._profile_root = profile_root
         self._allowed_origins = allowed_origins
@@ -109,6 +110,12 @@ class BrowserGatewayRunner:
         # Validate the scene deployment setting before starting the gateway
         # thread or resolving a profile root. It never comes from view claims.
         max_nodes = node_max_sessions()
+        # Remote display is a deployment setting too: an unusable public base or
+        # port must fail here, before a listener exists, rather than serve a
+        # half-open entry. Unset means loopback only, which is the default.
+        from ..backend import environment
+        public_base_value = environment.public_base()
+        proxy_port_value = environment.proxy_port() if public_base_value else None
         # A completed explicit stop may be followed by a normal lazy restart.
         # Exact living handles have their own registry; do not retain closed
         # runtime/controller/config objects across successive gateway loops.
@@ -138,6 +145,7 @@ class BrowserGatewayRunner:
             app = build_app(tokens=view_tokens, node_factory=manager.acquire,
                             allowed_origins=self._allowed_origins)
             runner = web.AppRunner(app, shutdown_timeout=1)
+            proxy = None
             try:
                 await runner.setup()
                 # Port 0: the OS picks a free loopback port, so two
@@ -145,13 +153,26 @@ class BrowserGatewayRunner:
                 await web.TCPSite(runner, "127.0.0.1", 0).start()
                 self.port = runner.addresses[0][1]
                 logger.info("[SapWorkbench] screen gateway on 127.0.0.1:%d", self.port)
+                if public_base_value:
+                    # The public entry forwards here. The port is fixed because
+                    # the entry's configuration is static, and it shares this
+                    # loop so a session's port is read from the live registry --
+                    # never from a directory a stale entry could survive in.
+                    from ..backend import dispatcher
+                    proxy = web.AppRunner(dispatcher.build_app(port_of=dispatcher.port_lookup(self.runtimes)),
+                                          shutdown_timeout=1, access_log=None)
+                    await proxy.setup()
+                    await web.TCPSite(proxy, "127.0.0.1", proxy_port_value).start()
+                    self.proxy_port = proxy_port_value
+                    logger.info("[SapWorkbench] public entry proxy on 127.0.0.1:%d", proxy_port_value)
                 ready.set()
                 if self._stop_requested.is_set():
                     self._stopped.set()
                 await self._stopped.wait()
             finally:
                 self.port = None
-                await self._shutdown(manager, runner)
+                self.proxy_port = None
+                await self._shutdown(manager, runner, proxy)
 
         def run():
             loop = asyncio.new_event_loop()
@@ -249,7 +270,7 @@ class BrowserGatewayRunner:
             except Exception:
                 logger.warning('[SapWorkbench] shutdown component=child code=kill_failed')
 
-    async def _shutdown(self, manager, http):
+    async def _shutdown(self, manager, http, proxy=None):
         self._stop_requested.set()
         manager._closing = True
         values = list(self.runtimes.values()) + list(getattr(self, 'session_requests', {}).values())
@@ -271,7 +292,10 @@ class BrowserGatewayRunner:
         # then joins each node's same idempotent close task without multiplying
         # the native wait by the configured global node count.
         callbacks.extend([('browser', node.close) for node in list(self._nodes)])
-        callbacks.extend([('manager', manager.shutdown), ('http', http.cleanup)])
+        callbacks.extend([('manager', manager.shutdown)])
+        if proxy is not None:
+            callbacks.append(('proxy', proxy.cleanup))
+        callbacks.append(('http', http.cleanup))
         tasks = [asyncio.create_task(clean(name, callback)) for name, callback in callbacks]
         tasks += [asyncio.create_task(clean('allocation', lambda value=value: asyncio.gather(value, return_exceptions=True)))
                   for value in values if isinstance(value, asyncio.Task)]

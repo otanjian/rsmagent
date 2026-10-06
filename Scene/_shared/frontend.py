@@ -51,5 +51,10 @@ class SceneAssetHandler:
             mime = mimetypes.guess_type(str(file))[0] or "application/octet-stream"
         web.header("Content-Type", mime)
         web.header("X-Content-Type-Options", "nosniff")
-        web.header("Cache-Control", "no-cache")
+        # Assembled runtime must stay fresh; large static libs benefit from cache
+        # so the first scene-card click is not a silent multi-megabyte wait.
+        if path in ("runtime.js", "workbenches.html"):
+            web.header("Cache-Control", "no-cache")
+        else:
+            web.header("Cache-Control", "public, max-age=86400")
         return content

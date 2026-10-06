@@ -4,6 +4,7 @@ from copy import deepcopy
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from urllib.parse import urljoin, urlsplit
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -204,6 +205,86 @@ def test_gateway_cookie_origin_and_private_bridge_auth(tmp_path):
             assert (await client.post(private, headers={'Authorization': 'Bearer ' + runtime.secret})).status == 200
             runtime.authorize = AsyncMock(side_effect=WorkbenchError('revoked', 403))
             assert (await client.post(url, headers=headers)).status == 403
+    asyncio.run(run())
+
+
+def test_base_path_prefix_strips_routes_and_prefixes_bootstrap(tmp_path):
+    """Under the default /sapcode prefix the runtime strips it from every route
+    and re-prefixes the bootstrap redirect and its session cookie."""
+    import base64
+    store, row = binding(tmp_path)
+    runtime = WorkbenchRuntime(SimpleNamespace(), store, row, 'token', 'http://localhost:9899')
+    runtime.base_path = '/sapcode'
+    runtime.public_origin = 'http://localhost:9899'
+    runtime.authorize = AsyncMock()
+    runtime.boot.verify = lambda token, tenant_id=None, user_id=None: True
+    runtime.boot.revoke = lambda token: None
+
+    # The prefix is stripped, not matched loosely.
+    assert runtime._unprefixed('/sapcode/api/agent') == '/api/agent'
+    assert runtime._unprefixed('/sapcode') == '/'
+    assert runtime._unprefixed('/sapcode/') == '/'
+    assert runtime._unprefixed('/api/agent') == '/api/agent'  # outside the prefix
+
+    app = web.Application(middlewares=[runtime.boundary])
+    app.router.add_post('/sapcode/bootstrap', runtime.bootstrap)
+
+    async def run():
+        async with TestServer(app) as server, ClientSession(cookie_jar=CookieJar(unsafe=True)) as client:
+            response = await client.post(server.make_url('/sapcode/bootstrap'),
+                                         data={'token': 'x'},
+                                         headers={'Origin': runtime.origin},
+                                         allow_redirects=False)
+            assert response.status == 303
+            directory = base64.urlsafe_b64encode(runtime.project.encode()).decode().rstrip('=')
+            location = response.headers['Location']
+            assert location.startswith(f'/sapcode/{directory}/session/{runtime.remote}?')
+            cookie = response.cookies.get(runtime.cookie)
+            assert cookie is not None and cookie.value == runtime.browser_secret
+            assert cookie['path'] == '/sapcode'
+    asyncio.run(run())
+
+
+def test_loopback_ipc_urls_carry_the_base_path_prefix(tmp_path):
+    """The native host must post under the deployment prefix it was told to use.
+
+    Routing matches the raw request path even though the middleware inspects the
+    stripped one, so a host pointed at an unprefixed ``/bridge/call`` reaches no
+    route: the tool call dies before ``admit_action`` and the model only sees the
+    generic refusal. Pin both IPC URLs to the single prefix source."""
+    store, row = binding(tmp_path)
+    runtime = WorkbenchRuntime(SimpleNamespace(), store, row, 'token', 'http://localhost:9899')
+    runtime.port = 43210
+    runtime.base_path = '/sapcode'
+    assert runtime.loopback_url('/bridge/') == 'http://127.0.0.1:43210/sapcode/bridge/'
+    assert runtime.loopback_url('/model') == 'http://127.0.0.1:43210/sapcode/model'
+    runtime.base_path = ''
+    assert runtime.loopback_url('/bridge/') == 'http://127.0.0.1:43210/bridge/'
+
+    runtime.base_path = '/sapcode'
+    runtime.public_origin = 'http://localhost:9899'
+    runtime.authorize = AsyncMock()
+    reached = []
+
+    async def call(request):
+        reached.append(request.path)
+        return web.json_response({'ok': True})
+
+    runtime.bridge = call
+    app = web.Application()
+    runtime.register_routes(app)
+    # The host derives "call" from this base exactly as the adapter does with
+    # `new URL("call", endpoint)`; the registered route must line up with it.
+    bridge_path = urlsplit(urljoin(runtime.loopback_url('/bridge/'), 'call')).path
+    assert bridge_path == '/sapcode/bridge/call'
+
+    async def run():
+        async with TestServer(app) as server, ClientSession() as client:
+            headers = {'Authorization': 'Bearer ' + runtime.secret}
+            assert (await client.post(server.make_url('/bridge/call'), headers=headers)).status == 404
+            assert reached == []
+            assert (await client.post(server.make_url(bridge_path), headers=headers)).status == 200
+            assert reached == ['/sapcode/bridge/call']
     asyncio.run(run())
 
 

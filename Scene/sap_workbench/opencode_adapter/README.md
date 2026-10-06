@@ -10,7 +10,7 @@
 
 历史源码记录 `rsmcode/opencode@0442518883`、Bun 1.3.14；当前来源 `9acdb1d09f`，26 个 host 引用静态接缝未变，当前来源 canonical host 已有隔离运行证据，真实 SAP/SSO/远程兼容尚未重测，见 [兼容报告](../deployment/README.md)。实现全部位于 SAP 场景目录，OpenCode 核心和普通智能体执行器不变。
 
-旧 screen 模式的 `server.ts` 由场景按会话启动，通过 stdin 接收私有参数。`host.ts` 组合 canonical Session V2 HTTP 路由、固定配置和 ApplicationTools，共用 Effect memo map。每个绑定使用独立数据库及 loopback host，前置网关校验绑定。Location 的 SAP agent 就绪后才接受 prompt。
+旧 screen 模式的 `server.ts` 由场景按会话启动，通过 stdin 接收私有参数。启动参数是**一行 JSON**，写完后父进程**保持该管道打开**：它的 EOF 就是"父进程已消失"的信号，宿主据此自行退出。Windows 上孤儿进程会保留已死亡父进程的 ID，`process.ppid === 1` 这个 POSIX 重父规则在那里永远不会成立，没有这个信号时被强杀的宿主会连同监听端口和整个引擎一起滞留。`host.ts` 组合 canonical Session V2 HTTP 路由、固定配置和 ApplicationTools，共用 Effect memo map。每个绑定使用独立数据库及 loopback host，前置网关校验绑定。Location 的 SAP agent 就绪后才接受 prompt。
 
 `tools.ts` 注册页面读取、导航、填写、表格滚动和 MCP 只读工具。桥从框架 service/session/message/call 上下文解析唯一浏览器；模型不能指定用户、浏览器或凭据。取消通知桥停止排队动作，不承诺撤销已经派发的动作。没有保存、过账和删除工具。
 

@@ -1,10 +1,33 @@
 # SAP智能工作台
 
+## 当前口径：对话改为平台编码智能体入口（add-sap-workbench-coding-agent-entry）
+
+场景页内对话不再自建自管 OpenCode 引擎，改为经平台既有编码智能体入口（`CodingSessionService`）创建/打开会话并挂载其嵌入地址；SAP 能力改由项目目录内的 skill（知识）与项目插件工具（能力）承载，工具每次执行由服务端按会话标识反查归属与授权。设计与任务见 [变更设计](../../openspec/changes/add-sap-workbench-coding-agent-entry/design.md)、[任务清单](../../openspec/changes/add-sap-workbench-coding-agent-entry/tasks.md)。
+
+能力边界按实测如实标注（界面能力说明与本文档一致）：
+
+| 能力 | 状态 | 依据 |
+|---|---|---|
+| 左侧画面打开事务码 | 有限可用 | 只保留一条服务端导航通道，只确认导航送达，不代表登录或业务结果 |
+| 读取 SAP 业务数据 | 可用（凭据就绪时） | 场景中介通道 `sap_data_call` 的 `read_table` / `run_query`（仅单条只读 SELECT） |
+| 经 BAPI 变更 SAP 业务数据 | 可用（凭据就绪时） | 同一通道的 `call_rfc`；可调用 BAPI，**可能改变业务数据**，需人工确认 |
+| 读左侧页面 DOM / 填写页面字段 | 不可用 | 跨域 iframe，插件与 MCP 均读不到左侧画面 |
+
+上表前两行与第三行的可用性都以配置中的 MCP 凭据就绪为前提：凭据缺失时界面与能力说明下发 `mcp_credentials_missing`，该行不标为可用。skill 已安装或工具已注册**不**构成页面读写可用的证据；左侧画面的读取与填写仍未通过真实工具路径验收，保持「不可用」。
+
+中介通道只把 MCP 传输结果交回模型，**不等于**业务已完成：读到记录不代表单据已审批、已过账或未关闭，`call_rfc` 的传输成功也不代表 SAP 已完成该业务动作，模型不得据此声称已创建、已过账或已审批。连接、SAP 账号与口令始终留在服务端，参数面不接受 `connection_id`/`user`/`password`/`client`/`host`/`url`；系统变更类 ADT 工具（改源码、激活、传输放行）不在该通道的工具面内。工具可见性权限规则只减少误调用，**不是**授权依据——真实授权由服务端逐次校验归属实现。
+
+自管引擎路径已退役但**未删除**：默认只有一个路径（平台编码入口），旧代码（`runtime.py` 非 iframe 分支、`prewarm.py`、`opencode_adapter/{server,host,native-host,credentials,context}.ts`）保留在回滚开关 `SAP_WORKBENCH_LEGACY_ENGINE` 之后（缺省关，只接受 `1/true/yes/on`）。旧库 `scenes/sap_workbench_runtime/` 与旧配置不删除，旧历史默认不迁移。走到旧分支时会写 warning 日志。见 [第 7 组证据](../../openspec/changes/add-sap-workbench-coding-agent-entry/evidence/group7-legacy-gate.md)。
+
+**未达成项（不标为通过）**：共享标准实例的会话列表在未指定目录时返回全库会话，`sap-workbench-session-binding` 的「OpenCode 上游会话访问受控」要求本期**未达成**；SAP 现场验收维持归档状态，不因本变更标为通过。详见 design.md 的「已接受限制」「未完成与验收边界」。
+
+以下 2026-10-04 起的各轮记录保留为历史，其中「自管引擎宿主 / 每绑定引擎 / 私有对话库」相关描述已不再对应当前路径。
+
 2026-10-04 新修复：对话输入「打开me21n」「打开me23n」会调用 `sap_transaction_open`，在当前左侧 SAP iframe 导航，不另开页面。Chrome 实测分别显示创建采购订单及标准采购订单页面，标签页数均保持 14，原工作台与对话历史保留。只确认有限的交易 URL 导航，不提供跨域 DOM 读取/填写或保存能力。见 [本次导航验收](../../openspec/changes/fix-sap-workbench-iframe-navigation/evidence/verification.md)。
 
 此前已按用户明确要求归档 `add-sap-workbench-scene`，实施任务完成 **49/64**，保留 **15 项未完成**。归档当时的对话导航测试未通过当前左侧 SAP iframe 验收；本次有限导航修复不把其他未完成范围标为完成。见 [归档记录](../../openspec/changes/archive/2026-10-04-add-sap-workbench-scene/ARCHIVE.md) 与 [当时导航实测](../../openspec/changes/archive/2026-10-04-add-sap-workbench-scene/evidence/chat-navigation-test.md)。
 
-当前对话使用 OpenCode 原生全局/项目配置，保留全部模型、智能体、工具、MCP、技能、命令及原生权限交互；只把会话数据库保留在工作台私有目录，启动时从原生全局库只读继承模型 provider 登录，不复制历史或回写全局登录。四项 OpenSpec 技能及 `/opsx-*` 命令直接读取已有项目，不复制另一份。助手标题为「SAP智能助手」，隐藏「会话／更改」页签及内部空白工具栏，标题栏使用独立的「全屏／还原」「收起对话」图标按钮，悬停显示说明，并保留键盘焦点和无障碍名称；支持左右拖动分隔线。展开、全屏和收起均保留两侧 iframe。场景自动控制/提交开关只管理场景桥，原生工具按 OpenCode 配置运行，不能用场景只读工具的历史验收证明原生工具的生产权限、审批或计量。当前证据见 [原生配置与全屏](../../openspec/changes/archive/2026-10-04-add-sap-workbench-scene/evidence/native-config-fullscreen.md)。
+当前对话使用 OpenCode 原生全局/项目配置，保留全部模型、智能体、工具、MCP、技能、命令及原生权限交互；只把会话数据库保留在工作台私有目录，启动时从原生全局库只读继承模型 provider 登录，不复制历史或回写全局登录。四项 OpenSpec 技能及 `/opsx-*` 命令直接读取已有项目，不复制另一份。助手标题为「SAP智能助手」，同源嵌入时在应答框架自己的文档里裁掉 OpenCode 的「会话／更改」页签与内部空白标题条（不改动平台共享的 Web 构建；跨域嵌入保持 OpenCode 默认），标题栏使用独立的「全屏／还原」「收起对话」图标按钮，悬停显示说明，并保留键盘焦点和无障碍名称；支持左右拖动分隔线。展开、全屏和收起均保留两侧 iframe。场景自动控制/提交开关只管理场景桥，原生工具按 OpenCode 配置运行，不能用场景只读工具的历史验收证明原生工具的生产权限、审批或计量。当前证据见 [原生配置与全屏](../../openspec/changes/archive/2026-10-04-add-sap-workbench-scene/evidence/native-config-fullscreen.md)。
 
 2026-10-04 最新对话布局：右下角「AI 对话」展开页面内的右侧栏，与 SAP 左右并排并占满高度；收起后 SAP 恢复铺满。对话区域无悬浮圆角和阴影，窄屏改为上下排列。只修改场景 CSS 和资源摘要，展开/收起保留原 iframe、SAP 页面及正在生成的回复；当前 Chrome 页面已热更新样式，Web/桌面后端均已提供新 CSS。见 [页内对话布局](../../openspec/changes/archive/2026-10-04-add-sap-workbench-scene/evidence/docked-chat-layout.md)。
 
@@ -26,7 +49,7 @@ SAP 字段输入和点击由用户在原生页面操作。场景新增的 `sap_t
 
 入口：**场景应用 → 工具 → SAP智能工作台**。当前 SAP 主区域是直接加载已保存 URL 的 iframe，右下角浮动面板是原生 OpenCode Web。没有新增智能体类型，也不修改普通 Agent 执行器或 OpenCode 核心。
 
-配置、连接检查、新建/恢复、嵌入式对话及 SAP MCP 只读路径继续保留。此前的画面流、人工接管及页面工具实现留在场景目录作为历史实现，当前 iframe 会话明确拒绝这些工具，不启动隐藏 Chrome。业务保存、过账、删除未开放。OpenCode host 仍面向本机 Web/桌面工作台，远程网关尚未验收。
+配置、连接检查、新建/恢复、嵌入式对话及 SAP MCP 通道继续保留。此前的画面流、人工接管及页面工具实现留在场景目录作为历史实现，当前 iframe 会话明确拒绝这些工具，不启动隐藏 Chrome。**页面**业务保存/过账/删除仍未开放；需要变更业务数据时走 `sap_data_call` 的 `call_rfc`（BAPI），同样只回报传输结果，不宣称业务已完成。OpenCode host 仍面向本机 Web/桌面工作台，远程网关尚未验收。
 
 2026-10-04 上一收尾：完成 3.2 的 API/目标登记合同复核，补齐已观察供应商 F4 搜索弹窗的打开/关闭识别，查询/选值仍拒绝；上一轮会话参数、总容量和退出清理修复均包含在完整 SAP Python 回归 **859 pass / 1 skip** 中。Web 与桌面后端在该轮沿原环境重新加载当时最新代码，保留数据根、密钥和历史。Chrome 中工作台可打开并读回已保存配置；桌面仍显示正常登录入口。按用户安排，实际 SAP/OpenCode 操作检查继续暂缓，提交保持关闭。当时计划为 **41/57，剩余 16 项**，完整条件、该轮运行快照与截图见 [后续收尾记录](../../openspec/changes/archive/2026-10-04-add-sap-workbench-scene/evidence/incremental-closeout.md)。
 
@@ -51,13 +74,16 @@ SAP 字段输入和点击由用户在原生页面操作。场景新增的 `sap_t
 | OpenCode API/Web 地址、服务认证 | 平台已有 OpenCode 配置 |
 | 项目目录 | 所选 coding 的 `coding_project_dir`；不复制项目 |
 | 浏览器执行节点 | 下拉选择本机专属浏览器，登记值为 `sap-browser-worker`；已有 `local` 配置继续可用，未知节点不能启动会话 |
-| MCP 端点 | 固定 `sap-abap=http://127.0.0.1:8100/mcp`、`sap-pyrfc=http://127.0.0.1:8200/mcp` |
+| MCP 端点 | 固定 `sap-abap=http://127.0.0.1:8110/mcp`（8100 被 weknora-lite 占用）、`sap-pyrfc=http://127.0.0.1:8200/mcp` |
 | MCP SAP 账号密码 | 场景配置；密码独立加密，响应只显示是否已配置 |
 | OpenCode 项目 MCP | 按用户授权在项目 `opencode.json` 登记端点，不写 SAP 密码 |
 | 租户容量与空闲回收 | 场景配置，默认 4 会话、900 秒 |
 | 执行进程浏览器总上限 | 环境项 `SAP_WORKBENCH_NODE_MAX_SESSIONS`，默认 4、允许 1..32；所有租户合计，启动和关闭中继续占额度；Web 与桌面分别计数 |
+| 远程显示 | 环境项 `SAP_WORKBENCH_PUBLIC_BASE`，一个 https origin（无 path/query/fragment），形如 `https://rd.rsmxm.com.cn`；未设置即仅本机，为默认。所有会话共享该 origin 下的一个固定路径前缀 `SAP_WORKBENCH_BASE_PATH`（默认 `/sapcode`），完整入口为 `<origin>/sapcode`，不新增域名、不新增 DNS 或证书。公网入口以 `SAP_WORKBENCH_PROXY_PORT`（默认 9911）接入同一回环端口 |
 
 MCP 桥注入系统、Client、凭据和连接 ID，模型工具不接受这些身份参数。Web GUI 单独登录，不从页面提取密码。密码留空保留、输入替换、勾选清除则撤销；需已有 `COW_CREDENTIAL_MASTER_KEY`，不降级明文。OpenCode 服务密码与 SAP 密码用途不同。
+
+远程显示默认关闭，需要显式配置才开启，且必须是 https origin（无 query/fragment/path）；路径前缀由 `SAP_WORKBENCH_BASE_PATH` 单独提供、绝不出现在 origin 中。配置不可用时在监听建立前失败，不启动半开的入口。开启后会话 runtime 仍只绑定 `127.0.0.1` 临时端口，由同一事件循环内的入口代理（回环 `SAP_WORKBENCH_PROXY_PORT`，默认 9911）解析到唯一**在会话**：引导阶段用显式 `?binding=` 查询，之后用会话 Cookie `sap_scene_<binding>`（路径固定为 base_path）；代理把带前缀的路径原样中转、不剥前缀，会话 runtime 自行剥掉 base_path 后路由。nginx 把 `location ^~ /sapcode/` 指向 `127.0.0.1:9911` 并透传 `Upgrade`/`Connection`、关闭 buffering/cache。HTTP、SSE 事件流和 WebSocket 升级都按字节中转。代理只监听回环、不额外鉴权、不做目录列举，未知或已关闭的 binding 返回 `unknown_session`；runtime 的会话 Cookie、Origin 校验、平台鉴权和 `frame-ancestors` 策略原样透传。所有会话共享同一 origin + 同一前缀、靠会话 Cookie（及引导的显式 binding）区分，与控制台同源（不新增域名/DNS/证书）。静态资源以 base=`/sapcode` 构建，入口 `<origin>/sapcode/` 返回 index.html，`/sapcode/assets/*` 与根级 favicon/manifest/主题预载脚本由 runtime 直接提供。左侧 SAP 画面由浏览器直接加载公网 SAP 地址，不经过该代理；托管画面（`screen`）模式当前被会话创建固定为 `iframe`，不在远程显示范围内。本机 `http://127.0.0.1:<port>` 路径不受影响。
 
 仅用户指定的测试源 `https://sap.goodsap.cn:44300` 在 **MCP → SAP** 后台连接中跳过 TLS 校验；不更改 Chrome、系统证书或全局 HTTP 校验。无秘密载荷示例见 `config.example.json`，通过 UI 保存，不手改 SQLite。
 
@@ -70,7 +96,7 @@ MCP 桥注入系统、Client、凭据和连接 ID，模型工具不接受这些�
 - 两个 sap-connect MCP 网关已启动。`SAP_MCP_PYTHON` 可指定安装 `requirements-runtime.txt` 的 Python，缺省使用相邻 `sap-connect/sap-pyrfc/.venv/bin/python`。
 - 主服务按原方式启动。缺少运行依赖时仍可打开配置页，不影响普通聊天。
 
-当前 canonical host 在主后端所在本机执行，项目目录按该机器的文件系统检查。OpenCode API 地址可用于读取模型配置和检测健康，但其健康响应不能证明另一台机器上的项目目录可用。本机检查结果不会作为远程执行节点的目录验收；远程节点和远程显示仍待实现及验收。旧配置中未登记的节点可进入配置页修复，新保存和会话启动会拒绝未知节点。执行进程总上限由服务端环境提供，客户端和租户配置不能抬高它；现有浏览器重连和同槽位重建不重复占额度。这是保守的默认上限，真实负载未测，不作为已测容量建议。
+当前 canonical host 在主后端所在本机执行，项目目录按该机器的文件系统检查。OpenCode API 地址可用于读取模型配置和检测健康，但其健康响应不能证明另一台机器上的项目目录可用。本机检查结果不会作为远程执行节点的目录验收；远程执行节点仍待实现，远程显示已按上文的固定 origin + `/sapcode` 路径前缀与回环入口代理实现并通过隔离测试，公网入口经 nginx `location ^~ /sapcode/` 与真实浏览器现场验收已完成（引导 303 + 会话 Cookie → index.html 全链路可用）。旧配置中未登记的节点可进入配置页修复，新保存和会话启动会拒绝未知节点。执行进程总上限由服务端环境提供，客户端和租户配置不能抬高它；现有浏览器重连和同槽位重建不重复占额度。这是保守的默认上限，真实负载未测，不作为已测容量建议。
 
 现有 Web 构建已完整准备到桌面独立资源目录，1787 个文件逐一一致，桌面数据根的五项离线检查通过，见 [桌面资源准备](../../openspec/changes/archive/2026-10-04-add-sap-workbench-scene/evidence/desktop-assets.md)。本轮再次沿原桌面生命周期重载后端并核对公共资源，尚未完成桌面正常登录后的双栏验收。
 

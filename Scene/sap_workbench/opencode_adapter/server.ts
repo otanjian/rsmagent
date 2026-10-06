@@ -7,7 +7,58 @@ import { join, isAbsolute } from "node:path"
 import { inheritCredentials } from "./credentials"
 import { createNativeHost } from "./native-host"
 
-const setup = JSON.parse(await Bun.stdin.text())
+/** A session host must release its loopback listener promptly.
+ *
+ * The parent binds its own deadline before escalating to SIGKILL, so a
+ * graceful stop that waits on an unresponsive websocket or effect scope would
+ * burn that whole budget on every session switch and app shutdown. Race the
+ * real stop against a short window and exit either way; the connection state
+ * this process owns is private and disposable.
+ */
+const STOP_GRACE_MS = 1500
+function onStop(graceful: () => unknown) {
+  let stopping = false
+  return () => {
+    if (stopping) return
+    stopping = true
+    setTimeout(() => process.exit(0), STOP_GRACE_MS)
+    Promise.resolve().then(graceful).catch(() => {}).finally(() => process.exit(0))
+  }
+}
+
+/** The bootstrap line, read without draining the pipe.
+ *
+ * The parent writes one JSON line and then holds the write end open for this
+ * process's whole life, so end-of-file here means the parent is gone. That is
+ * the only portable death signal: on Windows an orphan keeps its dead parent's
+ * id, so the ``process.ppid === 1`` reparenting test below can never fire, and
+ * a host whose interpreter was killed used to keep its listener and its memory
+ * forever.
+ */
+const bootstrap = Bun.stdin.stream().getReader()
+const decoder = new TextDecoder()
+async function readBootstrap() {
+  let pending = ""
+  for (;;) {
+    const {value, done} = await bootstrap.read()
+    if (value) pending += decoder.decode(value, {stream: true})
+    const newline = pending.indexOf("\n")
+    if (newline >= 0) return JSON.parse(pending.slice(0, newline))
+    if (done) {
+      if (pending.trim()) return JSON.parse(pending)
+      throw new Error("the parent closed the bootstrap pipe before sending it")
+    }
+  }
+}
+/** Resolve once the parent closes the pipe, i.e. once this host is orphaned. */
+async function parentGone() {
+  try {
+    while (!(await bootstrap.read()).done) {
+      // The bootstrap is a single line; anything after it is ignored.
+    }
+  } catch {}
+}
+const setup = await readBootstrap()
 const nativeSap = setup.displayMode === "iframe"
 const originalDatabase = process.env.OPENCODE_DB
 await mkdir(join(setup.directory, "config"), {recursive: true, mode: 0o700})
@@ -40,7 +91,7 @@ const configuration = {
   model: `sap/${setup.model}`, default_agent: "sap", enabled_providers: ["sap"], permission,
   compaction: sceneContext.compaction,
   mcp: {
-    "sap-abap": {type: "remote", url: "http://127.0.0.1:8100/mcp", enabled: true, oauth: false, timeout: 60000},
+    "sap-abap": {type: "remote", url: "http://127.0.0.1:8110/mcp", enabled: true, oauth: false, timeout: 60000},
     "sap-pyrfc": {type: "remote", url: "http://127.0.0.1:8200/mcp", enabled: true, oauth: false, timeout: 60000},
   },
   provider: {sap: {npm: "@ai-sdk/openai-compatible", name: "SAP Workbench",
@@ -64,10 +115,11 @@ if (nativeSap) {
       ? "opencode.db" : `opencode-${InstallationChannel.replace(/[^a-zA-Z0-9._-]/g,"-")}.db`)
   await inheritCredentials(sourceDatabase,join(setup.directory,"opencode.db"))
   console.log(JSON.stringify({port: server.port}))
-  const stop = async () => {await server.stop(true); process.exit(0)}
+  const stop = onStop(() => server.stop(true))
   process.on("SIGTERM", stop)
   process.on("SIGINT", stop)
   setInterval(() => {if (process.ppid === 1) void stop()}, 3000).unref()
+  void parentGone().then(stop)
 } else {
   const runtime = await loadRuntime(setup.root)
   const tools = createTools(runtime, {url: setup.bridgeURL, token: setup.token, serviceID: setup.service})
@@ -79,8 +131,9 @@ if (nativeSap) {
     },
   })
   console.log(JSON.stringify({port: server.port}))
-  const stop = async () => {server.stop(true); await host.close(); process.exit(0)}
+  const stop = onStop(async () => {server.stop(true); await host.close()})
   process.on("SIGTERM", stop)
   process.on("SIGINT", stop)
   setInterval(() => {if (process.ppid === 1) void stop()}, 3000).unref()
+  void parentGone().then(stop)
 }

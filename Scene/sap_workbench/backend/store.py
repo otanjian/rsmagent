@@ -103,17 +103,41 @@ class WorkbenchStore:
         return {"version": row["version"], "config": clean,
                 "mcp_password_configured": bool(credential and credential["binding"] == self._binding(clean))}
 
-    def reserve_session(self, tenant_id, user_id, agent_id, request_id, saved, project, *, display_mode='screen'):
+    def reserve_session(self, tenant_id, user_id, agent_id, request_id, saved, project, *,
+                        display_mode='screen', coding=None):
+        """Reserve one workbench binding.
+
+        ``coding`` carries a platform coding session resolved elsewhere:
+        ``session_id``/``external_session_id`` and the ``service_id`` that derived
+        them. Callers normally omit it, because the scene derives the very ids the
+        platform will: same ``derive_ids`` function, same operator-configured
+        ``service_id``. That is the whole point -- the id the project plugin
+        reports as its OpenCode ``sessionID`` has to be the platform's id, so a
+        tool call can resolve back to its owner. An earlier revision used a
+        scene-private ``service_id`` and produced ids the platform would never
+        derive, which left the bridge with nothing to match.
+
+        The derivation is local on purpose: ``CodingSessionService.reserve`` would
+        also create upstream state, and the page reaches the platform's coding
+        entry itself for that. ``coding`` therefore exists only as an explicit
+        override for a caller or test that has already resolved the ids.
+        """
         if not isinstance(request_id, str) or not 8 <= len(request_id) <= 128:
             raise WorkbenchError("invalid_request_id")
         if display_mode not in {'screen', 'iframe'}:
             raise ValueError('invalid display mode')
-        from agent.coding.sessions import derive_ids
         digest = hashlib.sha256(f"{tenant_id}\0{user_id}\0{agent_id}\0{request_id}".encode()).hexdigest()[:32]
         binding = "sap_" + digest
-        service = "sap-scene-" + digest
-        coding_id, remote_id = derive_ids(service_id=service, tenant_id=tenant_id, user_id=user_id,
-                                          agent_id=agent_id, request_id=request_id)
+        if coding is None:
+            from agent.coding import resolve_settings
+            from agent.coding.sessions import derive_ids
+            service_id = resolve_settings().service_id
+            coding_id, remote_id = derive_ids(service_id=service_id, tenant_id=tenant_id, user_id=user_id,
+                                              agent_id=agent_id, request_id=request_id)
+        else:
+            service_id = str(coding['service_id'])
+            coding_id = str(coding['session_id'])
+            remote_id = str(coding['external_session_id'])
         now = int(time.time())
         snapshot = {"config": saved["config"], "project": project}
         with self._connection() as db:
@@ -122,7 +146,7 @@ class WorkbenchStore:
                        'coding_session_id,service_id,remote_session_id,browser_id,created_at,updated_at,display_mode) '
                        'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                        (binding, tenant_id, user_id, agent_id, request_id, saved["version"],
-                        json.dumps(snapshot), coding_id, service, remote_id, binding, now, now, display_mode))
+                        json.dumps(snapshot), coding_id, service_id, remote_id, binding, now, now, display_mode))
         return self.session(tenant_id, user_id, binding)
 
     def session(self, tenant_id, user_id, binding):
@@ -140,6 +164,31 @@ class WorkbenchStore:
             return [dict(row) for row in db.execute('SELECT id,remote_session_id,state,control,allocation_stage,allocation_error,created_at,updated_at '
                     'FROM "cj-sap_workbench-session_links" WHERE tenant_id=? AND user_id=? '
                     'ORDER BY updated_at DESC LIMIT 50', (tenant_id, user_id))]
+
+    def binding_for_session(self, remote_session_id):
+        """Resolve an owner binding from an OpenCode session id.
+
+        Trusted runtime only, and the ONLY way a project plugin's tool call can
+        name a workbench: the plugin knows nothing but its ``sessionID`` and the
+        project directory, so the owner (tenant, user and binding) must be
+        looked up here instead of being taken from the caller's parameters.
+
+        The derived session ids embed the tenant, user, agent and request id, so
+        a row is unique. An ambiguous match is refused rather than guessed: two
+        candidates mean the identifier no longer identifies one binding, and
+        picking either would let one owner's call reach another's browser.
+        """
+        if not isinstance(remote_session_id, str) or not 1 <= len(remote_session_id) <= 128:
+            return None
+        with self._connection() as db:
+            rows = db.execute('SELECT * FROM "cj-sap_workbench-session_links" '
+                              'WHERE remote_session_id=? AND state!=\'closed\' '
+                              'ORDER BY updated_at DESC LIMIT 2', (remote_session_id,)).fetchall()
+        if len(rows) != 1:
+            return None
+        result = dict(rows[0])
+        result['snapshot'] = json.loads(result.pop('snapshot_json'))
+        return result
 
     def active_sessions(self, tenant_id, user_id):
         """All owner bindings, including stale reservations beyond history's page."""

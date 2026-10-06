@@ -432,6 +432,18 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry('/api/scenes/sap-workbench/config', 'SapWorkbenchConfigHandler', "fork:scenes", {'GET': P('tenant', 'chat.use'), 'PUT': P('tenant', 'chat.use', comment='scene configuration; tenant controller and origin checks in handler')}),
     RouteEntry('/api/scenes/sap-workbench/check', 'SapWorkbenchCheckHandler', "fork:scenes", {'POST': P('tenant', 'chat.use', comment='bounded connection checks; no model calls or SAP business writes')}),
     RouteEntry('/api/scenes/sap-workbench/sessions', 'SapWorkbenchSessionsHandler', "fork:scenes", {'GET': P('tenant', 'chat.use'), 'POST': P('tenant', 'chat.use', comment='owner-bound scene session creation, recovery and control')}),
+    # Project-plugin navigation channel (change
+    # add-sap-workbench-coding-agent-entry, task 4.4). Deliberately ``public``:
+    # the caller is the co-located OpenCode coding service, which has no console
+    # session, so no session policy can express it. The handler is therefore the
+    # whole gate -- it authenticates the caller with the coding service's own
+    # HTTP Basic credential, refuses any request carrying reverse-proxy
+    # forwarding headers or arriving from a non-loopback address, and then
+    # resolves the owner from the OpenCode session id in the body. A session id
+    # is never accepted as proof of identity: an unbound session is refused, and
+    # the live binding re-authorizes its owner before any SAP action.
+    RouteEntry('/api/scenes/sap-workbench/bridge', 'SapWorkbenchBridgeHandler', "fork:scenes", {'POST': P('public', comment='left-pane navigation channel for the project plugin; caller authenticated as the coding service by its own HTTP Basic credential and restricted to direct loopback callers, owner resolved from the OpenCode session id (never from the body), then the live binding re-authorizes the owner and records the action')}),
+    RouteEntry('/api/scenes/sap-workbench/bridge/data', 'SapWorkbenchDataBridgeHandler', "fork:scenes", {'POST': P('public', comment='business-data channel for the project plugin; same coding-service credential and loopback-only rule as the navigation bridge, owner/connection/credential resolved from the OpenCode session id (never from the body), reachable tools limited to read_table/run_query/call_rfc and every call is admitted through the live binding ledger, meter and audit')}),
     RouteEntry('/api/scenes/sap-workbench/browser', 'SapWorkbenchBrowserHandler', "fork:scenes", {'POST': P('tenant', 'chat.use', comment='legacy unbound screen entry is rejected; use an owner-bound session lease')}),
     RouteEntry('/api/workbench/upload', 'WorkbenchUploadHandler', "fork:scenes", {'POST': P('tenant')}),
     RouteEntry('/api/workbench/parse-excel', 'WorkbenchParseExcelHandler', "fork:scenes", {'POST': P('tenant')}),

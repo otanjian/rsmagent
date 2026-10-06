@@ -64,6 +64,72 @@ def test_catalog_assets_and_scene_open_do_not_create_sessions(app, monkeypatch):
     assert app.get("/scene-assets/sap_workbench/frontend/workbench.css").status == "200 OK"
 
 
+def test_the_scene_catalog_allocates_no_session_and_starts_no_engine(app, monkeypatch):
+    """Browsing the catalog is a read: no binding reserved, and no engine started.
+
+    The scene used to warm a Bun host from this read, because the create that
+    followed paid for an engine cold start. It no longer starts any engine: the
+    conversation is a platform coding session the page mounts from its own embed
+    URL. So the catalog read must still not reserve anything, and the warm-up
+    hook must now stay silent even for a fully configured, visually ready scene.
+    """
+    from Scene.sap_workbench.backend import prewarm
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("A scene read must not create coding sessions")
+    monkeypatch.setattr("agent.coding.sessions.CodingSessionService.reserve", unexpected)
+    monkeypatch.delenv("SAP_WORKBENCH_PREWARM", raising=False)
+    warmed = []
+    monkeypatch.setattr(prewarm, "kick", lambda: warmed.append(True))
+    token = app.login("root")
+    assert payload(app, app.get("/api/scenes", token=token))["status"] == "success"
+    assert warmed == [], "an unconfigured scene must not start an engine"
+    config = configured(); config.update(enabled=True)
+    payload(app, app.put(API + "/config", {"version": 0, "config": config}, token=token))
+    assert payload(app, app.get("/api/scenes", token=token))["status"] == "success"
+    assert warmed == [], "the scene has no engine of its own to warm"
+    assert payload(app, app.get(API + "/config", token=token))["capabilities"]["visual"] is True
+
+
+def test_cancelling_a_warm_up_frees_its_process_and_is_always_safe(app):
+    """A create can arrive while the warm-up still runs, and must win.
+
+    The card entry reads the configuration and creates a session in the same
+    breath, so the warm-up is usually still starting an engine when the real one
+    begins. Leaving it would put two engine starts on the same CPU and disk, so
+    the real start cancels the warm-up first. Cancelling must be safe when
+    nothing is running, including twice, and must invalidate the aborted run so
+    it is never reported as a completed warm-up.
+    """
+    import shutil
+    import subprocess
+    import sys
+    import tempfile
+    from Scene.sap_workbench.backend import prewarm
+
+    prewarm.cancel()  # nothing in flight
+    with prewarm._registry_lock:
+        generation = prewarm._generation
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    base = tempfile.mkdtemp(prefix="sap-workbench-prewarm-cancel-test-")
+    try:
+        with prewarm._registry_lock:
+            prewarm._live.append((process, base))
+        prewarm.cancel()
+        process.wait(timeout=10)
+        assert process.poll() is not None, "the warm-up process must be stopped"
+        with prewarm._registry_lock:
+            assert prewarm._generation > generation, "the aborted run must not report itself ready"
+        prewarm.cancel()  # idempotent
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        with prewarm._registry_lock:
+            prewarm._live[:] = [item for item in prewarm._live if item[0] is not process]
+        shutil.rmtree(base, ignore_errors=True)
+
+
 def test_admin_save_is_persistent_versioned_and_audited(app):
     token = app.login("root")
     body = {"version": 0, "config": configured()}
@@ -75,6 +141,36 @@ def test_admin_save_is_persistent_versioned_and_audited(app):
     assert payload(app, app.put(API + "/config", body, token=token), 409)["code"] == "config_conflict"
     events = app.service.list_audit(app.tenant_id)
     assert any(e["action"] == "sap_workbench.config.update" for e in events)
+
+
+def test_saving_a_binding_installs_the_skill_and_plugin_into_the_project(app, tmp_path):
+    """The coding project's `.opencode` is where a standard coding service
+    discovers skills and plugins, so a saved binding must leave them there."""
+    project = tmp_path / "sap-workbench-project"
+    project.mkdir()
+    app.add_coding_agent("sap-coder", str(project))
+    token = app.login("root")
+    saved = payload(app, app.put(API + "/config", {"version": 0, "config": configured()}, token=token))
+    report = saved["project_toolkit"]
+    assert report["conflicts"] == []
+    outcomes = {item["path"]: item["result"] for item in report["artifacts"]}
+    assert set(outcomes.values()) == {"installed"}
+    assert (project / ".opencode/skills/sap-workbench/SKILL.md").is_file()
+    assert (project / ".opencode/plugins/rsm-sap-workbench-navigation.js").is_file()
+    # Saving the same binding again reconciles instead of duplicating.
+    again = payload(app, app.put(API + "/config", {"version": 1, "config": configured()}, token=token))
+    assert {item["result"] for item in again["project_toolkit"]["artifacts"]} == {"unchanged"}
+
+
+def test_an_unreachable_project_directory_does_not_fail_the_save(app):
+    """A binding whose project directory is not reachable from this host is still
+    a valid binding. The install reports the truth instead of claiming success."""
+    token = app.login("root")
+    saved = payload(app, app.put(API + "/config", {"version": 0, "config": configured()}, token=token))
+    # The harness binds sap-coder to /srv/sap-workbench, which does not exist here.
+    assert saved["project_toolkit"] == {"artifacts": [], "conflicts": [],
+                                        "error": "project_directory_missing"}
+    assert payload(app, app.get(API + "/config", token=token))["version"] == 1
 
 
 def test_invalid_browser_reference_is_rejected_and_legacy_config_can_be_repaired(app, monkeypatch):
@@ -263,7 +359,7 @@ def test_fixed_mcp_defaults_and_enabled_state_survive_reload(app):
     token = app.login("root")
     before = payload(app, app.get(API + "/config", token=token))["config"]
     assert [(c["id"], c["url"]) for c in before["mcp"]["connections"]] == [
-        ("sap-abap", "http://127.0.0.1:8100/mcp"), ("sap-pyrfc", "http://127.0.0.1:8200/mcp"),
+        ("sap-abap", "http://127.0.0.1:8110/mcp"), ("sap-pyrfc", "http://127.0.0.1:8200/mcp"),
     ]
     before["mcp"]["connections"][0]["enabled"] = False
     payload(app, app.put(API + "/config", {"version": 0, "config": before}, token=token))
@@ -384,3 +480,23 @@ def test_audit_failure_rolls_back_configuration(tmp_path):
         store.save_config("tenant", "user", 0, DEFAULT_CONFIG, audit=fail)
     assert store.read_config("tenant")["version"] == 0
     assert not capabilities(DEFAULT_CONFIG)["visual"]
+
+
+def test_capabilities_publish_the_honest_limitations_table():
+    reported = capabilities({**DEFAULT_CONFIG, "enabled": True})
+    # The scene's *own* commit channel is still absent. That is a different
+    # path from the mediated business channel, and the two are not conflated.
+    assert reported["commit"] is False
+    # The business row is published from the stored credential state, not from
+    # the channel's existence: with no saved MCP account the server cannot
+    # connect, so claiming "available" here would be the "registered therefore
+    # usable" mistake this table exists to avoid.
+    assert reported["notes"] == ["navigation_limited", "mcp_credentials_missing",
+                                "page_readwrite_unavailable"]
+    # A saved MCP account is what makes the row available.
+    configured = capabilities({**DEFAULT_CONFIG, "enabled": True}, mcp_credentials=True)
+    assert configured["notes"] == ["navigation_limited", "mcp_business_available",
+                                  "page_readwrite_unavailable"]
+    # `sap_data_call` reaches BAPIs through `call_rfc`, so "business submission
+    # is unavailable" is no longer true and must not be published.
+    assert "business_submission_unavailable" not in reported["blockers"]

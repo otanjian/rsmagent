@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .configuration import WorkbenchError
 from .deployment import MCP_ENDPOINTS
+from .environment import mcp_python, subprocess_env
 from .mcp_login import SapMcpLogin
 
 WORKER_CLOSE_TIMEOUT = 12
@@ -48,10 +49,10 @@ class ConfiguredMcp:
             await self.close()
         config, password = self.owner.store.resolve_mcp_credentials(self.owner.tenant, self.owner.row['config_version'])
         root = Path(__file__).resolve().parents[3]
-        executable = os.environ.get('SAP_MCP_PYTHON', str(root.parent / 'rsmcode/sap-connect/sap-pyrfc/.venv/bin/python'))
+        executable = mcp_python()
         if not Path(executable).is_file():
             raise WorkbenchError('mcp_runtime_missing', 503)
-        env = {key: os.environ[key] for key in ('PATH', 'HOME', 'TMPDIR', 'LANG') if key in os.environ}
+        env = subprocess_env()
         # Module launch avoids backend/http.py shadowing Python's stdlib http
         # package when httpx imports it from the worker's script directory.
         self.process = await asyncio.create_subprocess_exec(executable, '-m', 'Scene.sap_workbench.backend.mcp_worker',
@@ -95,6 +96,39 @@ class ConfiguredMcp:
                 raise WorkbenchError('mcp_connection_unavailable', 403)
             try:
                 self.process.stdin.write(json.dumps(arguments).encode() + b'\n')
+                await self.process.stdin.drain()
+                response = json.loads(await asyncio.wait_for(self.process.stdout.readline(), 30))
+                await self._authorize()
+                if 'output' not in response:
+                    raise WorkbenchError('mcp_call_failed', 502)
+                return response['output']
+            except BaseException:
+                await self.close()
+                raise
+
+    async def call_business(self, connection, tool, arguments):
+        """Scene-mediated business data: reads *and* BAPI-style calls.
+
+        The credential never crosses back to the caller: it supplies business
+        arguments only, and the tool allowlist lives in ``mcp_business``. A
+        refusal is raised before anything is written to the worker, so a
+        rejected call cannot reach SAP at all.
+        """
+        from .mcp_business import McpBusinessError, business_arguments
+        async with self.lock:
+            await self._authorize()
+            try:
+                business_arguments(connection, tool, arguments)
+            except McpBusinessError as error:
+                raise WorkbenchError(error.code, 403) from None
+            if not self.process:
+                await self._start()
+            if connection not in self.ready.get('connections', []):
+                raise WorkbenchError('mcp_connection_unavailable', 403)
+            try:
+                message = {'action': 'call_business', 'connection': connection,
+                           'tool': tool, 'arguments': arguments}
+                self.process.stdin.write(json.dumps(message).encode() + b'\n')
                 await self.process.stdin.drain()
                 response = json.loads(await asyncio.wait_for(self.process.stdout.readline(), 30))
                 await self._authorize()

@@ -29,7 +29,13 @@ async def main():
                     result = await login.call_json(message['connection'], message['tool'], message['arguments'])
                     print(json.dumps({'data': result}, ensure_ascii=False, separators=(',', ':')), flush=True)
                     continue
-                result = await login.call(message['connection'], message['tool'], message['arguments'])
+                if message.get('action') == 'call_business':
+                    # The scene-mediated business channel. It shares this
+                    # transport's scrubbing and truncation, but draws its tool
+                    # allowlist from `BUSINESS_TOOLS` rather than `READ_TOOLS`.
+                    result = await login.call_business(message['connection'], message['tool'], message['arguments'])
+                else:
+                    result = await login.call(message['connection'], message['tool'], message['arguments'])
                 # Transport identity is never part of the returned model data.
                 text = '\n'.join(item.text for item in result.content if getattr(item, 'type', '') == 'text')
                 for entry in login._connections.values():

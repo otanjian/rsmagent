@@ -110,6 +110,12 @@ function setup({ tree = { status: 'success', path: AGENT_DIR, root: '/ws/t1', en
     const xhrs = [];
     const toasts = [];
     const confirms = [];
+    const tenantHeaderCalls = [];
+    // console.js defines `tenantSelectionHeader` on the real page. The upload is
+    // an XHR, so the `fetch` wrapper that injects the header never sees it --
+    // the panel has to ask for it itself. This stands in for that global and
+    // records what the upload asked for.
+    let tenantHeaderValue = 'tnt_test';
 
     for (const id of REQUIRED_IDS) {
         const el = document.createElement('div');
@@ -132,6 +138,8 @@ function setup({ tree = { status: 'success', path: AGENT_DIR, root: '/ws/t1', en
         showConfirmDialog: options => confirms.push(options),
         setTimeout,
         clearTimeout,
+        sessionStorage: { getItem: () => tenantHeaderValue, setItem() {} },
+        tenantSelectionHeader: url => { tenantHeaderCalls.push(url); return tenantHeaderValue; },
         XMLHttpRequest: function () { return new FakeXHR(xhrs); },
         FormData: FakeFormData,
         fetch: async (url) => {
@@ -151,9 +159,10 @@ function setup({ tree = { status: 'success', path: AGENT_DIR, root: '/ws/t1', en
     vm.runInContext(SOURCE.slice(0, cut), ctx);
 
     return {
-        ctx, document, requests, xhrs, toasts, confirms,
+        ctx, document, requests, xhrs, toasts, confirms, tenantHeaderCalls,
         get: id => document.getElementById(id),
         uploads: () => xhrs,
+        setTenant: value => { tenantHeaderValue = value; },
         treeRequests: () => requests.filter(u => u.includes('/api/workspace/tree')),
         peek: source => vm.runInContext(source, ctx),
         poke: source => vm.runInContext(source, ctx),
@@ -283,6 +292,26 @@ test('each file is one request carrying its own path below the drop', async () =
     assert.equal(form.dir, AGENT_DIR);
     assert.equal(form.relative_path, 'note.txt');
     assert.equal(xhr.body.entries.find(e => e.key === 'file').name, 'note.txt');
+});
+
+test('the upload carries the tenant selection the fetch wrapper cannot add', async () => {
+    // The drop is the one transport the console's `fetch` wrapper cannot serve
+    // (it needs `upload.onprogress`), so it must ask for the tenant header
+    // itself. Without it the identity gate answers 400 `missing_tenant` before
+    // the handler runs and a whole folder lands as 部分完成.
+    const s = setup();
+    const xhr = await dropOne(s);
+    assert.equal(xhr.headers['X-Tenant-ID'], 'tnt_test');
+    assert.deepEqual(s.tenantHeaderCalls, ['/api/workspace/upload']);
+});
+
+test('with no tenant selected the upload sends no tenant header', async () => {
+    // Legacy mode stores no selection and the gate needs none; an empty header
+    // would be a different request than the one that already worked.
+    const s = setup();
+    s.setTenant('');
+    const xhr = await dropOne(s);
+    assert.equal(xhr.headers['X-Tenant-ID'], undefined);
 });
 
 test('the request is addressed to the scope the panel is browsing', async () => {
