@@ -1,0 +1,278 @@
+{
+  "schema_version": 1,
+  "source_sha": "48c0d79c36146950667f8d1884ab823deae62305",
+  "target_base_sha": "64858d585b427ec4697dc0fb5d2ccb5911d35769",
+  "change": "restore-upstream-web-parity-and-sync-gates",
+  "capabilities": [
+    {
+      "id": "GAP-001",
+      "behavior": "路径路由与历史",
+      "source": {
+        "sha": "48c0d79c36146950667f8d1884ab823deae62305",
+        "paths": [
+          "channel/web/static/js/core/router.js",
+          "channel/web/static/js/core/nav.js"
+        ]
+      },
+      "entrypoints": [
+        "channel/web/route_registry.py",
+        "channel/web/static/js/console.js",
+        "channel/web/chat.html"
+      ],
+      "dependencies": [
+        "console-page-registry",
+        "navigation",
+        "auth-ready",
+        "absolute-assets"
+      ],
+      "identity": "既有 database 主体、租户与对象授权；页面状态不得跨身份复用",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#3.1",
+      "supported_forms": [
+        "web",
+        "desktop-web"
+      ],
+      "required_tests": [
+        "tests/test_web_console_routing.py",
+        "tests/test_console_parity_browser.cjs"
+      ],
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md"
+      ]
+    },
+    {
+      "id": "GAP-002",
+      "behavior": "SSE 错误与清理",
+      "source": {
+        "sha": "48c0d79c36146950667f8d1884ab823deae62305",
+        "paths": [
+          "channel/web/static/js/chat/send.js",
+          "channel/web/static/js/chat/scheduler-notify.js"
+        ]
+      },
+      "entrypoints": [
+        "channel/web/static/js/console.js"
+      ],
+      "dependencies": [
+        "isSchedulerRequest",
+        "history-cache",
+        "SSE-owner-context"
+      ],
+      "identity": "既有 database 主体、租户与对象授权；页面状态不得跨身份复用",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#2.1",
+      "supported_forms": [
+        "web",
+        "desktop-web"
+      ],
+      "required_tests": [
+        "tests/test_session_history_refresh_frontend.cjs"
+      ],
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md"
+      ]
+    },
+    {
+      "id": "GAP-003",
+      "behavior": "跨会话任务提醒",
+      "source": {
+        "sha": "48c0d79c36146950667f8d1884ab823deae62305",
+        "paths": [
+          "channel/web/static/js/chat/scheduler-notify.js",
+          "channel/web/static/js/core/notify.js"
+        ]
+      },
+      "entrypoints": [
+        "channel/web/fork/handlers/scheduler.py",
+        "agent/tools/scheduler/run_repository.py",
+        "channel/web/static/js/console.js"
+      ],
+      "dependencies": [
+        "authorized-terminal-cursor",
+        "notification-coordination",
+        "auth-lifecycle"
+      ],
+      "identity": "既有 database 主体、租户与对象授权；页面状态不得跨身份复用",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#4.1",
+      "supported_forms": [
+        "web",
+        "desktop-web"
+      ],
+      "required_tests": [
+        "tests/test_scheduler_notification_cursor.py",
+        "tests/test_scheduler_notifications_frontend.cjs",
+        "tests/test_console_parity_browser.cjs"
+      ],
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md"
+      ]
+    },
+    {
+      "id": "GAP-004",
+      "behavior": "流式滚动意图",
+      "source": {
+        "sha": "48c0d79c36146950667f8d1884ab823deae62305",
+        "paths": [
+          "channel/web/static/js/chat/state.js",
+          "channel/web/static/js/chat/render.js"
+        ]
+      },
+      "entrypoints": [
+        "channel/web/static/js/console.js"
+      ],
+      "dependencies": [
+        "scroll-events",
+        "programmatic-scroll",
+        "session-reset"
+      ],
+      "identity": "既有 database 主体、租户与对象授权；页面状态不得跨身份复用",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#2.3",
+      "supported_forms": [
+        "web",
+        "desktop-web"
+      ],
+      "required_tests": [
+        "tests/test_console_parity_browser.cjs"
+      ],
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md"
+      ]
+    },
+    {
+      "id": "GAP-005",
+      "behavior": "知识库互斥面板及迟到响应",
+      "source": {
+        "sha": "48c0d79c36146950667f8d1884ab823deae62305",
+        "paths": [
+          "channel/web/static/js/views/knowledge.js"
+        ]
+      },
+      "entrypoints": [
+        "channel/web/static/js/console.js"
+      ],
+      "dependencies": [
+        "knowledge-tab",
+        "auth-epoch",
+        "library-selection",
+        "sources-lifecycle"
+      ],
+      "identity": "既有 database 主体、租户与对象授权；页面状态不得跨身份复用",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#2.4",
+      "supported_forms": [
+        "web",
+        "desktop-web"
+      ],
+      "required_tests": [
+        "tests/test_knowledge_console_frontend.cjs",
+        "tests/test_console_parity_browser.cjs"
+      ],
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md"
+      ]
+    },
+    {
+      "id": "GAP-006",
+      "behavior": "长文本布局",
+      "source": {
+        "sha": "48c0d79c36146950667f8d1884ab823deae62305",
+        "paths": [
+          "channel/web/static/css/markdown.css"
+        ]
+      },
+      "entrypoints": [
+        "channel/web/static/css/console.css",
+        "channel/web/chat.html"
+      ],
+      "dependencies": [
+        "message-css",
+        "local-table-scroll",
+        "inline-code"
+      ],
+      "identity": "既有 database 主体、租户与对象授权；页面状态不得跨身份复用",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#2.6",
+      "supported_forms": [
+        "web",
+        "desktop-web"
+      ],
+      "required_tests": [
+        "tests/test_console_parity_browser.cjs"
+      ],
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md"
+      ]
+    },
+    {
+      "id": "GAP-007",
+      "behavior": "fork 源码更新",
+      "source": {
+        "sha": "48c0d79c36146950667f8d1884ab823deae62305",
+        "paths": [
+          "channel/web/static/js/core/version.js",
+          "channel/web/api/update.py",
+          "cli/update_service.py"
+        ]
+      },
+      "entrypoints": [
+        "channel/web/fork/handlers/update.py",
+        "channel/web/route_registry.py"
+      ],
+      "dependencies": [
+        "platform-auth",
+        "trusted-source",
+        "atomic-lock",
+        "candidate-environment",
+        "verified-recovery"
+      ],
+      "identity": "既有 database 主体、租户与对象授权；页面状态不得跨身份复用",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#5.1",
+      "supported_forms": [
+        "source-checkout"
+      ],
+      "required_tests": [
+        "tests/test_web_console_update.py",
+        "tests/test_fork_source_update.py"
+      ],
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md"
+      ]
+    }
+  ],
+  "reviewed_existing": [
+    {
+      "behaviors": [
+        "mtime/ETag",
+        "技能预览取消",
+        "回复中断提示",
+        "上下文用量/压缩",
+        "模型目录/回退链",
+        "任务创建/运行记录",
+        "Agent 弹窗滚动"
+      ],
+      "disposition": "existing",
+      "verification": "partial",
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md"
+      ],
+      "note": "已核对入口；其中模型和弹窗定向用例已通过，其余不声称全形态验收。不得重复列为新增缺口。"
+    }
+  ]
+}

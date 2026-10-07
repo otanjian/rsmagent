@@ -1,0 +1,77 @@
+{
+  "required_assets": [
+    "js/fork/router.js",
+    "js/console.js",
+    "js/doc-editor.js",
+    "js/fork/views/memory.js",
+    "js/views/tasks.js",
+    "js/views/tasks-modal.js",
+    "js/fork/tasks-console.js",
+    "js/fork/scheduler-notifications.js",
+    "css/console.css",
+    "js/fork/source-update.js"
+  ],
+  "forbidden_parallel_assets": [
+    "js/core/router.js",
+    "js/core/nav.js",
+    "js/chat/state.js",
+    "js/chat/scheduler-notify.js",
+    "js/boot.js",
+    "js/core/version.js"
+  ],
+  "load_order": [
+    [
+      "js/doc-editor.js",
+      "js/fork/views/memory.js"
+    ],
+    [
+      "js/fork/router.js",
+      "js/console.js"
+    ],
+    [
+      "js/views/tasks.js",
+      "js/fork/tasks-console.js"
+    ],
+    [
+      "js/console.js",
+      "js/fork/scheduler-notifications.js"
+    ],
+    [
+      "js/console.js",
+      "js/fork/source-update.js"
+    ]
+  ],
+  "implementation_contracts": {
+    "channel/web/static/js/console.js": [
+      "function isSchedulerRequest(",
+      "new Event('account-ready')",
+      "new Event('account-invalidated')",
+      "window.ConsoleRoutes.enter(",
+      "'/assets/js/external-connections.js'"
+    ],
+    "channel/web/static/js/fork/scheduler-notifications.js": [
+      "addEventListener('account-ready'",
+      "addEventListener('account-invalidated'",
+      "mode=notifications",
+      "readwrite"
+    ],
+    "channel/web/static/css/console.css": [
+      "overflow-wrap: anywhere"
+    ],
+    "channel/web/templates/views/config.html": [
+      "id=\"config-panel-catalog\"",
+      "id=\"catalog-content\""
+    ],
+    "channel/web/static/js/fork/router.js": [
+      "!_accountAppVisible",
+      "page.tab_aliases",
+      "sequence"
+    ],
+    "channel/web/static/js/fork/source-update.js": [
+      "addEventListener('account-ready'",
+      "addEventListener('account-invalidated'",
+      "check_id: checkId",
+      "generation !== epoch"
+    ]
+  }
+}

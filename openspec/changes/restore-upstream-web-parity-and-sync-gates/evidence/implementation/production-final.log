@@ -1,0 +1,175 @@
+Checking: Python production regressions
+.................................................................... [ 11%]
+........................................................................ [ 23%]
+........................................................................ [ 35%]
+........................................................................ [ 47%]
+........................................................................ [ 59%]
+.....sss................................................................ [ 70%]
+..ssssss................................................................ [ 82%]
+........................................................................ [ 94%]
+...............................                                          [100%]
+594 passed, 9 skipped, 4 subtests passed in 44.06s
+PASS: Python production regressions
+Checking: Route coverage
+route-coverage: 314 routes (70 upstream, 244 fork), 371 method entries
+OK
+PASS: Route coverage
+Checking: Upstream sync required behavior
+{
+  "scope": "required-local-behavior",
+  "production_acceptance": false,
+  "candidate_digest": "44a370ab36f1bb8b9e2636401a7fb8ec9a6fb98d940d0814b950bec3f5535491",
+  "source_sha": "48c0d79c36146950667f8d1884ab823deae62305",
+  "layers": {
+    "ledger": [],
+    "source-history": [],
+    "actual-entry-dependencies": [],
+    "check-route-coverage.py": [],
+    "check-web-module-seams.py": [],
+    "required-cases": [],
+    "candidate-stability": []
+  },
+  "ending_digest": "44a370ab36f1bb8b9e2636401a7fb8ec9a6fb98d940d0814b950bec3f5535491",
+  "unaccepted_capabilities": [
+    "GAP-007"
+  ],
+  "passed": true
+}
+Artifacts: /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/artifacts/upstream-sync
+PASS: Upstream sync required behavior
+Checking: Web module seams
+OK: 22 upstream module(s), 410 fork-only symbol(s), 0 findings
+PASS: Web module seams
+Checking: Desktop typecheck and build
+
+> cowagent-desktop@2.2.0 build
+> npm run typecheck && npm run build:renderer && npm run build:main
+
+
+> cowagent-desktop@2.2.0 typecheck
+> tsc --noEmit && tsc --noEmit -p tsconfig.main.json
+
+
+> cowagent-desktop@2.2.0 build:renderer
+> vite build
+
+vite v6.4.1 building for production...
+
+./vendor/fonts/inter/inter.css doesn't exist at build time, it will remain unchanged to be resolved at runtime
+
+./vendor/fontawesome/css/all.min.css doesn't exist at build time, it will remain unchanged to be resolved at runtime
+transforming...
+Browserslist: browsers data (caniuse-lite) is 7 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+✓ 2141 modules transformed.
+[plugin vite:reporter]
+(!) /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/desktop/src/renderer/src/store/sessionStore.ts is dynamically imported by /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/desktop/src/renderer/src/store/agentStore.ts but also statically imported by /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/desktop/src/renderer/src/App.tsx, /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/desktop/src/renderer/src/components/ChatTimeline.tsx, /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/desktop/src/renderer/src/components/ContextUsagePopover.tsx, /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/desktop/src/renderer/src/components/WorkspaceSelector.tsx, /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/desktop/src/renderer/src/hooks/usePushPoll.ts, /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/desktop/src/renderer/src/layout/SessionList.tsx, /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/desktop/src/renderer/src/lib/newChat.ts, /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/desktop/src/renderer/src/lib/taskNotify.ts, /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/desktop/src/renderer/src/pages/AgentsPage.tsx, /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/desktop/src/renderer/src/pages/ChatPage.tsx, /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/desktop/src/renderer/src/pages/settings/BasicSettings.tsx, /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/desktop/src/renderer/src/store/chatStore.ts, /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/desktop/src/renderer/src/store/sessionSettingsStore.ts, dynamic import will not move module into another chunk.
+
+rendering chunks...
+computing gzip size...
+../../dist/renderer/index.html                     1.61 kB │ gzip:   0.76 kB
+../../dist/renderer/assets/index-BUrjvxBb.css     56.81 kB │ gzip:  11.86 kB
+../../dist/renderer/assets/index-CkciFhkw.js   1,792.45 kB │ gzip: 562.95 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.50s
+
+> cowagent-desktop@2.2.0 build:main
+> tsc -p tsconfig.main.json
+
+PASS: Desktop typecheck and build
+Checking: Native Web container navigation and lifecycle
+Native parity artifact: /Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/artifacts/upstream-sync/native/native-results.json
+PASS: Native Web container navigation and lifecycle
+Checking: Web and Desktop behavior
+✔ tenant and platform views keep each value under its actual table header (10.736083ms)
+✔ loading, empty and failure rows span the visible columns after scope changes (0.864125ms)
+✔ user names are escaped and missing names do not display internal user IDs (0.350042ms)
+✔ an unprobed platform refuses rather than running unconfined (0.432708ms)
+✔ a linux build refuses too (0.042833ms)
+✔ no sandbox-exec on this mac means no script support (0.036666ms)
+✔ a missing interpreter means no script support, not a broken launch (0.043625ms)
+✔ a probed mac reports the real capabilities, not a generic claim (0.295542ms)
+✔ an unsupported platform describes the reason, not a capability (0.048625ms)
+✔ the profile denies by default and names only the granted roots (0.145708ms)
+✔ the profile keeps the allowances the probes proved are required (0.063042ms)
+✔ ancestors are traversable without being readable (0.102917ms)
+✔ the profile grants no network (0.064458ms)
+✔ a path that tries to inject a policy form is escaped, not embedded (0.058542ms)
+✔ the interpreter installation is readable but never writable (0.068917ms)
+✔ escapeSeatbeltPath escapes backslashes before quotes (0.04575ms)
+✔ the plan launches the worker through the sandbox, never directly (0.076917ms)
+✔ the plan refuses on a platform without a probed boundary (0.026458ms)
+✔ only what a tool needs is kept (0.066666ms)
+✔ credentials never survive, whatever their name looks like (0.029625ms)
+✔ the launcher cannot smuggle a secret in through its own additions (0.026167ms)
+✔ the temp directory is set from the grant, never inherited (0.031459ms)
+✔ a worker with no granted temp directory is not given a fake one (0.035ms)
+✔ a frame needs an id and an op (0.095333ms)
+✔ an oversized frame is refused by size, before parsing (0.225541ms)
+✔ encodeFrame emits exactly one line (0.029583ms)
+✔ a reply is validated as a reply, not as a request (0.065834ms)
+✔ a log line on the wire is not mistaken for a reply (0.041459ms)
+✔ the interpreter is found where the backend keeps it, or not at all (0.077ms)
+✔ an installed app runs the worker from its own bundle, not a virtualenv (0.10975ms)
+✔ a frozen probe asks the bundle itself, and reads only measured paths (0.129208ms)
+✔ a virtualenv probe reports the installation, not the symlink (0.054292ms)
+✔ a warning line before the probe JSON does not defeat the probe (0.025334ms)
+✔ an interpreter that cannot answer is a failure, not a guess (0.034917ms)
+✔ a broken interpreter is not re-probed on every call (0.063625ms)
+✔ a grant without an interpreter is refused, not run unconfined (0.071875ms)
+✔ the production seam names everything the worker needs to start (0.082834ms)
+✔ an installed app is confined with its bundle argv, not a module flag (0.076042ms)
+✔ A26: Python os.open on a dynamically built outside path is refused (278.588333ms)
+✔ A26: a symlink inside the project does not become a way out (389.995833ms)
+✔ A26: a grandchild subprocess inherits the same boundary (271.869583ms)
+✔ A26: project, temp directory and runtime still work normally (497.328ms)
+✔ A26: a temp file can actually be created inside the run (544.52225ms)
+✔ A27: no secret from the launcher environment reaches the worker (243.949875ms)
+✔ A27: identity data and main-process config outside the project are unreadable (351.334417ms)
+✔ A27: a skill cache is readable but cannot be modified (601.119833ms)
+✔ A27: the network is unreachable from inside the sandbox (294.539583ms)
+✔ A17: a non-zero exit is reported as the real exit code (354.9885ms)
+✔ A17: a large drain is truncated with a stated reason (257.782958ms)
+✔ A17: a background job started by a run does not outlive it (768.326541ms)
+✔ A17: a backgrounded child does not outlive the run (5570.633291ms)
+✔ A17: a script may signal its own children, and only its own (387.36275ms)
+✔ A17: a tool past its budget is stopped, not left running (3731.290083ms)
+✔ a confined worker reads and writes the project (196.042167ms)
+✔ a tool that failed is not reported as a broken worker (0.137916ms)
+✔ the sandbox, not a string check, blocks a write outside the project (470.373791ms)
+✔ a directory name cannot widen the sandbox, however hostile it is (297.387458ms)
+﹣ installed: the runtime comes from the bundle, and the build machine is not named (0.057542ms) # set COW_A26_BACKEND to a packaged resources/backend to run this
+﹣ installed: the frozen worker starts inside the sandbox and offers the master tools (0.064209ms) # set COW_A26_BACKEND to a packaged resources/backend to run this
+﹣ installed: the frozen worker writes and reads its project (0.013833ms) # set COW_A26_BACKEND to a packaged resources/backend to run this
+﹣ installed: the kernel, not the worker path guard, stops an escape (0.013125ms) # set COW_A26_BACKEND to a packaged resources/backend to run this
+﹣ installed: no launcher secret reaches the bundle side (0.011958ms) # set COW_A26_BACKEND to a packaged resources/backend to run this
+✔ a browser still gets the password form and no desktop entry (3.61825ms)
+✔ a container is shown the re-login entry instead of the password form (2.886083ms)
+✔ a password submitted in a container is refused, not turned into a split session (3.363583ms)
+✔ the desktop re-login ends the Web session first, the host second, and never reloads (3.281042ms)
+✔ a sign-out the host could not finish stays retryable and says why (2.9285ms)
+✔ a desktop build without the action is told to update, not signed in anyway (2.981083ms)
+✔ only session codes ask for a re-login; permission and tenant codes do not (2.818ms)
+✔ a lost login sends the page to the entry with the reason on it (2.829333ms)
+ℹ tests 70
+ℹ suites 0
+ℹ pass 65
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 5
+ℹ todo 0
+ℹ duration_ms 16526.400083
+PASS: Web and Desktop behavior
+Checking: Native environment diagnostic (not production acceptance)
+Native production environment: NOT VERIFIED / PREREQUISITE UNMET
+{"filesystem": true, "process_environment": false}
+PASS: Native environment diagnostic (not production acceptance)
+Linux image acceptance: NOT RUN (use --image IMAGE or --all IMAGE).
+Remote service / final installed Desktop package / target capacity: NOT RUN by this script.
+Instance recovery tests use synthetic offline data; real process-manager stop proof still requires the target environment.
+Windows desktop testing: deferred (environment unavailable).

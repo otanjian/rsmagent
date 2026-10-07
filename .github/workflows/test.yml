@@ -7,7 +7,7 @@ name: Tests
 
 on:
   push:
-    branches: [master]
+    branches: [master, rdai, main]
   pull_request:
 
 jobs:
@@ -72,3 +72,34 @@ jobs:
             exit 0
           fi
           ruff check $files --select F --ignore F403,F405
+
+  upstream-sync:
+    name: Upstream sync required behavior
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked browser and backend test dependencies
+        run: |
+          python -m pip install -r requirements.txt pytest pytest-subtests
+          npm --prefix tests/browser ci
+          tests/browser/node_modules/.bin/playwright install --with-deps chromium
+      - name: Run actual-entry and required behavior checks
+        env:
+          NODE_PATH: ${{ github.workspace }}/tests/browser/node_modules
+          UPSTREAM_SYNC_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python scripts/check-upstream-sync.py --output artifacts/upstream-sync
+      - name: Preserve same-candidate results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-sync
+          path: artifacts/upstream-sync
+          if-no-files-found: error

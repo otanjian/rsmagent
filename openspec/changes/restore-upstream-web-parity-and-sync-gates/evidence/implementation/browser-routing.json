@@ -1,0 +1,1545 @@
+{
+  "scenarios": [
+    {
+      "name": "parity: two browser windows atomically claim one terminal run",
+      "passed": true,
+      "durationMs": 1843
+    },
+    {
+      "name": "parity: member model route renders the granted catalog",
+      "passed": true,
+      "durationMs": 920
+    },
+    {
+      "name": "parity: deep paths survive refresh and back",
+      "passed": true,
+      "durationMs": 1759
+    },
+    {
+      "name": "parity: legacy links and cancelled leave preserve the target",
+      "passed": true,
+      "durationMs": 957
+    },
+    {
+      "name": "parity: empty docs/graph and independent sources",
+      "passed": true,
+      "durationMs": 1214
+    },
+    {
+      "name": "parity: delayed lists preserve graph and sources selection",
+      "passed": true,
+      "durationMs": 1046
+    },
+    {
+      "name": "parity: knowledge failures offer a working retry",
+      "passed": true,
+      "durationMs": 1051
+    },
+    {
+      "name": "parity: slight upward scroll pauses streaming and explicit bottom resumes",
+      "passed": true,
+      "durationMs": 985
+    },
+    {
+      "name": "parity: message wrapping and local overflow (light)",
+      "passed": true,
+      "durationMs": 947
+    },
+    {
+      "name": "parity: message wrapping and local overflow (dark)",
+      "passed": true,
+      "durationMs": 950
+    },
+    {
+      "name": "desktop: the Agent search filters its own menu, not the document search",
+      "passed": true,
+      "durationMs": 1002
+    },
+    {
+      "name": "desktop, dark: a CJK query with no match says so instead of an empty menu",
+      "passed": true,
+      "durationMs": 984
+    },
+    {
+      "name": "desktop: the sources tab is a closed loop of list, detail and upload",
+      "passed": true,
+      "durationMs": 1171
+    },
+    {
+      "name": "narrow: the sources loop still works on a phone-width viewport",
+      "passed": true,
+      "durationMs": 1111
+    }
+  ],
+  "pageErrors": [],
+  "unexpectedRoutes": [],
+  "requests": [
+    {
+      "pathname": "/chat",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_142a871e-1d19-4e99-bd74-0fdcd6d5733a&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_142a871e-1d19-4e99-bd74-0fdcd6d5733a/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_142a871e-1d19-4e99-bd74-0fdcd6d5733a&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/read",
+      "query": "?path=MEMORY.md&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/knowledge",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_142a871e-1d19-4e99-bd74-0fdcd6d5733a&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_142a871e-1d19-4e99-bd74-0fdcd6d5733a/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_142a871e-1d19-4e99-bd74-0fdcd6d5733a&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/read",
+      "query": "?path=MEMORY.md&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/settings/models",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_c7801a05-f1dc-4f4d-a8f0-fb60a2986766&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_c7801a05-f1dc-4f4d-a8f0-fb60a2986766/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_c7801a05-f1dc-4f4d-a8f0-fb60a2986766&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/tenant/authorization/catalog",
+      "query": "?kind=model&purpose=use&page_size=200&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/tenant/authorization/catalog",
+      "query": "?kind=model&purpose=use&page_size=200&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/knowledge/graph",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_4ff7fb29-f829-4f90-be03-d31c28d50dc7&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_4ff7fb29-f829-4f90-be03-d31c28d50dc7/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_4ff7fb29-f829-4f90-be03-d31c28d50dc7&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/graph",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/read",
+      "query": "?path=MEMORY.md&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/knowledge/graph",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_4ff7fb29-f829-4f90-be03-d31c28d50dc7&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_4ff7fb29-f829-4f90-be03-d31c28d50dc7/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_4ff7fb29-f829-4f90-be03-d31c28d50dc7&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/graph",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/read",
+      "query": "?path=MEMORY.md&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/graph",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/read",
+      "query": "?path=MEMORY.md&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/chat",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_50629eb6-a716-47ba-81a9-22a10427eb20&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_50629eb6-a716-47ba-81a9-22a10427eb20/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_50629eb6-a716-47ba-81a9-22a10427eb20&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/sources",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/read",
+      "query": "?path=MEMORY.md&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/chat",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_42046b3f-506f-409b-9c12-a0904828b707&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_42046b3f-506f-409b-9c12-a0904828b707/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_42046b3f-506f-409b-9c12-a0904828b707&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/read",
+      "query": "?path=MEMORY.md&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/sources",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/chat",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_9883f2ed-1558-4399-8545-c6d117f64752&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_9883f2ed-1558-4399-8545-c6d117f64752/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_9883f2ed-1558-4399-8545-c6d117f64752&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/read",
+      "query": "?path=MEMORY.md&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/graph",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/sources",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/chat",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_f0b6a73a-22b2-4096-9b05-238727544f62&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_f0b6a73a-22b2-4096-9b05-238727544f62/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_f0b6a73a-22b2-4096-9b05-238727544f62&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/read",
+      "query": "?path=MEMORY.md&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/read",
+      "query": "?path=MEMORY.md&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/chat",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_23891394-eb1e-4025-be04-455aa5705f38&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_23891394-eb1e-4025-be04-455aa5705f38/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_23891394-eb1e-4025-be04-455aa5705f38&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/read",
+      "query": "?path=MEMORY.md&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_365f7161-8c4a-48ca-b7ff-b6cdb2e5b42c&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_365f7161-8c4a-48ca-b7ff-b6cdb2e5b42c/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/chat",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_de35d729-6897-4409-ab53-d02617e524e7&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_de35d729-6897-4409-ab53-d02617e524e7/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_de35d729-6897-4409-ab53-d02617e524e7&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/chat",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_fe4b6673-c0b2-4fdd-9e97-47c863685acc&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_fe4b6673-c0b2-4fdd-9e97-47c863685acc/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_fe4b6673-c0b2-4fdd-9e97-47c863685acc&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/chat",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_fb56ad2b-d6a2-4db9-830d-6f2e7147f0b3&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_fb56ad2b-d6a2-4db9-830d-6f2e7147f0b3/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_fb56ad2b-d6a2-4db9-830d-6f2e7147f0b3&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/read",
+      "query": "?path=MEMORY.md&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/chat",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_7b88854a-9406-4a47-b3f3-3a41f5993af0&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_7b88854a-9406-4a47-b3f3-3a41f5993af0/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_7b88854a-9406-4a47-b3f3-3a41f5993af0&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/read",
+      "query": "?path=MEMORY.md&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/chat",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_56eb8105-87d7-4d0f-83b4-21a7c80050a1&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_56eb8105-87d7-4d0f-83b4-21a7c80050a1/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_56eb8105-87d7-4d0f-83b4-21a7c80050a1&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/read",
+      "query": "?path=MEMORY.md&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/sources",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/sources/detail",
+      "query": "?source_id=src-2&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/chat",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_eccd80d4-ccf0-49f2-a705-830e651d4c8d&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_eccd80d4-ccf0-49f2-a705-830e651d4c8d/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_eccd80d4-ccf0-49f2-a705-830e651d4c8d&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/sources",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/sources/detail",
+      "query": "?source_id=src-1&agent_id=agent-a",
+      "method": "GET"
+    }
+  ],
+  "currentScenario": "narrow: the sources loop still works on a phone-width viewport",
+  "scenarioBase": 275
+}

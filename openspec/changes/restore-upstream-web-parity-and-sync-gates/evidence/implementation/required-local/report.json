@@ -1,0 +1,20 @@
+{
+  "scope": "required-local-behavior",
+  "production_acceptance": false,
+  "candidate_digest": "44a370ab36f1bb8b9e2636401a7fb8ec9a6fb98d940d0814b950bec3f5535491",
+  "source_sha": "48c0d79c36146950667f8d1884ab823deae62305",
+  "layers": {
+    "ledger": [],
+    "source-history": [],
+    "actual-entry-dependencies": [],
+    "check-route-coverage.py": [],
+    "check-web-module-seams.py": [],
+    "required-cases": [],
+    "candidate-stability": []
+  },
+  "ending_digest": "44a370ab36f1bb8b9e2636401a7fb8ec9a6fb98d940d0814b950bec3f5535491",
+  "unaccepted_capabilities": [
+    "GAP-007"
+  ],
+  "passed": true
+}
