@@ -19,7 +19,7 @@ const fragment = read('channel/web/static/fragments/appearance-dialog.html');
 
 test('chat.html keeps the appearance dialog mount point and drops the inline markup', () => {
     assert.match(chatHtml,
-        /<dialog id="appearance-dialog" aria-labelledby="appearance-title" aria-describedby="appearance-scope"[\s\S]{0,200}?data-fork-fragment="assets\/fragments\/appearance-dialog\.html"><\/dialog>/);
+        /<dialog id="appearance-dialog" aria-labelledby="appearance-title" aria-describedby="appearance-scope"[\s\S]{0,200}?data-fork-fragment="\/assets\/fragments\/appearance-dialog\.html"><\/dialog>/);
     // The fork-only inner markup must no longer be inlined in the core file.
     assert.doesNotMatch(chatHtml, /id="appearance-options"/);
     assert.doesNotMatch(chatHtml, /name="web-palette"/);
@@ -72,7 +72,7 @@ test('the server stamps the fragment loader and the fragment markup', () => {
     // The end-to-end half -- both URLs carry a stamp in the served page -- is
     // asserted where the handler can be driven: test_doc_edit.py.
     const server = readWebLayer();
-    assert.match(chatHtml, /<script defer src="assets\/js\/fragments\.js"><\/script>/,
+    assert.match(chatHtml, /<script defer src="\/?assets\/js\/fragments\.js"><\/script>/,
         'the loader must stay a first-party script reference for render() to stamp');
     assert.match(server, /fragments_dir = os\.path\.join\([^\n]*'static', 'fragments'\)/,
         'static/fragments must be discovered so its markup is stamped');

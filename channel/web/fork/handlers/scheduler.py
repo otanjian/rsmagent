@@ -9,7 +9,7 @@ reference each other without import cycles.
 from __future__ import annotations
 from bridge.context import *
 from common.log import logger
-from typing import Any, Dict, List, Tuple, Optional, Iterator, NoReturn
+from typing import Dict, List, Optional
 import datetime
 import json
 import os
@@ -270,7 +270,7 @@ def _scheduler_access(ctx=None) -> "TaskAccessService":
     """
     from channel.web.fork.common import _web_auth_session_id
     from agent.tools.scheduler.authorization import (
-        TaskActor, TaskAccessService, actor_from_identity_context,
+        TaskAccessService, actor_from_identity_context,
     )
 
     if ctx is not None:
@@ -440,7 +440,7 @@ class SchedulerUpdateHandler:
         from channel.web.fork.runtime import _request_agent_id
         web.header('Content-Type', 'application/json; charset=utf-8')
         from agent.tools.scheduler.authorization import (
-            FORGED_FIELD, TaskAuthorizationError,
+            TaskAuthorizationError,
         )
         try:
             body = json.loads(web.data())
@@ -870,7 +870,18 @@ class SchedulerRunsHandler:
         from agent.tools.scheduler.authorization import TaskAuthorizationError
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            params = web.input(agent_id='', task_id='', limit='', offset='', since='')
+            params = web.input(agent_id='', task_id='', limit='', offset='', since='',
+                               mode='', cursor='')
+            if params.mode == 'notifications':
+                if any(str(getattr(params, key, '') or '') for key in ('agent_id', 'task_id', 'offset', 'since')):
+                    raise _scheduler_error(TaskAuthorizationError('invalid_query', status=400))
+                after = None if params.cursor == '' else _scheduler_run_int_param(params, 'cursor', 0, minimum=0)
+                limit = _scheduler_run_int_param(params, 'limit', 100, minimum=1, maximum=500)
+                with _db_scope() as ctx:
+                    body = _scheduler_run_access(ctx).notifications(after, limit)
+                return json.dumps(body, ensure_ascii=False)
+            if params.mode:
+                raise _scheduler_error(TaskAuthorizationError('invalid_query', status=400))
             query = RunQuery(
                 # An empty agent_id is the *aggregate* of what the caller may
                 # see -- never a global, unscoped read and never the default
@@ -971,5 +982,4 @@ def _scheduler_run_since(params) -> Optional[int]:
     if raw is None or (isinstance(raw, str) and not raw.strip()):
         return None
     return _scheduler_run_int_param(params, "since", None, minimum=0)
-
 

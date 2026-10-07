@@ -46,6 +46,12 @@ function seededEl() {
 function setup(payload, authCtx) {
     const nodes = new Map();
     const ctx = {
+        _authEpoch: 1,
+        sessionStorage: { getItem: () => 'tenant-one' },
+        window: { innerWidth: 500 },
+        _knowledgeSourceItems: [],
+        loadKnowledgeGraph() { ctx.graphLoads = (ctx.graphLoads || 0) + 1; },
+        loadKnowledgeSources() {}, stopKnowledgeSourcePolling() {},
         currentLang: 'zh',
         t: key => key, // identity; assert on the raw key so it is locale-agnostic
         escapeHtml: x => String(x),
@@ -63,6 +69,7 @@ function setup(payload, authCtx) {
         knowledgeSourcesOnLibraryChange: () => {},
         _baseAuthContext: () => authCtx || null,
         document: {
+            querySelectorAll: () => [],
             getElementById(id) {
                 // The Agent selector returns null so renderKnowledgeAgentSelect
                 // short-circuits (dropdown init is not under test here).
@@ -81,10 +88,54 @@ function setup(payload, authCtx) {
     const to = source.indexOf('function _hasFilterMatch');
     assert.ok(from >= 0 && to > from, 'knowledge section not found');
     vm.runInContext(source.slice(from, to), ctx);
+    vm.runInContext(source.slice(source.indexOf('function _setKnowledgePanelHidden('),
+        source.indexOf('function knowledgeMobileBack(')), ctx);
     return { ctx, get: id => ctx.document.getElementById(id) };
 }
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
+
+test('empty knowledge keeps docs and graph hidden but preserves the sources panel', async () => {
+    const h = setup({ status: 'success', tree: [], root_files: [], stats: { pages: 0, size: 0 } });
+    h.ctx.loadKnowledgeView(); await flush();
+    h.ctx.switchKnowledgeTab('graph');
+    for (const panel of ['docs', 'graph']) assert.equal(h.get('knowledge-panel-' + panel).classList.contains('hidden'), true);
+    assert.equal(h.get('knowledge-empty').classList.contains('hidden'), false);
+    assert.equal(h.ctx.graphLoads || 0, 0);
+    h.ctx.switchKnowledgeTab('sources');
+    assert.equal(h.get('knowledge-panel-sources').classList.contains('hidden'), false);
+    assert.equal(h.get('knowledge-empty').classList.contains('hidden'), true);
+});
+
+test('late list respects the currently selected panel', async () => {
+    for (const tab of ['graph', 'sources']) {
+        const h = setup({}); let resolve;
+        h.ctx.fetch = () => new Promise(yes => { resolve = yes; });
+        h.ctx.loadKnowledgeView(); h.ctx.switchKnowledgeTab(tab);
+        resolve({ json: async () => ({ status: 'success', tree: [], root_files: [], stats: { pages: 1, size: 10 } }) });
+        await flush();
+        assert.equal(h.get('knowledge-panel-docs').classList.contains('hidden'), true);
+        assert.equal(h.get('knowledge-panel-' + tab).classList.contains('hidden'), false);
+    }
+});
+
+test('stale knowledge responses cannot overwrite a new identity or library', async () => {
+    for (const change of [h => h.ctx._authEpoch++, h => h.ctx.sessionStorage.getItem = () => 'tenant-two',
+        h => h.ctx.activeAgentId = 'another-agent']) {
+        const h = setup({}); let resolve;
+        h.ctx.fetch = () => new Promise(yes => { resolve = yes; });
+        h.ctx.loadKnowledgeView(); change(h);
+        resolve({ json: async () => ({ status: 'success', stats: { pages: 9, size: 10 } }) }); await flush();
+        assert.equal(h.get('knowledge-stats').textContent, '');
+        assert.equal(h.get('knowledge-panel-docs').classList.contains('hidden'), true);
+    }
+});
+
+test('failed knowledge transport presents an error instead of leaving a loading placeholder', async () => {
+    const h = setup({}); h.ctx.fetch = async () => { throw new Error('offline'); };
+    h.ctx.loadKnowledgeView(); await flush();
+    assert.equal(h.get('knowledge-empty')._lines[0].textContent, 'knowledge_unavailable');
+});
 
 test('a closed/database-unavailable consumer surfaces a readable reason instead of hanging', async () => {
     const { ctx, get } = setup({

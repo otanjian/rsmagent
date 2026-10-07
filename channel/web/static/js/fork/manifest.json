@@ -16,5 +16,26 @@
     "upstream_path": "channel/web/static/js/views/sessions.js",
     "upstream_commit": "48c0d79c36146950667f8d1884ab823deae62305",
     "upstream_sha256": "8a54b38ba7a8d81c3d88181249071fd5649a47514a2300e9071f670a342ac2ad"
+  },
+  "fork/router.js": {
+    "upstream_path": "channel/web/static/js/core/router.js",
+    "upstream_commit": "48c0d79c36146950667f8d1884ab823deae62305",
+    "upstream_sha256": "31ed3fd5cd9d7d10eab5064a259ec477abd265def934427c7bdbaad62a3b0226",
+    "entrypoint": "channel/web/chat.html",
+    "mapping_evidence": "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md"
+  },
+  "fork/scheduler-notifications.js": {
+    "upstream_path": "channel/web/static/js/chat/scheduler-notify.js",
+    "upstream_commit": "48c0d79c36146950667f8d1884ab823deae62305",
+    "upstream_sha256": "3d7c8a830b21098f44bface90b309f8894e613d8343f66981ff92ff9c649c7cb",
+    "entrypoint": "channel/web/chat.html",
+    "mapping_evidence": "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md"
+  },
+  "fork/source-update.js": {
+    "upstream_path": "channel/web/static/js/core/version.js",
+    "upstream_commit": "48c0d79c36146950667f8d1884ab823deae62305",
+    "upstream_sha256": "2dfaa72447b9d896cbf9d46d496883b59d14a07d8ff34a58c67df039ee75cc6f",
+    "entrypoint": "channel/web/chat.html",
+    "mapping_evidence": "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/source-update.md"
   }
 }

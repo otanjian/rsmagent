@@ -16,7 +16,7 @@
     'use strict';
 
     // ---- 确保 registry 与工作台渲染器已加载（``chat.html`` 仅引入本文件） --
-    const SCENES_BASE = 'assets/js/scenes';
+    const SCENES_BASE = '/assets/js/scenes';
     let _registryReady = Promise.resolve();
     function ensureRegistry() {
         if (window.ScenesRegistry) return Promise.resolve(window.ScenesRegistry);

@@ -129,6 +129,14 @@ class RunAccessService:
             "history_scope": HISTORY_SCOPE,
         }
 
+    def notifications(self, after: Optional[int], limit: int = 100) -> Dict[str, Any]:
+        actor = self._actor_resolver()
+        self._require_member(actor)
+        page = self._repository.notifications(self._grant(actor, ACTION_VIEW), after, limit)
+        return {"status": "success", "history_scope": HISTORY_SCOPE, **page,
+                "runs": [{**_project_run(row), "terminal_sequence": row["terminal_sequence"]}
+                         for row in page["runs"]]}
+
     def get_run(self, run_id: str) -> Dict[str, Any]:
         """One authorized run's preview, with ``full_output`` left for the caller.
 

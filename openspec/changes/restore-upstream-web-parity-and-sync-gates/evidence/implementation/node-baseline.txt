@@ -1,0 +1,125 @@
+✔ the Agent modal scrolls its body instead of overflowing the viewport (0.893583ms)
+✔ the action row and the title stay put while the fields scroll (0.459583ms)
+✔ the scrolling body does not trap an opened dropdown menu (1.8525ms)
+✔ catalog saves overrides without freezing untouched presets (0.891625ms)
+✔ fallback payload keeps order, exact provider ids and rejects bad input (0.560916ms)
+✔ chain reorder survives a save/reload round-trip through mountFallback (1.164833ms)
+✔ disabling the fallback keeps every node (0.413125ms)
+✔ editing a preset writes an override that preserves un-edited fields (0.375042ms)
+✔ delete preset tombstones it; restore un-hides; delete added drops only the override (0.441417ms)
+✔ restore default clears both overrides and hidden (0.286ms)
+✔ rename is delete-old plus add-new (0.369875ms)
+✔ catalog rejects duplicate names, bad limits and unknown capabilities (0.371209ms)
+✔ catalog payload keeps custom provider ids and hidden tombstones (0.338958ms)
+✔ a failed save keeps the catalog draft and surfaces the error (1.127542ms)
+✔ a failed fallback save keeps the chain and surfaces the error (0.388459ms)
+✔ escapeHtml neutralizes markup (0.24425ms)
+✔ mount renderers never turn model/provider data into markup (0.859958ms)
+✔ every new editor string exists in zh, zh-Hant and en (4.7385ms)
+[sendMessage] attempt 1 failed, retrying... ReferenceError: _patchHistoryCache is not defined
+    at _touchHistorySession (evalmachine.<anonymous>:31:5)
+    at evalmachine.<anonymous>:88:21
+✖ text and voice save acknowledgements refresh history before any model event (4.695959ms)
+[sendMessage] attempt 1 failed, retrying... ReferenceError: _patchHistoryCache is not defined
+    at _touchHistorySession (evalmachine.<anonymous>:31:5)
+    at evalmachine.<anonymous>:88:21
+✔ inline control replies, failed saves and empty sends never claim saved history (3.051916ms)
+✔ preparing an unsent new chat does not write an empty record or prepend a sidebar row (1.194167ms)
+✖ later replies refresh history without generating another first title (0.9345ms)
+✖ foreground completion and title success patch the visible row without reloading (0.791458ms)
+✖ background completion uses original owner and leaves the visible chat and draft alone (0.820333ms)
+✖ switch back rebuilds the real stream, retaining the first title and consuming it once (1.171917ms)
+✖ a late send acknowledgement retains original session ownership after switching Agent (2.135541ms)
+✔ old identity callbacks cannot refresh or submit titles under the new identity (4.565375ms)
+✔ poll replies do not reload history, while empty and stale polls still skip work (2.375917ms)
+✔ explicit new chat opens the shared panel and adds a temporary row; automatic fallback does not (0.918625ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 23
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 55.34375
+
+✖ failing tests:
+
+test at tests/test_session_history_refresh_frontend.cjs:67:1
+✖ text and voice save acknowledgements refresh history before any model event (4.695959ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  0 !== 1
+
+      at TestContext.<anonymous> (/Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/tests/test_session_history_refresh_frontend.cjs:77:16)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/test_session_history_refresh_frontend.cjs:109:1
+✖ later replies refresh history without generating another first title (0.9345ms)
+  ReferenceError: _patchHistoryCache is not defined
+      at _touchHistorySession (evalmachine.<anonymous>:31:5)
+      at es.onmessage (evalmachine.<anonymous>:813:17)
+      at EventSource.emit (/Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/tests/test_session_history_refresh_frontend.cjs:53:31)
+      at TestContext.<anonymous> (/Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/tests/test_session_history_refresh_frontend.cjs:111:18)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+
+test at tests/test_session_history_refresh_frontend.cjs:115:1
+✖ foreground completion and title success patch the visible row without reloading (0.791458ms)
+  ReferenceError: _patchHistoryCache is not defined
+      at _touchHistorySession (evalmachine.<anonymous>:31:5)
+      at es.onmessage (evalmachine.<anonymous>:813:17)
+      at EventSource.emit (/Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/tests/test_session_history_refresh_frontend.cjs:53:31)
+      at TestContext.<anonymous> (/Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/tests/test_session_history_refresh_frontend.cjs:119:18)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+
+test at tests/test_session_history_refresh_frontend.cjs:127:1
+✖ background completion uses original owner and leaves the visible chat and draft alone (0.820333ms)
+  ReferenceError: _patchHistoryCache is not defined
+      at _touchHistorySession (evalmachine.<anonymous>:31:5)
+      at es.onmessage (evalmachine.<anonymous>:813:17)
+      at EventSource.emit (/Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/tests/test_session_history_refresh_frontend.cjs:53:31)
+      at TestContext.<anonymous> (/Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/tests/test_session_history_refresh_frontend.cjs:131:18)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+
+test at tests/test_session_history_refresh_frontend.cjs:141:1
+✖ switch back rebuilds the real stream, retaining the first title and consuming it once (1.171917ms)
+  ReferenceError: _patchHistoryCache is not defined
+      at _touchHistorySession (evalmachine.<anonymous>:31:5)
+      at es.onmessage (evalmachine.<anonymous>:813:17)
+      at EventSource.emit (/Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/tests/test_session_history_refresh_frontend.cjs:53:31)
+      at TestContext.<anonymous> (/Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/tests/test_session_history_refresh_frontend.cjs:150:18)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+
+test at tests/test_session_history_refresh_frontend.cjs:159:1
+✖ a late send acknowledgement retains original session ownership after switching Agent (2.135541ms)
+  TypeError: Cannot read properties of undefined (reading 'ownerContext')
+      at TestContext.<anonymous> (/Users/jiantan/.codex/worktrees/restore-upstream-web-parity/rsmagent/tests/test_session_history_refresh_frontend.cjs:166:41)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7)

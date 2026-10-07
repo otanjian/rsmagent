@@ -822,7 +822,6 @@ class ConversationStore:
             conn = self._connect()
             try:
                 with conn:
-                    aid = self._agent_id
                     if not create_if_missing:
                         exists = conn.execute(
                             f"SELECT 1 FROM sessions WHERE session_id = ?{scope_sql}",
@@ -2713,6 +2712,11 @@ class ConversationStore:
         try:
             self._retire_incompatible_runs_table(conn)
             conn.executescript(_RUNS_DDL)
+            # Additive migration: the original runs ledger remains authoritative.
+            # Triggers also cover an older writer after a code rollback. A clock
+            # separate from MAX(row) survives deletion of the newest record.
+            from agent.tools.scheduler.terminal_order import ensure_terminal_order
+            ensure_terminal_order(conn)
             conn.commit()
             self._runs_ready = True
         except Exception as e:
