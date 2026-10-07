@@ -34,6 +34,7 @@ PROFILES: Dict[str, Tuple[Dict[str, str], ...]] = {
     "sap_workbench": (
         {"permission": "sap_transaction_open", "pattern": "*", "action": "allow"},
         {"permission": "sap_data_call", "pattern": "*", "action": "allow"},
+        {"permission": "sap_page_read", "pattern": "*", "action": "allow"},
     ),
 }
 

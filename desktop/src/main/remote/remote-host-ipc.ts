@@ -38,6 +38,7 @@ import { installationIdentityFor } from '../installation-identity'
 import { remoteGrantRegistry } from './local-files-bridge'
 import { confirmLocalContext, type BindingTransport } from './binding-setup'
 import type { GrantScope } from '../local-files/grants'
+import { readSapPage, type ReadContext, type ReadRequest } from './sap-page-read'
 
 /**
  * One selection state machine for the process. State is keyed by scope inside it,
@@ -53,6 +54,9 @@ export const CHANNEL_EVENT = 'desktop:bridge:event'
 /** What the main process knows about the live container. */
 export interface RemoteHostRegistration {
   webContents: WebContents
+  sapReadContext?: (request: ReadRequest) => Promise<ReadContext>
+  sapLayout?: (params: Record<string, unknown>) => object
+  sapLogin?: (binding: string, action: string, tenant: string) => Promise<object>
   /**
    * Read at call time, never captured: the registered frame ids only exist
    * after the first navigation commits, and the generation changes on every
@@ -279,12 +283,44 @@ async function dispatch(
       // the full allow-list is still validated by checkBridgeCall.
       return {
         ok: true,
-        data: bridgeCapabilitiesPayload({
+        data: { ...bridgeCapabilitiesPayload({
           bridge: BRIDGE_VERSION,
           generation: context.generation,
           saveAsApproval: saveAsApprovalApplicability(),
-        }),
+        }), sapPageRead: process.platform === 'darwin' && Boolean(current.sapReadContext),
+          sapLoginMemory: process.platform === 'darwin' && Boolean(current.sapLogin) },
       }
+    case 'sapWorkbenchLayout':
+      return current.sapLayout ? {ok: true, data: current.sapLayout(params)} : refusal('feature_unavailable', 'Layout preferences are unavailable')
+    case 'manageSapLogin': {
+      if (!current.sapLogin || process.platform !== 'darwin') return refusal('sap_login_unavailable', 'SAP login memory is unavailable')
+      const broker = status()
+      if (!broker.session || broker.blockedReason) return signInRequired()
+      try {
+        const data = await current.sapLogin(String(params.binding_id), String(params.action), String(params.tenant_id))
+        if (registration !== current || current.context().generation !== context.generation || status().session?.userId !== broker.session.userId) return refusal('stale_context', 'the workbench changed')
+        return {ok:true, data}
+      } catch (error) {
+        const code = (error as {code?: string}).code
+        return refusal(code === 'sap_keychain_unavailable' ? code : 'sap_login_unavailable', 'SAP login memory is unavailable')
+      }
+    }
+    case 'readSapPage': {
+      if (!current.sapReadContext || process.platform !== 'darwin') return refusal('page_read_unsupported', 'macOS page reading is unavailable')
+      const broker = status()
+      if (!broker.session || broker.blockedReason) return signInRequired()
+      const request = params as ReadRequest
+      try {
+        const data = await readSapPage(current.webContents, request, () => current.sapReadContext!(request))
+        if (registration !== current || current.context().generation !== context.generation || status().session?.epoch !== broker.session.epoch) {
+          return refusal('page_changed', 'the workbench changed during reading')
+        }
+        return {ok: true, data}
+      } catch (error) {
+        const code = (error as {code?: string}).code
+        return refusal(code && ['login_required', 'page_changed', 'page_read_unsupported', 'page_read_unavailable', 'result_too_large'].includes(code) ? code : 'extract_failed', 'SAP page reading did not complete')
+      }
+    }
     case 'signOut': {
       // The one account action the container owns. It runs the host's existing
       // detach/logout (single-flighted there, so a second call merges rather

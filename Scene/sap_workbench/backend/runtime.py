@@ -194,6 +194,8 @@ class WorkbenchRuntime:
         self.tasks = {}
         from .navigation import IframeNavigation
         self.navigation = IframeNavigation(self)
+        from .page_read import DesktopPageRead
+        self.page_read = DesktopPageRead(self)
         self.last_active = time.monotonic()
         self.closed = False
         self._close_task = None
@@ -479,6 +481,7 @@ class WorkbenchRuntime:
             return {'binding_id': self.id, 'remote_session_id': self.remote,
                     'coding_session_id': self.coding_session, 'agent_id': self.agent_id,
                     'display_mode': 'iframe',
+                    'desktop_sap_page_read_enabled': self.config.get('desktop_sap_page_read_enabled', False),
                     'sap_url': self.config['sap']['web_gui_url'], 'gui_automation': False, 'control': 'manual'}
         grant = self.boot.issue(self.tenant, self.user, origin=self.origin)
         view = self.views.issue(self.tenant, self.user, origin=self.origin, url=self.config['sap']['web_gui_url'])
@@ -640,6 +643,21 @@ class WorkbenchRuntime:
         result = await self.dispatch('transaction_open', {'transaction': transaction}, call)
         return result if isinstance(result, web.Response) else {'output': result}
 
+    async def read_page(self, call):
+        if self.display_mode != 'iframe':
+            raise WorkbenchError('page_read_unsupported', 409)
+        result = await self.dispatch('read', {}, call)
+        return {'output': result}
+
+    async def attach_coding_session(self, source_id, link):
+        await self.authorize()
+        row = self.store.attach_coding_session(self.tenant, self.user, self.id, source_id, link)
+        if row['generation'] != self.row['generation']:
+            self.page_read.cancel('page_changed')
+            self.navigation.close()
+        self.row, self.remote = row, row['remote_session_id']
+        self.coding_session = row['coding_session_id']
+
     async def data_call(self, connection, tool, arguments, call):
         """Owner-resolved business-data entry for the project-plugin channel.
 
@@ -661,10 +679,16 @@ class WorkbenchRuntime:
         credential) is the caller's job; ownership is re-derived here."""
         from auth.service import get_identity_service
         await self.authorize()
-        if self.display_mode == 'iframe' and action not in BACKEND_ACTIONS | {'transaction_open'}:
+        if self.display_mode == 'iframe' and action not in BACKEND_ACTIONS | {'transaction_open', 'read'}:
             raise WorkbenchError('iframe_page_control_unavailable', 409)
         if action == 'transaction_open' and self.display_mode != 'iframe':
             raise WorkbenchError('iframe_navigation_unavailable', 409)
+        desktop_read = self.display_mode == 'iframe' and action == 'read'
+        read_context = (self.row['generation'], self.remote) if desktop_read else None
+        if desktop_read:
+            if arguments:
+                raise WorkbenchError('invalid_request', 400)
+            self.page_read._current()
         if action in COMMIT_ACTIONS:
             return await self.commit_bridge({'action': action, 'input': arguments, 'call_id': call})
         if self.display_mode != 'iframe' and (not self.controller or not self.lease or not self.lease._node.attached):
@@ -706,7 +730,9 @@ class WorkbenchRuntime:
             # but never leave an unexecuted action recorded as running.
             self.store.finish_action(record, 'failed')
             raise
-        if action == 'transaction_open':
+        if desktop_read:
+            operation = self.page_read.read(arguments)
+        elif action == 'transaction_open':
             operation = self.navigation.open(arguments)
         elif action == 'purchase_order_read':
             from .purchase_order import PurchaseOrderReader
@@ -725,7 +751,9 @@ class WorkbenchRuntime:
         try:
             result = await task
             await self.authorize()
-            if action not in BACKEND_ACTIONS and action != 'transaction_open':
+            if desktop_read and read_context != (self.row['generation'], self.remote):
+                raise WorkbenchError('page_changed', 409)
+            if action not in BACKEND_ACTIONS and action != 'transaction_open' and not desktop_read:
                 result = model_observation(result, arguments if action in {'read', 'fill'} else {})
             output = json.dumps(result, ensure_ascii=False, allow_nan=False)
             # Complete private table reads are never clipped into a partial
@@ -1080,6 +1108,7 @@ class WorkbenchRuntime:
     async def _cleanup(self):
         from common.log import logger
         self.navigation.close()
+        self.page_read.close()
         self.owned_children()
         if self.controller:
             with suppress(Exception):

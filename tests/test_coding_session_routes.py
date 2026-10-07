@@ -378,6 +378,49 @@ def test_a_fork_inside_opencode_joins_the_callers_history(web):
         created["session_id"], body["session_id"]}
 
 
+def test_sap_attach_moves_only_the_members_verified_scene_binding(web, monkeypatch):
+    import asyncio
+    from pathlib import Path
+    from copy import deepcopy
+    from types import SimpleNamespace
+    from Scene.sap_workbench.backend.configuration import DEFAULT_CONFIG
+    from Scene.sap_workbench.backend.store import WorkbenchStore
+    from Scene.sap_workbench.backend.runtime import WorkbenchRuntime
+    token = _member_with_coding_access(web, 'alice')
+    created = _create(web, token)
+    config = deepcopy(DEFAULT_CONFIG)
+    config.update(enabled=True, coding_agent_id='erp-coder', desktop_sap_page_read_enabled=True)
+    config['sap']['web_gui_url'] = 'https://sap.example.test/webgui'
+    config['sap']['allowed_origins'] = ['https://sap.example.test']
+    saved = _json(web.put('/api/scenes/sap-workbench/config', {'version':0,'config':config}, token=web.login('root')))
+    store = WorkbenchStore(Path(web.data_root)/'scenes/sap_workbench.sqlite3')
+    row = store.reserve_session(web.tenant_id,web.user_id('alice'),'erp-coder','attach-read-test',
+        saved,web.project_dir,display_mode='iframe',coding={**created,'service_id':'default'})
+    runtime = WorkbenchRuntime(SimpleNamespace(),store,row,token,'http://localhost')
+    class Gateway:
+        runtimes = {row['id']:runtime}
+        def submit(self, coroutine, timeout=90): return asyncio.run(coroutine)
+    monkeypatch.setattr('Scene.sap_workbench.browser_service.runner.browser_gateway',Gateway())
+    external = _remote_session(web)
+    body = {'agent_id':'erp-coder','source_session_id':created['session_id'],
+            'external_session_id':external,'scene_binding_id':row['id'],'permission_profile':'sap_workbench'}
+    response = web.post('/api/coding/sessions/attach',body,token=token)
+    assert _status(response)==200, response.data
+    assert store.binding_for_session(external)['id']==row['id']
+    assert runtime.remote==external
+    assert store.binding_for_session(created['external_session_id']) is None
+    web.opencode.permissions[external] = None
+    assert _status(web.post('/api/coding/sessions/attach',body,token=token))==200
+    assert web.opencode.permissions[external] == SAP_RULESET
+    bob = _member_with_coding_access(web,'bob')
+    source = _create(web,bob)
+    bob_remote = _remote_session(web,'ses_bob_fork')
+    refused = web.post('/api/coding/sessions/attach',{**body,'source_session_id':source['session_id'],
+                      'external_session_id':bob_remote},token=bob)
+    assert _status(refused)==404, refused.data
+    assert runtime.remote==external
+
+
 def test_attaching_the_same_session_twice_is_idempotent(web):
     token = _member_with_coding_access(web, "alice")
     created = _create(web, token)
@@ -945,11 +988,12 @@ def test_the_settings_projection_never_carries_a_credential(web):
 SAP_PROFILE = "sap_workbench"
 # Hard-coded rather than read back from `permissions.ruleset`, so the profile is
 # asserted against what the service is supposed to send rather than against
-# whatever it happens to send. Both installed tools are hidden by the project
-# config and both are re-allowed by the scene-issued session.
+# whatever it happens to send. The installed tools are hidden by the project
+# config and re-allowed by the scene-issued session.
 SAP_RULESET = [
     {"permission": "sap_transaction_open", "pattern": "*", "action": "allow"},
     {"permission": "sap_data_call", "pattern": "*", "action": "allow"},
+    {"permission": "sap_page_read", "pattern": "*", "action": "allow"},
 ]
 
 

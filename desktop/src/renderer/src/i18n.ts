@@ -842,7 +842,13 @@ const translations: Record<string, Record<string, string>> = {
     login_error: '密码错误，请重试',
     login_checking: '验证中...',
     // native browser authorization (design D8)
-    login_browser_desc: '为保护账号，登录在系统浏览器中完成：浏览器会显示后端与账号，需要你明确确认后才授权此客户端。',
+    login_browser_desc: '先确认服务器地址，再在浏览器中登录并授权此客户端。',
+    login_server_label: '服务器地址',
+    login_server_hint: '使用本机服务可保留默认地址；远程服务器请填写 HTTPS 地址。',
+    login_server_invalid: '请输入有效的 HTTPS 服务器地址，或保留本机服务的默认地址。',
+    login_server_load_failed: '未能读取服务器地址，请手动填写后重试。',
+    login_browser_timeout: '登录等待超时，请重新打开浏览器登录。',
+    login_browser_changed: '服务器地址已变化，请重新登录。',
     login_browser_submit: '在浏览器中登录',
     login_browser_waiting: '已打开浏览器，等待确认...',
     login_browser_cancel: '取消',
@@ -888,7 +894,7 @@ const translations: Record<string, Record<string, string>> = {
     // Desktop remote web workbench (change add-desktop-remote-web-workbench).
     // The trusted local connection shell: server management only, no business.
     remote_shell_title: '远程服务器',
-    remote_shell_desc: '将桌面端连接到服务器上的同一套 Web 工作台。本机只保存服务器地址与偏好，不保存登录凭据。',
+    remote_shell_desc: '将桌面端连接到服务器上的同一套 Web 工作台。平台登录凭据不落盘；SAP 登录可选择由 macOS 钥匙串加密记住。',
     remote_open_shell: '打开服务器连接设置',
     remote_servers: '已保存的服务器',
     remote_no_servers: '尚未添加服务器。',
@@ -1766,7 +1772,13 @@ const translations: Record<string, Record<string, string>> = {
     login_error: 'Wrong password, please try again',
     login_checking: 'Verifying...',
     // native browser authorization (design D8)
-    login_browser_desc: 'Sign-in happens in your system browser so the password never reaches this app: the browser shows the backend and the account and asks you to confirm before this client is authorized.',
+    login_browser_desc: 'Confirm the server address, then sign in and authorize this client in your browser.',
+    login_server_label: 'Server address',
+    login_server_hint: 'Keep the default for the local service, or enter an HTTPS address for a remote server.',
+    login_server_invalid: 'Enter a valid HTTPS server address, or keep the default local service address.',
+    login_server_load_failed: 'Could not load the server address. Enter it and try again.',
+    login_browser_timeout: 'Sign-in timed out. Open the browser to try again.',
+    login_browser_changed: 'The server address changed. Please sign in again.',
     login_browser_submit: 'Sign in with browser',
     login_browser_waiting: 'Browser opened — waiting for confirmation...',
     login_browser_cancel: 'Cancel',
@@ -1811,7 +1823,7 @@ const translations: Record<string, Record<string, string>> = {
     slash_version: 'Show version',
     // Desktop remote web workbench (change add-desktop-remote-web-workbench).
     remote_shell_title: 'Remote server',
-    remote_shell_desc: 'Connect the desktop app to the same Web workbench the server publishes. Only the server address and preferences are stored locally — never a credential.',
+    remote_shell_desc: 'Connect the desktop app to the server’s Web workbench. Platform credentials stay in memory; SAP login can optionally be remembered with macOS Keychain encryption.',
     remote_open_shell: 'Open server connection settings',
     remote_servers: 'Saved servers',
     remote_no_servers: 'No server has been added yet.',

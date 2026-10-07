@@ -2040,6 +2040,95 @@ class ConversationStore:
             "has_more": (page - 1) * page_size + page_size < total,
         }
 
+    def list_sessions_for_agents(
+        self, agent_ids, *, user_id: Optional[str] = None,
+        tenant_id: Optional[str] = None, page: int = 1, page_size: int = 50,
+        q: str = "", archived: bool = False, projects=None,
+    ) -> Dict[str, Any]:
+        """Page a caller-authorized set of agents in this shared database.
+
+        Unlike per-agent merging, no complete ID lists leave SQLite. Statistics
+        and rows share one read snapshot. The usual (unique session ID) case
+        uses the ordered history index; only legacy duplicates need ranking.
+        Project statistics deliberately ignore the title query, as before.
+        ``agent_ids`` are database bindings (the default agent is ``''``).
+        The web layer must supply only enabled, visible agents.
+        """
+        agent_ids = sorted(set(agent_ids))
+        page, page_size = max(1, page), max(1, page_size)
+        q = normalize_session_search_query(q)
+        result = {"sessions": [], "total": 0, "page": page,
+                  "page_size": page_size, "has_more": False, "space_count": 0}
+        if not agent_ids:
+            return result
+        clauses = ["s.owner = ?", "s.channel_type = 'web'", "s.archived = ?",
+                   "s.agent_id IN (" + ",".join("?" for _ in agent_ids) + ")"]
+        params = [user_id or "", int(archived), *agent_ids]
+        if tenant_id is None:
+            tenant_id = self._dimensions().get("tenant_id")
+        if tenant_id:
+            clauses.append("s.tenant_id = ?")
+            params.append(tenant_id)
+        where = " AND ".join(clauses)
+        match = "instr(lower(s.title), lower(?)) > 0" if q else "1"
+        match_params = [q] if q else []
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute("BEGIN")
+                join = ""
+                spaces = "0, MAX(1)"
+                if projects:
+                    conn.execute("CREATE TEMP TABLE history_projects ("
+                                 "agent_id TEXT, session_id TEXT, path TEXT,"
+                                 "PRIMARY KEY(agent_id, session_id)) WITHOUT ROWID")
+                    conn.executemany("INSERT INTO history_projects VALUES (?, ?, ?)",
+                                     [(aid, sid, path) for (aid, sid), path in projects.items()
+                                      if aid in agent_ids])
+                    join = (" LEFT JOIN history_projects p ON p.agent_id=s.agent_id"
+                            " AND p.session_id=s.session_id")
+                    spaces = "COUNT(DISTINCT p.path), MAX(p.path IS NULL)"
+                total, matches, project_count, uses_default, legacy_dates = conn.execute(
+                    f"SELECT COUNT(DISTINCT CASE WHEN {match} THEN s.session_id END),"
+                    f" COALESCE(SUM(CASE WHEN {match} THEN 1 ELSE 0 END), 0),"
+                    f" {spaces}, MAX(typeof(s.last_active) = 'text')"
+                    f" FROM sessions s{join} WHERE {where}",
+                    [*match_params, *match_params, *params],
+                ).fetchone()
+                # Old workspaces may contain ISO dates rather than Unix time.
+                # Keep that compatibility off the normal indexed query path.
+                active = ("CASE WHEN typeof(s.last_active) = 'text' THEN"
+                          " COALESCE(CAST(strftime('%s', s.last_active, 'utc') AS INTEGER), 0)"
+                          " ELSE s.last_active END") if legacy_dates else "s.last_active"
+                columns = "s.agent_id, s.session_id, s.title, s.created_at, s.last_active, s.msg_count, s.pinned"
+                if matches == total:
+                    sql = (f"SELECT {columns} FROM sessions s WHERE {where} AND {match}"
+                           f" ORDER BY s.pinned DESC, {active} DESC, s.agent_id, s.session_id"
+                           " LIMIT ? OFFSET ?")
+                else:
+                    # Choose the fullest copy BEFORE paging, even if that copy
+                    # is older and lies outside an individual agent's prefix.
+                    sql = (f"WITH ranked AS (SELECT {columns}, {active} AS active_epoch,"
+                           " ROW_NUMBER() OVER (PARTITION BY s.session_id ORDER BY"
+                           f" s.msg_count DESC, {active} DESC, s.agent_id) AS rank"
+                           f" FROM sessions s WHERE {where} AND {match})"
+                           " SELECT agent_id, session_id, title, created_at, last_active, msg_count, pinned"
+                           " FROM ranked WHERE rank=1 ORDER BY pinned DESC, active_epoch DESC, agent_id, session_id"
+                           " LIMIT ? OFFSET ?")
+                rows = conn.execute(sql, [*params, *match_params, page_size,
+                                          (page - 1) * page_size]).fetchall()
+            finally:
+                conn.close()
+        result.update(
+            sessions=[dict(zip(("_agent_id", "session_id", "title", "created_at",
+                                "last_active", "msg_count", "pinned"), row)) for row in rows],
+            total=total, has_more=page * page_size < total,
+            space_count=project_count + int(bool(uses_default)),
+        )
+        for row in result["sessions"]:
+            row["pinned"] = bool(row["pinned"])
+        return result
+
     def rename_session(self, session_id: str, title: str) -> bool:
         """Update the title of a session. Returns True if the session existed."""
         with self._lock:

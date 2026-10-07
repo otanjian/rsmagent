@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-06",
+  "platform": "macOS Electron 33.4.11",
+  "server": "rdai (Windows)",
+  "fix": "page_read_disabled is distinct from unsupported client platform",
+  "tenant": "tnt_EA3qM-lHPLD8ZPwW",
+  "config_version": 2,
+  "enabled": true,
+  "opencode_session": "ses_rsm_0c4019a59d3bae7f4c6f608854845454",
+  "verified": {
+    "tool": "sap_page_read",
+    "homepage": "SMEN",
+    "transaction": "ME23N",
+    "purchase_order": "4500000127",
+    "supplier": "EWM17-SU01 EWM Supplier 01",
+    "line_items": [
+      {
+        "item": "10",
+        "material": "EWMS4-01",
+        "quantity": "2",
+        "unit": "CAR"
+      },
+      {
+        "item": "20",
+        "material": "EWMS4-01",
+        "quantity": "2",
+        "unit": "CAR"
+      }
+    ],
+    "active_tab": "交货计划"
+  },
+  "unverified": [
+    "real SAP unsaved input (covered by fixture only)",
+    "Windows desktop"
+  ],
+  "business_data_modified": false,
+  "fix_backup": "C:\\rdai\\backups\\sap-page-read-20261006-165323"
+}

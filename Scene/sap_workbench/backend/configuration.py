@@ -17,6 +17,7 @@ DEFAULT_CONFIG = {
     "enabled": False,
     "automation_enabled": False,
     "commit_enabled": False,
+    "desktop_sap_page_read_enabled": False,
     "coding_agent_id": "",
     "sap": {"system_id": "", "web_gui_url": "", "client": "", "language": "ZH",
             "allowed_origins": [], "login_mode": "manual"},
@@ -75,7 +76,7 @@ def validate_config(value):
     """Accept only named non-secret fields. A draft can omit connection values."""
     _object(value, DEFAULT_CONFIG)
     result = deepcopy(DEFAULT_CONFIG)
-    for key in ("enabled", "automation_enabled", "commit_enabled"):
+    for key in ("enabled", "automation_enabled", "commit_enabled", "desktop_sap_page_read_enabled"):
         flag = value.get(key, False)
         if not isinstance(flag, bool):
             raise WorkbenchError("invalid_config")
@@ -190,7 +191,7 @@ def capabilities(config, *, mcp_credentials=False):
     # establish the connection and every call fails with `mcp_login_failed`.
     notes = ["navigation_limited",
              "mcp_business_available" if mcp_credentials else "mcp_credentials_missing",
-             "page_readwrite_unavailable"]
+             "desktop_page_read_conditional" if config.get('desktop_sap_page_read_enabled') else "page_readwrite_unavailable"]
     return {"configuration": True, "visual": bool(config["enabled"] and node_ready),
             "automation": bool(config["enabled"] and node_ready and config["automation_enabled"]),
             "commit": False, "blockers": blockers, "notes": notes}

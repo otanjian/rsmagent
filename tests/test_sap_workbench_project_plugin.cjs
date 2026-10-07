@@ -45,6 +45,50 @@ function toolContext({sessionID, messageID} = {}) {
   }
 }
 
+test('page reads use the context session, empty args and fresh calls within one message', async () => {
+  const plugin = await loadPlugin({bridge:'http://127.0.0.1:9900/bridge/'});
+  const definition = (await plugin.server()).tool.sap_page_read;
+  assert.deepEqual(definition.args, {});
+  const context = toolContext({sessionID:'ses_rsm_x', messageID:'same-message'});
+  const seen = [];
+  const restore = stubFetch(async (url, options) => {
+    seen.push(JSON.parse(options.body));
+    assert.equal(url, 'http://127.0.0.1:9900/bridge/read');
+    assert.match(options.headers.Authorization, /^Basic /);
+    return {ok:true, json:async()=>({output:'{"scope":"rendered_dom"}'})};
+  });
+  try {
+    assert.match(await definition.execute({},context), /rendered_dom/);
+    await definition.execute({},context);
+    assert.notEqual(seen[0].call_id, seen[1].call_id);
+    assert.equal(seen[0].session_id, 'ses_rsm_x');
+    assert.deepEqual(Object.keys(seen[0]).sort(), ['call_id','session_id']);
+    assert.equal(context.asked[0].permission, 'sap_page_read');
+    await definition.execute({session_id:'someone',script:'arbitrary'},context);
+    assert.equal(seen.length, 2);
+  } finally {restore();}
+});
+
+test('unsupported page reads report a refusal without substituting business data', async () => {
+  const plugin = await loadPlugin({bridge:'http://127.0.0.1:9900/bridge'});
+  const restore = stubFetch(async()=>({ok:false,json:async()=>({code:'page_read_unsupported'})}));
+  try {
+    assert.match(await (await plugin.server()).tool.sap_page_read.execute({},toolContext({sessionID:'ses_rsm_x'})), /page_read_unsupported/);
+  } finally {restore();}
+});
+
+test('disabled reading explains the configuration rather than inferring the desktop OS', async () => {
+  const plugin = await loadPlugin({bridge:'http://127.0.0.1:9900/bridge'});
+  const definition = (await plugin.server()).tool.sap_page_read;
+  assert.match(definition.description, /服务端操作系统/);
+  const restore = stubFetch(async()=>({ok:false,json:async()=>({code:'page_read_disabled'})}));
+  try {
+    const result = await definition.execute({},toolContext({sessionID:'ses_rsm_x'}));
+    assert.match(result, /开关未开启/);
+    assert.match(result, /不是操作系统不支持/);
+  } finally {restore();}
+});
+
 test("without a configured bridge the plugin registers no tool", async () => {
   const plugin = await loadPlugin({bridge: undefined})
   assert.equal(plugin.id, "rsm-sap-workbench-navigation")
@@ -178,7 +222,8 @@ test("the data tool exposes business arguments but no connection or identity fie
   assert.equal(definition.args.tool.type, "string")
   assert.equal(definition.args.arguments.type, "object")
   // The two things the model most easily gets wrong stay stated.
-  assert.match(definition.description, /跨域 iframe/)
+  assert.match(definition.description, /sap_page_read/)
+  assert.doesNotMatch(definition.description, /任何工具都读不到/)
   assert.match(definition.description, /不等于/)
 })
 

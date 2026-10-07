@@ -292,6 +292,66 @@ class TestAuthorizeEntry:
 class TestConsentConfirm:
     """The confirm POST validates CSRF, origin, session and the request record."""
 
+    def test_change_server_consumes_consent_without_issuing_credentials(self, web_app):
+        web = web_app()
+        flow = _Flow(web)
+        page, _, _ = flow.consent(state="change-server-1")
+        html = page.data.decode("utf-8")
+        assert 'id="desktop-edit-server"' in html
+        assert 'name="server_origin" type="url"' in html
+        request_id, csrf = _consent_fields(html)
+        changed = web.post("/auth/desktop/authorize", {
+            "request_id": request_id, "csrf": csrf, "decision": "change_server",
+            "server_origin": " https://ai.example.com:8443/ ",
+        }, token=flow.token)
+        location = _location(changed)
+        assert location.startswith(REDIRECT_URI + "?")
+        assert parse_qs(urlparse(location).query) == {
+            "error": ["server_changed"], "state": ["change-server-1"],
+            "server_origin": ["https://ai.example.com:8443"],
+        }
+        with web.service._store.connect() as con:
+            assert con.execute("SELECT COUNT(*) FROM desktop_auth_codes").fetchone()[0] == 0
+        assert not _location(flow.confirm(html))  # stale page cannot authorize
+        assert web.service.verify_session(flow.token)  # browser account stays signed in
+
+    @pytest.mark.parametrize("origin", [
+        "", "not a url", "http://ai.example.com", "javascript:alert(1)",
+        "https://user:password@ai.example.com", "https://ai.example.com/chat",
+        "https://ai.example.com/?token=x", "https://ai.example.com/#x",
+        "https://ai.example.com:99999", "https://ai.example.com:0", "https://bad host",
+    ])
+    def test_invalid_server_does_not_consume_consent(self, web_app, origin):
+        web = web_app()
+        flow = _Flow(web)
+        page, _, _ = flow.consent()
+        html = page.data.decode("utf-8")
+        request_id, csrf = _consent_fields(html)
+        refused = web.post("/auth/desktop/authorize", {
+            "request_id": request_id, "csrf": csrf,
+            "decision": "change_server", "server_origin": origin,
+        }, token=flow.token)
+        assert str(refused.status).startswith("400")
+        assert not _location(refused)
+        assert _code_from_redirect(_location(flow.confirm(html)))
+
+    def test_change_server_requires_the_same_csrf_and_live_session(self, web_app):
+        web = web_app()
+        flow = _Flow(web)
+        page, _, _ = flow.consent()
+        request_id, csrf = _consent_fields(page.data.decode("utf-8"))
+        payload = {"request_id": request_id, "csrf": csrf,
+                   "decision": "change_server", "server_origin": "https://ai.example.com"}
+        for token, fields, headers in (
+            (None, payload, {}),
+            (flow.token, {**payload, "csrf": "wrong"}, {}),
+            (flow.token, payload, {"Origin": "https://other.example"}),
+        ):
+            refused = web.post("/auth/desktop/authorize", fields, token=token,
+                               tenant=False, headers=headers)
+            assert str(refused.status).startswith(("401", "403"))
+            assert not _location(refused)
+
     def test_switch_account_keeps_request_and_authorizes_only_the_new_account(self, web_app):
         web = web_app()
         web.member("alice", ["member"])

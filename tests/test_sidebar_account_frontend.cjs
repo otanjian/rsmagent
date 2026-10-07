@@ -152,7 +152,7 @@ function setup(transport = async () => response(database()), { agentWrapper = fa
     node('login-overlay').appendChild(node('auth-check-panel'));
     node('auth-check-panel').appendChild(node('auth-check-message'));
     node('auth-check-panel').appendChild(node('auth-check-retry'));
-    const counter = { init: 0, reload: 0, tenant: 0, workspace: 0, session: 0 };
+    const counter = { init: 0, reload: 0, tenant: 0, workspace: 0, session: 0, historyInvalidations: 0 };
     const ctx = {
         ...eventTarget(), console, Date, URL, URLSearchParams, Headers, Request, AbortController,
         document, currentLang: 'zh', currentView: 'history', activeAgentId: 'agent-a',
@@ -172,6 +172,7 @@ function setup(transport = async () => response(database()), { agentWrapper = fa
         effectiveFaviconUrl: () => '/favicon.ico', brandWordmarkHTML: value => value,
         _brandArmFallback() {}, applyTheme() {}, applyI18n() {}, _applyInputTooltips() {},
         _resetHistorySearch() {}, bumpTenantGeneration() {},
+        _invalidateHistoryCache() { counter.historyInvalidations++; },
         _desktopContextClear() {}, _desktopRestoreContext: async () => {},
         _desktopContextForRequest: () => null,
         loadAgentCatalog() {}, loadChatAgentCatalog: async () => [],
@@ -465,6 +466,7 @@ test('authenticated database response without user still permits logout and neve
     assert.equal(h.node('account-menu-retry').classList.contains('hidden'), false);
     await h.ctx.handleLogout(); await settle();
     assert.equal(h.fetches('/auth/logout').length, 1);
+    assert.equal(h.counter.historyInvalidations, 1, 'logout drops cached summaries once before leaving the account');
     assert.equal(h.counter.reload, 1);
 });
 

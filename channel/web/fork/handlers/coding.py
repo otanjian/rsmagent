@@ -232,6 +232,27 @@ def _success(payload: dict) -> str:
     return json.dumps({"status": "success", **payload}, ensure_ascii=False)
 
 
+def _browser_grant(ctx, agent_id: str, result: dict) -> None:
+    from agent.coding import resolve_settings
+    from agent.coding.browser_auth import API_PATH, TTL, issue, same_origin
+    from channel.web.auth_handlers import _request_origin_exact, _session_token
+
+    settings = resolve_settings()
+    if (not settings.browser_sso or not settings.enabled or not settings.password
+            or not result.get("session_id")
+            or not same_origin(settings.web_url, _request_origin_exact())):
+        return
+    name, value = issue(settings.password, _session_token(), tenant=ctx.tenant_id,
+                        agent=agent_id, session=result["session_id"], service=settings.service_id)
+    web.setcookie(name, value, expires=TTL, path=API_PATH + "/", httponly=True,
+                  secure=settings.web_url.startswith("https://"), samesite="Strict")
+    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+    target = urlsplit(result["iframe_url"])
+    query = [(key, value) for key, value in parse_qsl(target.query) if key != "rsm_platform_auth"]
+    result["iframe_url"] = urlunsplit(target._replace(query=urlencode(query + [("rsm_platform_auth", "1")])))
+    web.header("Cache-Control", "no-store")
+
+
 class CodingSessionsHandler:
     """``POST /api/coding/sessions`` — create a session, or resume its creation.
 
@@ -268,6 +289,7 @@ class CodingSessionsHandler:
                     user_id=getattr(ctx, "user_id", "") or "",
                     permission_profile=_permission_profile(body),
                 )
+                _browser_grant(ctx, agent_id, result)
                 return _success(result)
 
         return _run_coding(work)
@@ -297,6 +319,7 @@ class CodingSessionOpenHandler:
                 _owned_link(ctx, session_id, agent_id, store)
                 result = _coding_service(store).open(
                     session_id=session_id, agent_id=agent_id)
+                _browser_grant(ctx, agent_id, result)
                 return _success(result)
 
         return _run_coding(work)
@@ -338,6 +361,17 @@ class CodingSessionAttachHandler:
                     user_id=getattr(ctx, "user_id", "") or "",
                     permission_profile=_permission_profile(body),
                 )
+                if body.get('scene_binding_id'):
+                    # Use the verified, owner-scoped platform link, never the
+                    # external id from the embed notification, to move SAP.
+                    from Scene.sap_workbench.backend.http import attach_coding_binding
+                    from Scene.sap_workbench.backend.configuration import WorkbenchError
+                    link = _owned_link(ctx, result['session_id'], agent_id, store)
+                    try:
+                        attach_coding_binding(ctx, body['scene_binding_id'], source_session_id,
+                                              {**link, 'agent_id': agent_id})
+                    except WorkbenchError as error:
+                        _coding_error(error.code, f'{error.status} {_reason(error.status)}', CODING_INVALID_REQUEST)
                 return _success(result)
 
         return _run_coding(work)

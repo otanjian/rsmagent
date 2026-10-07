@@ -540,13 +540,13 @@ const compiledConfigIpc = path.join(desktop, 'dist', 'main', 'remote', 'config-i
  * points that at a private directory: a real ``desktop-remote.json`` on the
  * machine running the tests must not leak into the assertions.
  */
-function loadConfigIpc({ packaged = false, electronVersion = '33.4.11' } = {}) {
+function loadConfigIpc({ packaged = false, electronVersion = '33.4.11', openExternal = () => Promise.resolve() } = {}) {
     const originalRequire = Module.prototype.require;
     const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-config-ipc-'));
     const fakeElectron = {
         app: { isPackaged: packaged, getPath: () => userData, on: () => undefined },
         ipcMain: { handle: () => undefined, on: () => undefined, removeHandler: () => undefined },
-        shell: { openExternal: () => Promise.resolve() },
+        shell: { openExternal },
         session: { fromPartition: () => ({ cookies: { get: () => Promise.resolve([]), remove: () => Promise.resolve() } }) },
         net: {},
     };
@@ -653,6 +653,165 @@ test('a runtime that cannot host the container never takes the remote origin', (
     } finally {
         restore();
     }
+});
+
+test('consent server change persists the target and starts fresh PKCE before any token exchange', async () => {
+    const originalFetch = global.fetch;
+    const opened = [];
+    const requests = [];
+    const callback = async (authorize, params) => {
+        const target = new URL(authorize.searchParams.get('redirect_uri'));
+        target.search = new URLSearchParams({ state: authorize.searchParams.get('state'), ...params });
+        const res = await originalFetch(target);
+        await res.text();
+        return res.status;
+    };
+    const { broker, configIpc, userData, restore } = loadConfigIpc({
+        openExternal: async (raw) => {
+            const authorize = new URL(raw);
+            opened.push(authorize);
+            if (opened.length === 1) {
+                assert.equal(await callback(authorize, { state: 'wrong', error: 'server_changed',
+                    server_origin: 'https://new.example' }), 400);
+                assert.equal(await callback(authorize, { error: 'server_changed',
+                    server_origin: 'http://new.example' }), 400);
+                assert.equal(broker.getBackendOrigin(), 'http://localhost:9876');
+                assert.equal(await callback(authorize, { error: 'server_changed',
+                    server_origin: 'https://new.example:8443/' }), 200);
+                return;
+            }
+            assert.equal(opened.length, 2);
+            assert.equal(authorize.origin, 'https://new.example:8443');
+            for (const key of ['state', 'code_challenge', 'redirect_uri']) {
+                assert.notEqual(authorize.searchParams.get(key), opened[0].searchParams.get(key));
+            }
+            assert.equal(requests.length, 0, 'no old code or credential goes to either server');
+            assert.equal(await callback(authorize, { code: 'new-server-code' }), 200);
+        },
+    });
+    global.fetch = async (raw, options) => {
+        const target = new URL(raw);
+        requests.push({ target, options });
+        assert.equal(target.origin, 'https://new.example:8443');
+        if (target.pathname === '/auth/desktop/token') {
+            const body = JSON.parse(options.body);
+            assert.equal(body.code, 'new-server-code');
+            assert.equal(body.redirect_uri, opened[1].searchParams.get('redirect_uri'));
+            const { createHash } = require('node:crypto');
+            assert.equal(createHash('sha256').update(body.code_verifier).digest('base64url'),
+                opened[1].searchParams.get('code_challenge'));
+            return Response.json({ token: 'new-native-token' });
+        }
+        assert.equal(target.pathname, '/auth/me');
+        return Response.json({ status: 'success', user: { id: 'u2', username: 'new-user' }, tenants: [] });
+    };
+    try {
+        broker.announceLocalBackendOrigin('http://localhost:9876');
+        const session = await broker.beginAuthorization();
+        assert.equal(session.username, 'new-user');
+        assert.equal(broker.nativeSessionOrigin(), 'https://new.example:8443');
+        const saved = JSON.parse(fs.readFileSync(path.join(userData, 'desktop-remote.json'), 'utf8'));
+        assert.equal(saved.mode, 'remote');
+        assert.equal(profiles.activeProfile(saved).origin, 'https://new.example:8443');
+        assert.equal(JSON.stringify(saved).includes('new-native-token'), false);
+        configIpc.selectAuthorizationServer('https://new.example:8443');
+        assert.equal(configIpc.getConfig().profiles.length, 1, 'same server reuses its profile');
+    } finally {
+        global.fetch = originalFetch;
+        restore();
+        fs.rmSync(userData, { recursive: true, force: true });
+    }
+});
+
+test('the login screen can select and remember a server before browser authorization', () => {
+    const { broker, configIpc, userData, restore } = loadConfigIpc();
+    try {
+        broker.announceLocalBackendOrigin('http://localhost:9876');
+        assert.equal(configIpc.modeProjection().serverOrigin, 'http://localhost:9876');
+        assert.deepEqual(configIpc.selectLoginServer('http://localhost:9876/'),
+            { ok: true, origin: 'http://localhost:9876' });
+        assert.equal(configIpc.getConfig().mode, 'local');
+        for (const value of ['', 'http://other.example', 'https://user:pass@other.example', 'https://other.example/chat']) {
+            assert.equal(configIpc.selectLoginServer(value).ok, false);
+            assert.equal(broker.getBackendOrigin(), 'http://localhost:9876');
+        }
+        assert.deepEqual(configIpc.selectLoginServer('https://NEW.example:8443/'),
+            { ok: true, origin: 'https://new.example:8443' });
+        assert.equal(configIpc.modeProjection().serverOrigin, 'https://new.example:8443');
+        const saved = profiles.loadConfig(path.join(userData, 'desktop-remote.json')).config;
+        assert.equal(saved.mode, 'remote');
+        assert.equal(profiles.activeProfile(saved).origin, 'https://new.example:8443');
+        assert.equal(configIpc.selectLoginServer('http://localhost:9876').ok, true);
+        assert.equal(configIpc.getConfig().mode, 'local');
+    } finally {
+        restore();
+        fs.rmSync(userData, { recursive: true, force: true });
+    }
+});
+
+test('cancel during listener startup or browser wait ends cleanly and permits a fresh retry', async () => {
+    let browserOpened;
+    let opened = new Promise(resolve => { browserOpened = resolve; });
+    const { broker, restore } = loadConfigIpc({ openExternal: async raw => browserOpened(new URL(raw)) });
+    const cancelled = error => error.code === 'authorization_cancelled'
+        && !error.message.includes('server or sign-in attempt changed');
+    try {
+        broker.announceLocalBackendOrigin('http://localhost:9876');
+        const early = broker.beginAuthorization();
+        broker.cancelPendingAuthorization();
+        await assert.rejects(early, cancelled);
+        const first = broker.beginAuthorization();
+        const firstUrl = await opened;
+        broker.cancelPendingAuthorization();
+        await assert.rejects(first, cancelled);
+        assert.equal(broker.status().session, null);
+        opened = new Promise(resolve => { browserOpened = resolve; });
+        const second = broker.beginAuthorization();
+        const secondCancelled = assert.rejects(second, cancelled);
+        const secondUrl = await opened;
+        assert.notEqual(firstUrl.searchParams.get('state'), secondUrl.searchParams.get('state'));
+        const target = new URL(secondUrl.searchParams.get('redirect_uri'));
+        target.search = new URLSearchParams({ error: 'access_denied', state: secondUrl.searchParams.get('state') });
+        const reply = await fetch(target);
+        await reply.text();
+        await secondCancelled;
+    } finally { broker.cancelPendingAuthorization(); restore(); }
+});
+
+test('cancelling during token exchange revokes the late session only on its original server', async () => {
+    const originalFetch = global.fetch;
+    let releaseToken;
+    let sawToken;
+    const tokenRequested = new Promise(resolve => { sawToken = resolve; });
+    const requests = [];
+    const { broker, restore } = loadConfigIpc({ openExternal: async raw => {
+        const authorize = new URL(raw);
+        const callback = new URL(authorize.searchParams.get('redirect_uri'));
+        callback.search = new URLSearchParams({ state: authorize.searchParams.get('state'), code: 'late-code' });
+        const reply = await originalFetch(callback);
+        await reply.text();
+    } });
+    global.fetch = async (raw, options) => {
+        requests.push({ url: String(raw), options });
+        if (String(raw).endsWith('/auth/desktop/token')) {
+            return new Promise(resolve => { releaseToken = resolve; sawToken(); });
+        }
+        return Response.json({ status: 'success' });
+    };
+    try {
+        broker.setBackendOrigin('https://old.example');
+        const result = assert.rejects(broker.beginAuthorization(), error => error.code === 'authorization_cancelled');
+        await tokenRequested;
+        broker.cancelPendingAuthorization();
+        broker.setBackendOrigin('https://new.example');
+        releaseToken(Response.json({ token: 'late-session' }));
+        await result;
+        assert.equal(broker.status().session, null);
+        assert.deepEqual(requests.map(item => item.url), [
+            'https://old.example/auth/desktop/token', 'https://old.example/auth/logout',
+        ]);
+        assert.equal(requests[1].options.headers.Authorization, 'Bearer late-session');
+    } finally { global.fetch = originalFetch; broker.cancelPendingAuthorization(); restore(); }
 });
 
 // --------------------------------------------------------------------------- //
@@ -774,4 +933,17 @@ test('the credentialed sign-out is sent as a write the console accepts', async (
     } finally {
         await console_.close();
     }
+});
+
+test('SAP layout persists in existing desktop preferences without changing server selection', () => {
+    const {configIpc,userData,restore}=loadConfigIpc();
+    try {
+        const before=configIpc.getConfig();
+        configIpc.sapWorkbenchLayout({action:'save',ratio:0.42,open:true});
+        const stored=JSON.parse(fs.readFileSync(path.join(userData,'desktop-remote.json'),'utf8'));
+        assert.deepEqual(stored.preferences.sapWorkbenchLayout,{ratio:0.42,open:true});
+        assert.deepEqual(stored.profiles,before.profiles);
+        assert.equal(stored.activeProfileId,before.activeProfileId);
+        assert.deepEqual(configIpc.sapWorkbenchLayout({action:'load'}),{ratio:0.42,open:true});
+    } finally {restore();}
 });

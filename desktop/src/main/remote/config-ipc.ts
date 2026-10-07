@@ -20,7 +20,7 @@ import { app, ipcMain } from 'electron'
 import * as path from 'path'
 import type { BrowserWindow } from 'electron'
 
-import { getLocalBackendOrigin, isTrustedWindowFrame, setBackendOrigin } from '../auth-broker'
+import { cancelPendingAuthorization, getLocalBackendOrigin, isTrustedWindowFrame, setBackendOrigin, status } from '../auth-broker'
 import { canHonourRemoteMode } from './container-support'
 import { probeServer, type ProbeResult } from './connection'
 import {
@@ -28,6 +28,7 @@ import {
   addServer,
   defaultConfig,
   loadConfig,
+  parseServerOrigin,
   saveConfig,
   type DesktopConfig,
   type DesktopMode,
@@ -64,6 +65,20 @@ function persist(next: DesktopConfig): DesktopConfig {
   return next
 }
 
+/** Only presentation preferences; SAP content and credentials never enter this store. */
+export function sapWorkbenchLayout(params: Record<string, unknown>) {
+  const config = getConfig()
+  if (params.action === 'save') {
+    const layout = {ratio: params.ratio, open: params.open}
+    persist({...config, preferences: {...config.preferences, sapWorkbenchLayout: layout}})
+  }
+  const value = getConfig().preferences.sapWorkbenchLayout as {ratio?: unknown; open?: unknown} | undefined
+  return {
+    ratio: typeof value?.ratio === 'number' && Number.isFinite(value.ratio) && value.ratio >= 0.1 && value.ratio <= 0.8 ? value.ratio : 0.32,
+    open: typeof value?.open === 'boolean' ? value.open : false,
+  }
+}
+
 /** The mode the app should boot in, and the profile it names (if any). */
 export function startupMode(): { mode: DesktopMode; profile: ServerProfile | null; forcedLocal?: string } {
   const config = getConfig()
@@ -88,6 +103,7 @@ export function modeProjection() {
     mode: config.mode,
     profiles: config.profiles,
     activeProfileId: config.activeProfileId,
+    serverOrigin: config.mode === 'local' ? getLocalBackendOrigin() : activeProfile(config)?.origin || '',
     refused: refused || '',
     containerSupported: support.ok,
     containerUnsupportedReason: support.ok ? '' : support.reason,
@@ -185,6 +201,49 @@ export function setActiveServer(id: unknown) {
   return { ok: true as const, config: modeProjection() }
 }
 
+/** A server chosen on the consent page, after the broker checks its callback. */
+export function selectAuthorizationServer(rawOrigin: string): void {
+  const support = canHonourRemoteMode(process.versions.electron)
+  if (!support.ok) throw new Error('remote mode is unavailable')
+  const config = getConfig()
+  if (refused) throw new Error('the saved configuration requires a newer client')
+  const added = addServer(config, rawOrigin)
+  if (!added.ok) throw new Error('invalid server origin')
+  // Persist profile + active mode in one write, before changing the broker.
+  persist({ ...added.config, mode: 'remote', activeProfileId: added.id })
+  syncBrokerOrigin()
+}
+
+/** Select the login destination before any browser authorization is opened. */
+export function selectLoginServer(rawOrigin: unknown) {
+  if (status().session || status().blockedReason) {
+    return { ok: false as const, reason: 'sign_out_required' }
+  }
+  if (typeof rawOrigin !== 'string' || !rawOrigin.trim()) {
+    return { ok: false as const, reason: 'empty' }
+  }
+  if (refusedReason()) return { ok: false as const, reason: 'newer_version' }
+  const local = getLocalBackendOrigin()
+  let requested: URL
+  try { requested = new URL(rawOrigin.trim()) } catch {
+    return { ok: false as const, reason: 'invalid_url' }
+  }
+  if (local && requested.origin === new URL(local).origin && requested.pathname === '/'
+      && !requested.username && !requested.password && !requested.search && !requested.hash) {
+    cancelPendingAuthorization()
+    if (getConfig().mode !== 'local') setMode('local')
+    else syncBrokerOrigin()
+    return { ok: true as const, origin: local }
+  }
+  const parsed = parseServerOrigin(rawOrigin)
+  if (!parsed.ok) return { ok: false as const, reason: parsed.reason }
+  const support = canHonourRemoteMode(process.versions.electron)
+  if (!support.ok) return { ok: false as const, reason: support.reason }
+  cancelPendingAuthorization()
+  selectAuthorizationServer(parsed.origin)
+  return { ok: true as const, origin: parsed.origin }
+}
+
 /** Register the local shell's remote-configuration channels. */
 export function setupRemoteConfigIPC(getWindow: () => BrowserWindow | null): void {
   const guard = (event: Electron.IpcMainInvokeEvent): void => {
@@ -202,6 +261,8 @@ export function setupRemoteConfigIPC(getWindow: () => BrowserWindow | null): voi
   }
 
   ipcMain.handle('desktop-mode-get', (event) => wrap(event, () => modeProjection()))
+  ipcMain.handle('desktop-login-server-set', (event, origin: unknown) =>
+    wrap(event, () => selectLoginServer(origin)))
 
   ipcMain.handle('desktop-remote-probe', async (event, origin: string) => {
     guard(event)

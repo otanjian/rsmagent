@@ -154,6 +154,19 @@ jobs:
         working-directory: desktop
         run: npm ci
 
+      - name: Build the macOS local file helper
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          cargo build --release --locked --manifest-path desktop/native/fs-guard/Cargo.toml
+          want=arm64
+          [ "${{ matrix.arch }}" = "arm64" ] || want=x86_64
+          got="$(lipo -archs desktop/native/fs-guard/target/release/fs-guard)"
+          if [ "$got" != "$want" ]; then
+            echo "::error::file helper is $got but this job targets $want"
+            exit 1
+          fi
+
       # Bundle ripgrep on Windows so the grep tool has a fast backend out of the
       # box instead of falling back to PowerShell (slow, and prone to encoding /
       # path quirks). macOS is intentionally excluded: it always has a working

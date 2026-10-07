@@ -105,7 +105,7 @@ function response(sessions = [], query = '', extra = {}) {
         ...(query ? { query } : {}), ...extra }) };
 }
 
-function setup(fetchImpl = async url => response([], new URL(url, 'http://test').searchParams.get('q') || '')) {
+function setup(fetchImpl = async url => response([], new URL(url, 'http://test').searchParams.get('q') || ''), cacheStorage = new Map()) {
     const nodes = new Map();
     const storage = new Map();
     const node = id => { if (!nodes.has(id)) nodes.set(id, element()); return nodes.get(id); };
@@ -117,7 +117,8 @@ function setup(fetchImpl = async url => response([], new URL(url, 'http://test')
         window: { innerWidth: 1440, location: { href: "http://test/chat", origin: "http://test" } },
         document: { getElementById: node, createElement: element,
             querySelector: () => null, querySelectorAll: () => [] },
-        localStorage: { getItem: () => null, setItem() {} },
+        localStorage: { getItem: key => cacheStorage.get(key) || null,
+            setItem: (key, value) => cacheStorage.set(key, value), removeItem: key => cacheStorage.delete(key) },
         sessionStorage: { getItem: key => storage.get(key) || null },
         // The history section defers sidebar init to a microtask; the harness
         // exercises the history functions directly and has no sidebar section
@@ -143,7 +144,7 @@ function setup(fetchImpl = async url => response([], new URL(url, 'http://test')
     };
     const enter = extra => ctx.onHistorySearchKeydown({ key: 'Enter', keyCode: 13,
         target: node('history-search-input'), preventDefault() {}, ...extra });
-    return { ctx, run, node, calls, time, state, input, enter, storage };
+    return { ctx, run, node, calls, time, state, input, enter, storage, cacheStorage };
 }
 
 test('title search queries all accessible history, trims q and accepts server results outside the loaded list', async () => {
@@ -917,4 +918,137 @@ test('a silent refresh queues behind an in-flight list read instead of aborting 
     await settle();
     assert.equal(h.calls.length, 2);
     assert.deepEqual([...h.state().ids], ['second']);
+});
+
+function authenticateHistory(h, username = 'alice', tenant = 'team-a') {
+    h.ctx._accountState = { authenticated: true, username };
+    h.ctx._accountAppVisible = true;
+    h.storage.set('cow_tenant_id', tenant);
+}
+
+test('restart paints cached summaries before a slow refresh, then replaces them with server rows', async () => {
+    const cache = new Map();
+    const initial = setup(async () => response([session('cached', { content: 'must not persist' })]), cache);
+    authenticateHistory(initial);
+    await initial.ctx.loadSessionList();
+    assert.equal(cache.size, 1);
+    assert.equal([...cache.values()][0].includes('must not persist'), false);
+    const slow = deferred();
+    const restarted = setup(() => slow.promise, cache);
+    authenticateHistory(restarted);
+    const loading = restarted.ctx.loadSessionList();
+    assert.deepEqual([...restarted.state().ids], ['cached']);
+    assert.equal(restarted.node('history-status').textContent, '');
+    slow.resolve(response([session('fresh')]));
+    await loading;
+    assert.deepEqual([...restarted.state().ids], ['fresh']);
+    assert.equal(JSON.parse([...cache.values()][0]).sessions[0].session_id, 'fresh');
+});
+
+test('cached summaries cannot cross server, account or tenant boundaries or appear before login', async () => {
+    const cache = new Map();
+    const first = setup(async () => response([session('private')]), cache);
+    authenticateHistory(first);
+    await first.ctx.loadSessionList();
+    for (const variant of ['server', 'account', 'tenant', 'signed-out', 'not-ready', 'denied']) {
+        const h = setup(async () => response([]), cache);
+        authenticateHistory(h);
+        if (variant === 'server') h.ctx.window.location.origin = 'https://other.example';
+        if (variant === 'account') h.ctx._accountState.username = 'bob';
+        if (variant === 'tenant') h.storage.set('cow_tenant_id', 'team-b');
+        if (variant === 'signed-out') h.ctx._accountState.authenticated = false;
+        if (variant === 'not-ready') h.ctx._accountAppVisible = false;
+        if (variant === 'denied') h.ctx._viewNavDenied = () => true;
+        h.ctx._restoreHistoryCache();
+        assert.deepEqual([...h.state().ids], [], variant);
+    }
+});
+
+test('reopening during a slow read shares the request; fresh surface switches do not refetch', async () => {
+    const slow = deferred();
+    const h = setup(() => slow.promise);
+    const first = h.ctx.loadSessionList();
+    const second = h.ctx.loadSessionList(undefined, { revalidate: true });
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0].options.signal.aborted, false);
+    slow.resolve(response([session('loaded')]));
+    await Promise.all([first, second]);
+    await h.ctx.loadSessionList(undefined, { revalidate: true });
+    assert.equal(h.calls.length, 1);
+});
+
+test('timeout settles even an unresponsive transport, keeps cached rows and allows retry', async () => {
+    const h = setup(async () => response([session('kept')]));
+    authenticateHistory(h);
+    await h.ctx.loadSessionList();
+    let requests = 0;
+    h.ctx.fetch = () => ++requests === 1 ? new Promise(() => {}) : Promise.resolve(response([session('recovered')]));
+    const loading = h.ctx.loadSessionList();
+    await h.time.advance(15000);
+    await loading;
+    assert.equal(h.state().loading, false);
+    assert.deepEqual([...h.state().ids], ['kept']);
+    assert.equal(h.run('_historyStatus.error'), true);
+    await h.run('_historyStatus.retry()');
+    assert.deepEqual([...h.state().ids], ['recovered']);
+});
+
+test('authorization failure discards cached rows, including a non-JSON denial response', async () => {
+    const h = setup(async () => response([session('private')]));
+    authenticateHistory(h);
+    await h.ctx.loadSessionList();
+    h.ctx.fetch = async () => ({ status: 403, json: async () => { throw Error('HTML error page'); } });
+    await h.ctx.loadSessionList();
+    assert.deepEqual([...h.state().ids], []);
+    assert.equal(h.cacheStorage.size, 0);
+});
+
+test('corrupt, expired or unavailable storage never blocks a successful history read', async () => {
+    for (const variant of ['corrupt', 'expired', 'blocked']) {
+        const h = setup(async () => response([session('fresh')]));
+        authenticateHistory(h);
+        const key = h.run('_historyCacheKey()');
+        h.cacheStorage.set(key, variant === 'corrupt' ? '{broken' : JSON.stringify({
+            savedAt: 1, sessions: [session('stale')], total: 1, project_order: [],
+        }));
+        if (variant === 'blocked') h.ctx.localStorage.getItem = () => { throw Error('storage disabled'); };
+        h.ctx._restoreHistoryCache();
+        assert.deepEqual([...h.state().ids], []);
+        await h.ctx.loadSessionList();
+        assert.deepEqual([...h.state().ids], ['fresh']);
+    }
+});
+
+test('search results never replace the restart cache and late account results never populate it', async () => {
+    const h = setup(async url => response([session(url.includes('q=') ? 'search' : 'recent')],
+        new URL(url, 'http://test').searchParams.get('q') || ''));
+    authenticateHistory(h);
+    await h.ctx.loadSessionList();
+    const cached = [...h.cacheStorage.values()][0];
+    h.node('history-search-input').value = 'query';
+    await h.ctx.loadSessionList();
+    assert.equal([...h.cacheStorage.values()][0], cached);
+    const slow = deferred();
+    h.ctx.fetch = () => slow.promise;
+    h.node('history-search-input').value = '';
+    const loading = h.ctx.loadSessionList();
+    h.ctx._resetHistorySearch();
+    h.ctx._accountState.username = 'bob';
+    slow.resolve(response([session('old-account')]));
+    await loading;
+    assert.equal(h.cacheStorage.size, 1);
+    assert.equal([...h.cacheStorage.values()][0], cached);
+    assert.deepEqual([...h.state().ids], []);
+});
+
+test('confirmed row updates patch the restart cache and hidden-list mutations invalidate it', async () => {
+    const h = setup(async () => response([session('existing')]));
+    authenticateHistory(h);
+    await h.ctx.loadSessionList();
+    h.ctx._touchHistorySession('existing', 'agent-b', { title: 'Updated', last_active: 1800000000 });
+    assert.equal(JSON.parse([...h.cacheStorage.values()][0]).sessions[0].title, 'Updated');
+    h.run('_historyVisible = false');
+    h.ctx._refreshHistoryList();
+    assert.equal(h.cacheStorage.size, 0);
+    assert.equal(h.run('_historyDirty'), true);
 });

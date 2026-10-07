@@ -194,7 +194,7 @@ def test_native_gui_tools_cannot_operate_a_hidden_chrome(tmp_path, action):
         runtime.authorize = AsyncMock()
         request = SimpleNamespace(json=AsyncMock(return_value={'service_id': row['service_id'],
             'session_id': row['remote_session_id'], 'call_id': 'call', 'action': action, 'input': {}}))
-        with pytest.raises(WorkbenchError, match='iframe_page_control_unavailable'):
+        with pytest.raises(WorkbenchError, match='page_read_disabled' if action == 'read' else 'iframe_page_control_unavailable'):
             await runtime.bridge(request)
         assert not runtime.tasks
         with store._connection() as db:

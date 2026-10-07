@@ -1,0 +1,38 @@
+{
+  "/chat": 200,
+  "/api/scenes/sap-workbench/config": 400,
+  "read_bridge_unauthenticated": 401,
+  "read_bridge_unbound": {
+    "status": 403,
+    "body": {
+      "status": "error",
+      "code": "session_not_bound",
+      "message": "session_not_bound"
+    }
+  },
+  "opencode_health": {
+    "healthy": true,
+    "version": "local"
+  },
+  "registered_sap_tools": [
+    "sap_transaction_open",
+    "sap_data_call",
+    "sap_page_read"
+  ],
+  "session_count": 28,
+  "session_inventory_unchanged": true,
+  "page_read_enabled": [
+    false
+  ],
+  "all_15_files_match": true,
+  "date": "2026-10-06",
+  "host": "rdai",
+  "platform_root": "C:\\rdai\\rsmagent",
+  "project": "C:\\rdai\\rsmCode\\sapwork",
+  "backup": "C:\\rdai\\backups\\sap-page-read-20261006-164134",
+  "public_platform_http": 200,
+  "public_opencode_web_http": 200,
+  "public_sap_frontend_matches_local": true,
+  "desktop_restarted": false,
+  "actual_sap_page_read_verified": false
+}

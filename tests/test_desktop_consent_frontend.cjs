@@ -18,7 +18,7 @@ function page(fetch) {
     let reloads = 0;
     vm.runInNewContext(source, {
         document: {
-            getElementById: id => id === 'desktop-switch-account' ? button : error,
+            getElementById: id => ({ 'desktop-switch-account': button, 'desktop-switch-error': error })[id] || null,
             querySelector: () => form,
         },
         fetch, location: { reload() { reloads += 1; } },

@@ -417,6 +417,8 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/api/coding/sessions/sync", "CodingSessionSyncHandler", "fork:coding", {"POST": P("tenant", comment="refresh one batch of the caller's own cached coding list (history.read scoped to owned rows)")}),
     RouteEntry("/api/coding/sessions/([^/]+)/open", "CodingSessionOpenHandler", "fork:coding", {"GET": P("tenant", comment="open one owned coding session (never creates remote state)")}),
     RouteEntry("/api/coding/settings", "CodingSettingsHandler", "fork:coding", {"GET": P("tenant", permission="agent.read", comment="read-only projection of the configured service (never returns the password or its env var)")}),
+    RouteEntry("/api/coding/model-preferences", "CodingModelPreferencesHandler", "fork:coding", {method: P("personal", comment="own display and model selection preferences; never provider credentials or grants") for method in ("GET", "POST")}),
+    RouteEntry("/coding-api/(.*)", "CodingBrowserProxyHandler", "fork:coding", {method: P("public", comment="cookie grant bound to a live platform login; handler checks current Agent permissions and scopes sessions, lists and events") for method in ("GET", "POST", "PATCH", "DELETE")}),
     RouteEntry("/api/history/user_messages", "UserMessagesHandler", "upstream", {"GET": P("tenant", comment="owner-scoped conversation timeline")}),
     RouteEntry("/api/history", "HistoryHandler", "upstream", {"GET": P("tenant", comment="history")}),
     RouteEntry("/api/messages/delete", "MessageDeleteHandler", "upstream", {"POST": P("tenant", comment="delete message")}),
@@ -444,6 +446,7 @@ ROUTES: Tuple[RouteEntry, ...] = (
     # the live binding re-authorizes its owner before any SAP action.
     RouteEntry('/api/scenes/sap-workbench/bridge', 'SapWorkbenchBridgeHandler', "fork:scenes", {'POST': P('public', comment='left-pane navigation channel for the project plugin; caller authenticated as the coding service by its own HTTP Basic credential and restricted to direct loopback callers, owner resolved from the OpenCode session id (never from the body), then the live binding re-authorizes the owner and records the action')}),
     RouteEntry('/api/scenes/sap-workbench/bridge/data', 'SapWorkbenchDataBridgeHandler', "fork:scenes", {'POST': P('public', comment='business-data channel for the project plugin; same coding-service credential and loopback-only rule as the navigation bridge, owner/connection/credential resolved from the OpenCode session id (never from the body), reachable tools limited to read_table/run_query/call_rfc and every call is admitted through the live binding ledger, meter and audit')}),
+    RouteEntry('/api/scenes/sap-workbench/bridge/read', 'SapWorkbenchPageReadBridgeHandler', "fork:scenes", {'POST': P('public', comment='desktop SAP read tool; authenticated coding-service loopback caller, session owner reauthorized by the existing runtime with ledger, quota and audit')}),
     RouteEntry('/api/scenes/sap-workbench/browser', 'SapWorkbenchBrowserHandler', "fork:scenes", {'POST': P('tenant', 'chat.use', comment='legacy unbound screen entry is rejected; use an owner-bound session lease')}),
     RouteEntry('/api/workbench/upload', 'WorkbenchUploadHandler', "fork:scenes", {'POST': P('tenant')}),
     RouteEntry('/api/workbench/parse-excel', 'WorkbenchParseExcelHandler', "fork:scenes", {'POST': P('tenant')}),

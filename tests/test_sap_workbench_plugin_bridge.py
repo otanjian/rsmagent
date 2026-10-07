@@ -39,6 +39,35 @@ def action_states(store):
         return [row['state'] for row in db.execute('SELECT state FROM "cj-sap_workbench-actions"')]
 
 
+@pytest.mark.parametrize('fault', ['credential', 'identity', 'unbound', 'foreign_service', 'none'])
+def test_page_read_bridge_keeps_service_and_owner_boundary(monkeypatch, bridge_context, tmp_path, fault):
+    from Scene.sap_workbench.backend.http import SapWorkbenchPageReadBridgeHandler
+    from Scene.sap_workbench.browser_service import runner
+    store, row = reserved(tmp_path)
+    runtime = SimpleNamespace(read_page=AsyncMock(return_value={'output':'{"scope":"rendered_dom"}'}))
+    class Gateway:
+        runtimes = {row['id']:runtime}
+        def submit(self, coroutine, timeout=90): return asyncio.run(coroutine)
+    monkeypatch.setattr(runner, 'browser_gateway', Gateway())
+    monkeypatch.setattr(scene_http, '_scene_store', lambda:store)
+    bridge_context.ctx.env = {'HTTP_AUTHORIZATION':credential(password='wrong' if fault=='credential' else 'secret-pass'),
+                              'REMOTE_ADDR':'127.0.0.1'}
+    body = {'session_id':row['remote_session_id'],'call_id':'read-call-123'}
+    if fault=='identity': body['user_id']='bob'
+    if fault=='unbound': body['session_id']='not-bound'
+    if fault=='foreign_service':
+        with store._connection() as db:
+            db.execute('UPDATE "cj-sap_workbench-session_links" SET service_id=?', ('other-service',))
+    monkeypatch.setattr(scene_http.web, 'data', lambda:json.dumps(body).encode())
+    if fault=='none':
+        result = json.loads(SapWorkbenchPageReadBridgeHandler().POST())
+        assert json.loads(result['output'])['scope']=='rendered_dom'
+        runtime.read_page.assert_awaited_once_with('read-call-123')
+    else:
+        with pytest.raises(web.HTTPError): SapWorkbenchPageReadBridgeHandler().POST()
+        runtime.read_page.assert_not_called()
+
+
 # --- 4.1 resolution from the session identifier ---------------------------
 
 def test_binding_for_session_resolves_the_owner_without_tenant_input(tmp_path):

@@ -185,10 +185,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       mode: 'local' | 'remote'
       profiles: Array<{ id: string; origin: string; displayName: string }>
       activeProfileId: string | null
+      serverOrigin: string
       refused: string
       containerSupported: boolean
       containerUnsupportedReason: string
     }>,
+  desktopLoginServerSet: (origin: string) => ipcRenderer.invoke('desktop-login-server-set', origin),
   desktopRemoteProbe: (origin: string) => ipcRenderer.invoke('desktop-remote-probe', origin),
   desktopRemoteAddServer: (payload: { origin: string; displayName?: string }) =>
     ipcRenderer.invoke('desktop-remote-add-server', payload),

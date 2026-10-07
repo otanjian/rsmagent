@@ -1,5 +1,5 @@
 import BrandMark from './BrandMark'
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import apiClient from '../api/client'
 import desktopContext from '../api/context'
 import { t } from '../i18n'
@@ -51,29 +51,81 @@ interface GateProps {
  * the loopback listener and drops the pending verifier/state.
  */
 export const LoginGate: React.FC<GateProps> = ({ onAuthenticated }) => {
-  const [busy, setBusy] = useState(false)
+  const [phase, setPhase] = useState<'idle' | 'starting' | 'waiting' | 'cancelling'>('idle')
+  const [serverOrigin, setServerOrigin] = useState('')
+  const [loadingServer, setLoadingServer] = useState(true)
   const [error, setError] = useState('')
+  const attempt = useRef(0)
+  const inFlight = useRef(false)
+  const busy = phase !== 'idle'
+
+  useEffect(() => {
+    let mounted = true
+    const api = window.electronAPI
+    void api?.desktopModeGet?.().then(reply => {
+      if (!mounted) return
+      setServerOrigin(reply.serverOrigin
+        || reply.profiles?.find(profile => profile.id === reply.activeProfileId)?.origin || '')
+    }).catch(() => {
+      if (mounted) setError(t('login_server_load_failed'))
+    }).finally(() => {
+      if (mounted) setLoadingServer(false)
+    })
+    if (!api?.desktopModeGet) setLoadingServer(false)
+    return () => { mounted = false; attempt.current++ }
+  }, [])
 
   const start = useCallback(async () => {
-    if (busy) return
-    setBusy(true)
+    if (inFlight.current || loadingServer) return
+    inFlight.current = true
+    const current = ++attempt.current
+    setPhase('starting')
     setError('')
     try {
+      const api = window.electronAPI
+      if (!api?.desktopLoginServerSet) throw new Error(t('login_bridge_missing'))
+      const selected = await api.desktopLoginServerSet(serverOrigin.trim())
+      if (current !== attempt.current) return
+      if (!selected.ok) {
+        const reason = selected.reason || selected.code
+        throw new Error(t(reason === 'sign_out_required' ? 'identity_blocked_desc'
+          : reason === 'newer_version' ? 'login_bridge_missing' : 'login_server_invalid'))
+      }
+      if (selected.origin) setServerOrigin(selected.origin)
+      setPhase('waiting')
       await apiClient.beginDesktopSignIn()
-      onAuthenticated()
+      if (current === attempt.current) onAuthenticated()
     } catch (e) {
-      const message = e instanceof Error ? e.message : ''
-      setError(
-        message === 'sign-in was not completed' || !message ? t('login_browser_failed') : message,
-      )
+      if (current !== attempt.current) return
+      const code = (e as { code?: string })?.code
+      if (code !== 'authorization_cancelled') {
+        const message = e instanceof Error ? e.message : ''
+        setError(code === 'authorization_timeout' ? t('login_browser_timeout')
+          : code === 'authorization_server_changed' ? t('login_browser_changed')
+          : code ? t('login_browser_failed') : message || t('login_browser_failed'))
+      }
     } finally {
-      setBusy(false)
+      if (current === attempt.current) {
+        inFlight.current = false
+        setPhase('idle')
+      }
     }
-  }, [busy, onAuthenticated])
+  }, [loadingServer, serverOrigin, onAuthenticated])
 
   const cancel = useCallback(async () => {
-    await desktopContext.cancelAuthorization()
-    setBusy(false)
+    const current = ++attempt.current
+    setPhase('cancelling')
+    setError('')
+    try {
+      await desktopContext.cancelAuthorization()
+    } catch {
+      if (current === attempt.current) setError(t('login_browser_failed'))
+    } finally {
+      if (current === attempt.current) {
+        inFlight.current = false
+        setPhase('idle')
+      }
+    }
   }, [])
 
   if (!desktopContext.isBrokerAvailable) {
@@ -86,16 +138,29 @@ export const LoginGate: React.FC<GateProps> = ({ onAuthenticated }) => {
 
   return (
     <Shell title={t('login_title')} desc={t('login_browser_desc')}>
-      {error && <p className="text-sm text-red-500">{error}</p>}
-      {busy && <p className="text-sm text-slate-500 dark:text-slate-400">{t('login_browser_waiting')}</p>}
-      <button type="submit" onClick={busy ? cancel : start} className={buttonClass}>
-        {busy ? t('login_browser_cancel') : t('login_browser_submit')}
-      </button>
-      {!busy && error && (
-        <button type="button" onClick={start} className={buttonClass}>
-          {t('login_browser_again')}
+      <form className="space-y-4" onSubmit={event => { event.preventDefault(); void start() }}>
+        <div className="space-y-2 text-left">
+          <label htmlFor="login-server-origin" className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+            {t('login_server_label')}
+          </label>
+          <input id="login-server-origin" type="url" required maxLength={2048}
+            value={serverOrigin} onChange={event => { setServerOrigin(event.target.value); setError('') }}
+            disabled={busy || loadingServer} placeholder="https://ai.example.com" spellCheck={false}
+            autoComplete="url" aria-describedby="login-server-hint" className={inputClass} />
+          <p id="login-server-hint" className="text-xs text-slate-500 dark:text-slate-400">{t('login_server_hint')}</p>
+        </div>
+        {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
+        {phase === 'waiting' && <p role="status" className="text-sm text-slate-500 dark:text-slate-400">{t('login_browser_waiting')}</p>}
+        <button type="submit" disabled={busy || loadingServer || !serverOrigin.trim()} className={buttonClass}>
+          {phase === 'starting' ? t('login_checking') : t('login_browser_submit')}
         </button>
-      )}
+        {(phase === 'waiting' || phase === 'cancelling') && (
+          <button type="button" onClick={() => void cancel()} disabled={phase === 'cancelling'}
+            className="w-full text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 disabled:opacity-50">
+            {t('login_browser_cancel')}
+          </button>
+        )}
+      </form>
     </Shell>
   )
 }

@@ -435,6 +435,8 @@ class CodingSessionService:
             # it already belongs to. Someone else's is a 404, not a 409: a
             # refusal that says "taken" would confirm the session exists.
             if self._link_owner(existing["session_id"], user_id):
+                if permission:
+                    self.client.set_permission(external_session_id, existing['project_dir'], permission)
                 return self._describe(existing)
             raise CodingError(
                 CODING_NOT_LINKED, "session not found", 404)

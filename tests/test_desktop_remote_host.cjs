@@ -382,6 +382,21 @@ test('the container never hands the bridge to a content surface', () => {
     assert.deepEqual(prefs.additionalArguments, []);
 });
 
+test('a bridge handshake during startup survives load completion but not document replacement', () => {
+    const { view } = loadContainer();
+    const fire = event => (view.webContents.events[event] || []).forEach(handler => handler());
+    fire('did-navigate');
+    const caller = sender({generation: view.generation});
+    const liveContext = () => context({generation: view.generation, shellFrame: view.shellFrame});
+    assert.equal(hostBridge.checkSender(caller, liveContext()).ok, true);
+    fire('did-finish-load');
+    assert.equal(hostBridge.checkSender(caller, liveContext()).ok, true);
+    fire('did-navigate-in-page');
+    assert.equal(hostBridge.checkSender(caller, liveContext()).ok, true);
+    fire('did-navigate');
+    assert.equal(hostBridge.checkSender(caller, liveContext()).code, 'stale_context');
+});
+
 test('the container covers the window instead of inheriting its screen position', () => {
     const { view, options } = loadContainer();
     // getContentBounds() reports the content area in screen coordinates: this
@@ -600,4 +615,13 @@ test('the live local context is offered only while local files are open', () => 
     } finally {
         localFiles.setRemoteLocalFilesEnabled(false);
     }
+});
+
+test('SAP layout IPC accepts only bounded presentation preferences', () => {
+    const check=params=>hostBridge.checkBridgeCall({method:'sapWorkbenchLayout',params}).ok;
+    assert.equal(check({action:'load'}),true);
+    assert.equal(check({action:'save',ratio:0.4,open:true}),true);
+    for(const params of [{action:'save',ratio:NaN,open:true},{action:'save',ratio:0.9,open:true},
+        {action:'save',ratio:0.4,open:'yes'},{action:'save',ratio:0.4,open:true,password:'secret'},
+        {action:'load',path:'/tmp/anything'}]) assert.equal(check(params),false);
 });

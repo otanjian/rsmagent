@@ -4,6 +4,7 @@ import * as http from 'http'
 import * as path from 'path'
 import { fileURLToPath } from 'url'
 import type { AddressInfo } from 'net'
+import { parseServerOrigin } from './remote/profiles'
 import { AssetProxy, type AssetTarget, type UpstreamReply } from './asset-proxy'
 import {
   WEB_SESSION_COOKIE, WEB_SESSION_MAJOR, checkBootstrapReply, isValidInstanceId,
@@ -106,6 +107,12 @@ function s256(verifier: string): string {
 }
 
 /** One signing-in browser round trip: the pending PKCE transaction. */
+interface AuthorizationResult {
+  code?: string
+  error?: string
+  serverOrigin?: string
+}
+
 interface PendingAuthorization {
   verifier: string
   state: string
@@ -113,7 +120,7 @@ interface PendingAuthorization {
   redirectUri: string
   server: http.Server
   port: number
-  settle: (result: { code?: string; error?: string }) => void
+  settle: (result: AuthorizationResult) => void
 }
 
 /** The desensitized projection the renderer is allowed to see. */
@@ -169,6 +176,7 @@ const state: BrokerState = {
   inFlight: new Set(),
   proxy: null,
 }
+let authorizationGeneration = 0
 
 // --------------------------------------------------------------------------- //
 // Backend origin (owned by the main process)
@@ -398,27 +406,32 @@ function callbackPage(title: string, message: string): string {
  * Run one authorization: listener first, then the system browser, then the
  * exchange. Resolves once the native session is established.
  */
-async function authorizeInteractive(): Promise<BrokerSession> {
-  cancelPendingAuthorization()
+async function authorizeInteractive(generation: number): Promise<BrokerSession | { serverOrigin: string }> {
   if (!state.backendOrigin) throw new BrokerError('backend_unavailable', 'backend is not ready')
+  const authorizationOrigin = state.backendOrigin
 
   const verifier = b64url(randomBytes(32))
   const challenge = s256(verifier)
   const stateToken = b64url(randomBytes(24))
   const callbackPath = `/callback/${b64url(randomBytes(12))}`
   const { server, port } = await listenForCallback()
+  if (generation !== authorizationGeneration) {
+    server.close()
+    throw new BrokerError('authorization_cancelled', 'authorization was cancelled')
+  }
   const redirectUri = `http://${LOOPBACK_HOST}:${port}${callbackPath}`
 
-  const codePromise = new Promise<{ code?: string; error?: string }>((resolve) => {
+  const codePromise = new Promise<AuthorizationResult>((resolve) => {
     state.pending = {
       verifier, state: stateToken, redirectUri, server, port, settle: resolve,
     }
   })
+  const attempt = state.pending!
 
   server.on('request', (req, res) => {
     const pending = state.pending
     const url = new URL(req.url || '/', `http://${LOOPBACK_HOST}:${port}`)
-    if (!pending || url.pathname !== callbackPath) {
+    if (req.method !== 'GET' || pending !== attempt || url.pathname !== callbackPath) {
       res.writeHead(404, { 'Content-Type': 'text/plain' })
       res.end('not found')
       return
@@ -435,21 +448,33 @@ async function authorizeInteractive(): Promise<BrokerSession> {
     }
     const code = url.searchParams.get('code') || ''
     const error = url.searchParams.get('error') || ''
+    let serverOrigin: string | undefined
+    if (error === 'server_changed') {
+      const parsed = parseServerOrigin(url.searchParams.get('server_origin'))
+      if (code || !parsed.ok) {
+        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
+        res.end(callbackPage('服务器地址无效', '请返回授权页，填写有效的 HTTPS 服务器地址。'))
+        return
+      }
+      serverOrigin = parsed.origin
+    }
     res.writeHead(200, {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
       'Referrer-Policy': 'no-referrer',
     })
     res.end(
-      code
+      serverOrigin
+        ? callbackPage('正在切换服务器', '桌面端将打开新服务器的登录页面，请在新页面登录并确认授权。')
+        : code
         ? callbackPage('Authorization complete', 'You can close this tab and return to the app.')
         : callbackPage('Authorization cancelled', 'No access was granted.'),
     )
-    pending.settle({ code: code || undefined, error: error || undefined })
+    pending.settle({ code: code || undefined, error: error || undefined, serverOrigin })
   })
 
   const authorizeUrl =
-    `${state.backendOrigin}/auth/desktop/authorize` +
+    `${authorizationOrigin}/auth/desktop/authorize` +
     `?client_id=${encodeURIComponent(CLIENT_ID)}` +
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
     `&code_challenge=${encodeURIComponent(challenge)}` +
@@ -457,22 +482,29 @@ async function authorizeInteractive(): Promise<BrokerSession> {
     `&state=${encodeURIComponent(stateToken)}`
 
   const timer = setTimeout(() => {
-    state.pending?.settle({ error: 'timeout' })
+    attempt.settle({ error: 'timeout' })
   }, AUTHORIZE_TIMEOUT_MS)
 
   try {
     await shell.openExternal(authorizeUrl)
     const result = await codePromise
+    if (result.error === 'cancelled' || generation !== authorizationGeneration) {
+      throw new BrokerError('authorization_cancelled', 'authorization was cancelled')
+    }
+    if (state.pending !== attempt || state.backendOrigin !== authorizationOrigin) {
+      throw new BrokerError('authorization_server_changed', 'the server changed; start sign-in again')
+    }
+    if (result.serverOrigin) return { serverOrigin: result.serverOrigin }
     if (!result.code) {
       throw new BrokerError(result.error === 'timeout' ? 'authorization_timeout' : 'authorization_cancelled',
         result.error === 'timeout'
           ? 'the browser authorization timed out'
           : 'authorization was not granted')
     }
-    return await exchangeCode(result.code, verifier, redirectUri)
+    return await exchangeCode(result.code, verifier, redirectUri, authorizationOrigin, generation)
   } finally {
     clearTimeout(timer)
-    closePendingAuthorization()
+    if (state.pending === attempt) closePendingAuthorization()
   }
 }
 
@@ -488,7 +520,8 @@ function closePendingAuthorization(): void {
   }
 }
 
-function cancelPendingAuthorization(): void {
+export function cancelPendingAuthorization(): void {
+  authorizationGeneration++
   const pending = state.pending
   if (!pending) return
   pending.settle({ error: 'cancelled' })
@@ -496,7 +529,8 @@ function cancelPendingAuthorization(): void {
 }
 
 /** Trade the code + verifier for an independent native session. */
-async function exchangeCode(code: string, verifier: string, redirectUri: string): Promise<BrokerSession> {
+async function exchangeCode(code: string, verifier: string, redirectUri: string,
+                            origin: string, generation: number): Promise<BrokerSession> {
   const reply = await send('/auth/desktop/token', {
     method: 'POST',
     contentType: 'application/json',
@@ -520,8 +554,20 @@ async function exchangeCode(code: string, verifier: string, redirectUri: string)
       parsed.message || 'the authorization code could not be exchanged')
   }
   const token = parsed.token
-  const projection = await loadProjection(token)
-  state.session = { token, origin: state.backendOrigin, epoch: nextEpoch(), projection }
+  const cancelled = () => generation !== authorizationGeneration || state.backendOrigin !== origin
+  const revokeCancelled = async () => {
+    // The code may already have been consumed when Cancel was clicked. Revoke
+    // that late session on its own server; never publish it or use a new origin.
+    await fetch(`${origin}/auth/logout`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` },
+      redirect: 'error', signal: AbortSignal.timeout(5000),
+    }).catch(() => undefined)
+    throw new BrokerError('authorization_cancelled', 'authorization was cancelled')
+  }
+  if (cancelled()) return revokeCancelled()
+  const projection = await loadProjection(token, origin)
+  if (cancelled()) return revokeCancelled()
+  state.session = { token, origin, epoch: nextEpoch(), projection }
   // The token is deliberately not stored anywhere else: no cache file, no
   // localStorage, no disk. Application restart requires a new authorization.
   return projection
@@ -659,8 +705,8 @@ function nextEpoch(): number {
 }
 
 /** The authoritative self projection, read from ``/auth/me``. */
-async function loadProjection(token: string): Promise<BrokerSession> {
-  const reply = await fetchWithToken('/auth/me', token)
+async function loadProjection(token: string, origin: string): Promise<BrokerSession> {
+  const reply = await fetchWithToken('/auth/me', token, undefined, 'GET', origin)
   if (reply.status === 401 || reply.status === 403) {
     throw new BrokerError('unauthorized', 'the session is no longer valid', reply.status)
   }
@@ -713,10 +759,10 @@ function projectionFrom(
  * leaving the server-side pairing alive after the user asked to leave.
  */
 async function fetchWithToken(path: string, token: string, tenant?: string,
-                              method: 'GET' | 'POST' = 'GET'): Promise<RawReply> {
+                              method: 'GET' | 'POST' = 'GET', origin = state.backendOrigin): Promise<RawReply> {
   const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
   if (tenant) headers['X-Tenant-ID'] = tenant
-  const res = await fetch(`${state.backendOrigin}${path}`, { method, headers, redirect: 'error' })
+  const res = await fetch(`${origin}${path}`, { method, headers, redirect: 'error' })
   return {
     status: res.status,
     statusText: res.statusText,
@@ -733,8 +779,24 @@ async function fetchWithToken(path: string, token: string, tenant?: string,
 
 /** Begin the browser authorization and resolve with the new projection. */
 export async function beginAuthorization(): Promise<BrokerSession> {
-  const projection = await authorizeInteractive()
-  return projection
+  cancelPendingAuthorization()
+  const generation = authorizationGeneration
+  for (;;) {
+    const result = await authorizeInteractive(generation)
+    if (!('serverOrigin' in result)) return result
+    // The old callback is closed and no code was exchanged. Select the server
+    // through the same config owner as Settings, then mint fresh PKCE + state.
+    // Dynamic import avoids a startup cycle (config-ipc also uses the broker).
+    const { selectAuthorizationServer } = await import('./remote/config-ipc')
+    if (generation !== authorizationGeneration) {
+      throw new BrokerError('authorization_cancelled', 'authorization was cancelled')
+    }
+    if (state.session) {
+      const ended = await logout()
+      if (!ended.ok) throw new BrokerError('logout_incomplete', ended.message)
+    }
+    selectAuthorizationServer(result.serverOrigin)
+  }
 }
 
 /** Unauthenticated ``/auth/check``: is a login required at all? */
@@ -1122,7 +1184,8 @@ export function setupAuthBrokerIPC(): void {
       // exists for the child Cookie bootstrap.
       try {
         const { tryAutoBindLocalWeb } = await import('./remote/local-web-bind')
-        void tryAutoBindLocalWeb()
+        // Consent may have selected a remote profile while the browser was up.
+        void tryAutoBindLocalWeb(true)
       } catch {
         /* optional path; local React shell remains usable */
       }

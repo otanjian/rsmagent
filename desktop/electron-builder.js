@@ -2,8 +2,8 @@
  * Dynamic electron-builder config.
  *
  * We keep the base config in package.json's "build" field and extend it here
- * only to populate `mac.binaries` — the list of extra Mach-O files that must
- * be signed with hardened runtime + entitlements.
+ * to bundle the local file helper and populate `mac.binaries` — the list of
+ * extra Mach-O files signed with hardened runtime + entitlements.
  *
  * Why this is needed:
  * The Python backend is a PyInstaller onedir bundle shipped via extraResources
@@ -74,6 +74,11 @@ function collectBackendBinaries() {
 }
 
 if (process.platform === 'darwin') {
+  const guardSrc = path.join(__dirname, 'native', 'fs-guard', 'target', 'release', 'fs-guard')
+  if (!fs.existsSync(guardSrc)) {
+    throw new Error('Build the macOS file helper first: cargo build --release --locked --manifest-path native/fs-guard/Cargo.toml')
+  }
+  config.extraResources = [...(config.extraResources || []), { from: guardSrc, to: 'fs-guard' }]
   const binaries = collectBackendBinaries()
   console.log(`[electron-builder.js] injecting ${binaries.length} backend binaries into mac.binaries`)
   // Sign the backend binaries here, but do NOT notarize in CI: Apple's notary
@@ -82,7 +87,7 @@ if (process.platform === 'darwin') {
   // into a manual local step run after the CI produces
   // the signed dmg. The dmg is code-signed and hardened-runtime enabled here,
   // so it only needs the notarization ticket stapled afterwards.
-  config.mac = { ...config.mac, binaries, notarize: false }
+  config.mac = { ...config.mac, binaries: [...binaries, 'Contents/Resources/fs-guard'], notarize: false }
 }
 
 module.exports = config

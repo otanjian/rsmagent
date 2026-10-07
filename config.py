@@ -427,6 +427,7 @@ available_setting = {
         "web_url": "",
         "username": "opencode",
         "password_env": "RSM_OPENCODE_PASSWORD",
+        "browser_sso": False,
     },
     # Delegation between configured agents. Unlike a sub agent, the target is a
     # standing peer that answers in its own workspace. The call is synchronous:

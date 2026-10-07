@@ -10,7 +10,7 @@ const scene = JSON.parse(read('Scene/sap_workbench/scene.json'));
 function setup({original = true, bundleFailure = false, sceneAvailable = true} = {}) {
     const nodes = new Map(), requests = [], calls = [], opened = [];
     const element = () => ({style:{}, remove(){}, appendChild(child){nodes.set(child.id, child);}});
-    const document = {createElement:element, getElementById:id=>nodes.get(id),
+    const document = {createElement:element, getElementById:id=>nodes.get(id), querySelector:()=>null,
         body:element(), head:{appendChild(script){
             if (script.src) queueMicrotask(() => {
                 if (bundleFailure && script.src === '/scene-assets/runtime.js') script.onerror();
@@ -30,7 +30,7 @@ function setup({original = true, bundleFailure = false, sceneAvailable = true} =
     run(read('channel/web/static/js/scenes/registry.js'));
     ctx.ScenesRegistry.registerRenderer('base',forbidden);
     run(read('channel/web/static/js/scenes/index.js'));
-    if(original) {
+    if(original && !bundleFailure) {
         // The production runtime wraps the adapter in a closure too: its
         // fetch shim must not replace the host fetch it captures.
         run('(function(){' + read('Scene/_shared/frontend/adapter.js') +
@@ -93,7 +93,7 @@ test('SAP respects the host unsaved-work guard before touching DOM or fetching',
 // The platform's own coding entry, not the scene, serves the conversation pane.
 const CODING_ORIGIN = 'https://code.example.com';
 
-function setupWorkbench({dirty = false, hostGuard = true, canManage = false, sessionPorts = [4321], browserRef = '', visual = true, nativeSap = false, notes = []} = {}) {    const requests = [], dialogs = [], confirmations = [], sockets = [], drawn = [], frames = [], submittedForms = [];
+function setupWorkbench({dirty = false, hostGuard = true, canManage = false, sessionPorts = [4321], browserRef = '', visual = true, nativeSap = false, readEnabled, notes = []} = {}) {    const requests = [], dialogs = [], confirmations = [], sockets = [], drawn = [], frames = [], submittedForms = [];
     const timers = new Map(), events = {};
     let timerId = 0, sessionCount = 0;
     const element = tag => {
@@ -116,6 +116,7 @@ function setupWorkbench({dirty = false, hostGuard = true, canManage = false, ses
             remove() {if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(child => child !== this);},
             submit() {submittedForms.push(this);},
             addEventListener(type, handler) {(this.listeners[type] = this.listeners[type] || []).push(handler);},
+            removeEventListener(type, handler) {this.listeners[type] = (this.listeners[type] || []).filter(item => item !== handler);},
             dispatch(type, event) {(this.listeners[type] || []).forEach(handler => handler(event));},
             getBoundingClientRect() {return this.rect || {left: 0, top: 0, width: 640, height: 400};},
             getContext() {return {drawImage: image => drawn.push(image)};},
@@ -157,6 +158,7 @@ function setupWorkbench({dirty = false, hostGuard = true, canManage = false, ses
         close() {this.closed = true; this.readyState = 3;}
     }
     const ctx = {document, URL, location: {origin: 'https://console.test', href: 'https://console.test/'},
+        sessionStorage: {getItem:key => key === 'cow_tenant_id' ? 'team-fixture' : null},
         currentLang: 'zh', t: key => key,
         addEventListener(type, handler) {(events[type] = events[type] || []).push(handler);},
         setTimeout(fn) {timers.set(++timerId, fn); return timerId;},
@@ -185,6 +187,7 @@ function setupWorkbench({dirty = false, hostGuard = true, canManage = false, ses
                 const port = sessionPorts[Math.min(sessionCount++, sessionPorts.length - 1)];
                 return {ok: true, json: async () => ({status: 'success', port,
                     binding_id: 'binding-test', remote_session_id: 'ses_test',
+                    ...(readEnabled === undefined ? {} : {desktop_sap_page_read_enabled:readEnabled}),
                     origin: `http://localhost:${port}`, bootstrap_token: 'test-boot',
                     ...(nativeSap ? {display_mode: 'iframe', sap_url: 'https://sap.example/sap/bc/gui?sap-client=200',
                         gui_automation: false, coding_session_id: 'coding-test', agent_id: 'sap'} : {}),
@@ -358,8 +361,8 @@ test('the conversation pane names its coding state, offers one retry and clears 
     assert.equal(state(), undefined, 'closing removes the state from the released pane');
 });
 
-test('resuming a history entry reopens its own coding session instead of creating one', async () => {
-    const h = setupWorkbench({nativeSap:true});
+for (const readEnabled of [undefined, true]) test('history resume preserves the conversation and refreshes supported tool profiles: '+readEnabled, async () => {
+    const h = setupWorkbench({nativeSap:true,readEnabled});
     await h.ctx.SapWorkbench.open();
     const original = h.ctx.fetch;
     h.ctx.fetch = async (url, options) => {
@@ -373,7 +376,7 @@ test('resuming a history entry reopens its own coding session instead of creatin
     // conversation; the create endpoint is not called at all.
     assert.equal(h.requests.filter(url => url === '/api/coding/sessions').length, 0);
     assert.deepEqual(h.requests.filter(url => url.startsWith('/api/coding/sessions/')),
-        ['/api/coding/sessions/coding-test/open?agent_id=sap']);
+        ['/api/coding/sessions/coding-test/open?agent_id=sap', ...(readEnabled ? ['/api/coding/sessions/attach'] : [])]);
     const pane = h.dialogs[0].querySelector('[data-sap="code-pane"]');
     assert.ok(pane.children.some(child => child.tagName === 'iframe'));
     h.ctx.SapWorkbench.close();
@@ -483,6 +486,82 @@ test('native navigation updates only the existing left iframe and duplicate deli
     assert.equal(h.sockets.length,0); h.ctx.SapWorkbench.close();
 });
 
+test('SAP login restoration precedes iframe navigation and a closed view never resumes', async () => {
+    const h = setupWorkbench({nativeSap:true}); let finish;
+    h.ctx.desktopHost = {getCapabilities:async()=>({sapLoginMemory:true}), manageSapLogin:async params => {
+        assert.deepEqual(Object.keys(params).sort(), ['action','binding_id','tenant_id']);
+        assert.equal(params.tenant_id,'team-fixture');
+        assert.equal(params.action,'prepare');
+        return new Promise(resolve=>{finish=resolve;});
+    }};
+    await h.ctx.SapWorkbench.open({view:'new-session'}); await flush();
+    const sap = h.frames.find(frame=>frame.className==='sap-native-frame');
+    assert.ok(!sap.src);
+    h.ctx.SapWorkbench.close(); finish({enabled:true}); await flush();
+    assert.ok(!sap.src);
+});
+
+test('SAP login memory shows an entry after successful native preparation', async () => {
+    const h = setupWorkbench({nativeSap:true});
+    h.ctx.desktopHost = {getCapabilities:async()=>({sapLoginMemory:true}),
+        manageSapLogin:async()=>({enabled:false,credentialsSaved:false,error:''})};
+    await h.ctx.SapWorkbench.open({view:'new-session'}); await flush();
+    const toolbar=h.dialogs[0].querySelector('[data-sap="toolbar"]');
+    const menu = toolbar.children.find(node=>node.className==='sap-account-menu');
+    assert.equal(menu.children[0].textContent,'账号与连接');
+    assert.equal(menu.children[0].children[0].textContent,'登录记忆未开启');
+    assert.equal(menu.children[1].children[1].textContent,'记住 SAP 登录');
+    assert.match(menu.children[1].children[0].textContent,/不会退出当前 SAP/);
+    const sap=h.frames.find(frame=>frame.className==='sap-native-frame');
+    assert.ok(sap.src.startsWith('https://sap.example/'));
+    h.ctx.SapWorkbench.close();
+});
+
+for (const outcome of ['success', 'navigate', 'close']) test('desktop page read lifecycle: ' + outcome, async () => {
+    const h = setupWorkbench({nativeSap:true, readEnabled:true}), requests = [];
+    let finish, reads = 0;
+    h.ctx.desktopHost = {getCapabilities:async()=>({sapPageRead:true}), readSapPage:async request => {
+        assert.deepEqual(Object.keys(request).sort(), ['binding_id','read_id','view_id']); reads++;
+        return new Promise(resolve => {finish=resolve;});
+    }};
+    await h.ctx.SapWorkbench.open({view:'new-session'}); await flush();
+    const sap = h.frames.find(frame => frame.className === 'sap-native-frame');
+    h.ctx.fetch = async (url, options) => {
+        const body=JSON.parse(options.body); requests.push(body);
+        return {ok:true,json:async()=>({status:'success', page_read:{available:true, command:{
+            id:'reading-123',view_id:'test-request',expires_at:Date.now()+15000}}})};
+    };
+    const tick=async()=>{for (const [id,run] of [...h.timers]) {h.timers.delete(id); run();} await flush();};
+    await tick(); await tick(); assert.equal(reads,1, 'heartbeat must not recapture a pending read');
+    if (outcome==='navigate') sap.dispatch('load');
+    if (outcome==='close') h.ctx.SapWorkbench.close();
+    finish({source:'sap_page_dom',scope:'rendered_dom',text:'OBSERVED',title:'采购订单 4500000127',capturedAt:'2026-10-06T10:30:00Z'}); await flush(); await tick();
+    const receipt=requests.find(r=>r.action==='read_result');
+    if (outcome==='close') {
+        assert.equal(receipt,undefined);
+        assert.ok(requests.some(r=>r.view_active===false));
+    } else if (outcome==='navigate') {
+        assert.equal(receipt.read_error,'page_changed'); assert.equal(receipt.read_result,undefined);
+    } else {
+        assert.equal(receipt.read_result.text,'OBSERVED');
+        const label = h.dialogs[0].querySelector('[data-sap="page-capture"]');
+        assert.match(label.textContent,/采购订单 4500000127 · 采集于/);
+        assert.ok(!label.textContent.includes('OBSERVED'));
+        sap.dispatch('load'); assert.match(label.textContent,/页面已切换/);
+    }
+    h.ctx.SapWorkbench.close();
+});
+
+test('old server heartbeat schema is preserved', async () => {
+    const h=setupWorkbench({nativeSap:true}); await h.ctx.SapWorkbench.open({view:'new-session'}); await flush();
+    const seen=[];
+    h.ctx.fetch=async(url,options)=>{seen.push(JSON.parse(options.body));return {ok:true,json:async()=>({status:'success'})};};
+    for(const [id,run] of [...h.timers]) {h.timers.delete(id);run();} await flush();
+    assert.deepEqual(seen,[{binding_id:'binding-test',action:'heartbeat'}]);
+    h.ctx.SapWorkbench.close();
+    assert.equal(seen.some(r=>'view_id' in r),false);
+});
+
 test('expired and late navigation responses cannot modify the current SAP iframe', async () => {
     const h = setupWorkbench({nativeSap:true}); await h.ctx.SapWorkbench.open({view:'new-session'}); await flush();
     let sap = h.frames.find(frame => frame.className === 'sap-native-frame'), release;
@@ -546,7 +625,7 @@ test('divider drag and keyboard clamp assistant width without remounting frames 
     resizer.dispatch('pointermove',{pointerId:4,clientX:700});
     assert.equal(dialog.style['--sap-chat-width'],'500px');
     resizer.dispatch('pointermove',{pointerId:4,clientX:-2000});
-    assert.equal(dialog.style['--sap-chat-width'],'874px');
+    assert.equal(dialog.style['--sap-chat-width'],'634px');
     resizer.dispatch('pointermove',{pointerId:4,clientX:3000});
     assert.equal(dialog.style['--sap-chat-width'],'320px');
     resizer.dispatch('pointercancel');
@@ -648,6 +727,23 @@ test('Escape collapses chat first and only then closes the workbench', async () 
     assert.equal(dialog.querySelector('[data-sap="code-pane"]').children.some(child => child.tagName === 'iframe'), false);
 });
 
+test('return home leaves a running fullscreen scene and returns through the host router', async () => {
+    const h = setupWorkbench({nativeSap:true}), routes = [];
+    h.ctx.navigateTo = view => routes.push(view);
+    await h.ctx.SapWorkbench.open({view:'new-session'}); await flush();
+    const dialog = h.dialogs[0];
+    dialog.querySelector('[data-sap="chat-toggle"]').dispatch('click');
+    dialog.querySelector('[data-sap="chat-fullscreen"]').dispatch('click');
+    assert.equal(dialog.dataset.chatFullscreen, 'true');
+    const home = dialog.querySelector('[data-sap="home"]');
+    assert.equal(home.textContent, '返回首页');
+    home.dispatch('click'); await flush();
+    assert.equal(dialog.open, false);
+    assert.deepEqual(routes, ['chat']);
+    assert.equal(h.timers.size, 0);
+    assert.equal(dialog.querySelector('[data-sap="code-pane"]').children.some(child => child.tagName === 'iframe'), false);
+});
+
 test('refresh preserves expanded chat and host recovery restores it against the new origin', async () => {
     const h = setupWorkbench({canManage: true, sessionPorts: [4321, 5432]}); await h.ctx.SapWorkbench.open();
     const dialog = h.dialogs[0];
@@ -667,7 +763,7 @@ test('refresh preserves expanded chat and host recovery restores it against the 
     assert.equal(h.sockets[1].url, 'ws://127.0.0.1:5432/screen');
 });
 
-test('ending and starting a session resets expanded chat and releases the previous iframe', async () => {
+test('ending and starting a session preserves the chat layout preference and releases the previous iframe', async () => {
     const h = setupWorkbench({canManage: true}); await h.ctx.SapWorkbench.open();
     const dialog = h.dialogs[0], actions = dialog.querySelector('[data-sap="actions"]');
     actions.children[0].dispatch('click'); await flush();
@@ -678,8 +774,8 @@ test('ending and starting a session resets expanded chat and releases the previo
     assert.equal(dialog.querySelector('[data-sap="code-pane"]').children.includes(oldFrame), false);
     actions.children[0].dispatch('click'); await flush();
     assert.equal(dialog.querySelector('[data-sap="chat-toggle"]').hidden, false);
-    assert.equal(dialog.querySelector('[data-sap="code-pane"]').hidden, true);
-    assert.equal(dialog.querySelector('[data-sap="code-pane"]').inert, true);
+    assert.equal(dialog.querySelector('[data-sap="code-pane"]').hidden, false);
+    assert.equal(dialog.querySelector('[data-sap="code-pane"]').inert, false);
 });
 
 for (const [language, label, collapse] of [['zh', 'AI 对话', '收起对话'], ['en', 'AI chat', 'Collapse chat'], ['zh-Hant', 'AI 對話', '收起對話']]) {
@@ -1193,4 +1289,53 @@ test('the business row is withheld while no MCP account is saved', async () => {
         'SAP 业务数据：未就绪。尚未保存 MCP 账号口令，服务端无法建立连接，数据调用会以 mcp_login_failed 失败。',
         '页面读写与业务提交：不可用。阅读、填写左侧 SAP 页面字段和提交业务单据均不开放。',
     ]);
+});
+
+
+test('SAP starters address only the current composer and preserve a pending draft', async () => {
+    const h=setupWorkbench({nativeSap:true,readEnabled:true});
+    h.ctx.desktopHost={getCapabilities:async()=>({sapPageRead:true}),readSapPage:async()=>({})};
+    await h.ctx.SapWorkbench.open({view:'new-session'});await flush();
+    const dialog=h.dialogs[0], frame=h.frames.find(x=>x.className==='sap-opencode-frame'), sent=[];
+    frame.contentWindow.postMessage=(message,origin)=>sent.push({message,origin});
+    const channel=new URL(frame.src).searchParams.get('rsm_channel');
+    const data={type:'rsm.opencode.composer',channel,session_id:'ses_test',empty:true,busy:false,hasDraft:false};
+    const emit=(value,origin=CODING_ORIGIN)=>h.emit('message',{source:frame.contentWindow,origin,data:value});
+    const starters=dialog.querySelector('[data-sap="starters"]');
+    emit(data,'https://spoof.test');assert.equal(starters.hidden,true);
+    emit(data);assert.equal(starters.hidden,false);
+    starters.children[2].children[2].dispatch('click');
+    assert.equal(sent[0].origin,CODING_ORIGIN);assert.equal(sent[0].message.submit,false);
+    assert.equal(sent[0].message.text,'打开事务 ');assert.equal(sent[0].message.session_id,'ses_test');
+    emit({type:'rsm.opencode.prompt-result',channel,request_id:'test-request',status:'accepted'});
+    assert.match(dialog.querySelector('[data-sap="prompt-feedback"]').textContent,/补充事务码/);
+    emit({...data,hasDraft:true});dialog.querySelector('[data-sap="read-page"]').dispatch('click');
+    assert.equal(sent.length,1);assert.match(dialog.querySelector('[data-sap="prompt-feedback"]').textContent,/已有草稿/);
+    emit({...data,hasDraft:false});dialog.querySelector('[data-sap="read-page"]').dispatch('click');
+    assert.equal(sent[1].message.submit,true);assert.match(sent[1].message.text,/sap_page_read/);
+    emit({...data,empty:false,busy:true});assert.equal(starters.hidden,true);
+    assert.equal(dialog.querySelector('[data-sap="read-page"]').disabled,true);
+    h.ctx.SapWorkbench.close();
+});
+
+test('SAP layout restores across mounts and narrow windows do not overwrite the preferred ratio', async () => {
+    let saved={ratio:0.4,open:true};const writes=[];
+    const start=async()=>{
+        const h=setupWorkbench({nativeSap:true});
+        h.ctx.desktopHost={sapWorkbenchLayout:async value=>{
+            if(value.action==='save'){saved={ratio:value.ratio,open:value.open};writes.push(saved);}
+            return saved;
+        }};
+        await h.ctx.SapWorkbench.open({view:'new-session'});await flush();return h;
+    };
+    const h=await start(),dialog=h.dialogs[0],panes=dialog.querySelector('[data-sap="panes"]');
+    assert.equal(dialog.querySelector('[data-sap="code-pane"]').hidden,false);
+    panes.rect={width:1600};h.emit('resize');assert.equal(dialog.style['--sap-chat-width'],'640px');
+    panes.rect={width:900};h.emit('resize');assert.equal(dialog.style['--sap-chat-width'],'334px');
+    assert.equal(writes.length,0);
+    dialog.querySelector('[data-sap="chat-close"]').dispatch('click');await flush();
+    assert.equal(saved.open,false);assert.equal(saved.ratio,0.4);
+    h.ctx.SapWorkbench.close();const next=await start();
+    assert.equal(next.dialogs[0].querySelector('[data-sap="code-pane"]').hidden,true);
+    next.ctx.SapWorkbench.close();
 });

@@ -26,11 +26,11 @@ export function setLocalWebBindWindow(window: BrowserWindow | null): void {
  * If local mode + registered backend + native session + remote_web available,
  * attach the Web container to the local origin. Idempotent and best-effort.
  */
-export async function tryAutoBindLocalWeb(): Promise<boolean> {
+export async function tryAutoBindLocalWeb(includeRemote = false): Promise<boolean> {
   if (bindInFlight) return bindInFlight
   bindInFlight = (async () => {
     try {
-      return await runAutoBind()
+      return await runAutoBind(includeRemote)
     } finally {
       bindInFlight = null
     }
@@ -38,16 +38,17 @@ export async function tryAutoBindLocalWeb(): Promise<boolean> {
   return bindInFlight
 }
 
-async function runAutoBind(): Promise<boolean> {
+async function runAutoBind(includeRemote: boolean): Promise<boolean> {
   if (isRemoteContainerAttached()) return true
-  if (startupMode().mode !== 'local') return false
-  const origin = getLocalBackendOrigin()
+  const target = startupMode()
+  if (target.mode !== 'local' && !includeRemote) return false
+  const origin = target.mode === 'local' ? getLocalBackendOrigin() : target.profile?.origin
   if (!origin) return false
   if (!status().session) return false
   const window = boundWindow
   if (!window || window.isDestroyed()) return false
 
-  const probed = await probeServer(origin, fetch, { allowHttpOrigin: origin })
+  const probed = await probeServer(origin, fetch, { allowHttpOrigin: getLocalBackendOrigin() })
   if (!probed.ok) {
     console.warn(`[remote] local web auto-bind probe failed: ${probed.failure.code}`)
     return false

@@ -76,6 +76,9 @@ const listeners = new Map<(payload: unknown) => void, (event: IpcRendererEvent, 
 const desktopHost = {
   /** The only version negotiation the page gets before it calls anything. */
   getCapabilities: () => call('getCapabilities'),
+  readSapPage: (params: { binding_id: string; read_id: string; view_id: string }) => call('readSapPage', params),
+  sapWorkbenchLayout: (params: {action: 'load' | 'save'; ratio?: number; open?: boolean}) => call('sapWorkbenchLayout', params),
+  manageSapLogin: (params: { binding_id: string; tenant_id: string; action: string }) => call('manageSapLogin', params),
 
   /** Tell the shell that local context (import, drag-drop) is now irrelevant. */
   suspendLocalContext: (reason?: string) => call('suspendLocalContext', { reason: reason || '' }),

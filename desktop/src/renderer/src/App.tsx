@@ -81,7 +81,8 @@ const App: React.FC = () => {
     if (backend.status === 'ready') apiClient.setBaseUrl(backend.baseUrl)
   }, [backend.status, backend.baseUrl])
 
-  // Ask the main process which mode this launch is in, once. A build without
+  // Refresh after sign-in too: browser consent may have selected a server.
+  // Ask the main process which mode this launch is in. A build without
   // the channel (or a refusal) stays in local mode, which is the safe default:
   // local mode is the shape every existing install already runs.
   useEffect(() => {
@@ -102,7 +103,7 @@ const App: React.FC = () => {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [context.session?.epoch])
 
   // A file dropped where no drop zone handles it makes Chromium navigate to
   // that file, replacing the app. Swallow those at the document level; pages
@@ -226,6 +227,8 @@ const App: React.FC = () => {
     return <StatusScreen status="connecting" onRetry={() => undefined} />
   }
   if (desktopMode === 'remote') {
+    if (context.gate === 'blocked') return <BlockedGate onAuthenticated={() => undefined} />
+    if (!context.session) return <LoginGate onAuthenticated={() => undefined} />
     return <RemoteConnectPage onLangChange={handleLangChange} />
   }
 

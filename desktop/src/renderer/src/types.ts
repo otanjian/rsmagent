@@ -106,6 +106,7 @@ export interface ElectronAPI {
   // pre-remote build has none of these, so every call site must tolerate
   // `undefined` (the app simply stays in local mode).
   desktopModeGet?: () => Promise<DesktopModeReply>
+  desktopLoginServerSet?: (origin: string) => Promise<{ ok: boolean; origin?: string; reason?: string; code?: string }>
   desktopRemoteProbe?: (origin: string) => Promise<RemoteProbeReply>
   desktopRemoteAddServer?: (payload: { origin: string; displayName?: string }) => Promise<RemoteConfigReply>
   desktopRemoteRemoveServer?: (id: string) => Promise<RemoteConfigReply>
@@ -137,6 +138,7 @@ export interface RemoteServerProfile {
 /** The stored mode projection. Never carries a token, cookie or path. */
 export interface DesktopModeProjection {
   mode: 'local' | 'remote'
+  serverOrigin?: string
   profiles: RemoteServerProfile[]
   activeProfileId: string | null
   /** Non-empty when a newer build wrote the config and this build refused it. */

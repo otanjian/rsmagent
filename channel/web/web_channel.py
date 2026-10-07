@@ -157,7 +157,7 @@ from Scene._shared.http import HANDLERS as _SCENE_HANDLERS, SceneCapabilitiesHan
 from Scene._shared.frontend import SceneAssetHandler
 from Scene.sap_workbench.backend.http import (
     SapWorkbenchConfigHandler, SapWorkbenchCheckHandler, SapWorkbenchSessionsHandler,
-    SapWorkbenchBrowserHandler, SapWorkbenchBridgeHandler, SapWorkbenchDataBridgeHandler,
+    SapWorkbenchBrowserHandler, SapWorkbenchBridgeHandler, SapWorkbenchDataBridgeHandler, SapWorkbenchPageReadBridgeHandler,
 )
 
 
@@ -531,6 +531,8 @@ from channel.web.fork.handlers.coding import (
     CodingSessionSyncHandler,
     CodingSettingsHandler,
 )
+from channel.web.fork.handlers.coding_browser import CodingBrowserProxyHandler
+from channel.web.fork.handlers.coding_preferences import CodingModelPreferencesHandler
 from channel.web.fork.handlers.operations import ReadyHandler
 from channel.web.fork.handlers.pages import (
     AssetsHandler,

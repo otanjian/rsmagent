@@ -31,6 +31,9 @@ export const PHASE1_METHODS = [
   // the local shell resume its login/connection entry. It lives in phase 1
   // (always offered) because signing out must work with local files closed.
   'signOut',
+  'readSapPage',
+  'manageSapLogin',
+  'sapWorkbenchLayout',
   'onHostEvent',
 ] as const
 
@@ -290,6 +293,30 @@ export function checkBridgeCall(call: BridgeCall): Verdict {
   switch (method as BridgeMethod) {
     case 'getCapabilities':
       return { ok: true }
+    case 'readSapPage':
+      if (!isPlainObject(params) || Object.keys(params).length !== 3 ||
+          !['binding_id', 'read_id', 'view_id'].every(key => typeof params[key] === 'string' &&
+            /^[A-Za-z0-9_-]{8,128}$/.test(params[key] as string))) {
+        return refuse('invalid_request', 'readSapPage requires the current pending request')
+      }
+      return { ok: true }
+    case 'sapWorkbenchLayout':
+      if (!isPlainObject(params) || !(
+        (params.action === 'load' && Object.keys(params).length === 1) ||
+        (params.action === 'save' && Object.keys(params).length === 3 &&
+          typeof params.open === 'boolean' && typeof params.ratio === 'number' &&
+          Number.isFinite(params.ratio) && params.ratio >= 0.1 && params.ratio <= 0.8))) {
+        return refuse('invalid_request', 'invalid SAP layout preference')
+      }
+      return {ok: true}
+    case 'manageSapLogin':
+      if (!isPlainObject(params) || Object.keys(params).length !== 3 ||
+          typeof params.binding_id !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(params.binding_id) ||
+          typeof params.tenant_id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(params.tenant_id) ||
+          !['prepare', 'enable', 'forget'].includes(String(params.action))) {
+        return refuse('invalid_request', 'manageSapLogin requires a binding and a supported action')
+      }
+      return {ok: true}
     case 'suspendLocalContext':
       if (params.reason !== undefined && typeof params.reason !== 'string') {
         return refuse('invalid_request', 'suspendLocalContext requires a textual reason')

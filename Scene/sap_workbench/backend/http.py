@@ -33,9 +33,9 @@ def _endpoint(fn):
     return handle
 
 
-def _body(keys):
+def _body(keys, *, maximum=65536):
     raw = web.data()
-    if len(raw) > 65536:
+    if len(raw) > maximum:
         raise WorkbenchError("request_too_large", 413)
     try:
         value = json.loads(raw or b"{}")
@@ -309,6 +309,17 @@ def _request_origin():
     return f"{scheme}://{host}" if host else ""
 
 
+def attach_coding_binding(ctx, binding_id, source_id, link):
+    """Called only after the ordinary coding attach has verified session ownership."""
+    from ..browser_service.runner import browser_gateway
+    from .page_read import identifier
+    row = _store(ctx).session(ctx.tenant_id, ctx.user_id, identifier(binding_id))
+    instance = browser_gateway.runtimes.get(row['id'])
+    if not instance or not hasattr(instance, 'attach_coding_session'):
+        raise WorkbenchError('session_not_running', 409)
+    return browser_gateway.submit(instance.attach_coding_session(source_id, link), timeout=5)
+
+
 class SapWorkbenchSessionsHandler:
     @_endpoint
     def GET(self):
@@ -316,6 +327,32 @@ class SapWorkbenchSessionsHandler:
         from channel.web.fork.handlers.chat import _require_chat_use
         with _db_scope() as ctx:
             _require_chat_use(ctx)
+            query = web.input()
+            if query.get('login_context') == '1':
+                from ..browser_service.runner import browser_gateway
+                from .page_read import identifier
+                row = _store(ctx).session(ctx.tenant_id, ctx.user_id, identifier(query.get('binding_id')))
+                instance = browser_gateway.runtimes.get(row['id'])
+                if not instance or instance.display_mode != 'iframe':
+                    raise WorkbenchError('session_not_running', 409)
+                async def login_context():
+                    await instance.authorize()
+                    sap = instance.config['sap']
+                    return {'sap_login': {'binding_id': row['id'], 'sap_url': sap['web_gui_url'], 'client': sap['client']}}
+                return _json(browser_gateway.submit(login_context(), timeout=5))
+            if 'read_id' in query:
+                from ..browser_service.runner import browser_gateway
+                from .page_read import identifier
+                binding_id = identifier(query.get('binding_id'))
+                read_id, view_id = identifier(query.get('read_id')), identifier(query.get('view_id'))
+                row = _store(ctx).session(ctx.tenant_id, ctx.user_id, binding_id)
+                instance = browser_gateway.runtimes.get(row['id'])
+                if not instance or not hasattr(instance, 'page_read'):
+                    raise WorkbenchError('session_not_running', 409)
+                async def context():
+                    await instance.authorize()
+                    return {'page_read': instance.page_read.context(read_id, view_id)}
+                return _json(browser_gateway.submit(context(), timeout=5))
             return _json({'sessions': _store(ctx).sessions(ctx.tenant_id, ctx.user_id)})
 
     @_endpoint
@@ -329,10 +366,12 @@ class SapWorkbenchSessionsHandler:
             _require_chat_use(ctx)
             from ..browser_service.runner import browser_gateway
             from .runtime import open_workbench_runtime, close_runtime
-            body = _body({"request_id", "binding_id", "action", "control", "navigation_id"})
+            body = _body({"request_id", "binding_id", "action", "control", "navigation_id",
+                          "view_id", "page_read_supported", "view_active", "read_id", "read_result", "read_error"},
+                         maximum=140 * 1024)
             store = _store(ctx)
             action = body.get('action', 'open')
-            if not isinstance(action, str) or action not in {'open', 'control', 'close', 'heartbeat', 'navigation_ack'}:
+            if not isinstance(action, str) or action not in {'open', 'control', 'close', 'heartbeat', 'navigation_ack', 'read_result'}:
                 raise WorkbenchError('invalid_action')
             if 'binding_id' in body and (not isinstance(body['binding_id'], str)
                                         or not 1 <= len(body['binding_id']) <= 128):
@@ -340,7 +379,7 @@ class SapWorkbenchSessionsHandler:
             if 'control' in body and (not isinstance(body['control'], str)
                                       or body['control'] not in {'manual', 'automatic'}):
                 raise WorkbenchError('invalid_control')
-            if action in {'control', 'close', 'heartbeat', 'navigation_ack'} and not body.get('binding_id'):
+            if action in {'control', 'close', 'heartbeat', 'navigation_ack', 'read_result'} and not body.get('binding_id'):
                 raise WorkbenchError('bound_session_required', 400)
             if action == 'navigation_ack' and (not isinstance(body.get('navigation_id'), str)
                                                or not 1 <= len(body['navigation_id']) <= 128):
@@ -407,9 +446,22 @@ class SapWorkbenchSessionsHandler:
                     await instance.authorize()
                     import time
                     instance.last_active = time.monotonic()
+                    reading = None
+                    if body.get('view_id') is not None:
+                        reading = instance.page_read.heartbeat(body['view_id'], body.get('page_read_supported', False),
+                                                               body.get('view_active', True))
                     return {'binding_id': row['id'], 'state': 'ready',
+                            'page_read': reading,
                             'navigation': instance.navigation.command() if instance.display_mode == 'iframe' else None}
                 return _json(browser_gateway.submit(heartbeat(), timeout=15))
+            if action == 'read_result':
+                from .page_read import identifier
+                read_id, view_id = identifier(body.get('read_id')), identifier(body.get('view_id'))
+                async def read_result():
+                    await instance.authorize()
+                    instance.page_read.acknowledge(read_id, view_id, body.get('read_result'), body.get('read_error'))
+                    return {'binding_id': row['id'], 'state': 'read_received'}
+                return _json(browser_gateway.submit(read_result(), timeout=5))
             if action == 'navigation_ack':
                 async def acknowledge():
                     await instance.authorize()
@@ -498,6 +550,28 @@ class SapWorkbenchBridgeHandler:
         # to outlast it so a real scene refusal is not reported as a gateway
         # timeout.
         return _json(browser_gateway.submit(instance.navigate(transaction, call), timeout=35))
+
+
+class SapWorkbenchPageReadBridgeHandler:
+    """Same service/owner boundary as navigation, with no model parameters."""
+
+    @_endpoint
+    def POST(self):
+        import asyncio
+        from ..browser_service.runner import browser_gateway
+        _require_coding_service()
+        body = _body({'session_id', 'call_id'})
+        for key in ('session_id', 'call_id'):
+            if not isinstance(body.get(key), str) or not 1 <= len(body[key]) <= 128:
+                raise WorkbenchError('invalid_request', 400)
+        row = _scene_store().binding_for_session(body['session_id'])
+        from agent.coding import resolve_settings
+        if not row or row['service_id'] != resolve_settings().service_id:
+            raise WorkbenchError('session_not_bound', 403)
+        instance = browser_gateway.runtimes.get(row['id'])
+        if isinstance(instance, asyncio.Task) or not instance or getattr(instance, 'closed', False):
+            raise WorkbenchError('session_not_running', 409)
+        return _json(browser_gateway.submit(instance.read_page(body['call_id']), timeout=20))
 
 
 class SapWorkbenchDataBridgeHandler:

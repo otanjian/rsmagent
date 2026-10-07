@@ -46,11 +46,9 @@ function syncSessionHistorySurface() {
     const changed = next !== _sessionSurface;
     _historyVisible = !!next;
     if (changed) {
-        _cancelHistoryRequest();
         _closeSessionActionMenu();
         closeNewChatMenus();
         _sessionSurface = next;
-        _historyDirty = true;
         _historySearchComposing = false;
         if (next) {
             const mount = document.getElementById(`history-${next === 'panel' ? 'panel' : 'page'}-list-mount`);
@@ -58,7 +56,9 @@ function syncSessionHistorySurface() {
             mount.appendChild(document.getElementById('session-list'));
         }
     }
-    if (next && (_historyDirty || !_sessionItems.length) && !_sessionLoading) loadSessionList();
+    if (next && (changed || _historyDirty || !_sessionItems.length)) {
+        loadSessionList(undefined, { revalidate: true });
+    }
 }
 
 function openSessionPanel() {

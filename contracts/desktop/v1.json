@@ -82,10 +82,12 @@
       "saveArtifact",
       "openExternal",
       "signOut",
+      "readSapPage",
+      "manageSapLogin", "sapWorkbenchLayout",
       "notify",
       "onHostEvent"
     ],
-    "phase1_methods": ["getCapabilities", "suspendLocalContext", "saveArtifact", "openExternal", "signOut", "onHostEvent"],
+    "phase1_methods": ["getCapabilities", "suspendLocalContext", "saveArtifact", "openExternal", "signOut", "readSapPage", "manageSapLogin", "sapWorkbenchLayout", "onHostEvent"],
     "forbidden_capabilities": ["fs", "child_process", "ipcRenderer", "shell", "token"]
   },
   "gateway": {

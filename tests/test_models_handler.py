@@ -2,9 +2,10 @@
 import json
 import os
 import sys
+import tempfile
 import types
 import unittest
-from unittest.mock import mock_open, patch
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -44,6 +45,15 @@ def _no_response_headers():
 
 
 class TestModelsHandler(unittest.TestCase):
+    def setUp(self):
+        # These cases also run through unittest, without pytest's fixtures.
+        # Never let a missed write mock reach the developer's config.json.
+        data_dir = tempfile.TemporaryDirectory(prefix="cow-model-handler-tests-")
+        self.addCleanup(data_dir.cleanup)
+        data_root = patch.dict(os.environ, {"COW_DATA_DIR": data_dir.name})
+        data_root.start()
+        self.addCleanup(data_root.stop)
+
     def test_config_handler_exposes_reasoning_effort_metadata(self):
         from channel.web.web_channel import ConfigHandler
         from config import Config
@@ -115,12 +125,12 @@ class TestModelsHandler(unittest.TestCase):
              patch("channel.web.web_channel.web.data", return_value=json.dumps(payload).encode()), \
              patch("channel.web.web_channel.conf", return_value=local_config), \
              patch("channel.web.web_channel._read_config_file_for_write", return_value=file_config), \
-             patch("builtins.open", mock_open()) as m:
+             patch("channel.web.fork.handlers.config._write_config_file_for_write") as write_file:
             result = json.loads(ConfigHandler().POST())
 
         self.assertEqual(result["status"], "error")
         # Nothing written: the payload was rejected before the file write.
-        m.assert_not_called()
+        write_file.assert_not_called()
         # The in-memory config is untouched too.
         self.assertEqual(local_config.get("reasoning_effort_by_model"), {"deepseek:deepseek-v4-flash": "high"})
 
@@ -198,12 +208,14 @@ class TestModelsHandler(unittest.TestCase):
                 patch("channel.web.web_channel.conf", return_value=local_config), \
                 patch("channel.web.web_channel._read_config_file_for_write", return_value=file_config), \
                 patch("bridge.bridge.Bridge", _Bridge), \
-                patch("builtins.open", mock_open()):
+                patch("channel.web.fork.handlers.config._write_config_file_for_write") as write_file:
             result = json.loads(ConfigHandler().POST())
 
         self.assertEqual(result["status"], "success")
         self.assertEqual(local_config["agent_max_context_tokens"], 32000)
         self.assertEqual(file_config["agent_max_context_tokens"], 32000)
+        write_file.assert_called_once_with(
+            os.path.join(os.environ["COW_DATA_DIR"], "config.json"), file_config)
         self.assertEqual(cleared, [True], "the cached Agents were not evicted")
 
     def test_config_save_leaves_cached_agents_alone_for_unrelated_keys(self):
@@ -232,11 +244,13 @@ class TestModelsHandler(unittest.TestCase):
                 patch("channel.web.web_channel.conf", return_value=local_config), \
                 patch("channel.web.web_channel._read_config_file_for_write", return_value=file_config), \
                 patch("bridge.bridge.Bridge", _Bridge), \
-                patch("builtins.open", mock_open()):
+                patch("channel.web.fork.handlers.config._write_config_file_for_write") as write_file:
             result = json.loads(ConfigHandler().POST())
 
         self.assertEqual(result["status"], "success")
         self.assertEqual(cleared, [])
+        write_file.assert_called_once_with(
+            os.path.join(os.environ["COW_DATA_DIR"], "config.json"), file_config)
 
     def test_set_asr_capability_persists_provider_and_model(self):
         from channel.web.web_channel import ModelsHandler

@@ -2936,6 +2936,18 @@ def _migration_46(con: sqlite3.Connection) -> None:
 _migrations.append(_migration_46)
 
 
+def _migration_47(con: sqlite3.Connection) -> None:
+    """Account-owned OpenCode display/selection preferences shared by clients."""
+    con.execute("""CREATE TABLE IF NOT EXISTS coding_model_preferences (
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        service_id TEXT NOT NULL, preferences TEXT NOT NULL,
+        revision INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (user_id, service_id))""")
+
+
+_migrations.append(_migration_47)
+
+
 class IdentityStoreError(RuntimeError):
     """Raised when the identity store cannot be opened or migrated."""
 

@@ -49,13 +49,25 @@ CONFIG_FILE = '.opencode/opencode.json'
 #: ``sap_data_call`` reaches business data and, through ``call_rfc``, BAPIs that
 #: write business documents -- denied by default for the same reason as
 #: navigation, and re-allowed only for the sessions the scene names.
-HIDDEN_TOOLS = ('sap_transaction_open', 'sap_data_call')
+HIDDEN_TOOLS = ('sap_transaction_open', 'sap_data_call', 'sap_page_read')
 
 #: 我们发布过的历史修订摘要（规范化后）。由旧宿主
 #: (`opencode_adapter/native-host.ts`) 写入的同名插件摘要在此登记，否则已有项目里
 #: 那份文件既不是新内容、也不是"用户改动"，迁移会被误判为冲突而拒绝替换。
 #: 规则同旧实现：每替换一次修订，就把被替换版本的摘要加进来，并保留最早的条目。
 UPGRADEABLE_REVISIONS = frozenset({
+    # Last deployed page reader, before explicit current-user observations.
+    '1151c54b4e06a41a6d0351c4090b7cb6800e6d8ca45256bb16c26120bb7e1b85',
+    '93e7bd4bdacb8db2b75c2b5a2e6e20fd4be742049833bd0fffa3b35b1f19beea',
+
+    # First macOS reader release, before client/server platform clarification.
+    "5c1db5fd19742295e84fe1e5438e0eab8da081f940cafc43f6624fd8de5a6755",
+    "5b723e591d8648fd938930cae0d64a3cb20976c4dd589b393174881424b5b382",
+    "47f8bac4fb306271647fb88cb2a53d43c8533e5d996e650f8c39c148e68ffac2",
+    # Last shipped plugin and guidance, before macOS page reading.
+    'd7f760c873afbac44527b99b8a770c90c75730ac821cfa2c2ce04f6924fc90e1',
+    '779b8db19a1caaa85a904a5d8d5c7bda7562a30aa407180345ed58e7bb5b0994',
+    'f45706ce7096351c83e6a89aae209230bcf4124c1d11bb8718ecdf16b84e9eeb',
     # 旧宿主发布过、由 `guidanceDigest` 计算的规范化摘要
     'a4d3587833ee220f3f64e9271acccc386ecbe6a03774adbc9931c2f19635af32',
     'a40f3755d6975426f9b7f424628d712f25e98b23dae64e09923bda0df93a7bab',

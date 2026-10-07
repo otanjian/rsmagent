@@ -2710,11 +2710,9 @@ function navigateTo(viewId, onArrive) {
     // itself has a live draft, which is protected separately).
     if (viewId !== 'branding' && viewId !== currentView) fetchPublicBrand();
 
-    // Leaving the history page: mark it dirty so a later re-entry re-reads the
-    // newest list (titles/activity may have changed while we were elsewhere).
+    // Page and sidebar share the same list and request. Mutations invalidate
+    // it explicitly; returning to a surface also revalidates after its TTL.
     if (currentView === 'history' && viewId !== 'history') {
-        _historyDirty = true;
-        _cancelHistoryRequest();
         _closeSessionActionMenu();
     }
 
@@ -11756,8 +11754,103 @@ let _historyRequestController = null;
 let _historyAuthGeneration = 0;
 let _historyStatus = { key: '', message: '', error: false, retry: null };
 let _historyPageFailed = false;
+let _historyRequestPromise = null;
+let _historyRequestTimer = null;
+let _historyLastLoadedAt = 0;
+let _historyLastLoadedContext = '';
+const _HISTORY_CACHE_MAX_AGE = 24 * 60 * 60 * 1000;
+const _HISTORY_REQUEST_TIMEOUT = 15000;
+
+function _historyCacheKey() {
+    // Never restore business data before the account and tenant are confirmed.
+    // Origin also separates servers when embedded in a desktop browser session.
+    try {
+        const tenant = sessionStorage.getItem('cow_tenant_id');
+        if (typeof _accountState === 'undefined' || !_accountState.authenticated
+                || typeof _accountAppVisible === 'undefined' || !_accountAppVisible
+                || !_accountState.username || !tenant || _sidebarRecentDenied()) return null;
+        return 'cow_history_v1:' + JSON.stringify([
+            window.location.origin, _accountState.username, tenant,
+        ]);
+    } catch (_) { return null; }
+}
+
+function _readHistoryCache() {
+    const key = _historyCacheKey();
+    if (!key) return null;
+    try {
+        const raw = localStorage.getItem(key);
+        if (!raw || raw.length > 256000) return null;
+        const cached = JSON.parse(raw);
+        if (!cached || !Number.isFinite(cached.savedAt) || cached.savedAt > Date.now()
+                || Date.now() - cached.savedAt > _HISTORY_CACHE_MAX_AGE
+                || !Array.isArray(cached.sessions) || cached.sessions.length > _SESSION_PAGE_SIZE
+                || !cached.sessions.every(s => s && typeof s.session_id === 'string'
+                    && typeof s.title === 'string' && s.agent && typeof s.agent.id === 'string')
+                || !Number.isFinite(cached.total) || !Array.isArray(cached.project_order)) return null;
+        return cached;
+    } catch (_) { return null; }
+}
+
+function _writeHistoryCache(data) {
+    const key = _historyCacheKey();
+    if (!key || _historyQuery) return;
+    // Only list summaries belong here, never transcripts, tokens or settings.
+    const badge = a => ({ id: a.id, name: a.name, avatar: a.avatar, agent_type: a.agent_type });
+    try {
+        const cached = {
+            savedAt: Date.now(), total: data.total, has_more: !!data.has_more,
+            group_mode: data.group_mode, project_order: data.project_order || [],
+            sessions: (data.sessions || []).slice(0, _SESSION_PAGE_SIZE).map(s => ({
+                session_id: s.session_id, title: s.title, created_at: s.created_at,
+                last_active: s.last_active, msg_count: s.msg_count, pinned: s.pinned,
+                agent: badge(s.agent), participants: (s.participants || []).map(badge),
+                project: s.project ? { path: s.project.path, name: s.project.name } : null,
+                sync_state: s.sync_state,
+            })),
+        };
+        const raw = JSON.stringify(cached);
+        if (raw.length <= 256000) localStorage.setItem(key, raw);
+    } catch (_) { /* Storage may be disabled or full; the live list still works. */ }
+}
+
+function _invalidateHistoryCache() {
+    try {
+        const key = _historyCacheKey();
+        if (key) localStorage.removeItem(key);
+    } catch (_) {}
+    _historyLastLoadedAt = 0;
+}
+
+function _patchHistoryCache(sid, agentId, patch) {
+    const cached = _readHistoryCache();
+    if (!cached) return;
+    const row = cached.sessions.find(s => s.session_id === sid && s.agent.id === agentId);
+    if (!row) return;
+    ['title', 'pinned', 'last_active', 'msg_count'].forEach(key => {
+        if (patch[key] !== undefined) row[key] = patch[key];
+    });
+    cached.sessions.sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned)
+        || (b.last_active || 0) - (a.last_active || 0));
+    _writeHistoryCache(cached);
+}
+
+function _restoreHistoryCache() {
+    if (_historyQuery || _sessionItems.length) return;
+    const cached = _readHistoryCache();
+    if (!cached) return;
+    _sessionItems = cached.sessions;
+    _sessionPage = 1;
+    _sessionHasMore = cached.has_more;
+    _historyTotal = cached.total;
+    _sessionGroupMode = cached.group_mode === 'project' ? 'project' : 'time';
+    _projectOrder = cached.project_order;
+    _setHistoryState(_sessionItems.length ? '' : 'session_history_empty');
+    _renderSessionList();
+}
+
 function _sessionListContext() {
-    return JSON.stringify([_historyAuthGeneration, sessionStorage.getItem('cow_tenant_id') || '', activeAgentId, _historyQuery]);
+    return JSON.stringify([_historyAuthGeneration, sessionStorage.getItem('cow_tenant_id') || '', activeAgentId, _historyQuery, _historyCacheKey()]);
 }
 
 function _renderHistoryStatus() {
@@ -11817,6 +11910,9 @@ function _cancelHistoryRequest() {
     _historySearchTimer = null;
     if (_historyRequestController) _historyRequestController.abort();
     _historyRequestController = null;
+    clearTimeout(_historyRequestTimer);
+    _historyRequestTimer = null;
+    _historyRequestPromise = null;
     _sessionReqSeq++;
     _sessionLoading = false;
     _historyRefreshQueued = false;
@@ -11824,6 +11920,7 @@ function _cancelHistoryRequest() {
 
 function _historyLoadSettled() {
     _sessionLoading = false;
+    _updateHistorySearchControls();
     if (!_historyRefreshQueued) return;
     _historyRefreshQueued = false;
     _refreshHistoryList();
@@ -11832,6 +11929,8 @@ function _historyLoadSettled() {
 function _resetHistorySearch() {
     _cancelHistoryRequest();
     _historyAuthGeneration++;
+    _historyLastLoadedAt = 0;
+    _historyLastLoadedContext = '';
     if (typeof resetSessionPanelIdentity === 'function') resetSessionPanelIdentity();
     _historySearchComposing = false;
     _historyQuery = '';
@@ -11959,15 +12058,26 @@ function loadSessionList(onDone, opts) {
         _historyRefreshQueued = false;
         return;
     }
-    if (silent && _sessionLoading) {
+    _syncHistorySearchQuery();
+    if (silent && _sessionLoading && _sessionReqAgent === _sessionListContext()) {
         _historyRefreshQueued = true;
         return;
     }
-    _syncHistorySearchQuery();
+    if (_sessionLoading && _sessionReqAgent === _sessionListContext()) {
+        const context = _sessionListContext(), generation = _sessionReqSeq;
+        return _historyRequestPromise?.then(() => {
+            if (context === _sessionListContext() && generation === _sessionReqSeq
+                    && !_historyPageFailed && typeof onDone === 'function') onDone();
+        });
+    }
     if (Array.from(_historyQuery).length > 100) {
         _setHistoryState('history_search_limit', true);
         return;
     }
+    if (opts && opts.revalidate && !_historyDirty && !_historyPageFailed
+            && _historyLastLoadedContext === _sessionListContext()
+            && Date.now() - _historyLastLoadedAt < 15000) return Promise.resolve();
+    _restoreHistoryCache();
 
     // A user-facing (re)load supersedes any in-flight read. Silent refreshes
     // keep the in-flight request and queue a trailing read instead.
@@ -11975,7 +12085,7 @@ function loadSessionList(onDone, opts) {
         _cancelHistoryRequest();
         _sessionPage = 1;
         _sessionHasMore = false;
-        _historyTotal = null;
+        if (!_sessionItems.length) _historyTotal = null;
         container.scrollTop = 0;
     } else {
         _sessionReqSeq++;
@@ -12018,6 +12128,7 @@ function _touchHistorySession(sid, agentId, patch) {
         if (key === 'optimistic' || patch[key] === undefined) return;
         entry[key] = patch[key];
     });
+    _patchHistoryCache(sid, owner, patch);
     if (patch.last_active != null || patch.pinned != null) {
         if (typeof _sortSessionItems === 'function') _sortSessionItems();
     }
@@ -12030,6 +12141,7 @@ function _touchHistorySession(sid, agentId, patch) {
 // dirty so the next visit re-reads. In-flight reads are not aborted; a trailing
 // silent reload runs once they finish.
 function _refreshHistoryList() {
+    _invalidateHistoryCache();
     if (typeof _historyVisible === 'undefined' || !_historyVisible) {
         _historyDirty = true;
         return;
@@ -12306,10 +12418,10 @@ function _fetchSessionPage(page, clear, onDone, seq, opts) {
     if (seq !== _sessionReqSeq) return;
     _sessionLoading = true;
     _historyPageFailed = false;
-    const keepRows = silent && clear && _sessionItems.length;
+    const keepRows = clear && _sessionItems.length;
     if (!keepRows) {
         _setHistoryState(_historyQuery ? 'history_search_loading' : 'session_history_loading');
-    }
+    } else _setHistoryState('');
     _updateHistorySearchControls();
 
     const container = document.getElementById('session-list');
@@ -12340,12 +12452,27 @@ function _fetchSessionPage(page, clear, onDone, seq, opts) {
     const url = `/api/sessions?page=${page}&page_size=${_SESSION_PAGE_SIZE}&scope=all`
         + (query ? `&q=${encodeURIComponent(query)}` : '');
 
-    return fetch(url, { signal: controller.signal })
+    let timedOut = false;
+    let timer;
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+            reject(new Error('History request timed out'));
+        }, _HISTORY_REQUEST_TIMEOUT);
+        _historyRequestTimer = timer;
+    });
+    const transport = fetch(url, { signal: controller.signal })
         .then(async r => {
-            const data = await r.json();
+            const data = await r.json().catch(error => {
+                if (r.status === 401 || r.status === 403) return { status: 'error' };
+                throw error;
+            });
             if (r.status === 403 || r.status === 503) data._historyUnavailable = true;
+            if (r.status === 401 || r.status === 403) data._historyDenied = true;
             return data;
-        })
+        });
+    const request = Promise.race([transport, timeout])
         .then(data => {
             // Late / stale result: the page changed or the identity moved on.
             if (!current()) return;
@@ -12362,6 +12489,11 @@ function _fetchSessionPage(page, clear, onDone, seq, opts) {
             }
 
             if (data.status !== 'success') {
+                if (data._historyDenied) {
+                    _invalidateHistoryCache();
+                    _sessionItems = [];
+                    _historyTotal = null;
+                }
                 fail(data._historyUnavailable ? 'session_history_not_enabled' : 'session_history_failed');
                 return;
             }
@@ -12376,7 +12508,7 @@ function _fetchSessionPage(page, clear, onDone, seq, opts) {
             const sessionKey = s => `${(s.agent && s.agent.id) || ''}::${s.session_id}`;
             const sessions = data.sessions || [];
 
-            if (clear && keepRows && !query) {
+            if (clear && silent && keepRows && !query) {
                 const incoming = new Set(sessions.map(sessionKey));
                 const rest = _sessionPage > 1
                     ? _sessionItems.filter(s => !incoming.has(sessionKey(s)))
@@ -12405,6 +12537,11 @@ function _fetchSessionPage(page, clear, onDone, seq, opts) {
             _historyTotal = Number.isFinite(data.total) ? data.total : null;
             _sessionGroupMode = data.group_mode === 'project' ? 'project' : 'time';
             if (Array.isArray(data.project_order)) _projectOrder = data.project_order;
+            if (page === 1) {
+                _historyLastLoadedAt = Date.now();
+                _historyLastLoadedContext = ctx;
+                if (!query) _writeHistoryCache(data);
+            }
 
             const seen = new Set(_sessionItems.map(sessionKey));
             if (pending && !query && !seen.has(sessionKey(pending))) _sessionItems.unshift(pending);
@@ -12430,8 +12567,14 @@ function _fetchSessionPage(page, clear, onDone, seq, opts) {
             });
         })
         .catch(error => {
-            if (error.name !== 'AbortError') fail('session_history_failed');
+            if (error.name !== 'AbortError' || timedOut) fail('session_history_failed');
+        }).finally(() => {
+            clearTimeout(timer);
+            if (_historyRequestTimer === timer) _historyRequestTimer = null;
+            if (_historyRequestPromise === request) _historyRequestPromise = null;
         });
+    _historyRequestPromise = request;
+    return request;
 }
 
 // Split the loaded sessions into ordered, labelled groups.
@@ -12800,6 +12943,7 @@ function toggleSessionPin(sid, agentId) {
     _renderSessionList();
 
     const owner = agentId || (entry.agent && entry.agent.id) || activeAgentId;
+    const cacheKey = _historyCacheKey();
     fetch(`/api/sessions/${encodeURIComponent(sid)}?agent_id=${encodeURIComponent(owner || '')}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -12807,7 +12951,10 @@ function toggleSessionPin(sid, agentId) {
     })
         .then(r => r.json())
         .then(data => {
-            if (data.status === 'success') return;
+            if (data.status === 'success') {
+                if (cacheKey === _historyCacheKey()) _patchHistoryCache(sid, owner, { pinned });
+                return;
+            }
             // Most often an empty brand-new chat: it has no row to pin until the
             // first message is stored.
             _wsToast(data.message || t('session_settings_failed'));
@@ -13298,6 +13445,7 @@ function renameSession(sid, agentId) {
         restore(newTitle, false);
         const cached = _sessionItems.find(same);
         if (cached) cached.title = newTitle;
+        const cacheKey = _historyCacheKey();
         fetch(`/api/sessions/${encodeURIComponent(sid)}?agent_id=${encodeURIComponent(owner || '')}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -13306,7 +13454,10 @@ function renameSession(sid, agentId) {
             .then(r => r.json())
             .then(data => {
                 if (data.status !== 'success') { revert(); _wsToast(data.message || t('session_settings_failed')); }
-                else if (_historyQuery || _historyDirty) _refreshHistoryList();
+                else {
+                    if (cacheKey === _historyCacheKey()) _patchHistoryCache(sid, owner, { title: newTitle });
+                    if (_historyQuery || _historyDirty) _refreshHistoryList();
+                }
             })
             .catch(revert);
     };
@@ -13329,6 +13480,7 @@ function deleteSession(sid, agentId) {
             .then(r => r.json())
             .then(data => {
                 if (data.status !== 'success') { _wsToast(data.message || t('session_settings_failed')); return; }
+                _invalidateHistoryCache();
                 if (!deletingCurrent) {
                     _refreshHistoryList();
                     return;
@@ -22636,6 +22788,7 @@ async function handleLogout() {
     if (_accountWritePending || !((_accountState.authRequired && _accountState.authenticated)
             || _accountState.phase === 'logout_error')) return;
     _accountWritePending = 'logout';
+    _invalidateHistoryCache();
     _invalidateAccountIdentity('logout_pending');
     _resetHistorySearch();
     const epoch = _authEpoch;

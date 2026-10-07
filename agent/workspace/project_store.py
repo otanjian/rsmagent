@@ -247,6 +247,35 @@ def get_project_map(agent_id: Optional[str] = None) -> Dict[str, str]:
     return out
 
 
+def history_snapshot(agent_ids) -> Dict:
+    """Read history decorations once, checking each distinct directory once.
+
+    The caller's identity selects the file. Only the supplied visible agents'
+    bindings are returned; session ownership is subsequently checked by SQL.
+    This is a request snapshot, never a process-wide cross-user cache.
+    """
+    with _lock:
+        data = _load()
+    allowed = set(agent_ids)
+    projects = {}
+    names = {}
+    valid = {}
+    for key, entry in data["sessions"].items():
+        agent_id, _, sid = key.partition("::")
+        if agent_id not in allowed or not sid:
+            continue
+        path = entry.get("path") if isinstance(entry, dict) else entry
+        if not isinstance(path, str) or not path:
+            continue
+        if path not in valid:
+            valid[path] = os.path.isdir(path)
+        if valid[path]:
+            projects[(agent_id, sid)] = path
+            if path not in names:
+                names[path] = _display_name(data, os.path.realpath(path))
+    return {"projects": projects, "names": names, "order": list(data.get("order") or [])}
+
+
 def forget_session(session_id: str, agent_id: Optional[str] = None) -> None:
     """Drop a session's binding (called when the conversation is deleted).
 

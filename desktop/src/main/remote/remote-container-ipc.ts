@@ -1,3 +1,4 @@
+import { sapWorkbenchLayout } from './config-ipc'
 // Attaching and detaching the remote container from the local shell.
 //
 // Change ``add-desktop-remote-web-workbench``, tasks 4.1/4.6. This is the only
@@ -11,13 +12,13 @@
 //     torn down locally before the server-side revocation is attempted, so a
 //     failed revoke cannot leave a page that still talks to the server.
 
-import { BrowserWindow, app, clipboard, dialog, ipcMain, protocol, session as electronSession, shell } from 'electron'
+import { BrowserWindow, app, clipboard, dialog, ipcMain, protocol, safeStorage, session as electronSession, shell } from 'electron'
 import { randomBytes } from 'crypto'
 import * as fs from 'fs'
 import * as path from 'path'
 import {
   beginAuthorization, bootstrapWebSession, clearWebChildSessions, logout, status,
-  getLocalBackendOrigin, nativeBearer,
+  getLocalBackendOrigin, getBackendOrigin, nativeBearer, selectTenant,
 } from '../auth-broker'
 import { createRemoteContainer, type RemoteContainer } from './container'
 import { asCookieFetchSession, containerBindingTransport } from './container-binding-transport'
@@ -47,6 +48,8 @@ import { resolveBackendPath } from '../backend-path'
 import { InterpreterRegistry, findWorkerRuntime } from '../local-execution/interpreter'
 import { registerRemoteHost, setupRemoteHostIPC, teardownRemoteHostIPC } from './remote-host-ipc'
 import { remoteCoveringScript } from './shell-covering'
+import type { ReadContext } from './sap-page-read'
+import { SapLoginMemory, SapLoginVault, type SapLoginContext } from './sap-login-memory'
 import { partitionName, isValidInstanceId } from './web-session'
 import { SignOutCoordinator, type SignOutOutcome } from './session-signout'
 
@@ -564,6 +567,17 @@ export async function attachRemoteContainer(options: {
     // The main process owns authorization; the page cannot start it for itself.
     await beginAuthorization()
   }
+  if (options.origin !== getBackendOrigin()) {
+    // The consent page can select another server. Its console paths and
+    // cookie partition must come from that server, not the pre-login target.
+    const origin = getBackendOrigin()
+    const probed = await probeServer(origin, fetch)
+    if (!probed.ok) return { ok: false, code: probed.failure.code, message: probed.failure.message }
+    if (!probed.meta.remote_web.available) {
+      return { ok: false, code: 'feature_unavailable', message: 'the server does not offer the desktop workbench' }
+    }
+    options = { ...options, origin, entryPaths: probed.meta.console_entry_paths || [] }
+  }
   const instanceId = randomBytes(24).toString('base64url')
   if (!isValidInstanceId(instanceId)) {
     return { ok: false, code: 'invalid_request', message: 'could not generate an instance id' }
@@ -712,8 +726,74 @@ export async function attachRemoteContainer(options: {
   } catch {
     setRemoteLocalFilesEnabled(false)
   }
+  const sapScope = () => {
+    const current = status()
+    if (!current.session?.tenantId || current.blockedReason) return undefined
+    return {server: options.origin, user:current.session.userId, tenant:current.session.tenantId,
+      epoch:current.session.epoch}
+  }
+  const sapLogin = process.platform === 'darwin' ? new SapLoginMemory(view.webContents,
+    new SapLoginVault(path.join(app.getPath('userData'), 'sap-login'), safeStorage), sapScope) : undefined
+  if (sapLogin) partitionDisposers.push(() => sapLogin.dispose())
+  let sapLoginQueue = Promise.resolve<object>({})
   registerRemoteHost({
+    sapLayout: sapWorkbenchLayout,
     webContents: view.webContents,
+    sapLogin: sapLogin ? (binding, action, tenant) => {
+      const run = async () => {
+        let stage = 'team-membership'
+        try {
+          const broker = status(), generation = container?.generation
+          if (!broker.session || broker.blockedReason || !broker.session.tenants.some(item => item.id === tenant)) throw new Error('sap_login_unavailable')
+          stage = 'server-context'
+          const response = await view.webContents.session.fetch(`${options.origin}/api/scenes/sap-workbench/sessions?${new URLSearchParams({binding_id:binding, login_context:'1'})}`, {
+            credentials:'include', redirect:'error', headers:{'X-Tenant-ID':tenant}, signal:AbortSignal.timeout(5000),
+          })
+          stage = `server-context-${response.status}`
+          if (!response.ok) throw new Error('sap_login_unavailable')
+          const body = await response.json() as {sap_login?: SapLoginContext}
+          stage = 'binding-context'
+          if (body.sap_login?.binding_id !== binding) throw new Error('sap_login_unavailable')
+          if (status().session?.epoch !== broker.session.epoch || container?.generation !== generation) throw new Error('sap_login_unavailable')
+          // Web selects its team in sessionStorage; synchronize only after the
+          // server has verified membership and ownership of this SAP binding.
+          selectTenant(tenant)
+          stage = 'native-scope'
+          const scope = sapScope()
+          if (!scope) throw new Error('sap_login_unavailable')
+          if (action === 'enable') {
+            const answer = await dialog.showMessageBox({type:'question', title:'记住 SAP 登录',
+              message:`在这台 Mac 上记住 ${new URL(body.sap_login.sap_url).origin} 的 SAP 登录？`,
+              detail:'仅用于当前平台账号、团队和 SAP Client。登录状态与账号密码由 macOS 钥匙串加密保护；会话过期后自动填入，由你点击登录。可随时在工作台清除。',
+              buttons:['记住登录', '取消'], defaultId:0, cancelId:1})
+            if (answer.response !== 0) action = 'prepare'
+          }
+          if (sapScope()?.epoch !== scope.epoch || container?.generation !== generation || view.webContents.isDestroyed()) throw new Error('sap_login_unavailable')
+          stage = 'keychain-record'
+          const result = await sapLogin.manage(body.sap_login, scope, action)
+          if (sapScope()?.epoch !== scope.epoch || container?.generation !== generation) throw new Error('sap_login_unavailable')
+          return result
+        } catch (error) {
+          // Deliberately omit the error object: it may contain request details.
+          console.warn('[sap-login-memory] unavailable at', stage)
+          throw error
+        }
+      }
+      sapLoginQueue = sapLoginQueue.catch(() => ({})).then(run)
+      return sapLoginQueue
+    } : undefined,
+    sapReadContext: async (request) => {
+      const query = new URLSearchParams(request)
+      const response = await view.webContents.session.fetch(`${options.origin}/api/scenes/sap-workbench/sessions?${query}`, {
+        credentials: 'include', redirect: 'error',
+        headers: {'X-Tenant-ID': status().session?.tenantId || ''},
+        signal: AbortSignal.timeout(5000),
+      })
+      if (!response.ok) throw Object.assign(new Error('page_changed'), {code: 'page_changed'})
+      const body = await response.json() as {page_read?: ReadContext}
+      if (!body.page_read) throw Object.assign(new Error('page_changed'), {code: 'page_changed'})
+      return body.page_read
+    },
     // The container's own sign-out: single-flighted, and refused while one is
     // unresolved so the shell cannot reconnect past an unconfirmed end.
     signOut: () => signOutCoordinator.signOut(),
@@ -745,6 +825,7 @@ export async function attachRemoteContainer(options: {
         projectWatcher?.start(bound.workspaceId)
       },
       revoked: (all) => {
+        if (all) sapLogin?.suspend()
         if (!localRead) return
         if (all) {
           localRead.dispose()

@@ -258,6 +258,8 @@ FORK_TENANCY_DIMENSION = TableDimension(
     indexes=(
         IndexSpec("idx_sessions_tenant_owner", SESSIONS,
                   ("tenant_id", "owner", "last_active")),
+        IndexSpec("idx_sessions_history", SESSIONS,
+                  ("tenant_id", "owner", "channel_type", "archived", "pinned", "last_active")),
         IndexSpec("idx_messages_tenant_owner", MESSAGES,
                   ("tenant_id", "owner", "session_id")),
     ),

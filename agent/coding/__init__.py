@@ -106,6 +106,7 @@ class CodingSettings:
     username: str = "opencode"
     password_env: str = "RSM_OPENCODE_PASSWORD"
     password: Optional[str] = None
+    browser_sso: bool = False
 
     @property
     def configured(self) -> bool:
@@ -170,6 +171,7 @@ def resolve_settings(raw: Optional[Mapping[str, Any]] = None) -> CodingSettings:
         username=_as_str(raw.get("username"), "opencode"),
         password_env=password_env,
         password=password,
+        browser_sso=_as_bool(raw.get("browser_sso"), False),
     )
 
 

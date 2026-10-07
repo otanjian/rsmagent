@@ -184,6 +184,8 @@ def test_route_echoes_search_and_empty_query_is_backwards_compatible(agent_envir
     _seed(env.stores["a"], [("s1", "标题搜索", "u1", "web", 1, 1, 0)])
     response, result = _request(monkeypatch, env.ctx, scope="all", q=" 标题 ")
     assert response.status == "200 OK"
+    assert response.headers["Cache-Control"] == "private, no-store"
+    assert response.headers["Server-Timing"].startswith("history;dur=")
     assert result["status"] == "success" and result["query"] == "标题"
     assert result["total"] == 1
     _, original = _request(monkeypatch, env.ctx, scope="all")

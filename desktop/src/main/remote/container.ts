@@ -12,6 +12,11 @@ import {
   BRIDGE_VERSION, checkTopFrameNavigation, permissionVerdict, safeUrl,
   sameOrigin,
 } from './host-bridge'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+import { X509Certificate } from 'crypto'
+import { acceptsPinnedCertificate, parseCertificatePins } from './certificate-pins'
 
 export interface ContainerOptions {
   window: BaseWindow
@@ -124,6 +129,16 @@ export function createRemoteContainer(options: ContainerOptions): RemoteContaine
     },
   }
 
+  view.webContents.on('certificate-error', (event, url, _error, certificate, callback) => {
+    try {
+      const file = path.join(process.env.COW_HOME || path.join(os.homedir(), '.cow'), 'desktop-certificate-pins.json')
+      const pins = parseCertificatePins(fs.readFileSync(file, 'utf8'))
+      if (!acceptsPinnedCertificate(pins, url, new X509Certificate(certificate.data).fingerprint256)) return
+      event.preventDefault()
+      callback(true)
+    } catch { /* Missing or invalid pins keep Chromium's certificate checks. */ }
+  })
+
   options.window.contentView.addChildView(view)
   view.setBounds(coverBounds(options.window))
 
@@ -141,7 +156,8 @@ export function createRemoteContainer(options: ContainerOptions): RemoteContaine
       frameRoutingId: view.webContents.mainFrame.routingId,
     }
   }
-  view.webContents.on('did-finish-load', registerDocument)
+  // Loading resources does not replace the document. Bumping here again at
+  // did-finish-load invalidates a preload handshake made during page startup.
   view.webContents.on('did-navigate', registerDocument)
 
   // -- top-frame navigation ------------------------------------------------

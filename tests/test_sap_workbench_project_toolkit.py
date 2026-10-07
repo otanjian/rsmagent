@@ -54,7 +54,7 @@ def test_the_permission_rule_is_idempotent(tmp_path):
 def test_a_user_permission_choice_is_not_overwritten(tmp_path):
     project_toolkit.install(tmp_path)
     target = tmp_path / project_toolkit.CONFIG_FILE
-    navigation, business = project_toolkit.HIDDEN_TOOLS
+    navigation, *others = project_toolkit.HIDDEN_TOOLS
     choice = {"permission": {navigation: "allow"}, "model": "acme/model"}
     target.write_text(json.dumps(choice), encoding="utf-8")
     report = project_toolkit.install(tmp_path)
@@ -67,7 +67,7 @@ def test_a_user_permission_choice_is_not_overwritten(tmp_path):
     # The explicit choice is preserved verbatim...
     assert merged["permission"][navigation] == "allow"
     # ...while the tool the user never mentioned still gets its default deny.
-    assert merged["permission"][business] == "deny"
+    assert all(merged["permission"][tool] == "deny" for tool in others)
 
 
 def test_existing_json_config_is_merged_not_replaced(tmp_path):

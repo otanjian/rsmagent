@@ -15,6 +15,7 @@ from agent.permission import (
 from bridge.context import *
 from common.log import logger
 import json
+import time
 from typing import NoReturn, Optional
 import web
 
@@ -113,6 +114,7 @@ def _forget_session_side_stores(session_id: str) -> None:
 
 class SessionsHandler:
     def GET(self):
+        started = time.perf_counter()
         from channel.web.fork.runtime import _agent_badge
         from channel.web.fork.runtime import _annotate_coding_sessions
         from channel.web.fork.runtime import _annotate_sessions_with_projects
@@ -121,6 +123,7 @@ class SessionsHandler:
         from channel.web.fork.runtime import _request_agent_id
         from channel.web.web_channel import _require_read_permission
         web.header('Content-Type', 'application/json; charset=utf-8')
+        web.header('Cache-Control', 'private, no-store')
         try:
             with _db_scope() as ctx:
                 _require_read_permission(ctx, "history.read")
@@ -179,6 +182,11 @@ class SessionsHandler:
         except Exception as e:
             logger.error(f"[WebChannel] Sessions API error: {e}")
             return json.dumps({"status": "error", "message": str(e)})
+        finally:
+            elapsed_ms = (time.perf_counter() - started) * 1000
+            web.header('Server-Timing', f'history;dur={elapsed_ms:.1f}')
+            if elapsed_ms >= 500:
+                logger.info(f"[WebChannel] Slow history list: {elapsed_ms:.1f}ms")
 
 
 class SessionDetailHandler:

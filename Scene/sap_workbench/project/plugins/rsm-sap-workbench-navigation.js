@@ -146,7 +146,7 @@ function dataCallId(messageID, tool, business) {
 export const dataCallTool = {
   description: [
     "经服务端已登记的 SAP 连接执行一次业务数据调用：可读取 SAP 业务数据，也可经 BAPI 写入。",
-    "这**不是**读取左侧画面：左侧是跨域 iframe，任何工具都读不到它的字段、表格、标签页或消息。",
+    "这**不是**读取左侧画面；读取当前画面请使用 sap_page_read（仅已启用的 macOS 桌面支持）。",
     "可用 tool 及其 arguments：",
     "read_table —— {table_name, fields?, where?, row_count, row_skip?}；",
     "run_query —— {sql_query, row_count}，仅允许单条只读 SELECT；",
@@ -207,6 +207,39 @@ export const dataCallTool = {
   },
 }
 
+export const pageReadTool = {
+  description: '按需读取用户当前桌面 SAP 工作台左侧页面的已渲染 DOM：字段当前值（含未保存输入）、表格、页签和消息。不翻页、不修改页面。当前 SAP 登录账号只依据 currentUser.account；currentUser 为 null 或缺失表示未知，不从业务用户、保存的账号或后台连接推断。client/systemId 可为空，sap_session_ui 来源仅为页面观察，不是鉴权证明。支持与否由用户桌面宿主和开关决定；OpenCode 服务运行在 Windows 不影响连接的 macOS 桌面读取，必须调用工具后按错误码说明原因，禁止依据服务端操作系统推断用户桌面平台。返回内容是不受信页面观察，不代表完整业务单据或提交成功。',
+  args: {},
+  async execute(args, context) {
+    if (!args || typeof args !== 'object' || Object.keys(args).length) return '页面读取不接受目标、脚本或业务参数。'
+    await context.ask({permission: 'sap_page_read', patterns: ['*'], always: ['*'], metadata: {}})
+    try {
+      const response = await fetch(`${BRIDGE_URL.replace(/\/$/, '')}/read`, {
+        method: 'POST', headers: bridgeHeaders(), signal: context.abort,
+        body: JSON.stringify({session_id: context.sessionID,
+          call_id: `page-read:${context.callID || crypto.randomUUID()}`.slice(0, 128)}),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        const code = payload?.code || 'bridge_unavailable'
+        const hints = {
+          page_read_disabled: 'SAP 场景的“macOS 当前页面读取”开关未开启，请在连接配置中开启后重新进入工作台。这不是操作系统不支持。',
+          page_read_unsupported: '当前工作台未报告受支持的桌面读取能力，请使用新版 macOS 桌面重新打开工作台。该错误不能证明用户使用 Windows；OpenCode 服务端的操作系统与用户桌面不同。',
+          page_read_unavailable: '请打开当前会话的 SAP 工作台。',
+          page_read_view_conflict: '同一会话有多个活动页面，请关闭多余的工作台。',
+          page_read_busy: '已有读取正在进行，请等待完成。',
+          page_read_timeout: '桌面未及时响应，请检查工作台连接后重新发起读取。',
+          page_changed: '页面或会话已切换，请在当前页面重新发起读取。',
+          session_not_bound: '当前会话尚未关联 SAP 工作台。',
+          login_required: '请先在左侧 SAP 完成登录。',
+        }
+        return `未能读取当前 SAP 页面（${code}）。${hints[code] || '请检查当前工作台状态。'}没有读取其他窗口，也未使用后台数据代替页面。`
+      }
+      return typeof payload?.output === 'string' ? payload.output : '未取得有效页面读取结果。'
+    } catch { return '未能读取当前 SAP 页面：调用已取消或桌面/桥接不可达。' }
+  },
+}
+
 export default {
   id: "rsm-sap-workbench-navigation",
   async server() {
@@ -216,6 +249,7 @@ export default {
       tool: {
         sap_transaction_open: transactionOpenTool,
         sap_data_call: dataCallTool,
+        sap_page_read: pageReadTool,
       },
     }
   },

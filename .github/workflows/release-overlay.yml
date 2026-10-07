@@ -189,6 +189,19 @@ jobs:
         working-directory: desktop
         run: npm ci
 
+      - name: Build the macOS local file helper
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          cargo build --release --locked --manifest-path desktop/native/fs-guard/Cargo.toml
+          want=arm64
+          [ "${{ matrix.arch }}" = "arm64" ] || want=x86_64
+          got="$(lipo -archs desktop/native/fs-guard/target/release/fs-guard)"
+          if [ "$got" != "$want" ]; then
+            echo "::error::file helper is $got but this job targets $want"
+            exit 1
+          fi
+
       # The installed-shape boundary (task 4.9's "随包 Python" leg). Runs the
       # isolation acceptance against the *frozen* backend built above rather than
       # against a source checkout -- the two are not interchangeable, because a

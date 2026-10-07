@@ -1,0 +1,51 @@
+{
+  "/chat": 200,
+  "/api/scenes/sap-workbench/config": 400,
+  "read_bridge_unauthenticated": 401,
+  "read_bridge_unbound": {
+    "status": 403,
+    "body": {
+      "status": "error",
+      "code": "session_not_bound",
+      "message": "session_not_bound"
+    }
+  },
+  "opencode_health": {
+    "healthy": true,
+    "version": "local"
+  },
+  "registered_sap_tools": [
+    "sap_transaction_open",
+    "sap_data_call",
+    "sap_page_read"
+  ],
+  "page_read_enabled": [
+    true
+  ],
+  "all_4_files_match": true,
+  "project_plugin_matches": true,
+  "project_skill_matches": true,
+  "public/chat": 200,
+  "public/code/": 200,
+  "date": "2026-10-06",
+  "backup": "C:\\rdai\\backups\\sap-current-user-20261006-180453",
+  "platform_pid_after": 4348,
+  "opencode_api_pid_after": 5188,
+  "tests": {
+    "python_passed": 62,
+    "python_skipped": 1,
+    "javascript_passed": 60,
+    "macos_electron_fixture": true,
+    "desktop_build": true
+  },
+  "live_ui": {
+    "platform": "macOS",
+    "account": "S2385",
+    "client": "200",
+    "systemId": null,
+    "source": "sap_session_ui",
+    "surface": "SAP WebGUI System: Status / Usage Data",
+    "sap_cookie_restored_after_restart": true
+  },
+  "remaining": "Original task 3.3: real SAP unsaved input verification"
+}

@@ -195,6 +195,24 @@ def with_query(uri: str, params: Dict[str, str]) -> str:
         for key, value in params.items())
 
 
+def validate_server_origin(raw: str) -> str:
+    """Validate a replacement remote server; the desktop validates it again."""
+    value = raw.strip()
+    try:
+        parsed = urlsplit(value)
+        valid = (parsed.scheme == "https" and parsed.hostname
+                 and parsed.username is None and parsed.password is None
+                 and parsed.path in ("", "/") and not parsed.query
+                 and not parsed.fragment and parsed.port != 0
+                 and not re.search(r"[\s\\]", value) and len(value) <= 2048)
+    except ValueError:
+        valid = False
+    if not valid:
+        raise DesktopAuthError("请输入 HTTPS 服务器地址，不包含路径、账号或查询参数。",
+                               "invalid_server_origin", 400)
+    return value.rstrip("/")
+
+
 def render_consent_page(*, backend_origin: str, username: str,
                         display_name: str, redirect_uri: str,
                         request_id: str, csrf: str) -> str:
@@ -216,9 +234,27 @@ def render_consent_page(*, backend_origin: str, username: str,
         </div>
         <p id="desktop-switch-error" class="form-error" role="alert" hidden></p>
         <dl class="connection-details">
-            <div><dt>服务地址</dt><dd>{origin}</dd></div>
+            <div><dt>服务地址</dt><dd class="server-address"><span>{origin}</span>
+                <button id="desktop-edit-server" class="account-switch" type="button"
+                    aria-expanded="false" aria-controls="desktop-server-form">修改</button>
+            </dd></div>
             <div><dt>桌面客户端</dt><dd>{host}</dd></div>
         </dl>
+        <form id="desktop-server-form" class="server-form" method="post" action="{path}" hidden>
+            <input type="hidden" name="request_id" value="{request_id}">
+            <input type="hidden" name="csrf" value="{csrf}">
+            <input type="hidden" name="decision" value="change_server">
+            <label for="desktop-server-origin">服务器地址</label>
+            <input id="desktop-server-origin" name="server_origin" type="url" value="{origin}"
+                required maxlength="2048" spellcheck="false" autocomplete="url"
+                aria-describedby="desktop-server-hint desktop-server-error" placeholder="https://ai.example.com">
+            <p id="desktop-server-hint">填写 HTTPS 服务器地址，保存后将在该服务器重新登录并授权。</p>
+            <p id="desktop-server-error" class="form-error" role="alert" hidden></p>
+            <div class="server-form-actions">
+                <button class="button button-primary" type="submit">保存并连接</button>
+                <button id="desktop-cancel-server" class="button button-secondary" type="button">取消修改</button>
+            </div>
+        </form>
         <div class="auth-notice">
             <svg class="icon" aria-hidden="true"><use href="#icon-shield"></use></svg>
             <p>授权后，桌面端将以此账号访问服务。<br>请仅在你主动发起桌面端登录时确认。</p>

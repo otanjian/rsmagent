@@ -57,7 +57,8 @@
     "api_url": "http://127.0.0.1:4096",
     "web_url": "",
     "username": "opencode",
-    "password_env": "RSM_OPENCODE_PASSWORD"
+    "password_env": "RSM_OPENCODE_PASSWORD",
+    "browser_sso": false
   },
   "enable_thinking": false,
   "reasoning_effort": "high",

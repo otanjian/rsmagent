@@ -948,7 +948,7 @@ class DesktopAuthorizeHandler:
         ))
 
     def POST(self):
-        from auth.desktop_auth import DesktopAuthError, with_query
+        from auth.desktop_auth import DesktopAuthError, validate_server_origin, with_query
 
         # Consent pages ship ``Referrer-Policy: same-origin`` / historically
         # ``no-referrer``. A cookie write normally demands Origin/Referer via
@@ -965,14 +965,23 @@ class DesktopAuthorizeHandler:
         desktop = _desktop_service()
         session_token = _session_token()
         try:
-            if decision == "deny":
+            if decision == "change_server":
+                origin = validate_server_origin(params.get("server_origin", ""))
+                # Consume the old consent without minting a code. Only the
+                # waiting desktop may select the new server and start fresh PKCE.
+                info = desktop.deny(request_id=request_id, csrf=csrf,
+                                    session_token=session_token)
+                query = {"error": "server_changed", "server_origin": origin}
+            elif decision == "deny":
                 info = desktop.deny(request_id=request_id, csrf=csrf,
                                     session_token=session_token)
                 query = {"error": "access_denied"}
-            else:
+            elif decision == "allow":
                 info = desktop.confirm(request_id=request_id, csrf=csrf,
                                        session_token=session_token)
                 query = {"code": info["code"]}
+            else:
+                raise DesktopAuthError("unknown authorization decision")
         except DesktopAuthError as e:
             return _desktop_error(e)
         if info.get("state"):

@@ -203,6 +203,33 @@ class WorkbenchStore:
             result.append(item)
         return result
 
+    def attach_coding_session(self, tenant_id, user_id, binding, source_id, link):
+        """Retarget an existing binding only after platform attach verified the link."""
+        with self._connection() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT * FROM "cj-sap_workbench-session_links" '
+                             'WHERE id=? AND tenant_id=? AND user_id=?',
+                             (binding, tenant_id, user_id)).fetchone()
+            if not row or row['state'] == 'closed':
+                raise WorkbenchError('session_not_found', 404)
+            if (row['display_mode'] != 'iframe' or row['service_id'] != link['service_id']
+                    or row['agent_id'] != link['agent_id']
+                    or json.loads(row['snapshot_json'])['project'] != link['project_dir']):
+                raise WorkbenchError('session_forbidden', 403)
+            if row['coding_session_id'] == link['session_id'] and row['remote_session_id'] == link['external_session_id']:
+                return self.session(tenant_id, user_id, binding)
+            if row['coding_session_id'] != source_id:
+                raise WorkbenchError('page_changed', 409)
+            other = db.execute('SELECT id FROM "cj-sap_workbench-session_links" '
+                               "WHERE remote_session_id=? AND state!='closed' AND id!=?",
+                               (link['external_session_id'], binding)).fetchone()
+            if other:
+                raise WorkbenchError('page_read_view_conflict', 409)
+            db.execute('UPDATE "cj-sap_workbench-session_links" '
+                       'SET coding_session_id=?, remote_session_id=?, generation=generation+1, updated_at=? WHERE id=?',
+                       (link['session_id'], link['external_session_id'], int(time.time()), binding))
+        return self.session(tenant_id, user_id, binding)
+
     def update_session(self, tenant_id, user_id, binding, **values):
         if set(values) - {"state", "control", "target_id", "generation", "sap_user", "sap_client", "login_generation", "allocation_stage", "allocation_error", "display_mode"}:
             raise ValueError("invalid session update")

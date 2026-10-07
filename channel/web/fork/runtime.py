@@ -3195,16 +3195,52 @@ def _as_epoch(value) -> int:
     return 0
 
 
+def _shared_history_page(profiles, stores, page, page_size, ctx, q, archived):
+    """Use one shared-store query and one snapshot of project decorations."""
+    from agent.workspace import project_store, session_prefs
+    from common.state_dir import state_root_str
+
+    snapshot = project_store.history_snapshot(profile.id for profile in profiles)
+    bindings = {stores[p.id]._agent_id: p for p in profiles}
+    project_bindings = {(stores[aid]._agent_id, sid): path
+                        for (aid, sid), path in snapshot["projects"].items()}
+    result = next(iter(stores.values())).list_sessions_for_agents(
+        bindings, user_id=ctx.user_id if ctx else None,
+        tenant_id=ctx.tenant_id if ctx else None,
+        page=page, page_size=page_size, q=q, archived=archived,
+        projects=project_bindings,
+    )
+    try:
+        members = session_prefs.members_index() if result["sessions"] else {}
+    except Exception as e:
+        logger.warning(f"[WebChannel] Could not read session rosters: {e}")
+        members = {}
+    by_agent = {}
+    for row in result["sessions"]:
+        profile = bindings[row.pop("_agent_id")]
+        by_agent.setdefault(profile.id, []).append(row)
+        row["agent"] = _agent_badge(profile)
+        roster = _roster_from_members(profile.id, members.get((profile.id, row["session_id"])))
+        if len(roster) > 1:
+            row["participants"] = roster
+        path = snapshot["projects"].get((profile.id, row["session_id"]))
+        row["project"] = {"path": path, "name": snapshot["names"][path]} if path else None
+    for aid, rows in by_agent.items():
+        _annotate_coding_sessions(stores[aid], {"sessions": rows}, aid)
+    result.update(default_workspace=state_root_str(), project_order=snapshot["order"],
+                  group_mode="project" if result["space_count"] > 1 else "time")
+    return result
+
+
 def _list_sessions_across_agents(page: int, page_size: int,
                                  ctx: "Optional[RequestContext]" = None,
                                  q: str = "",
                                  archived: bool = False) -> dict:
     """One page of every Agent's conversations, merged.
 
-    Sessions are stored one database per Agent, so "all conversations" is a
-    merge across files rather than a query. Gather lightweight summaries from
-    all visible Agents, deduplicate once, then count and paginate. Counting a
-    per-page prefix gives different totals on different pages.
+    Current stores share one database: query it directly with the authorized
+    agent bindings. The per-file merge remains a compatibility path for stores
+    that have not adopted the shared model.
 
     Presenting them in one list is what keeps a second Agent from feeling like a
     second account: the alternative, switching the whole console to look at
@@ -3240,6 +3276,17 @@ def _list_sessions_across_agents(page: int, page_size: int,
     user_id = ctx.user_id if ctx else None
     visible = _tenant_ids_for_context(ctx)
     stores_by_id: Dict[str, Any] = {}
+    profiles = [p for p in get_agent_registry().list(include_disabled=False)
+                if visible is None or p.id in visible]
+    for profile in profiles:
+        try:
+            stores_by_id[profile.id] = get_conversation_store(profile.workspace)
+        except Exception as e:
+            logger.warning(f"[WebChannel] Skipping sessions for agent={profile.id}: {e}")
+    profiles = [p for p in profiles if p.id in stores_by_id]
+    if (stores_by_id and all(getattr(s, "_agent_bound", False) for s in stores_by_id.values())
+            and len({str(s._db_path) for s in stores_by_id.values()}) == 1):
+        return _shared_history_page(profiles, stores_by_id, page, page_size, ctx, q, archived)
     try:
         members_index = session_prefs.members_index()
     except Exception as e:
@@ -3247,12 +3294,9 @@ def _list_sessions_across_agents(page: int, page_size: int,
         logger.warning(f"[WebChannel] Could not read session rosters: {e}")
         members_index = {}
 
-    for profile in get_agent_registry().list(include_disabled=False):
-        if visible is not None and profile.id not in visible:
-            continue
+    for profile in profiles:
         try:
-            store = get_conversation_store(profile.workspace)
-            stores_by_id[profile.id] = store
+            store = stores_by_id[profile.id]
             chunk = store.list_sessions(
                 channel_type="web", page=1, page_size=need,
                 user_id=user_id, q=q, archived=archived,
@@ -3316,7 +3360,7 @@ def _list_sessions_across_agents(page: int, page_size: int,
         if not agent_id:
             continue
         by_agent.setdefault(agent_id, []).append(session)
-    for profile in get_agent_registry().list(include_disabled=False):
+    for profile in profiles:
         rows = by_agent.get(profile.id)
         if not rows:
             continue

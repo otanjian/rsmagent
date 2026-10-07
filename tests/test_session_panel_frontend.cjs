@@ -67,7 +67,7 @@ test('page and panel share list and status, leaving the chooser on the full page
     assert.equal(h.ctx._historyVisible,false);
     h.ctx.currentView='chat';h.ctx.syncSessionHistorySurface();
     assert.equal(list.parentNode,h.node('history-panel-list-mount'));
-    assert.deepEqual(h.calls,['cancel','load','cancel','load','cancel','cancel','load']);
+    assert.deepEqual(h.calls,['load','load','load'], 'moving the list must not abort reusable reads');
 });
 test('cancelled leave, denied history and hidden account cannot open or fetch',()=>{
     const h=setup();h.ctx.currentView='memory';h.ctx.leaveDenied=true;h.ctx.openSessionPanel();

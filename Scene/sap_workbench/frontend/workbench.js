@@ -8,7 +8,10 @@
     const CODING_PERMISSION_PROFILE = 'sap_workbench';
     const messages = {
         zh: {
-            title: 'SAP智能工作台', subtitle: 'SAP Web GUI 与高级智能体', close: '关闭',
+            rememberSap: '记住 SAP 登录', forgetSap: '清除已记住的 SAP 登录', sapRemembered: '已记住 SAP 登录状态；下次成功登录后会保存账号密码。',
+            sap_login_unavailable: 'SAP 登录记忆暂不可用，可继续手动登录。', sap_keychain_unavailable: 'macOS 钥匙串不可用，登录信息未保存。',
+            desktopRead: 'macOS 当前页面读取',
+            title: 'SAP智能工作台', subtitle: 'SAP Web GUI 与高级智能体', close: '关闭', home: '返回首页',
             settings: '连接配置', back: '返回工作台', refresh: '刷新状态', pending: '运行环境待就绪',
             sap: 'SAP 页面', opencode: '高级智能体对话', browser: '浏览器执行节点', project: '项目目录',
             mcp: 'MCP 连接', start: '新建工作台会话', resume: '恢复已有会话', login: '登录 SAP',
@@ -57,7 +60,10 @@
             viewMemberOnly: '实时页面当前仅向租户管理员开放。',
         },
         en: {
-            title: 'SAP Intelligent Workbench', subtitle: 'SAP Web GUI and Advanced Agent', close: 'Close', settings: 'Connections',
+            rememberSap: 'Remember SAP login', forgetSap: 'Forget SAP login', sapRemembered: 'SAP session remembered. Credentials will be saved after the next successful login.',
+            sap_login_unavailable: 'SAP login memory is unavailable. You can still sign in manually.', sap_keychain_unavailable: 'macOS Keychain is unavailable; login details were not saved.',
+            desktopRead: 'Read current page on macOS',
+            title: 'SAP Intelligent Workbench', subtitle: 'SAP Web GUI and Advanced Agent', close: 'Close', home: 'Back to home', settings: 'Connections',
             back: 'Back to workbench', refresh: 'Refresh status', pending: 'Runtime not ready', sap: 'SAP page',
             opencode: 'Advanced Agent chat', browser: 'Browser worker', project: 'Project directory', mcp: 'MCP connections',
             start: 'New workbench session', resume: 'Resume session', login: 'Sign in to SAP',
@@ -105,7 +111,10 @@
             viewMemberOnly: 'The live page is currently available to tenant administrators only.',
         },
         'zh-Hant': {
-            title: 'SAP智能工作台', subtitle: 'SAP Web GUI 與高級智能體', close: '關閉', settings: '連線設定',
+            rememberSap: '記住 SAP 登入', forgetSap: '清除已記住的 SAP 登入', sapRemembered: '已記住 SAP 登入狀態；下次成功登入後會儲存帳號密碼。',
+            sap_login_unavailable: 'SAP 登入記憶暫不可用，可繼續手動登入。', sap_keychain_unavailable: 'macOS 鑰匙圈不可用，登入資訊未儲存。',
+            desktopRead: 'macOS 目前頁面讀取',
+            title: 'SAP智能工作台', subtitle: 'SAP Web GUI 與高級智能體', close: '關閉', home: '返回首頁', settings: '連線設定',
             back: '返回工作台', refresh: '重新整理狀態', pending: '執行環境尚未就緒', sap: 'SAP 頁面',
             opencode: '高級智能體對話', browser: '瀏覽器執行節點', project: '專案目錄', mcp: 'MCP 連線',
             start: '新增工作台工作階段', resume: '恢復工作階段', login: '登入 SAP',
@@ -164,6 +173,49 @@
     // recognise itself as stale. Two rapid retries therefore produce one frame
     // and one readiness wait instead of stacking a second of either.
     let codeMount = 0;
+    let layout = {ratio: 0.32, open: false}, layoutLoaded = false;
+    let composer = null, promptRequest = null, promptTimer = null, pageCapture = null, pageFeedback = '';
+    Object.assign(messages.zh, {
+        accountMenu: '账号与连接', memoryOn: '登录记忆已开启', memoryOff: '登录记忆未开启',
+        memorySaved: '账号密码已保存', memoryHint: '清除记忆只删除本机保存的登录信息，不会退出当前 SAP。退出请使用 SAP 页面内的“退出”。',
+        readPage: '读取当前页面', readIdle: '尚未读取当前页面', readPending: '正在读取当前页面…',
+        readCaptured: '{title} · 采集于 {time}', readStale: '上次采集：{snapshot}（页面已切换，请重新读取）',
+        readChanged: '页面已切换，请重新读取。', readUnavailable: '页面读取尚未就绪', readFailed: '页面读取失败，请重试。', pageUntitled: 'SAP 页面',
+        starterTitle: '开始与 SAP 智能助手协作', starterHint: '可以从左侧当前页面开始，也可以直接输入问题。',
+        summarizePage: '总结当前页面', explainError: '解释当前报错', openTransaction: '打开事务',
+        promptDraft: '输入框已有草稿，请先发送或清空后重试。', promptBusy: '助手正在处理，请稍后重试。',
+        promptUnavailable: '助手尚未就绪，请稍后重试。', promptFilled: '请在输入框补充事务码后发送。',
+        promptRead: '请调用 sap_page_read 读取左侧当前 SAP 页面，简要说明读取到的页面名称和内容。',
+        promptSummary: '请先调用 sap_page_read 读取左侧当前 SAP 页面，再总结页面的关键信息。只依据本次读取结果。',
+        promptError: '请先调用 sap_page_read 读取左侧当前 SAP 页面，解释当前可见报错并给出处理建议；如果没有可见报错，请明确说明。',
+        promptTransaction: '打开事务 ', layoutFailed: '布局未能保存，重启后可能恢复默认布局。',
+    });
+    Object.assign(messages.en, {
+        accountMenu:'Account & connections', memoryOn:'Login memory on', memoryOff:'Login memory off', memorySaved:'Credentials saved',
+        memoryHint:'Forgetting removes saved login information from this device. To sign out of the current SAP session, use Exit inside SAP.',
+        readPage:'Read current page', readIdle:'Current page has not been read', readPending:'Reading current page…', readCaptured:'{title} · Captured at {time}',
+        readStale:'Last capture: {snapshot} (page changed; read again)', readChanged:'The page changed. Please read it again.', readUnavailable:'Page reading is not ready', readFailed:'Could not read the page. Please retry.', pageUntitled:'SAP page',
+        starterTitle:'Work with your SAP assistant', starterHint:'Start with the current SAP page or type a question.',
+        summarizePage:'Summarize current page', explainError:'Explain current error', openTransaction:'Open transaction',
+        promptDraft:'Send or clear your existing draft first.', promptBusy:'The assistant is busy. Please try again shortly.', promptUnavailable:'The assistant is not ready yet.',
+        promptFilled:'Enter the transaction code in the composer, then send.', promptRead:'Call sap_page_read to read the current SAP page and briefly describe its title and content.',
+        promptSummary:'Call sap_page_read and summarize the current SAP page using only the new capture.',
+        promptError:'Call sap_page_read and explain any visible error with suggested next steps. State clearly if no error is visible.',
+        promptTransaction:'Open transaction ', layoutFailed:'The layout could not be saved for the next launch.',
+    });
+    Object.assign(messages['zh-Hant'], {
+        accountMenu:'帳號與連線', memoryOn:'登入記憶已開啟', memoryOff:'登入記憶未開啟', memorySaved:'帳號密碼已儲存',
+        memoryHint:'清除記憶只刪除本機儲存的登入資訊，不會登出目前 SAP。登出請使用 SAP 頁面內的「退出」。',
+        readPage:'讀取目前頁面', readIdle:'尚未讀取目前頁面', readPending:'正在讀取目前頁面…', readCaptured:'{title} · 擷取於 {time}',
+        readStale:'上次擷取：{snapshot}（頁面已切換，請重新讀取）', readChanged:'頁面已切換，請重新讀取。', readUnavailable:'頁面讀取尚未就緒', readFailed:'頁面讀取失敗，請重試。', pageUntitled:'SAP 頁面',
+        starterTitle:'開始與 SAP 智能助手協作', starterHint:'可以從左側目前頁面開始，也可以直接輸入問題。', summarizePage:'總結目前頁面', explainError:'解釋目前錯誤', openTransaction:'開啟交易',
+        promptDraft:'輸入框已有草稿，請先傳送或清空後重試。', promptBusy:'助手正在處理，請稍後重試。', promptUnavailable:'助手尚未就緒，請稍後重試。', promptFilled:'請在輸入框補充交易代碼後傳送。',
+        promptRead:'請呼叫 sap_page_read 讀取左側目前 SAP 頁面，簡要說明讀取到的頁面名稱和內容。',
+        promptSummary:'請先呼叫 sap_page_read 讀取左側目前 SAP 頁面，再總結頁面的關鍵資訊。只依據本次讀取結果。',
+        promptError:'請先呼叫 sap_page_read 讀取左側目前 SAP 頁面，解釋目前可見錯誤並提供處理建議；如果沒有可見錯誤，請明確說明。',
+        promptTransaction:'開啟交易 ', layoutFailed:'版面未能儲存，重新啟動後可能恢復預設版面。',
+    });
+
     // Session ids already reported to the scene, so a resumed frame that keeps
     // re-announcing itself costs exactly one attach call.
     const attachSent = new Set();
@@ -185,6 +237,7 @@
         mcp_business_available: 'SAP 业务数据：可用。对话按会话经服务端已登记的连接读写业务数据；SAP 凭据与连接标识不下发给模型。',
         mcp_credentials_missing: 'SAP 业务数据：未就绪。尚未保存 MCP 账号口令，服务端无法建立连接，数据调用会以 mcp_login_failed 失败。',
         page_readwrite_unavailable: '页面读写与业务提交：不可用。阅读、填写左侧 SAP 页面字段和提交业务单据均不开放。',
+        desktop_page_read_conditional: '页面读取：需使用新版 macOS 桌面并打开自己的 SAP 工作台。仅读取已渲染内容；填写与业务提交不可用。',
         setupHint: '新建会话会自动结束当前账号旧会话。SAP Web GUI 直接嵌入；点击右下角 AI 对话展开高级智能体。对话可使用已配置的 MCP，原生 SAP 页面由你直接操作。',
         manualControl: '人工接管 / 暂停', autoControl: '允许对话操作', sessionStarting: '正在准备 SAP 与高级智能体 会话…',
         sessionReady: '会话已连接，当前由人工控制。', automaticReady: '已允许对话操作当前 SAP 页面。',
@@ -257,6 +310,7 @@
         mcp_business_available: 'SAP business data: available. Chat reads and writes business data through the registered server-side connection, per session; SAP credentials and connection ids are never handed to the model.',
         mcp_credentials_missing: 'SAP business data: not ready. No MCP account password is saved, so the server cannot connect and every data call fails with mcp_login_failed.',
         page_readwrite_unavailable: 'Page read/write and business submission: not available. Reading or filling SAP page fields and submitting documents are not offered.',
+        desktop_page_read_conditional: 'Page reading requires an updated macOS desktop and your active SAP workbench. Rendered content only; filling and submission remain unavailable.',
         setupHint: 'A new session ends your previous workbench sessions. SAP Web GUI is embedded directly; open AI chat at the bottom right. Chat uses configured MCP tools; operate the SAP page directly.',
         checkHint: 'Connections loaded. Create or resume a session, or test the saved connections.', saved: 'Configuration saved.',
         sap_login_required: 'Sign in on the SAP page first.', browser_not_connected: 'SAP screen is not connected yet.',
@@ -286,6 +340,7 @@
         mcp_business_available: 'SAP 業務資料：可用。對話按工作階段經伺服器已登記的連線讀寫業務資料；SAP 憑證與連線識別不下發給模型。',
         mcp_credentials_missing: 'SAP 業務資料：未就緒。尚未儲存 MCP 帳號密碼，伺服器無法建立連線，資料呼叫會以 mcp_login_failed 失敗。',
         page_readwrite_unavailable: '頁面讀寫與業務提交：不可用。讀取、填寫左側 SAP 頁面欄位與提交業務單據均不開放。',
+        desktop_page_read_conditional: '頁面讀取：需使用新版 macOS 桌面並開啟自己的 SAP 工作台。僅讀取已呈現內容；填寫與業務提交不可用。',
         setupHint: '新增工作階段會自動結束目前帳號的舊工作階段。SAP Web GUI 直接嵌入；右下角 AI 對話展開高級智能體。對話使用已設定的 MCP，SAP 頁面由你直接操作。',
         checkHint: '連線設定已載入。可新增或恢復工作階段，或測試已儲存的連線。', saved: '設定已儲存。',
         sap_login_required: '請先在 SAP 頁面登入。', browser_not_connected: 'SAP 畫面尚未連線。',
@@ -440,19 +495,25 @@
         find('form').replaceChildren();
         previousFocus?.focus();
     }
+    function returnHome() {
+        close();
+        // A rejected unsaved-settings confirmation must keep this scene open.
+        if (!dialog.open && typeof window.navigateTo === 'function') window.navigateTo('chat');
+    }
     function build() {
         if (dialog) return;
         const style = el('link'); style.rel = 'stylesheet';
-        style.href = '/scene-assets/sap_workbench/frontend/workbench.css'; document.head.appendChild(style);
+        style.href = '/scene-assets/sap_workbench/frontend/workbench.css?v=20261006-compact'; document.head.appendChild(style);
         dialog = el('dialog'); dialog.id = 'sap-workbench-dialog';
         dialog.setAttribute('aria-labelledby', 'sap-workbench-title');
-        dialog.innerHTML = '<header><div><p class="sap-kicker">SAP · 高级智能体</p><h1 id="sap-workbench-title"></h1></div><nav data-sap="toolbar"></nav></header>' +
+        dialog.dataset.desktop = String(Boolean(window.desktopHost || window.electronAPI));
+        dialog.innerHTML = '<header><div class="sap-heading"><button type="button" data-sap="home"></button><div><p class="sap-kicker">SAP · 高级智能体</p><h1 id="sap-workbench-title"></h1></div></div><nav data-sap="toolbar"></nav></header>' +
             '<p data-sap="notice" role="status" aria-live="polite"></p>' +
             '<main data-sap="main"><section class="sap-overview"><span class="sap-badge" data-sap="badge"></span><p data-sap="hint"></p>' +
             '<div data-sap="actions" class="sap-actions"></div><div data-sap="checks" class="sap-checks"></div></section>' +
             '<div class="sap-panes" data-sap="panes"><section class="sap-pane" data-sap="sap-pane"><h2></h2><div class="sap-view-controls" data-sap="view-controls"></div><div class="sap-view" data-sap="view" hidden></div><div class="sap-empty" data-sap="empty"><span aria-hidden="true">▧</span><p></p></div></section>' +
             '<div class="sap-chat-resizer" data-sap="chat-resizer" role="separator" aria-orientation="vertical" aria-controls="sap-chat-pane" tabindex="0" hidden></div>' +
-            '<section id="sap-chat-pane" class="sap-pane" data-sap="code-pane" role="region" aria-labelledby="sap-chat-title" hidden inert><header class="sap-chat-header"><h2 id="sap-chat-title"></h2><nav><button type="button" data-sap="chat-fullscreen" aria-pressed="false"></button><button type="button" data-sap="chat-close"></button></nav></header><div class="sap-empty"><span aria-hidden="true">◇</span><p></p></div></section>' +
+            '<section id="sap-chat-pane" class="sap-pane" data-sap="code-pane" role="region" aria-labelledby="sap-chat-title" hidden inert><header class="sap-chat-header"><h2 id="sap-chat-title"></h2><nav><button type="button" data-sap="chat-fullscreen" aria-pressed="false"></button><button type="button" data-sap="chat-close"></button></nav></header><div class="sap-page-context" data-sap="page-context"><button type="button" data-sap="read-page"></button><p data-sap="page-capture" role="status" aria-live="polite"></p><p data-sap="prompt-feedback" role="status" aria-live="polite" hidden></p></div><section class="sap-starters" data-sap="starters" hidden></section><div class="sap-empty"><span aria-hidden="true">◇</span><p></p></div></section>' +
             '<button type="button" class="sap-chat-toggle" data-sap="chat-toggle" aria-controls="sap-chat-pane" aria-expanded="false" hidden></button></div>' +
             '<details class="sap-details"><summary data-sap="details-title"></summary><ul data-sap="notes"></ul><ul data-sap="blockers"></ul></details></main>' +
             '<form data-sap="form" hidden></form>';
@@ -465,6 +526,8 @@
         });
         dialog.addEventListener('input', event => { if (event.target.closest('form')) dirty = true; });
         dialog.addEventListener('change', event => { if (event.target.closest('form')) dirty = true; });
+        find('home').addEventListener('click', returnHome);
+        find('read-page').addEventListener('click', () => sendAssistantPrompt('promptRead', true));
         find('chat-toggle').addEventListener('click', () => setChatOpen(!chatOpen, true));
         find('chat-close').addEventListener('click', () => setChatOpen(false, true));
         find('chat-fullscreen').addEventListener('click', () => setChatFullscreen(!chatFullscreen));
@@ -478,14 +541,15 @@
         resizer.addEventListener('pointermove', event => {
             if (chatDrag?.id === event.pointerId) setChatWidth(chatDrag.width - (event.clientX - chatDrag.x));
         });
-        for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) resizer.addEventListener(type, stopChatResize);
+        for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) resizer.addEventListener(type, () => { const changed = Boolean(chatDrag); stopChatResize(); if (changed) saveLayout(); });
         resizer.addEventListener('keydown', event => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || !chatOpen || chatFullscreen) return;
             event.preventDefault();
             const width = find('code-pane').getBoundingClientRect().width;
             setChatWidth(event.key === 'Home' ? 320 : event.key === 'End' ? find('panes').getBoundingClientRect().width : width + (event.key === 'ArrowLeft' ? 24 : -24));
+            saveLayout();
         });
-        window.addEventListener('resize', () => {if (dialog.open) updateChatResizer();});
+        window.addEventListener('resize', () => {if (dialog.open) applyLayoutWidth();});
     }
     function showSettings() {
         if (!data?.can_manage) return;
@@ -503,7 +567,8 @@
     function render() {
         dialog.dataset.live = binding ? 'true' : 'false';
         dialog.querySelector('h1').textContent = t('title');
-        find('toolbar').replaceChildren(button('refresh', load), button('close', close));
+        find('home').textContent = t('home');
+        find('toolbar').replaceChildren(button('refresh', load));
         if (data?.can_manage) find('toolbar').prepend(button('settings', showSettings));
         find('badge').textContent = t(data?.capabilities.visual ? 'readyToStart' : 'pending'); find('hint').textContent = t(data?.can_manage ? 'setupHint' : 'memberHint');
         const start = button('start', () => startSession(false));
@@ -516,7 +581,7 @@
             find('actions').replaceChildren(...actions);
         }
         for (const [name, title, text] of [['sap-pane','sap','emptySap'], ['code-pane','opencode','emptyCode']]) {
-            find(name).querySelector('h2').textContent = t(title); find(name).querySelector('p').textContent = t(text);
+            find(name).querySelector('h2').textContent = t(title); find(name).querySelector('.sap-empty p').textContent = t(text);
         }
         find('details-title').textContent = t('capabilityNotes');
         find('notes').replaceChildren(...(data?.capabilities.notes || []).map(key => el('li', t(key))));
@@ -526,6 +591,33 @@
         }));
         renderView();
         renderChat();
+        renderLoginMemory();
+        renderAssistantTools();
+    }
+    function renderLoginMemory() {
+        find('toolbar').querySelector('[data-sap-login]')?.remove();
+        const state = view, session = binding;
+        if (!state?.loginMemory || !session) return;
+        const remember = button(state.loginMemory.enabled ? 'forgetSap' : 'rememberSap', async () => {
+            remember.disabled = true;
+            try {
+                const result = await window.desktopHost.manageSapLogin({binding_id:session.binding_id, tenant_id:state.tenantId,
+                    action:state.loginMemory.enabled ? 'forget' : 'enable'});
+                if (view !== state || binding !== session) return;
+                state.loginMemory = result; renderLoginMemory();
+            } catch (error) {
+                if (view === state) { remember.title = t(error.code || 'sap_login_unavailable'); remember.textContent = remember.title; }
+            } finally { remember.disabled = false; }
+        });
+        const menu = el('details', undefined, 'sap-account-menu'); menu.dataset.sapLogin = 'true';
+        const summary = el('summary', t('accountMenu'));
+        const panel = el('div', undefined, 'sap-account-panel');
+        panel.append(el('p', t('memoryHint')), remember);
+        const status = el('span', t(state.loginMemory.enabled ? (state.loginMemory.credentialsSaved ? 'memorySaved' : 'memoryOn') : 'memoryOff'), 'sap-memory-status');
+        summary.append(status); menu.append(summary, panel);
+        if (state.loginMemory.error) remember.title = t(state.loginMemory.error);
+        else if (state.loginMemory.enabled) remember.title = t('sapRemembered');
+        find('toolbar').append(menu);
     }
     function renderChat() {
         const available = Boolean(binding), expanded = available && chatOpen;
@@ -543,21 +635,46 @@
         fullscreen.setAttribute('aria-label', fullscreen.textContent);
         fullscreen.setAttribute('aria-pressed', String(expanded && chatFullscreen));
         find('chat-resizer').hidden = !expanded || chatFullscreen;
-        updateChatResizer();
+        applyLayoutWidth();
     }
     function updateChatResizer() {
         const resizer = find('chat-resizer'), total = find('panes').getBoundingClientRect().width;
         resizer.setAttribute('aria-label', t('chatResize'));
         resizer.setAttribute('aria-valuemin', '320');
-        resizer.setAttribute('aria-valuemax', String(Math.max(320, Math.round(total - 326))));
+        resizer.setAttribute('aria-valuemax', String(Math.max(320, Math.round(total - 566))));
         resizer.setAttribute('aria-valuenow', String(Math.round(find('code-pane').getBoundingClientRect().width)));
     }
     function setChatWidth(width) {
         const total = find('panes').getBoundingClientRect().width;
         if (total <= 720) return;
-        const chatWidth = Math.round(Math.min(total - 326, Math.max(320, width)));
+        const chatWidth = Math.round(Math.min(Math.max(320, total - 566), Math.max(320, width)));
+        layout.ratio = Math.min(0.8, Math.max(0.1, chatWidth / total));
         dialog.style.setProperty('--sap-chat-width', chatWidth + 'px');
         updateChatResizer();
+    }
+    function applyLayoutWidth() {
+        const total = find('panes').getBoundingClientRect().width;
+        // Shrinking the window must not overwrite the user's preferred ratio.
+        const width = Math.max(320, Math.min(total - 566, total * layout.ratio));
+        dialog.style.setProperty('--sap-chat-width', Math.round(width) + 'px');
+        updateChatResizer();
+    }
+    async function loadLayout() {
+        if (layoutLoaded) return;
+        layoutLoaded = true;
+        try {
+            const saved = window.desktopHost?.sapWorkbenchLayout
+                ? await window.desktopHost.sapWorkbenchLayout({action:'load'})
+                : JSON.parse(window.localStorage?.getItem('sap-workbench-layout') || 'null');
+            if (saved && Number.isFinite(saved.ratio) && saved.ratio >= 0.1 && saved.ratio <= 0.8 && typeof saved.open === 'boolean') layout = saved;
+        } catch (_) { /* Older desktops keep the default layout. */ }
+        applyLayoutWidth();
+    }
+    function saveLayout() {
+        const saved = {ratio:layout.ratio, open:layout.open};
+        if (window.desktopHost?.sapWorkbenchLayout) {
+            void window.desktopHost.sapWorkbenchLayout({action:'save', ...saved}).catch(() => promptFeedback('layoutFailed'));
+        } else { try { window.localStorage?.setItem('sap-workbench-layout', JSON.stringify(saved)); } catch (_) { promptFeedback('layoutFailed'); } }
     }
     function stopChatResize() {
         const drag = chatDrag; chatDrag = null; dialog.dataset.chatResizing = 'false';
@@ -573,6 +690,7 @@
     function setChatOpen(open, focus = false) {
         stopChatResize();
         chatOpen = Boolean(open && binding);
+        if (focus) { layout.open = chatOpen; saveLayout(); }
         if (!chatOpen) chatFullscreen = false;
         renderChat();
         if (focus && binding) find(chatOpen ? 'chat-close' : 'chat-toggle').focus({preventScroll: true});
@@ -636,6 +754,8 @@
         codeMount++;
         stopChatResize();
         clearCodingState();
+        composer = null; promptRequest = null; window.clearTimeout(promptTimer);
+        if (find('starters')) find('starters').hidden = true;
         codeFrame?.remove(); codeFrame = null;
         codeOrigin = null; codeChannel = null; attachSent.clear();
         chatOpen = false;
@@ -657,6 +777,7 @@
         const params = [];
         if (!/[?&]rsm_embed=/.test(url)) params.push('rsm_embed=1');
         params.push('rsm_parent_origin=' + encodeURIComponent(pageOrigin()));
+        params.push('rsm_scene=sap_workbench');
         params.push('rsm_channel=' + encodeURIComponent(channel));
         return url + (url.includes('?') ? '&' : '?') + params.join('&');
     }
@@ -684,10 +805,21 @@
         }
         if (!session.coding_session_id) return Promise.reject(new Error(t('coding_not_linked')));
         return codingRequest('/api/coding/sessions/' + encodeURIComponent(session.coding_session_id)
-            + '/open?agent_id=' + encodeURIComponent(session.agent_id));
+            + '/open?agent_id=' + encodeURIComponent(session.agent_id)).then(async opened => {
+                if (typeof session.desktop_sap_page_read_enabled === 'boolean') {
+                    // Reapply the current scene tool profile to historical sessions
+                    // through the existing verified attach, without creating a chat.
+                    await codingRequest('/api/coding/sessions/attach', {method:'POST',
+                        headers:{'Content-Type':'application/json'},
+                        body:JSON.stringify({agent_id:session.agent_id, source_session_id:session.coding_session_id,
+                            external_session_id:opened.external_session_id, scene_binding_id:session.binding_id,
+                            permission_profile:CODING_PERMISSION_PROFILE})});
+                }
+                return opened;
+            });
     }
     function mountCode(session, requestId) {
-        const wasOpen = chatOpen, wasFullscreen = chatFullscreen;
+        const wasOpen = layout.open, wasFullscreen = chatFullscreen;
         unmountCode();
         // ``screen`` is the self-managed per-session engine, kept only behind the
         // rollback switch. It authenticates with a one-use grant posted into the
@@ -785,10 +917,12 @@
             const result = await codingRequest('/api/coding/sessions/attach', {method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({agent_id: binding.agent_id, source_session_id: binding.coding_session_id,
+                    ...(typeof binding.desktop_sap_page_read_enabled === 'boolean' ? {scene_binding_id: binding.binding_id} : {}),
                     external_session_id: externalId, permission_profile: CODING_PERMISSION_PROFILE})});
             if (binding !== current) return;
             if (result.session_id) binding.coding_session_id = result.session_id;
             binding.remote_session_id = result.external_session_id || externalId;
+            renderAssistantTools();
             notice('codingLinkedOk');
         } catch (error) {
             if (binding !== current) return;
@@ -812,9 +946,61 @@
             }
             return;
         }
+        if (message.type === 'rsm.opencode.composer' && typeof message.session_id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(message.session_id) &&
+            typeof message.empty === 'boolean' && typeof message.busy === 'boolean' && typeof message.hasDraft === 'boolean') {
+            composer = message; renderAssistantTools(); return;
+        }
+        if (message.type === 'rsm.opencode.prompt-result' && message.request_id === promptRequest?.id) {
+            window.clearTimeout(promptTimer);
+            const submitted = promptRequest.submit; promptRequest = null;
+            const errors = {draft:'promptDraft', busy:'promptBusy', unavailable:'promptUnavailable'};
+            promptFeedback(message.status === 'accepted' ? (submitted ? '' : 'promptFilled') : (errors[message.status] || 'promptUnavailable'));
+            renderAssistantTools(); return;
+        }
         if (message.type === 'rsm.opencode.ready') { markCodingReady(); return; }
         if (message.type === 'rsm.opencode.session' && message.session_id) void attachCodingSession(message.session_id);
     });
+    function promptFeedback(key) {
+        const node = find('prompt-feedback');
+        node.hidden = !key; node.textContent = key ? t(key) : '';
+    }
+    function renderAssistantTools() {
+        const current = composer?.session_id === binding?.remote_session_id ? composer : null;
+        const controls = find('page-context');
+        controls.hidden = !binding || binding.display_mode !== 'iframe';
+        const read = find('read-page'); read.textContent = t('readPage');
+        read.disabled = !current || current.busy || Boolean(promptRequest) || !view?.readSupported;
+        read.title = view?.readSupported ? t('readPage') : t('readUnavailable');
+        const capture = find('page-capture');
+        if (pageCapture) {
+            const snapshot = t('readCaptured').replace('{title}', pageCapture.title).replace('{time}', new Date(pageCapture.time).toLocaleTimeString());
+            capture.textContent = pageCapture.stale ? t('readStale').replace('{snapshot}', snapshot) : snapshot;
+            if (pageFeedback) capture.textContent = t(pageFeedback) + ' · ' + capture.textContent;
+        } else capture.textContent = t(pageFeedback || 'readIdle');
+        const starters = find('starters');
+        starters.hidden = !current?.empty;
+        starters.replaceChildren(el('h3', t('starterTitle')), el('p', t('starterHint')));
+        const actions = el('div', undefined, 'sap-starter-actions');
+        for (const [label, prompt, submit] of [['summarizePage','promptSummary',true], ['explainError','promptError',true], ['openTransaction','promptTransaction',false]]) {
+            const action = button(label, () => sendAssistantPrompt(prompt, submit));
+            action.disabled = !current || current.busy || Boolean(promptRequest) || (submit && !view?.readSupported);
+            actions.append(action);
+        }
+        starters.append(actions);
+    }
+    function sendAssistantPrompt(key, submit) {
+        if (!composer || composer.session_id !== binding?.remote_session_id || !codeFrame || !binding || !codeOrigin || promptRequest) { promptFeedback('promptUnavailable'); return; }
+        if (composer.busy) { promptFeedback('promptBusy'); return; }
+        if (composer.hasDraft) { promptFeedback('promptDraft'); return; }
+        const id = crypto.randomUUID();
+        promptRequest = {id, submit}; promptFeedback(''); renderAssistantTools();
+        codeFrame.contentWindow.postMessage({type:'rsm.opencode.prompt', channel:codeChannel, session_id:binding.remote_session_id,
+            request_id:id, text:t(key), submit}, codeOrigin);
+        promptTimer = window.setTimeout(() => {
+            if (promptRequest?.id !== id) return;
+            promptRequest = null; promptFeedback('promptUnavailable'); renderAssistantTools();
+        }, 8000);
+    }
     // The left pane is a live view of a dedicated Chrome. Frames come down the
     // loopback WebSocket as JPEG; clicks and keys go back up as semantic events
     // that the gateway turns into CDP input. It is started explicitly (never on
@@ -866,11 +1052,22 @@
             const frame = el('iframe', undefined, 'sap-native-frame');
             frame.title = t('sap'); frame.name = 'sap-gui-' + session.binding_id;
             frame.referrerPolicy = 'no-referrer';
-            frame.src = session.sap_url;
             find('view').replaceChildren(frame);
-            view = {starting: false, frame, message: 'sapEmbedded'};
+            view = {starting: false, frame, message: 'sapEmbedded', tenantId:window.sessionStorage?.getItem('cow_tenant_id') || ''};
+            const state = view;
             renderView();
-            watchEmbeddedSession(session, view);
+            const open = () => {
+                if (view !== state || binding !== session || !dialog.open) return;
+                frame.src = session.sap_url;
+                watchEmbeddedSession(session, state);
+                renderLoginMemory();
+            };
+            if (window.desktopHost?.manageSapLogin) {
+                state.loginMemory = {enabled:false};
+                window.desktopHost.manageSapLogin({binding_id:session.binding_id, tenant_id:state.tenantId, action:'prepare'})
+                    .then(result => { if (view === state) state.loginMemory = result; })
+                    .catch(error => { state.loginMemory = {enabled:false, error:error.code || 'sap_login_unavailable'}; }).finally(open);
+            } else open();
             return;
         }
         const host = find('view');
@@ -903,11 +1100,53 @@
     function watchEmbeddedSession(session, state) {
         let timer;
         let appliedNavigation = null;
+        const viewId = crypto.randomUUID();
+        const readProtocol = typeof session.desktop_sap_page_read_enabled === 'boolean';
+        let disposed = false, supported = false, reading = null, documentVersion = 0;
+        pageCapture = null; pageFeedback = ''; state.readSupported = false;
+        const loaded = () => { documentVersion++; if (pageCapture) pageCapture.stale = true; renderAssistantTools(); };
+        state.frame.addEventListener('load', loaded);
+        const live = () => !disposed && view === state && binding === session && dialog.open;
+        if (session.desktop_sap_page_read_enabled && window.desktopHost?.readSapPage) {
+            window.desktopHost.getCapabilities().then(capabilities => { if (live()) { supported = capabilities.sapPageRead === true; state.readSupported = supported; renderAssistantTools(); } }).catch(() => {});
+        }
+        const collect = command => {
+            if (!supported || command.view_id !== viewId || command.expires_at <= Date.now()) return;
+            if (reading?.id === command.id) return;
+            pageFeedback = 'readPending'; renderAssistantTools();
+            const current = reading = {id: command.id, expires: command.expires_at, version: documentVersion, ready: false};
+            window.desktopHost.readSapPage({binding_id: session.binding_id, read_id: command.id, view_id: viewId})
+                .then(result => { current.result = result; })
+                .catch(error => { current.error = error.code || 'extract_failed'; })
+                .finally(() => { current.ready = true; });
+        };
         const ping = async () => {
-            if (view !== state || binding !== session || !dialog.open) return;
+            if (!live()) return;
             try {
-                const result = await sessionRequest({binding_id: session.binding_id, action: 'heartbeat'});
-                if (view !== state || binding !== session || !dialog.open) return;
+                const result = await sessionRequest({binding_id: session.binding_id, action: 'heartbeat',
+                    ...(readProtocol ? {view_id: viewId, page_read_supported: supported} : {})});
+                if (!live()) return;
+                const readCommand = result.page_read?.command;
+                if (!readCommand || result.page_read?.available !== true) {
+                    if (reading && pageFeedback === 'readPending') { pageFeedback = 'readFailed'; renderAssistantTools(); }
+                    reading = null;
+                }
+                else {
+                    collect(readCommand);
+                    const current = reading;
+                    if (current?.ready && current.expires > Date.now()) {
+                        const error = current.version !== documentVersion ? 'page_changed' : current.error;
+                        await sessionRequest({binding_id: session.binding_id, action: 'read_result', read_id: current.id,
+                            view_id: viewId, ...(error ? {read_error: error} : {read_result: current.result})});
+                        if (!live()) return;
+                        pageFeedback = error ? ({login_required:'sap_login_required', page_read_unsupported:'readUnavailable', page_read_unavailable:'readUnavailable', page_changed:'readChanged'}[error] || 'readFailed') : '';
+                        if (!error && current.version === documentVersion && typeof current.result?.capturedAt === 'string' && Number.isFinite(Date.parse(current.result.capturedAt))) {
+                            pageCapture = {title:String(current.result.title || t('pageUntitled')).slice(0,300), time:current.result.capturedAt, stale:false};
+                        }
+                        renderAssistantTools();
+                        if (reading === current) reading = null;
+                    }
+                }
                 const command = result.navigation;
                 if (command && Number.isFinite(command.expires_at) && Date.now() < command.expires_at) {
                     const base = new URL(session.sap_url), target = new URL(command.url);
@@ -933,10 +1172,15 @@
                     return;
                 }
             }
-            if (view === state && binding === session && dialog.open) timer = window.setTimeout(ping, 1000);
+            if (live()) timer = window.setTimeout(ping, 1000);
         };
         timer = window.setTimeout(ping, 1000);
-        state.disposeResize = () => window.clearTimeout(timer);
+        state.disposeResize = () => {
+            disposed = true; reading = null; window.clearTimeout(timer);
+            state.frame.removeEventListener('load', loaded);
+            if (readProtocol) void sessionRequest({binding_id: session.binding_id, action: 'heartbeat',
+                view_id: viewId, page_read_supported: false, view_active: false}).catch(() => {});
+        };
     }
     function watchViewSize(host, canvas, socket) {
         const state = view;
@@ -1230,7 +1474,7 @@
         checkbox(credentials, 'clear_mcp_password', 'mcpClearPassword', false);
         form.append(credentials, el('p', t('mcpCredentialsHint'), 'sap-help'));
         const flags = el('fieldset', undefined, 'sap-flags'); flags.append(el('legend', t('flags')));
-        [['enabled','enabled'],['automation_enabled','automation'],['commit_enabled','commit']].forEach(([name,label]) => checkbox(flags,name,label,config[name]));
+        [['enabled','enabled'],['desktop_sap_page_read_enabled','desktopRead'],['automation_enabled','automation'],['commit_enabled','commit']].forEach(([name,label]) => checkbox(flags,name,label,config[name]));
         form.append(flags, el('p', t('flagsHint'), 'sap-help'));
         const footer = el('div', undefined, 'sap-actions'); const save = el('button', t('save')); save.type = 'submit'; footer.append(save);
         footer.append(button('check', async () => {
@@ -1257,7 +1501,7 @@
             next.sap.allowed_origins = value('origins').split('\n').map(v=>v.trim()).filter(Boolean);
             next.coding_agent_id = value('coding_agent_id'); next.browser_service_ref = value('browser_service_ref');
             for (const key of ['max_sessions','idle_seconds']) next[key] = Number(value(key));
-            for (const key of ['enabled','automation_enabled','commit_enabled']) next[key] = form.elements.namedItem(key).checked;
+            for (const key of ['enabled','desktop_sap_page_read_enabled','automation_enabled','commit_enabled']) next[key] = form.elements.namedItem(key).checked;
             next.mcp.connections = config.mcp.connections.map((item, index) => ({...item,
                 enabled: connections.children[index].querySelector('[name="mcp_enabled"]').checked,
             }));
@@ -1283,7 +1527,7 @@
             build();
             if (wantNewSession && dialog.open && (binding || startingSession)) return Promise.resolve();
             if (!dialog.open) {previousFocus = document.activeElement; find('form').inert = false; dialog.showModal();}
-            return load().then(function (loaded) {
+            return Promise.all([load(), loadLayout()]).then(function ([loaded]) {
                 if (!loaded) return;
                 if (wantSettings && data?.can_manage) showSettings();
                 else if (wantNewSession && data?.capabilities.visual) return startSession(false);
