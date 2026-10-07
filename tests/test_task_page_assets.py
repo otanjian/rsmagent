@@ -82,7 +82,7 @@ def test_the_fork_layer_is_evaluated_after_both_halves_it_overrides():
     html = _served_page()
     # Tag order, not text order: the page explains itself in comments that name
     # these paths, and those comments come first.
-    order = re.findall(r'<script defer src="assets/(js/[^"?]+)', html)
+    order = re.findall(r'<script defer src="/?assets/(js/[^"?]+)', html)
     patch_at = order.index("js/fork/tasks-console.js")
     for earlier in ("js/views/tasks.js", "js/views/tasks-modal.js", "js/console.js"):
         assert earlier in order, earlier

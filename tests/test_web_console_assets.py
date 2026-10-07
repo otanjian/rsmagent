@@ -7,16 +7,6 @@ stops existing, and one listed in the wrong place breaks at load. These are
 the invariants the split relies on.
 """
 
-import pytest
-
-# The fork still serves its monolith console. Upstream's split page -- the
-# `assets/js/**` module set and the load order these tests pin -- is staged but
-# not wired, so the assertions cannot hold yet. Tracked by the OpenSpec change
-# "adopt-upstream-web-split" (Phase 3, tasks 4.4-4.9); this marker comes off
-# with the first of those tasks that serves the split page.
-pytestmark = pytest.mark.skip(
-    reason="fork console is not split yet (adopt-upstream-web-split Phase 3)")
-
 import os
 import re
 
@@ -46,15 +36,9 @@ def test_every_console_script_is_listed_exactly_once_and_exists():
     absent = [s for s in scripts if not os.path.exists(os.path.join(STATIC, s))]
     assert not absent, absent
 
-    on_disk = set()
-    for root, _, files in os.walk(os.path.join(STATIC, "js")):
-        for name in files:
-            if name.endswith(".js"):
-                rel = os.path.relpath(os.path.join(root, name), STATIC)
-                on_disk.add(rel.replace(os.sep, "/"))
-
-    # A file nobody loads is dead weight that still looks live in a search.
-    assert not sorted(on_disk - set(scripts))
+    assert "js/console.js" in scripts and "js/fork/router.js" in scripts
+    # Upstream reference modules on disk are not the delivered implementation.
+    assert not set(scripts) & {"js/core/router.js", "js/core/nav.js", "js/chat/state.js", "js/boot.js"}
 
 
 def test_every_stylesheet_is_listed_and_exists():
@@ -65,60 +49,18 @@ def test_every_stylesheet_is_listed_and_exists():
     assert sheets == sorted(set(sheets), key=sheets.index), "a sheet is linked twice"
 
 
-def test_boot_runs_last_among_the_console_scripts_but_before_workspace():
-    """boot.js is the only script with top-level work that calls into the rest,
-    so everything it touches has to be declared by the time it runs.
-
-    It stays ahead of workspace.js, which is where console.js used to sit:
-    applyI18n() probes for relocalizeWorkspacePanel behind a typeof guard, and
-    has always run before workspace.js defined that function.
-    """
+def test_runtime_load_order_preserves_dependencies_and_fork_patches():
     scripts = _scripts(_page())
-
-    boot = scripts.index("js/boot.js")
-    split_out = [i for i, s in enumerate(scripts)
-                 if s.startswith(("js/core/", "js/chat/", "js/views/"))]
-    assert boot > max(split_out)
-    assert boot < scripts.index("js/workspace.js")
+    boot = scripts.index("js/console.js")
+    assert scripts.index("js/fork/router.js") < boot < scripts.index("js/workspace.js")
+    assert scripts.index("js/doc-editor.js") < scripts.index("js/fork/views/memory.js") < boot
+    assert scripts.index("js/views/tasks.js") < boot < scripts.index("js/fork/tasks-console.js")
 
 
-def test_shared_layers_load_before_the_views_that_call_them():
-    scripts = _scripts(_page())
-
-    # core/auth.js is deliberately late; see the dedicated test below.
-    last_core = max(i for i, s in enumerate(scripts)
-                    if s.startswith("js/core/") and s != "js/core/auth.js")
-    first_view = min(i for i, s in enumerate(scripts)
-                     if s.startswith("js/views/") and s != "js/views/agents.js")
-    assert last_core < first_view
-
-    # views/doc-viewers.js calls createDocEditor() at top level.
-    assert scripts.index("js/doc-editor.js") < scripts.index("js/views/doc-viewers.js")
-
-
-def test_the_agent_roster_loads_before_the_chat_state_that_reads_it():
-    """chat/state.js resolves sessionId while it runs, and the storage key it
-    uses compares activeAgentId against defaultAgentId -- a `let` declared in
-    views/agents.js.
-
-    Load agents.js later and that binding is in its temporal dead zone, so
-    chat/state.js throws partway through. Everything below the throw, which is
-    sessionId and every composer element reference, is then permanently
-    uninitialised: no history, no sending, no attachments. The comparison
-    short-circuits on a falsy activeAgentId, so this only breaks for people who
-    have selected an Agent -- it will not show up on a fresh profile.
-    """
-    scripts = _scripts(_page())
-    assert scripts.index("js/views/agents.js") < scripts.index("js/chat/state.js")
-
-
-def test_the_agent_id_fetch_wrapper_is_installed_inside_the_401_wrapper():
-    """Both scripts wrap window.fetch. chat/state.js appends agent_id to the
-    URL; core/auth.js inspects the URL to decide whether a 401 should bounce
-    the user to the login screen. Installing the 401 wrapper second keeps it
-    outermost, so it still sees the URL the caller asked for."""
-    scripts = _scripts(_page())
-    assert scripts.index("js/chat/state.js") < scripts.index("js/core/auth.js")
+def test_agent_roster_and_fetch_wrappers_keep_their_initialization_order():
+    source = open(os.path.join(STATIC, "js/console.js"), encoding="utf-8").read()
+    assert source.index("let defaultAgentId") < source.index("let sessionId = loadOrCreateSessionId()")
+    assert source.index("const _nativeFetch") < source.index("const _originalFetch")
 
 
 def test_the_handler_actually_serves_the_nested_script_paths():
@@ -153,7 +95,7 @@ def test_the_handler_serves_the_assembled_page():
     with patch.object(pages_api.web, "header", lambda *a, **k: None):
         html = pages_api.ChatHandler().GET()
 
-    assert 'src="/assets/js/core/i18n.js' in html
+    assert 'src="/assets/js/console.js' in html
     assert "<!--#include" not in html
 
 
@@ -235,8 +177,6 @@ def test_the_split_scripts_do_not_declare_the_same_global_twice():
     owners = {}
     clashes = []
     for script in _scripts(_page()):
-        if not script.startswith(("js/core/", "js/chat/", "js/views/", "js/boot")):
-            continue
         with open(os.path.join(STATIC, script), encoding="utf-8") as f:
             for name in pattern.findall(f.read()):
                 first = owners.setdefault(name, script)
@@ -246,4 +186,5 @@ def test_the_split_scripts_do_not_declare_the_same_global_twice():
     assert not clashes, clashes
     # Guard the regex itself: if it stopped matching, the test above would pass
     # for the wrong reason.
+    assert "navigateTo" in owners
     assert len(owners) > 600, len(owners)

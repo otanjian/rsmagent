@@ -54,6 +54,7 @@ function setup(transport = () => response({ status: 'success', stream: true, req
         },
     });
     for (const [from, to] of [
+        ['function _historyCacheKey(', 'function _restoreHistoryCache('],
         ['function runtimeSessionKey(', 'function isCurrentSessionConversationActive('],
         ['function _findSessionItem(', '// === SIDEBAR_RECENT_BEGIN ==='],
         ['function sendVoiceMessage(', 'function addUserVoiceMessage('],
@@ -77,6 +78,47 @@ test('text and voice save acknowledgements refresh history before any model even
         assert.equal(h.streams.length, 1);
         assert.equal(h.rendered.length, 0);
         assert.equal(JSON.parse(h.calls[0].options.body).agent_id, 'agent-a');
+    }
+});
+
+test('SSE error uses the loaded scheduler predicate and cleans up exactly once', () => {
+    for (const request of ['ordinary-error', 'scheduler_task_run']) {
+        const h = setup(), notifications = [];
+        h.ctx.notifyTaskFinished = (...args) => notifications.push(args);
+        h.ctx.startSSE(request, null, new Date(), null);
+        h.streams[0].emit({ type: 'error', message: 'synthetic model failure', seq: 1 });
+        h.streams[0].emit({ type: 'error', message: 'duplicate', seq: 2 });
+        assert.deepEqual(h.rendered, ['error_send']);
+        assert.equal(h.streams[0].closed, true);
+        assert.equal(Object.keys(h.ctx.activeStreams).length, 0);
+        assert.equal(Object.keys(h.ctx.sessionActiveRequest).length, 0);
+        assert.equal(notifications.length, request.startsWith('scheduler_') ? 0 : 1);
+    }
+});
+
+test('errors after completion or cancellation preserve the terminal result', () => {
+    const done = setup(); done.ctx.startSSE('r1', null, new Date(), null);
+    done.streams[0].emit({ type: 'done', content: 'Saved answer', seq: 1 });
+    done.streams[0].emit({ type: 'error', seq: 2 });
+    assert.deepEqual(done.rendered, ['Saved answer']);
+    assert.equal(done.streams[0].closed, true);
+    // Cancellation must be remembered even while rendering another session.
+    const cancelled = setup(); cancelled.ctx.startSSE('r1', null, new Date(), null);
+    cancelled.ctx.sessionId = 's2';
+    cancelled.streams[0].emit({ type: 'cancelled', seq: 1 });
+    cancelled.ctx.sessionId = 's1';
+    cancelled.streams[0].emit({ type: 'error', seq: 2 });
+    assert.deepEqual(cancelled.rendered, []);
+    assert.equal(cancelled.streams[0].closed, true);
+});
+
+test('background and stale-identity errors never render into the foreground', () => {
+    for (const change of [h => h.ctx.sessionId = 's2', h => h.ctx._authEpoch++]) {
+        const h = setup(); h.ctx.startSSE('r1', null, new Date(), null); change(h);
+        h.streams[0].emit({ type: 'error', seq: 1 });
+        assert.deepEqual(h.rendered, []);
+        assert.equal(h.streams[0].closed, true);
+        assert.equal(Object.keys(h.ctx.sessionActiveRequest).length, 0);
     }
 });
 

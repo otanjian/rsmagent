@@ -72,7 +72,7 @@ function mergedTable() {
 
 /** The scripts the assembled page loads, in the order it loads them. */
 function pageScripts() {
-    return [...assembledPage().matchAll(/<script[^>]+src="assets\/(js\/[^"?]+)/g)].map(m => m[1]);
+    return [...assembledPage().matchAll(/<script[^>]+src="\/?assets\/(js\/[^"?]+)/g)].map(m => m[1]);
 }
 
 /** Keys asked for by name from the markup: data-i18n, -tip, -placeholder, -title. */

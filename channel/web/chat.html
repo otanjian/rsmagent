@@ -3,24 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script type="application/json" id="console-page-routes">{{COW_CONSOLE_ROUTES}}</script>
     <title>容大AI 控制台</title>
     <meta name="application-name" content="容大AI">
-    <link rel="icon" href="assets/favicon.ico?v=rongda-ai" sizes="any">
-    <link rel="icon" href="assets/rongda-ai-mark.svg" type="image/svg+xml">
+    <link rel="icon" href="/assets/favicon.ico?v=rongda-ai" sizes="any">
+    <link rel="icon" href="/assets/rongda-ai-mark.svg" type="image/svg+xml">
     <!-- Vendored third-party assets (no external CDN dependency).
          See channel/web/static/vendor/README.md for sources & versions. -->
-    <link rel="stylesheet" href="assets/vendor/fontawesome/css/all.min.css">
-    <link rel="stylesheet" href="assets/vendor/fonts/inter/inter.css">
-    <script src="assets/vendor/tailwind/tailwind.min.js"></script>
-    <script src="assets/vendor/markdown-it/markdown-it.min.js"></script>
-    <link id="hljs-light" rel="stylesheet" href="assets/vendor/highlightjs/styles/github.min.css">
-    <link id="hljs-dark" rel="stylesheet" href="assets/vendor/highlightjs/styles/github-dark.min.css" disabled>
-    <script src="assets/vendor/highlightjs/highlight.min.js"></script>
-    <script src="assets/vendor/highlightjs/languages/python.min.js"></script>
-    <script src="assets/vendor/highlightjs/languages/javascript.min.js"></script>
-    <script src="assets/vendor/highlightjs/languages/java.min.js"></script>
-    <script src="assets/vendor/highlightjs/languages/go.min.js"></script>
-    <script src="assets/vendor/highlightjs/languages/bash.min.js"></script>
+    <link rel="stylesheet" href="/assets/vendor/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="/assets/vendor/fonts/inter/inter.css">
+    <script src="/assets/vendor/tailwind/tailwind.min.js"></script>
+    <script src="/assets/vendor/markdown-it/markdown-it.min.js"></script>
+    <link id="hljs-light" rel="stylesheet" href="/assets/vendor/highlightjs/styles/github.min.css">
+    <link id="hljs-dark" rel="stylesheet" href="/assets/vendor/highlightjs/styles/github-dark.min.css" disabled>
+    <script src="/assets/vendor/highlightjs/highlight.min.js"></script>
+    <script src="/assets/vendor/highlightjs/languages/python.min.js"></script>
+    <script src="/assets/vendor/highlightjs/languages/javascript.min.js"></script>
+    <script src="/assets/vendor/highlightjs/languages/java.min.js"></script>
+    <script src="/assets/vendor/highlightjs/languages/go.min.js"></script>
+    <script src="/assets/vendor/highlightjs/languages/bash.min.js"></script>
     <script>
     tailwind.config = {
         darkMode: 'class',
@@ -44,12 +45,12 @@
         }
     }
     </script>
-    <link rel="stylesheet" href="assets/css/console.css">
-    <link rel="stylesheet" href="assets/css/master-sync.css">
-    <link rel="stylesheet" href="assets/css/appearance.css">
-    <link rel="stylesheet" href="assets/css/coding.css">
-    <link rel="stylesheet" href="assets/css/fork/sessions.css">
-    <script src="assets/js/appearance.js"></script>
+    <link rel="stylesheet" href="/assets/css/console.css">
+    <link rel="stylesheet" href="/assets/css/master-sync.css">
+    <link rel="stylesheet" href="/assets/css/appearance.css">
+    <link rel="stylesheet" href="/assets/css/coding.css">
+    <link rel="stylesheet" href="/assets/css/fork/sessions.css">
+    <script src="/assets/js/appearance.js"></script>
     <!-- Apply theme/lang before first paint to avoid flash of unstyled content.
          This runs synchronously in <head> so the correct class is on <html>
          before any CSS or body rendering occurs. -->
@@ -146,7 +147,7 @@
                                     transition-transform duration-300 ease-in-out">
             <!-- Logo -->
             <div class="sidebar-brand">
-                <img src="assets/rongda-ai-mark.svg" alt="" class="brand-mark sidebar-brand-mark" width="34" height="34">
+                <img src="/assets/rongda-ai-mark.svg" alt="" class="brand-mark sidebar-brand-mark" width="34" height="34">
                 <div class="sidebar-brand-copy">
                     <span class="brand-wordmark" id="sidebar-brand-name">容大<span class="brand-ai">AI</span></span>
                     <span class="sidebar-brand-caption" id="sidebar-brand-caption" title="">工作台</span>
@@ -452,6 +453,16 @@
                            target="_blank" rel="noopener noreferrer">容大AI</a>
                         <svg class="account-menu-trailing" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>
                     </div>
+                    <button id="source-update-open" type="button" class="account-menu-action hidden"
+                            onclick="toggleUpdateMenu(event)">检查更新</button>
+                    <section id="update-menu" class="hidden p-3 text-sm" aria-live="polite">
+                        <p id="source-update-target" class="break-all"></p>
+                        <p id="source-update-status"></p>
+                        <button id="update-action-item" type="button" class="account-menu-action" onclick="onUpdateActionClick()">
+                            <span id="update-dot" class="hidden" aria-hidden="true">●</span>
+                            <span id="update-action-label">检查更新</span>
+                        </button>
+                    </section>
                 </div>
             </div>
         </aside>
@@ -1714,6 +1725,7 @@
                                 </div>
                                 <p class="text-slate-500 dark:text-slate-400 font-medium" data-i18n="knowledge_loading">加载知识库中...</p>
                                 <p class="text-sm text-slate-400 dark:text-slate-500 mt-1" data-i18n="knowledge_loading_desc">知识页面将显示在这里</p>
+                                <button id="knowledge-retry" class="hidden mt-3 text-sm text-primary-500" onclick="loadKnowledgeView()" data-i18n="session_history_retry">重试</button>
                                 <div id="knowledge-empty-guide" class="hidden mt-6 max-w-sm text-center">
                                     <p class="text-sm text-slate-500 dark:text-slate-400 mb-4" data-i18n="knowledge_empty_guide">在对话中发送文档、链接或主题给 Agent，它会自动整理到你的知识库中。</p>
                                     <button onclick="navigateTo('chat')"
@@ -2181,7 +2193,7 @@
                                         <label class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-2" data-i18n="branding_logo">Logo</label>
                                         <div class="flex items-center gap-4">
                                             <div class="branding-logo-preview w-20 h-20 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 flex items-center justify-center overflow-hidden" id="branding-logo-thumb">
-                                                <img src="assets/rongda-ai-mark.svg" alt="" class="brand-mark w-12 h-12 object-contain">
+                                                <img src="/assets/rongda-ai-mark.svg" alt="" class="brand-mark w-12 h-12 object-contain">
                                             </div>
                                             <div class="flex flex-col gap-2">
                                                 <div class="flex gap-2">
@@ -2233,7 +2245,7 @@
                                     <div id="branding-preview-canvas" class="rounded-xl overflow-hidden border border-slate-200 dark:border-white/10">
                                         <!-- Sidebar preview -->
                                         <div id="branding-preview-sidebar" class="px-4 py-3 border-b border-slate-200 dark:border-white/10 bg-[#0A0A0A] flex items-center gap-3">
-                                            <img data-brand-slot="logo" class="brand-mark w-8 h-8 object-contain" alt="" src="assets/rongda-ai-mark.svg">
+                                            <img data-brand-slot="logo" class="brand-mark w-8 h-8 object-contain" alt="" src="/assets/rongda-ai-mark.svg">
                                             <div class="min-w-0">
                                                 <div data-brand-slot="name" class="brand-wordmark !text-base !text-[#f3f8fc] truncate">容大<span class="brand-ai">AI</span></div>
                                                 <div data-brand-slot="caption" class="text-[10px] text-slate-400 truncate text-left">工作台</div>
@@ -2241,14 +2253,14 @@
                                         </div>
                                         <!-- Login preview -->
                                         <div data-preview="login" class="px-4 py-6 border-b border-slate-200 dark:border-white/10 flex flex-col items-center bg-white dark:bg-[#1A1A1A]">
-                                            <img data-brand-slot="logo" class="brand-mark w-12 h-12 object-contain" alt="" src="assets/rongda-ai-mark.svg">
+                                            <img data-brand-slot="logo" class="brand-mark w-12 h-12 object-contain" alt="" src="/assets/rongda-ai-mark.svg">
                                             <div data-brand-slot="name" class="brand-wordmark brand-wordmark-hero !text-lg mt-2">容大<span class="brand-ai">AI</span></div>
                                             <div data-brand-slot="desc" class="text-xs text-slate-500 dark:text-slate-400 text-center mt-1 hidden">控制台</div>
                                             <p class="text-xs text-slate-400 dark:text-slate-500 mt-3">请输入密码以访问控制台</p>
                                         </div>
                                         <!-- Welcome preview -->
                                         <div data-preview="welcome" class="px-4 py-6 flex flex-col items-center bg-white dark:bg-[#1A1A1A]">
-                                            <img data-brand-slot="logo" class="brand-mark brand-mark-hero w-12 h-12 !w-14 !h-14 object-contain" alt="" src="assets/rongda-ai-mark.svg">
+                                            <img data-brand-slot="logo" class="brand-mark brand-mark-hero w-12 h-12 !w-14 !h-14 object-contain" alt="" src="/assets/rongda-ai-mark.svg">
                                             <div data-brand-slot="name" class="brand-wordmark brand-wordmark-hero !text-lg mt-2">容大<span class="brand-ai">AI</span></div>
                                             <div data-brand-slot="desc" class="text-xs text-slate-500 dark:text-slate-400 text-center mt-1 hidden">控制台</div>
                                             <p class="text-sm text-slate-500 dark:text-slate-400 text-center max-w-sm mt-3 leading-relaxed">我可以帮你解答问题、管理计算机、创造和执行技能，并通过长期记忆和知识库不断成长</p>
@@ -3048,56 +3060,56 @@
          ARIA attributes and data-fork-fragment attribute; only the inner markup
          belongs in the fragment. -->
     <dialog id="appearance-dialog" aria-labelledby="appearance-title" aria-describedby="appearance-scope"
-            data-fork-fragment="assets/fragments/appearance-dialog.html"></dialog>
+            data-fork-fragment="/assets/fragments/appearance-dialog.html"></dialog>
 
     <!-- doc-editor first: console.js builds its editors at load time. -->
-    <script defer src="assets/js/doc-editor.js"></script>
+    <script defer src="/assets/js/doc-editor.js"></script>
     <!-- Per-domain i18n namespaces (change fork-decoupling-and-tenant-hardening,
          task 8.5). They must run before console.js merges window.__cowI18N__ into
          the lookup table; defer preserves this document order. -->
-    <script defer src="assets/js/i18n/account.js"></script>
-    <script defer src="assets/js/i18n/admin-console.js"></script>
-    <script defer src="assets/js/i18n/agents.js"></script>
-    <script defer src="assets/js/i18n/appearance.js"></script>
+    <script defer src="/assets/js/i18n/account.js"></script>
+    <script defer src="/assets/js/i18n/admin-console.js"></script>
+    <script defer src="/assets/js/i18n/agents.js"></script>
+    <script defer src="/assets/js/i18n/appearance.js"></script>
     <!-- 审计日志 / Token 消耗 (change add-audit-and-token-console). Must be in this
          block, not next to the view module further down: console.js snapshots
          window.__cowI18N__ into its lookup table when it loads, so a namespace
          registered afterwards resolves every key to itself and the page renders
          "audit_title" / "token_usage_title" instead of the labels. -->
-    <script defer src="assets/js/i18n/audit-console.js"></script>
-    <script defer src="assets/js/i18n/branding.js"></script>
-    <script defer src="assets/js/i18n/core.js"></script>
-    <script defer src="assets/js/i18n/memory-account.js"></script>
-    <script defer src="assets/js/i18n/external-connections.js"></script>
-    <script defer src="assets/js/i18n/external-identity.js"></script>
-    <script defer src="assets/js/i18n/home-scenes.js"></script>
-    <script defer src="assets/js/i18n/identity-admin.js"></script>
-    <script defer src="assets/js/i18n/models-config.js"></script>
-    <script defer src="assets/js/i18n/navigation.js"></script>
-    <script defer src="assets/js/i18n/personal-console.js"></script>
-    <script defer src="assets/js/i18n/resource-detail.js"></script>
-    <script defer src="assets/js/i18n/tasks-records.js"></script>
-    <script defer src="assets/js/i18n/tenant-channel.js"></script>
-    <script defer src="assets/js/i18n/todos.js"></script>
-    <script defer src="assets/js/i18n/coding.js"></script>
+    <script defer src="/assets/js/i18n/audit-console.js"></script>
+    <script defer src="/assets/js/i18n/branding.js"></script>
+    <script defer src="/assets/js/i18n/core.js"></script>
+    <script defer src="/assets/js/i18n/memory-account.js"></script>
+    <script defer src="/assets/js/i18n/external-connections.js"></script>
+    <script defer src="/assets/js/i18n/external-identity.js"></script>
+    <script defer src="/assets/js/i18n/home-scenes.js"></script>
+    <script defer src="/assets/js/i18n/identity-admin.js"></script>
+    <script defer src="/assets/js/i18n/models-config.js"></script>
+    <script defer src="/assets/js/i18n/navigation.js"></script>
+    <script defer src="/assets/js/i18n/personal-console.js"></script>
+    <script defer src="/assets/js/i18n/resource-detail.js"></script>
+    <script defer src="/assets/js/i18n/tasks-records.js"></script>
+    <script defer src="/assets/js/i18n/tenant-channel.js"></script>
+    <script defer src="/assets/js/i18n/todos.js"></script>
+    <script defer src="/assets/js/i18n/coding.js"></script>
     <!-- Fork fragments (change fork-decoupling-and-tenant-hardening, task 8.8):
          mounts [data-fork-fragment] markup after parse, before console.js reads
          the mounted nodes on interaction. -->
-    <script defer src="assets/js/fragments.js"></script>
+    <script defer src="/assets/js/fragments.js"></script>
     <!-- Shared channel presentation (change upgrade-personal-channel-workbench,
          task 3.1). console.js delegates its card / credential-field / scan-mode
          markup to window.ChannelWorkbench, so the module must be evaluated
          first; defer preserves this document order. -->
-    <script defer src="assets/js/channel-workbench.js"></script>
+    <script defer src="/assets/js/channel-workbench.js"></script>
     <!-- Functional modules (change integrate-upstream-core-capabilities, P1-P6).
          Load order is the dependency order: functional-capabilities.js is the
          shared gate every other module reads, the three feature modules mount
          their own surfaces, and console.js wires them in (so it must come
          last). Each module attaches exactly one window namespace and touches
          no DOM at load time, which is what makes the defer order safe. -->
-    <script defer src="assets/js/functional-capabilities.js"></script>
-    <script defer src="assets/js/functional-models.js"></script>
-    <script defer src="assets/js/functional-context.js"></script>
+    <script defer src="/assets/js/functional-capabilities.js"></script>
+    <script defer src="/assets/js/functional-models.js"></script>
+    <script defer src="/assets/js/functional-context.js"></script>
     <!-- Upstream scheduled-task page (templates/views/tasks.html,
          templates/modals/task-edit.html, templates/modals/run-detail.html),
          loaded as-is (change port-upstream-tasks-page). The markup above is the
@@ -3106,53 +3118,56 @@
          fork keeps only the semantics upstream does not have.
          Before console.js because they attach plain function declarations to
          the page, and console.js's own scheduling section is gone with them. -->
-    <script defer src="assets/js/views/tasks.js"></script>
-    <script defer src="assets/js/views/tasks-modal.js"></script>
+    <script defer src="/assets/js/views/tasks.js"></script>
+    <script defer src="/assets/js/views/tasks-modal.js"></script>
     <!-- Coding sessions (change add-opencode-coding-agents, task 4.3). Must be
          evaluated before console.js: console.js wires window.CodingChat into
          the agent form, the new-chat entry and every open-by-type call during
          its own init, the same reason the functional modules above come first.
          It attaches one window namespace and mounts nothing at load time. -->
-    <script defer src="assets/js/coding.js"></script>
+    <script defer src="/assets/js/coding.js"></script>
     <!-- Environment adapter (change add-desktop-remote-web-workbench, task 5.1).
          Loaded before console.js: console.js and the page views ask
          window.CowDesktopHost instead of testing for a desktop host themselves,
          so they keep one code path for both the browser and the desktop
          container. It attaches one namespace and mounts nothing. -->
-    <script defer src="assets/js/fork/desktop-host.js"></script>
+    <script defer src="/assets/js/fork/desktop-host.js"></script>
     <!-- Desktop account adapter (change fix-desktop-relogin-session-sync, task 2.3).
          The serial sign-out -- confirm the Web session, then let the host finish --
          in one place, so console.js never has to remember the order. Loaded before
          console.js, which asks window.CowDesktopAccount for both the desktop
          question and the account end. -->
-    <script defer src="assets/js/fork/desktop-account.js"></script>
-    <script defer src="assets/js/i18n/master-sync.js"></script>
-    <script defer src="assets/js/fork/views/memory.js"></script>
-    <script defer src="assets/js/console.js"></script>
-    <script defer src="assets/js/fork/views/sessions.js"></script>
-    <script defer src="assets/js/chat/timeline.js"></script>
-    <script defer src="assets/js/scenes/index.js"></script>
+    <script defer src="/assets/js/fork/desktop-account.js"></script>
+    <script defer src="/assets/js/i18n/master-sync.js"></script>
+    <script defer src="/assets/js/fork/views/memory.js"></script>
+    <script defer src="/assets/js/fork/router.js"></script>
+    <script defer src="/assets/js/console.js"></script>
+    <script defer src="/assets/js/fork/views/sessions.js"></script>
+    <script defer src="/assets/js/chat/timeline.js"></script>
+    <script defer src="/assets/js/scenes/index.js"></script>
     <!-- The file panel's local source (change
          align-desktop-project-execution-with-master, task 9.2). Loaded after
          console.js, whose desktop context and classifiers it is configured with,
          and before workspace.js, which asks it where the panel's files come
          from. It attaches one namespace and mounts nothing. -->
-    <script defer src="assets/js/fork/project-source.js"></script>
-    <script defer src="assets/js/workspace.js"></script>
-    <script defer src="assets/js/identity-admin.js"></script>
+    <script defer src="/assets/js/fork/project-source.js"></script>
+    <script defer src="/assets/js/workspace.js"></script>
+    <script defer src="/assets/js/identity-admin.js"></script>
     <!-- 审计日志 / Token 消耗 (change add-audit-and-token-console): the view
          module. Loaded after console.js, whose `registerConsoleView` it uses to
          add its two views, and after identity-admin.js, which no longer
          registers 审计日志. Its i18n namespace is deliberately NOT here -- see
          the per-domain i18n block above. -->
-    <script defer src="assets/js/audit-console.js"></script>
-    <script defer src="assets/js/todos.js"></script>
+    <script defer src="/assets/js/audit-console.js"></script>
+    <script defer src="/assets/js/todos.js"></script>
     <!-- Fork patch layer for the upstream scheduled-task page (change
          port-upstream-tasks-page): the capabilities gate, the
          `task.capabilities` verbs, the owner/shared marker, the closed-consumer
          reason and the read-only delivery target in edit mode. Loaded last so
          nothing else can re-declare over it, and it reads only page globals
          (upstream's functions included), never the reverse. -->
-    <script defer src="assets/js/fork/tasks-console.js"></script>
+    <script defer src="/assets/js/fork/tasks-console.js"></script>
+    <script defer src="/assets/js/fork/scheduler-notifications.js"></script>
+    <script defer src="/assets/js/fork/source-update.js"></script>
 </body>
 </html>

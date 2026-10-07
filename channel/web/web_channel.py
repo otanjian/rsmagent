@@ -304,6 +304,9 @@ from channel.web.fork.handlers.skills import (
 )
 from channel.web.fork.handlers.update import (
     VersionHandler,
+    UpdateCheckHandler,
+    UpdateStartHandler,
+    UpdateStatusHandler,
 )
 from channel.web.fork.handlers.workspace import (
     ProjectBrowseHandler,
@@ -587,6 +590,9 @@ from channel.web.fork.handlers.skills import (
 )
 from channel.web.fork.handlers.update import (
     VersionHandler,
+    UpdateCheckHandler,
+    UpdateStartHandler,
+    UpdateStatusHandler,
 )
 from channel.web.fork.handlers.workspace import (
     ProjectBrowseHandler,

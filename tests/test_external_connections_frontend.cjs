@@ -421,13 +421,13 @@ test('the menu entry sits in 模型与接入, immediately after 消息渠道', (
 test('console.js signs the view with a stable group and lazy module', () => {
     assert.match(consoleJs,
         /'external_connections':\s*\{\s*group:\s*'nav_group_model_access',\s*page:\s*'menu_external_connections',\s*console:\s*'admin\.external_connections'\s*\}/);
-    assert.match(consoleJs, /external_connections:\s*'assets\/js\/external-connections\.js'/);
+    assert.match(consoleJs, /external_connections:\s*'\/assets\/js\/external-connections\.js'/);
     // The page body is a container only; the page module is not a <script> in
     // chat.html (only its i18n namespace file is), so nothing is fetched until
     // the view is entered.
     assert.match(chatHtml, /id="view-external_connections"/);
-    assert.doesNotMatch(chatHtml, /<script[^>]*src="assets\/js\/external-connections\.js"/);
-    assert.match(chatHtml, /<script defer src="assets\/js\/i18n\/external-connections\.js"><\/script>/);
+    assert.doesNotMatch(chatHtml, /<script[^>]*src="\/?assets\/js\/external-connections\.js"/);
+    assert.match(chatHtml, /<script defer src="\/?assets\/js\/i18n\/external-connections\.js"><\/script>/);
     // classic/split share one sidebar; the entry is a plain sidebar-item.
     assert.match(chatHtml, /class="sidebar-item[^"]*"\s*\n?\s*data-view="external_connections"/);
 });

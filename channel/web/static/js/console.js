@@ -1145,6 +1145,9 @@ function _clearTenantPicker() {
 
 function _invalidateAccountIdentity(phase) {
     ++_authEpoch;
+    if (typeof Event === 'function' && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(new Event('account-invalidated'));
+    }
     if (typeof resetMemoryView === 'function') resetMemoryView();
     resumedRequests.clear();
     if (typeof resetTimeline === "function") resetTimeline();
@@ -2299,7 +2302,7 @@ function _loadRegisteredView(viewId) {
 // View id -> module injected on first navigation. A view not listed here must
 // already be registered (or have no module at all), exactly as before.
 const LAZY_VIEW_MODULES = {
-    external_connections: 'assets/js/external-connections.js',
+    external_connections: '/assets/js/external-connections.js',
 };
 const _lazyViewModuleState = {};
 const _lazyViewModulePromises = {};
@@ -2350,6 +2353,8 @@ function _repaintRegisteredView(viewId) {
 }
 
 function _viewTargetArea(viewId) {
+    const registered = window.ConsoleRoutes?.pages.find(page => page.view === viewId);
+    if (registered) return registered.area;
     if (viewId === 'admin-home') return 'admin';
     const meta = VIEW_META[viewId];
     const key = meta && meta.console;
@@ -2358,6 +2363,7 @@ function _viewTargetArea(viewId) {
 }
 
 function _bootAreaDefaultView() {
+    if (window.ConsoleRoutes) { window.ConsoleRoutes.apply(); return; }
     // A direct URL may name a view in the hash (``/chat#view-personal-memory``),
     // so a bookmark or a pasted link to a personal page opens that page instead
     // of the area default (task 8.4). Unknown hashes fall through to the existing
@@ -2641,7 +2647,7 @@ function _normalizeViewId(viewId) {
     return viewId === 'external-connections' ? 'external_connections' : viewId;
 }
 
-function navigateTo(viewId, onArrive) {
+function navigateTo(viewId, onArrive, routeOptions) {
     // 旧「场景应用」占位 id 重定向到真实 scenes 视图（收藏/直链不失效）。
     if (viewId === 'scenarios') viewId = 'scenes';
     viewId = _normalizeViewId(viewId);
@@ -2665,32 +2671,27 @@ function navigateTo(viewId, onArrive) {
         }
         viewId = legacyForward;
     }
+    if (!VIEW_META[viewId] && !UNAVAILABLE_VIEWS.has(viewId)) return false;
+    // A denial is still a view change: it must not destroy an unsaved draft.
+    if (!_viewLeaveApproved(viewId) && !_viewLeaveCheck(viewId, onArrive, routeOptions)) return false;
     if (UNAVAILABLE_VIEWS.has(viewId)) {
         showUnavailableView(viewId);
-        return;
+        return false;
     }
-    if (!VIEW_META[viewId]) return;
-    // Authoritative availability gate (database mode only). A target the
-    // identity may not read and that is not open is rendered as a denial, NOT
-    // silently switched to another scope. Works only once the /auth/context
-    // projection is known; until then navigation is not spuriously blocked.
     const deny = _viewNavDenied(viewId);
     if (deny) {
         showUnavailableView(viewId, deny.reason);
-        return;
+        if (window.ConsoleRoutes) {
+            window.ConsoleRoutes.enter(viewId, routeOptions);
+            _applyNavAreaAttribute();
+        }
+        return false; // The outer dispatcher must not start the denied loader.
     }
-    // The leave decision comes BEFORE any commit of the target. A cross-area
-    // target (console <-> workbench) must not push a new URL, re-render the area
-    // shell or start the target's consumer while an unsaved form is still asking
-    // to discard: the current region, address, draft and current item survive a
-    // cancel. The single check runs once per navigation, and the nested
-    // ``navigateTo`` that the area switch performs reuses the approval instead of
-    // asking twice.
-    if (!_viewLeaveApproved(viewId) && !_viewLeaveCheck(viewId, onArrive)) return;
+    if (currentView === 'logs' && viewId !== 'logs') stopLogStream();
     // Cross-area: switch to the other area in the SAME window (no reload).
     const here = _navAreaFromPath(location.pathname);
     const want = _viewTargetArea(viewId);
-    if (want !== here) {
+    if (want !== here && !window.ConsoleRoutes) {
         try {
             if (want === 'admin') sessionStorage.setItem('cow_admin_pending_view', viewId);
             else sessionStorage.setItem('cow_workbench_pending_view', viewId);
@@ -2739,6 +2740,10 @@ function navigateTo(viewId, onArrive) {
     document.getElementById('breadcrumb-page').textContent = t(meta.page);
     document.getElementById('breadcrumb-page').dataset.i18n = meta.page;
     currentView = viewId;
+    if (window.ConsoleRoutes) {
+        window.ConsoleRoutes.enter(viewId, routeOptions);
+        _applyNavAreaAttribute();
+    }
     document.getElementById('chat-agent-identity')?.classList.toggle('hidden', viewId !== 'chat');
     document.getElementById('workspace-toggle-btn')?.classList.toggle('hidden', viewId !== 'chat');
     if (viewId === 'branding') initBrandingView();
@@ -2768,7 +2773,8 @@ function navigateTo(viewId, onArrive) {
     if (_historyVisible) _renderHistoryStatus();
 
     if (window.innerWidth < 1024) closeSidebar();
-    if (typeof onArrive === 'function') onArrive();
+    if (typeof onArrive === 'function' && !routeOptions?.deferArrival) onArrive();
+    return true;
 }
 
 // The leave check has already run for this target (the cross-area path commits
@@ -2781,13 +2787,13 @@ function _viewLeaveApproved(viewId) {
 // Ask the current view whether it may be left. Returns true when the caller may
 // commit the target, false when the current view asked to stay (a cancelled
 // discard) or will re-enter navigation itself after the confirmation.
-function _viewLeaveCheck(viewId, onArrive) {
+function _viewLeaveCheck(viewId, onArrive, routeOptions) {
     if (viewId === currentView) return true;
     const adminViews = ['tenant', 'system_user', 'roles', 'org', 'platform', 'audit'];
     if (currentView === 'branding' && brandingDirty) {
         brandingConfirmDiscard(() => {
             _brandingResetDraftToBaseline();
-            navigateTo(viewId, onArrive);
+            navigateTo(viewId, onArrive, routeOptions);
         });
         return false;
     }
@@ -6528,6 +6534,7 @@ window.fetch = function(input, init) {
     const sameOrigin = requestUrl.origin === window.location.origin;
     if (sameOrigin) url = requestUrl.pathname + requestUrl.search + requestUrl.hash;
     const accountMemory = sameOrigin && /^\/api\/memory(?:\/|$)/.test(requestUrl.pathname);
+    const instanceUpdate = sameOrigin && /^\/api\/update\//.test(requestUrl.pathname);
     // In database identity mode the request context is tenant-scoped. The
     // selected tenant lives in sessionStorage (cow_tenant_id) but the core
     // console requests (agents / sessions / history / knowledge) do not
@@ -6543,7 +6550,7 @@ window.fetch = function(input, init) {
         if (!headers.has('X-Tenant-ID')) headers.set('X-Tenant-ID', tenantId);
         init.headers = headers;
     }
-    if (!accountMemory && activeAgentId && sameOrigin && url.startsWith('/')) {
+    if (!accountMemory && !instanceUpdate && activeAgentId && sameOrigin && url.startsWith('/')) {
         if (!/[?&]agent_id=/.test(url)) {
             const joiner = url.includes('?') ? '&' : '?';
             url = `${url}${joiner}agent_id=${encodeURIComponent(activeAgentId)}`;
@@ -7251,13 +7258,26 @@ function resetComposerHeight() {
 })();
 
 
-// Smart auto-scroll: pause when user scrolls up, resume when near bottom
+// Upstream b05ec4ac: pause on upward intent, including near the bottom.
 let _autoScrollEnabled = true;
 const _SCROLL_THRESHOLD = 80; // px from bottom to re-enable auto-scroll
+let _programmaticScrollTop = null;
+let _lastScrollTop = 0;
 
 messagesDiv.addEventListener('scroll', () => {
-    const distFromBottom = messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight;
-    _autoScrollEnabled = distFromBottom <= _SCROLL_THRESHOLD;
+    const top = messagesDiv.scrollTop;
+    const distFromBottom = messagesDiv.scrollHeight - top - messagesDiv.clientHeight;
+    // A boolean can swallow the next *user* event when writing the same top
+    // emitted no event. Recognize only the actual position we wrote.
+    if (_programmaticScrollTop !== null && Math.abs(top - _programmaticScrollTop) < 1) {
+        _programmaticScrollTop = null;
+    } else if (top < _lastScrollTop - 1) {
+        _autoScrollEnabled = false;
+        _programmaticScrollTop = null;
+    } else if (distFromBottom <= _SCROLL_THRESHOLD) {
+        _autoScrollEnabled = true;
+    }
+    _lastScrollTop = top;
     _updateScrollToBottomBtn();
 });
 
@@ -9346,6 +9366,12 @@ function sendMessage() {
     postWithRetry(0);
 }
 
+// Shared with the scheduled-run notifier. The split upstream provider is not
+// loaded by this shell, so its SSE consumer must carry the real dependency.
+function isSchedulerRequest(requestId) {
+    return typeof requestId === 'string' && requestId.startsWith('scheduler_');
+}
+
 function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, ownerContext, resume) {
     let botEl = null;
     let stepsEl = null;    // .agent-steps  (thinking summaries + tool indicators)
@@ -9968,7 +9994,7 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
                 const unknown = item.reason === 'unknown_request';
                 if (unknown && !mainDone && !cancelled) {
                     if (isActive()) reloadHistoryView();
-                } else if (!cancelled && !unknown) {
+                } else if (!cancelled && !mainDone && !unknown) {
                     addBotMessage(t('error_send'), new Date());
                 }
                 resetSendBtnSendMode();
@@ -9986,6 +10012,7 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
         activeStreams[requestId] = es;
 
         es.onmessage = function(e) {
+            if (done) return;
             if (!isCurrentIdentity()) {
                 done = true;
                 es.close();
@@ -10031,7 +10058,9 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
                 if (item.bot_seq !== undefined && item.bot_seq !== null) {
                     completedBotSeq = item.bot_seq;
                 }
-                notifyTaskFinished(ownerSession, 'done', item.content);
+                if (!isSchedulerRequest(requestId)) notifyTaskFinished(ownerSession, 'done', item.content);
+            } else if (item.type === 'cancelled') {
+                cancelled = true;
             } else if (item.type === 'error') {
                 if (!cancelled && !mainDone && !isSchedulerRequest(requestId)) notifyTaskFinished(ownerSession, 'error', '', ownerAgent);
             } else if (
@@ -10187,7 +10216,7 @@ function startPolling() {
                     scrollChatToBottom();
                     // Pushed message (scheduler result, missed reply): show the
                     // content itself, matching the desktop push notification.
-                    showTaskNotification(
+                    if (!isSchedulerRequest(rid)) showTaskNotification(
                         sessionTitleOf(sessionId) || PRODUCT_NAME,
                         firstLineSnippet(data.content),
                         sessionId
@@ -10799,6 +10828,11 @@ function loadHistory(page, untilSeq) {
     const historyEpoch = _authEpoch;
     const historyTenantId = sessionStorage.getItem('cow_tenant_id');
     const context = JSON.stringify([historyEpoch, historyTenantId, historyAgentId, historySessionId]);
+    if (page === 1 && _historyLoadContext !== context) {
+        _autoScrollEnabled = true;
+        _lastScrollTop = 0;
+        _programmaticScrollTop = null;
+    }
     if (historyLoading && _historyLoadContext === context) return;
     historyLoading = true;
     _historyLoadContext = context;
@@ -11591,6 +11625,9 @@ function commitPreparedSession(preparedSessionId, { optimistic = true, inherit =
 
     // Persist the id so the next page load also starts clean.
     sessionId = preparedSessionId;
+    _autoScrollEnabled = true;
+    _lastScrollTop = 0;
+    _programmaticScrollTop = null;
     writeScopedPreference(activeSessionStorageKey(), sessionId);
     _sessCfg = null;
     if (!inherit) {
@@ -13734,7 +13771,10 @@ function updateSubstepCount(toolEl, count) {
 
 function scrollChatToBottom(force) {
     if (force || _autoScrollEnabled) {
+        if (force) _autoScrollEnabled = true;
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        _programmaticScrollTop = messagesDiv.scrollTop;
+        _lastScrollTop = messagesDiv.scrollTop;
     }
 }
 
@@ -14510,6 +14550,8 @@ function _modelsManageAllowed() {
 }
 
 function switchConfigTab(tab) {
+    if (!['basic', 'models', 'catalog'].includes(tab)) return;
+    if (tab !== 'catalog' && !_modelsManageAllowed()) tab = 'catalog';
     ['basic', 'models', 'catalog'].forEach(name => {
         document.getElementById(`config-tab-${name}`)?.classList.toggle('active', name === tab);
         document.getElementById(`config-panel-${name}`)?.classList.toggle('hidden', name !== tab);
@@ -14520,6 +14562,7 @@ function switchConfigTab(tab) {
     // tab must show up in the basic main-model provider picker without a manual
     // page refresh. loadConfigView re-renders from the fresh provider list.
     if (tab === 'basic') loadConfigView();
+    if (window.ConsoleRoutes) window.ConsoleRoutes.note('config', tab);
 }
 
 // Enter 模型与接入 in whichever shape the caller is entitled to. A platform
@@ -15794,7 +15837,7 @@ const MODELS_CAPABILITY_DEFS = [
 // absent. Vendors whose mark is rendered in pure (or near-pure) black are
 // listed in MODELS_PROVIDER_LOGO_DARK_INVERT — for those, we apply a CSS
 // invert filter in dark mode so the glyph stays visible against #1A1A1A.
-const MODELS_PROVIDER_LOGO_PATH = 'assets/logos';
+const MODELS_PROVIDER_LOGO_PATH = '/assets/logos';
 const MODELS_PROVIDER_LOGO_DARK_INVERT = new Set([
     'openai',     // black wordmark
     'moonshot',   // dark monogram
@@ -20386,19 +20429,26 @@ function stopLogStream() {
 // View Navigation Hook
 // =====================================================================
 const _origNavigateTo = navigateTo;
-navigateTo = function(viewId) {
+navigateTo = function(viewId, onArrive, routeOptions) {
+    const router = window.ConsoleRoutes;
+    if (router) {
+        routeOptions = router.prepare(routeOptions);
+        if (!routeOptions) return false;
+    }
     // Previously-visible but not-yet-enabled targets (menu placeholders) are
     // routed by the base handler to a clear "not available" view instead of a
     // silent no-op. Do not early-return here.
 
     // An open document editor is about to be replaced by another view, which
     // would drop the edit with nothing on screen to say so.
-    if (!docGuardUnsaved(() => navigateTo(viewId))) return;
+    if (!docGuardUnsaved(() => navigateTo(viewId, onArrive, routeOptions))) return false;
 
-    // Stop log stream when leaving logs view
-    if (currentView === 'logs' && viewId !== 'logs') stopLogStream();
-
-    _origNavigateTo(viewId);
+    // The base leave guard must retain the arrival callback across its async
+    // continuation; invoke it only after this wrapper has finished committing.
+    routeOptions = { ...(routeOptions || {}), deferArrival: true };
+    const committed = _origNavigateTo(viewId, onArrive, routeOptions);
+    if (committed !== true) { if (router) router.cancel(); return false; }
+    viewId = currentView;
 
     // Lazy-load view data
     if (viewId === 'config') { enterConfigView(); }
@@ -20410,6 +20460,9 @@ navigateTo = function(viewId) {
     // `todo` is a fork view and loads through the registry in the base
     // navigateTo (task 8.6), so it is not hard-coded here anymore.
     else if (viewId === 'logs') startLogStream();
+    if (router) router.finish(viewId, routeOptions);
+    if (typeof onArrive === 'function') onArrive();
+    return true;
 };
 
 // =====================================================================
@@ -20419,6 +20472,10 @@ let _knowledgeTreeData = [];
 let _knowledgeRootFiles = [];
 let _knowledgeCurrentFile = null;
 let _knowledgeGraphLoaded = false;
+let _knowledgeTab = 'docs';
+let _knowledgeHasPages = false;
+let _knowledgeLoadSeq = 0;
+let _knowledgeListState = 'loading';
 const KNOWLEDGE_IMPORT_MAX_FILES = 100;
 const KNOWLEDGE_IMPORT_MAX_FILE_SIZE = 10 * 1024 * 1024;
 const KNOWLEDGE_IMPORT_MAX_TOTAL_SIZE = 200 * 1024 * 1024;
@@ -20455,6 +20512,7 @@ function selectKnowledgeAgent(agentId) {
     // Another library: nothing the sources tab holds is about it any more.
     knowledgeSourcesOnLibraryChange();
     loadKnowledgeView();
+    if (_knowledgeTab === 'sources') loadKnowledgeSources();
 }
 
 // Knowledge writes (create/rename/delete/move/import) are authorized by the
@@ -20484,6 +20542,8 @@ function renderKnowledgeWriteAffordances() {
 // anything but success. Before this, the handler-less closed consumer left the
 // page spinning forever with no explanation (the same defect /api/channels had).
 function renderKnowledgeUnavailable(data) {
+    _knowledgeHasPages = false;
+    _knowledgeListState = 'error';
     const emptyEl = document.getElementById('knowledge-empty');
     const docsPanel = document.getElementById('knowledge-panel-docs');
     const statsEl = document.getElementById('knowledge-stats');
@@ -20498,14 +20558,34 @@ function renderKnowledgeUnavailable(data) {
     if (lines[1]) lines[1].textContent = (data && data.message) ? String(data.message) : '';
     const guideEl = document.getElementById('knowledge-empty-guide');
     if (guideEl) guideEl.classList.add('hidden');
-    emptyEl.classList.remove('hidden');
+    _applyKnowledgePanels();
+}
+
+function _knowledgeReadContext() {
+    return JSON.stringify([_authEpoch, sessionStorage.getItem('cow_tenant_id'), viewingKnowledgeAgentId()]);
+}
+
+function _applyKnowledgePanels() {
+    const hasPages = _knowledgeListState === 'ready' && _knowledgeHasPages;
+    for (const tab of ['docs', 'graph', 'sources']) {
+        const panel = document.getElementById('knowledge-panel-' + tab);
+        if (panel) panel.classList.toggle('hidden', _knowledgeTab !== tab || (tab !== 'sources' && !hasPages));
+    }
+    const empty = document.getElementById('knowledge-empty');
+    if (empty) empty.classList.toggle('hidden', _knowledgeTab === 'sources' || hasPages);
+    const retry = document.getElementById('knowledge-retry');
+    if (retry) retry.classList.toggle('hidden', _knowledgeListState !== 'error');
+    if (_knowledgeTab === 'graph' && hasPages && !_knowledgeGraphLoaded) loadKnowledgeGraph();
 }
 
 function loadKnowledgeView(targetPath) {
-    // Reset to docs tab
-    switchKnowledgeTab('docs');
+    // Preserve the selected tab while a refresh or routed load is in flight.
+    if (targetPath) switchKnowledgeTab('docs');
+    const request = ++_knowledgeLoadSeq;
     _knowledgeGraphLoaded = false;
     _knowledgeCurrentFile = null;
+    _knowledgeHasPages = false;
+    _knowledgeListState = 'loading';
 
     // Drop a deleted Agent selection so we never point at a ghost.
     if (knowledgeAgentId && agentCatalog.length && !agentCatalog.some(a => a.id === knowledgeAgentId)) {
@@ -20514,8 +20594,14 @@ function loadKnowledgeView(targetPath) {
     }
     renderKnowledgeAgentSelect();
     renderKnowledgeWriteAffordances();
+    const context = _knowledgeReadContext();
+    const current = () => request === _knowledgeLoadSeq && context === _knowledgeReadContext();
+    const loading = document.getElementById('knowledge-empty');
+    if (loading && loading.querySelector('p')) loading.querySelector('p').textContent = t('knowledge_loading');
+    _applyKnowledgePanels();
 
     fetch(_kbUrl('/api/knowledge/list')).then(r => r.json()).then(data => {
+        if (!current()) return;
         if (data.status !== 'success') {
             renderKnowledgeUnavailable(data);
             return;
@@ -20523,7 +20609,6 @@ function loadKnowledgeView(targetPath) {
         initKnowledgeImportDropZone();
 
         const emptyEl = document.getElementById('knowledge-empty');
-        const docsPanel = document.getElementById('knowledge-panel-docs');
         const statsEl = document.getElementById('knowledge-stats');
 
         const tree = data.tree || [];
@@ -20536,16 +20621,18 @@ function loadKnowledgeView(targetPath) {
 
         statsEl.textContent = totalPages + ' pages · ' + sizeStr;
 
-        if (totalPages === 0 && tree.length === 0 && rootFiles.length === 0) {
+        _knowledgeListState = 'ready';
+        _knowledgeHasPages = !(totalPages === 0 && tree.length === 0 && rootFiles.length === 0);
+        if (!_knowledgeHasPages) {
             emptyEl.querySelector('p').textContent = t('knowledge_empty_hint');
+            const lines = emptyEl.querySelectorAll('p');
+            if (lines[1]) lines[1].textContent = '';
             const guideEl = document.getElementById('knowledge-empty-guide');
             if (guideEl) guideEl.classList.remove('hidden');
-            emptyEl.classList.remove('hidden');
-            docsPanel.classList.add('hidden');
+            _applyKnowledgePanels();
             return;
         }
-        emptyEl.classList.add('hidden');
-        docsPanel.classList.remove('hidden');
+        _applyKnowledgePanels();
 
         renderKnowledgeTree(tree, rootFiles);
 
@@ -20572,7 +20659,7 @@ function loadKnowledgeView(targetPath) {
             document.getElementById('knowledge-content-placeholder').classList.add('hidden');
             document.getElementById('knowledge-content-viewer').classList.add('hidden');
         }
-    }).catch(() => {});
+    }).catch(() => { if (current()) renderKnowledgeUnavailable({ message: t('knowledge_unavailable') }); });
 }
 
 // Find a file's display title by its relative path within the knowledge tree.
@@ -21156,6 +21243,7 @@ function bindKnowledgeImages(container, baseDir) {
 
 function openKnowledgeFile(path, title) {
     _knowledgeCurrentFile = path;
+    const context = _knowledgeReadContext();
     // Update active state in tree via data-path
     document.querySelectorAll('.knowledge-tree-file').forEach(el => {
         el.classList.toggle('active', el.dataset.path === path);
@@ -21165,6 +21253,7 @@ function openKnowledgeFile(path, title) {
     document.getElementById('knowledge-content-placeholder').classList.add('hidden');
 
     fetch(_kbUrl(`/api/knowledge/read?path=${encodeURIComponent(path)}`)).then(r => r.json()).then(data => {
+        if (context !== _knowledgeReadContext() || _knowledgeCurrentFile !== path) return;
         if (data.status !== 'success') return;
         const viewer = document.getElementById('knowledge-content-viewer');
         document.getElementById('knowledge-viewer-title').textContent = title;
@@ -21209,7 +21298,6 @@ let _knowledgeSourceLimits = null;
 let _knowledgeSourceCapabilities = null;
 let _knowledgeSourceItems = [];
 let _knowledgeSourceDetailData = null;
-let _knowledgeTab = 'docs';
 let _knowledgeUploadAttempt = null;
 let _knowledgeUploadTarget = null;
 const _knowledgeUploadQueue = [];
@@ -22146,18 +22234,14 @@ function _setKnowledgePanelHidden(el, hidden) {
 }
 
 function switchKnowledgeTab(tab) {
+    if (!['docs', 'graph', 'sources'].includes(tab)) return;
     _knowledgeTab = tab;
     document.querySelectorAll('.knowledge-tab').forEach(el => el.classList.remove('active'));
     const active = document.getElementById('knowledge-tab-' + tab);
     if (active) active.classList.add('active');
 
-    _setKnowledgePanelHidden(document.getElementById('knowledge-panel-docs'), tab !== 'docs');
-    _setKnowledgePanelHidden(document.getElementById('knowledge-panel-graph'), tab !== 'graph');
-    _setKnowledgePanelHidden(document.getElementById('knowledge-panel-sources'), tab !== 'sources');
-
-    if (tab === 'graph' && !_knowledgeGraphLoaded) {
-        loadKnowledgeGraph();
-    }
+    _applyKnowledgePanels();
+    if (window.ConsoleRoutes) window.ConsoleRoutes.note('knowledge', tab);
     if (tab === 'sources') {
         loadKnowledgeSources({ quiet: _knowledgeSourceItems.length > 0 });
     } else {
@@ -22178,7 +22262,7 @@ function ensureD3Loaded() {
     if (_d3LoadPromise) return _d3LoadPromise;
     _d3LoadPromise = new Promise((resolve, reject) => {
         const script = document.createElement('script');
-        script.src = 'assets/vendor/d3/d3.min.js';
+        script.src = '/assets/vendor/d3/d3.min.js';
         script.async = true;
         script.onload = () => resolve(window.d3);
         script.onerror = () => reject(new Error('Failed to load d3'));
@@ -22189,6 +22273,9 @@ function ensureD3Loaded() {
 
 function loadKnowledgeGraph() {
     _knowledgeGraphLoaded = true;
+    const context = _knowledgeReadContext();
+    const request = _knowledgeLoadSeq;
+    const current = () => request === _knowledgeLoadSeq && context === _knowledgeReadContext();
     const container = document.getElementById('knowledge-graph-container');
     container.innerHTML = '<div class="flex items-center justify-center h-full text-slate-400 text-sm"><i class="fas fa-spinner fa-spin mr-2"></i>Loading graph...</div>';
 
@@ -22196,6 +22283,7 @@ function loadKnowledgeGraph() {
         ensureD3Loaded(),
         fetch(_kbUrl('/api/knowledge/graph')).then(r => r.json()),
     ]).then(([, data]) => {
+        if (!current()) return;
         const nodes = data.nodes || [];
         const links = data.links || [];
         if (nodes.length === 0) {
@@ -22205,6 +22293,8 @@ function loadKnowledgeGraph() {
         container.innerHTML = '';
         renderKnowledgeGraph(container, nodes, links);
     }).catch(() => {
+        if (!current()) return;
+        _knowledgeGraphLoaded = false;
         container.innerHTML = '<div class="flex items-center justify-center h-full text-slate-400 text-sm">Failed to load graph</div>';
     });
 }
@@ -22404,10 +22494,16 @@ function _navigationMode() {
 
 // === NAV_AREA_BEGIN ===
 function _navAreaFromPath(pathname) {
+    if (window.ConsoleRoutes) return window.ConsoleRoutes.area(String(pathname || '/')) || 'workbench';
     const p = String(pathname || '');
     return p === '/admin' || p.startsWith('/admin/') ? 'admin' : 'workbench';
 }
 function _openNavArea(area, path) {
+    if (window.ConsoleRoutes) {
+        const target = path && window.ConsoleRoutes.parse(path);
+        return navigateTo(target ? target.view : (area === 'admin' ? 'admin-home' : 'chat'), null,
+            target ? { tab: target.tab } : undefined);
+    }
     const target = path || (area === 'admin' ? '/admin' : '/chat');
     // Switch in the SAME window so workbench <-> admin never triggers a full
     // page load. A full load flashes the login overlay and keeps #app hidden
@@ -22495,7 +22591,7 @@ function _applyNavAreaAttribute() {
 // forward). Because _openNavArea now navigates in-place with pushState, the
 // browser never reloads, so we must re-apply the area attribute and re-render
 // the target area's default view without a full page load.
-if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+if (typeof window !== 'undefined' && !window.ConsoleRoutes && typeof window.addEventListener === 'function') {
     window.addEventListener('popstate', function () {
         _applyNavAreaAttribute();
         if (typeof _bootAreaDefaultView === 'function') _bootAreaDefaultView();
@@ -23263,8 +23359,12 @@ function _applySidebarPermissions(self) {
         if (isPlatformAdmin || ctx) {
             if (!showAdminEntry) {
                 try { sessionStorage.setItem('cow_nav_admin_denied', '1'); } catch (_) {}
-                location.replace('/chat');
-                return;
+                // Deep paths keep their address and render the page's denial.
+                // Only the historical admin landing retains its old redirect.
+                if (!window.ConsoleRoutes || location.pathname.replace(/\/$/, '') === '/admin') {
+                    location.replace('/chat');
+                    return;
+                }
             }
         }
     }

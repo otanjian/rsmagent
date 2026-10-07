@@ -179,15 +179,6 @@ def test_a_running_status_left_by_a_dead_worker_does_not_block(tmp_path, monkeyp
 
 
 def test_web_version_is_local_and_never_contacts_github(monkeypatch):
-    if "web" not in sys.modules:
-        web_stub = types.ModuleType("web")
-        web_stub.HTTPError = type("HTTPError", (Exception,), {})
-        web_stub.cookies = lambda: {}
-        web_stub.header = lambda *args, **kwargs: None
-        web_stub.data = lambda: b"{}"
-        web_stub.input = lambda **kwargs: types.SimpleNamespace(**kwargs)
-        sys.modules["web"] = web_stub
-
     from channel.web.fork.handlers import update as update_api
 
     monkeypatch.setattr(
@@ -200,23 +191,14 @@ def test_web_version_is_local_and_never_contacts_github(monkeypatch):
     assert "update_supported" in payload
 
 
-def test_the_fork_console_does_not_route_the_one_click_update_api():
-    """FORK DIVERGENCE (adopt-upstream-web-split Phase 3): the fork's console
-    serves its own monolithic UI, so upstream's one-click update menu -- and the
-    ``/api/update/*`` endpoints behind it -- are not routed. ``/api/version``
-    stays, because the version row is shown everywhere. When the split console
-    is wired (tasks 4.4-4.9) this test comes off with the routes that land.
-
-    Registered through the route registry, not asserted against upstream's own
-    ``URLS`` table (which ``build_app()`` exposes for upstream's assembly only).
-    """
+def test_the_fork_console_routes_only_the_controlled_platform_updater():
     from channel.web.route_registry import all_routes
-
-    patterns = {entry.pattern for entry in all_routes()}
-    assert "/api/version" in patterns
-    assert not {p for p in patterns if p.startswith("/api/update/")}, sorted(
-        p for p in patterns if p.startswith("/api/update/")
-    )
+    from channel.web import web_channel
+    routes = [entry for entry in all_routes() if entry.pattern.startswith('/api/update/')]
+    assert {entry.pattern for entry in routes} == {'/api/update/check', '/api/update/start', '/api/update/status'}
+    for entry in routes:
+        assert entry.source == 'fork:source-update'
+    assert web_channel.UpdateStartHandler.__module__ == 'channel.web.fork.handlers.update'
 
 def test_start_rejects_unsupported_install(monkeypatch, tmp_path):
     monkeypatch.setattr(
@@ -243,18 +225,11 @@ def test_status_roundtrip(tmp_path):
 
 
 def test_frontend_contract():
-    pytest.skip("fork console is not split yet (adopt-upstream-web-split "
-                "Phase 3; the one-click update menu ships with upstream's "
-                "split console)")
     root = Path(__file__).parents[1]
-    # The page is assembled from templates/ and the scripts were split into a
-    # core/ and views/ tree, so assert against what is actually served.
-    from channel.web.core import template
-    from conftest import console_js, web_backend_py
-
-    html = template.render("chat.html")
-    js = console_js()
-    py = web_backend_py()
+    from channel.web.web_channel import build_web_app
+    from channel.web.route_registry import derive_route_policy
+    html = build_web_app().request('/chat').data.decode()
+    js = (root / 'channel/web/static/js/fork/source-update.js').read_text()
     assert 'id="update-menu"' in html
     assert 'id="sidebar-version"' in html
     assert 'id="update-dot"' in html
@@ -264,9 +239,23 @@ def test_frontend_contract():
     assert "/api/update/check" in js
     assert "/api/update/start" in js
     # Page load may read /api/version, but must not hit the GitHub check endpoint.
-    load = js.split("function initApp()")[1].split("chatInput.focus")[0]
+    load = js.split("addEventListener('account-ready'")[1]
     assert "/api/update/check" not in load
-    assert "'/api/update/check', 'UpdateCheckHandler'" in py
+    assert derive_route_policy()['/api/update/check']['POST']['policy'] == 'platform'
+    assert 'src="/assets/js/fork/source-update.js' in html
+    assert 'src="/assets/js/core/version.js' not in html
+    assert 'check_id: checkId' in js
     assert "from cli.update_service import run_git_pull" in (
         root / "cli/commands/process.py"
     ).read_text(encoding="utf-8")
+
+
+def test_fork_version_does_not_advertise_an_unregistered_updater(monkeypatch):
+    from channel.web.fork.handlers import update as update_api
+    monkeypatch.setattr("cli.update_service.version_payload", lambda: {
+        "version": "fixture", "install_kind": "git", "update_supported": True})
+    with patch.object(update_api.web, "header"):
+        payload = json.loads(update_api.VersionHandler().GET())
+    assert payload["update_supported"] is False
+    assert payload["update_state"] == "unavailable"
+    assert payload["unsupported_reason"] == 'source_update_not_configured'

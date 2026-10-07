@@ -126,7 +126,52 @@ def S(slice_id: str, action: str, **kwargs) -> dict:
 #: root route fails the test rather than silently advertising a dead entry.
 #: Content pages (``/preview``, ``/uploads``, ``/api/file``, ...) MUST NOT be
 #: listed: a server answer can never authorize a non-shell document.
-_SHELL_ENTRY_PATTERNS: Tuple[str, ...] = ("/",)
+# Public shell metadata only. Every data/action request still uses the policies
+# below. The browser and server derive their paths from this same declaration.
+CONSOLE_PAGES = (
+    {"view": "chat", "path": "/", "area": "workbench", "tabs": [], "tab_aliases": {}},
+    {"view": "history", "path": "/history", "area": "workbench", "tabs": [], "tab_aliases": {}},
+    {"view": "agent-workbench", "path": "/agent-workbench", "area": "workbench", "tabs": [], "tab_aliases": {}},
+    {"view": "todo", "path": "/todos", "area": "workbench", "tabs": [], "tab_aliases": {}},
+    {"view": "tasks", "path": "/scheduler", "area": "workbench", "tabs": ["tasks","records"], "tab_aliases": {}},
+    {"view": "knowledge", "path": "/knowledge", "area": "workbench", "tabs": ["docs","graph","sources"], "tab_aliases": {}},
+    {"view": "scenes", "path": "/scenes", "area": "workbench", "tabs": [], "tab_aliases": {}},
+    {"view": "agents", "path": "/agents", "area": "admin", "tabs": [], "tab_aliases": {}},
+    {"view": "skills", "path": "/skills", "area": "admin", "tabs": [], "tab_aliases": {}},
+    {"view": "memory", "path": "/memory", "area": "admin", "tabs": ["files","dreams"], "tab_aliases": {"dreams":"evolution"}},
+    {"view": "config", "path": "/settings", "area": "admin", "tabs": ["basic","models","catalog"], "tab_aliases": {}},
+    {"view": "channels", "path": "/channels", "area": "admin", "tabs": [], "tab_aliases": {}},
+    {"view": "external_connections", "path": "/external-connections", "area": "admin", "tabs": [], "tab_aliases": {}},
+    {"view": "system_user", "path": "/users", "area": "admin", "tabs": [], "tab_aliases": {}},
+    {"view": "roles", "path": "/roles", "area": "admin", "tabs": [], "tab_aliases": {}},
+    {"view": "org", "path": "/organization", "area": "admin", "tabs": [], "tab_aliases": {}},
+    {"view": "tenant", "path": "/tenants", "area": "admin", "tabs": [], "tab_aliases": {}},
+    {"view": "platform", "path": "/platform", "area": "admin", "tabs": [], "tab_aliases": {}},
+    {"view": "branding", "path": "/branding", "area": "admin", "tabs": [], "tab_aliases": {}},
+    {"view": "logs", "path": "/logs", "area": "admin", "tabs": [], "tab_aliases": {}},
+    {"view": "audit", "path": "/audit", "area": "admin", "tabs": [], "tab_aliases": {}},
+    {"view": "token_usage", "path": "/token-usage", "area": "admin", "tabs": [], "tab_aliases": {}},
+    {"view": "admin-home", "path": "/admin", "area": "admin", "tabs": [], "tab_aliases": {}},
+)
+
+
+def console_page_metadata() -> List[dict]:
+    return [dict(page, tabs=list(page["tabs"]), tab_aliases=dict(page["tab_aliases"])) for page in CONSOLE_PAGES]
+
+
+def _console_page_paths() -> Tuple[str, ...]:
+    paths = ["/chat"]
+    for page in CONSOLE_PAGES:
+        paths.append(page["path"])
+        for tab in page["tabs"]:
+            paths.append(page["path"] + "/" + tab)
+            alias = page["tab_aliases"].get(tab)
+            if alias:
+                paths.append(page["path"] + "/" + alias)
+    return tuple(dict.fromkeys(paths))
+
+
+_SHELL_ENTRY_PATTERNS: Tuple[str, ...] = _console_page_paths()
 
 
 def shell_entry_paths() -> List[str]:
@@ -137,7 +182,7 @@ def shell_entry_paths() -> List[str]:
 ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/help", "HelpSiteHandler", "fork:help-site", {"GET": P("public", comment="redirect to help root")}),
     RouteEntry("/help/(.*)", "HelpSiteHandler", "fork:help-site", {"GET": P("public", comment="product help pages and public assets; no tenant data")}),
-    RouteEntry("/", "RootHandler", "upstream", {"GET": P("public", comment="console root")}),
+    RouteEntry("/", "ChatHandler", "upstream", {"GET": P("public", comment="console shell; data APIs authorize separately")}),
     RouteEntry("/api/ready", "ReadyHandler", "fork:operations", {"GET": P("public", comment="readiness probe; booleans only")}),
     RouteEntry("/api/health", "HealthHandler", "upstream", {"GET": P("public", comment="health probe")}),
     RouteEntry("/auth/login", "AuthLoginHandler", "upstream", {"POST": P("public", comment="database account login (username+password)")}),
@@ -425,6 +470,9 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/api/logs/download", "LogsDownloadHandler", "upstream", {"GET": P("platform", comment="logs download (process-global run.log; platform control plane)")}),
     RouteEntry("/api/logs", "LogsHandler", "upstream", {"GET": P("platform", comment="logs (process-global run.log; platform control plane)")}),
     RouteEntry("/api/version", "VersionHandler", "upstream", {"GET": P("public", comment="version")}),
+    RouteEntry("/api/update/check", "UpdateCheckHandler", "fork:source-update", {"POST": P("platform", comment="check configured fork source; CSRF and audited")}),
+    RouteEntry("/api/update/start", "UpdateStartHandler", "fork:source-update", {"POST": P("platform", comment="start a checked target; CSRF, audit and instance lock")}),
+    RouteEntry("/api/update/status", "UpdateStatusHandler", "fork:source-update", {"GET": P("platform", comment="bounded update progress; no subprocess output")}),
     RouteEntry("/api/branding/public", "BrandingPublicHandler", "fork:branding", {"GET": P("public", comment="public branding")}),
     RouteEntry("/api/branding", "BrandingManageHandler", "fork:branding", {"GET": P("tenant", comment="branding manage"), "POST": P("tenant", comment="branding save")}),
     RouteEntry("/api/branding/reset", "BrandingResetHandler", "fork:branding", {"POST": P("tenant", comment="branding reset")}),
@@ -475,6 +523,18 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/assets/(.*)", "AssetsHandler", "upstream", {"GET": P("public", comment="static assets")}),
 )
 
+
+# Enumerate only declared document paths (including compatible trailing slash).
+# No catch-all: an unknown page, tab or API keeps its original 404/405 behavior.
+_known_patterns = {entry.pattern for entry in ROUTES}
+ROUTES += tuple(
+    RouteEntry(path, "ChatHandler", "fork:console-routing", {
+        "GET": P("public", comment="registered shell only; contains no tenant data"),
+    })
+    for bare in _SHELL_ENTRY_PATTERNS
+    for path in ((bare,) if bare == "/" else (bare, bare + "/"))
+    if path not in _known_patterns
+)
 
 #: Routes added at runtime by fork modules through :func:`register_fork_routes`.
 _FORK_ROUTES: List[RouteEntry] = []

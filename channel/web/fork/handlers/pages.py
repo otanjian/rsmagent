@@ -86,6 +86,10 @@ class ChatHandler:
         # that has not changed keeps the URL the browser already has.
         from channel.web.core import template as _template
         html = _stamp_fork_fragments(_template.render('chat.html'))
+        from channel.web.route_registry import console_page_metadata
+        html = html.replace("{{COW_CONSOLE_ROUTES}}", json.dumps(
+            console_page_metadata(), ensure_ascii=True, separators=(',', ':')
+        ).replace('<', '\\u003c'))
         # Inject the backend-resolved default language for first-load fallback.
         html = html.replace("{{COW_DEFAULT_LANG}}", i18n.get_language())
         # Inject the validated console navigation presentation switch (layout
@@ -179,5 +183,4 @@ class AssetsHandler:
         except Exception as e:
             logger.error(f"Error serving static file: {e}", exc_info=True)
             raise web.notfound()
-
 

@@ -411,6 +411,40 @@ class RunScopeRepository:
             raise TaskAuthorizationError(RUN_STORE_UNAVAILABLE, status=503) from error
         return [_row_to_dict(row, description) for row in rows]
 
+    def notifications(self, grant: RunGrant, after: Optional[int], limit: int = 100) -> Dict[str, Any]:
+        """Read authorized completions in commit order; None initializes a cursor.
+
+        The snapshot boundary and the page share one read transaction. Foreign
+        rows cannot fill a page. The cursor is an ordering token, not a grant;
+        every request rebuilds the grant and repeats the authorization join.
+        """
+        self._ensure_readable()
+        where, params = self._where(grant, RunQuery())
+        limit = max(1, min(int(limit), MAX_LIMIT))
+        with self._store._lock:
+            conn = self._store._connect()
+            try:
+                conn.execute("BEGIN")
+                # Use only visible rows, avoiding an information leak about the
+                # volume of other tenants' runs. Gaps in sequence are opaque.
+                high = conn.execute("SELECT COALESCE(MAX(r.terminal_sequence), 0) "
+                    "FROM runs r JOIN fork_scheduler_run_scopes s ON s.run_id=r.run_id "
+                    "WHERE " + where, params).fetchone()[0]
+                if after is None:
+                    return {"runs": [], "cursor": high, "has_more": False}
+                cursor = conn.execute(_JOINED_RUN_SELECT + "WHERE " + where
+                    + " AND r.terminal_sequence > ? AND r.status <> 'running' "
+                    "ORDER BY r.terminal_sequence LIMIT ?", (*params, after, limit + 1))
+                rows = [_row_to_dict(row, cursor.description) for row in cursor.fetchall()]
+                more = len(rows) > limit
+                rows = rows[:limit]
+                return {"runs": rows, "cursor": rows[-1]["terminal_sequence"] if rows else after,
+                        "has_more": more}
+            except Exception as error:
+                raise TaskAuthorizationError(RUN_STORE_UNAVAILABLE, status=503) from error
+            finally:
+                conn.close()
+
     def get_visible(self, grant: RunGrant, run_id: str) -> Optional[Dict[str, Any]]:
         """One authorized run row, or ``None`` (which the service maps to 404)."""
         if not run_id:
