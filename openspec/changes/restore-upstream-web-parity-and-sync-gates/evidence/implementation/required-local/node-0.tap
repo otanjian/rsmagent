@@ -2,85 +2,85 @@ TAP version 13
 # Subtest: text and voice save acknowledgements refresh history before any model event
 ok 1 - text and voice save acknowledgements refresh history before any model event
   ---
-  duration_ms: 5.032084
+  duration_ms: 5.280166
   type: 'test'
   ...
 # Subtest: SSE error uses the loaded scheduler predicate and cleans up exactly once
 ok 2 - SSE error uses the loaded scheduler predicate and cleans up exactly once
   ---
-  duration_ms: 2.059208
+  duration_ms: 2.084209
   type: 'test'
   ...
 # Subtest: errors after completion or cancellation preserve the terminal result
 ok 3 - errors after completion or cancellation preserve the terminal result
   ---
-  duration_ms: 1.673584
+  duration_ms: 1.679167
   type: 'test'
   ...
 # Subtest: background and stale-identity errors never render into the foreground
 ok 4 - background and stale-identity errors never render into the foreground
   ---
-  duration_ms: 1.588834
+  duration_ms: 1.602583
   type: 'test'
   ...
 # Subtest: inline control replies, failed saves and empty sends never claim saved history
 ok 5 - inline control replies, failed saves and empty sends never claim saved history
   ---
-  duration_ms: 2.799208
+  duration_ms: 2.860041
   type: 'test'
   ...
 # Subtest: preparing an unsent new chat does not write an empty record or prepend a sidebar row
 ok 6 - preparing an unsent new chat does not write an empty record or prepend a sidebar row
   ---
-  duration_ms: 1.056041
+  duration_ms: 1.092792
   type: 'test'
   ...
 # Subtest: later replies refresh history without generating another first title
 ok 7 - later replies refresh history without generating another first title
   ---
-  duration_ms: 0.819959
+  duration_ms: 0.85625
   type: 'test'
   ...
 # Subtest: foreground completion and title success patch the visible row without reloading
 ok 8 - foreground completion and title success patch the visible row without reloading
   ---
-  duration_ms: 1.454042
+  duration_ms: 1.487416
   type: 'test'
   ...
 # Subtest: background completion uses original owner and leaves the visible chat and draft alone
 ok 9 - background completion uses original owner and leaves the visible chat and draft alone
   ---
-  duration_ms: 1.159334
+  duration_ms: 1.026084
   type: 'test'
   ...
 # Subtest: switch back rebuilds the real stream, retaining the first title and consuming it once
 ok 10 - switch back rebuilds the real stream, retaining the first title and consuming it once
   ---
-  duration_ms: 1.112791
+  duration_ms: 1.06725
   type: 'test'
   ...
 # Subtest: a late send acknowledgement retains original session ownership after switching Agent
 ok 11 - a late send acknowledgement retains original session ownership after switching Agent
   ---
-  duration_ms: 1.019291
+  duration_ms: 1.019042
   type: 'test'
   ...
 # Subtest: old identity callbacks cannot refresh or submit titles under the new identity
 ok 12 - old identity callbacks cannot refresh or submit titles under the new identity
   ---
-  duration_ms: 5.0615
+  duration_ms: 4.9365
   type: 'test'
   ...
 # Subtest: poll replies do not reload history, while empty and stale polls still skip work
 ok 13 - poll replies do not reload history, while empty and stale polls still skip work
   ---
-  duration_ms: 2.6155
+  duration_ms: 2.588875
   type: 'test'
   ...
 # Subtest: explicit new chat opens the shared panel and adds a temporary row; automatic fallback does not
 ok 14 - explicit new chat opens the shared panel and adds a temporary row; automatic fallback does not
   ---
-  duration_ms: 1.008209
+  duration_ms: 0.98425
   type: 'test'
   ...
 1..14
@@ -91,4 +91,4 @@ ok 14 - explicit new chat opens the shared panel and adds a temporary row; autom
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 56.826167
+# duration_ms 56.0405

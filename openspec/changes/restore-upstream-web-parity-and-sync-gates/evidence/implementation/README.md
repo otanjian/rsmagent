@@ -4,7 +4,7 @@
 
 ## 当前候选
 
-源码树指纹：`44a370ab36f1bb8b9e2636401a7fb8ec9a6fb98d940d0814b950bec3f5535491`。完整 `scripts/check-production.sh --local` 退出 0。`required-local/report.json` 的执行前后指纹相同；报告只证明本地必要行为，`production_acceptance=false`。计划和证据文档不参与指纹，持续能力/依赖/用例清单与 CI 配置参与。
+源码树指纹：`df0513a9a4bb533af384c5be05a747a9c897b5872b07308173ee97830f1e796f`。完整 `scripts/check-production.sh --local` 退出 0。`required-local/report.json` 的执行前后指纹相同；报告只证明本地必要行为，`production_acceptance=false`。计划和证据文档不参与指纹，持续能力/依赖/用例清单与 CI 配置参与。
 
 ## 已完成
 
@@ -54,3 +54,7 @@ bash scripts/check-production.sh --local
 `previous-implementation.md` 和 `previous-required-local/` 保留上一批 28/47 阶段、源码更新未实现时的结果。旧 `production-local.log` 等也只属于相应历史候选，不是当前结论。
 
 原始 `64858d58` 已复现 `tests/test_sidebar_account_frontend.cjs` 的 7 个旧模式/夹具失败，以及 `tests/test_desktop_web_pages.py` 两个 W19 静态断言失败。本轮未放宽这些断言，不声称整个仓库测试全绿。原先资源/路由/更新前端的整组跳过已改测实际 fork 装配并保留业务断言。
+
+## 交付
+
+已创建 [Gitea 草稿 PR #1](https://rd.rsmxm.com.cn/Gitea/rsmai/rsmagent/pulls/1)，base 为 `rdai`，head 为 `codex/restore-upstream-web-parity`。功能提交 `af965f27`；门禁和规范提交 `52b1f93a`。最终证据随独立文档提交收口，不改变受测源码指纹。任务完成 44/47；未完成为 5.1、5.9、7.3，继续等待真实部署与 CI 条件。
