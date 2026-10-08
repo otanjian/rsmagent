@@ -1,0 +1,169 @@
+✔ account preferences open the shared controller, dialog and full persisted selection (13.472792ms)
+✔ unified language selection is local and its storage warning is independent of appearance reset (1.416542ms)
+✖ preferences close cleanly at login and remain available in legacy and public modes (2.441584ms)
+✔ opening preferences respects the existing password dismissal guard (1.438333ms)
+✔ tenant entry loads memberships without opening the profile and preserves browser preferences (1.194792ms)
+✖ startup check failure stays neutral; a visible retry enters database mode and initializes only once (1.101625ms)
+✔ database display is plain text, preserves the name, and falls back to username for whitespace names (1.708459ms)
+✖ legacy responses distinguish password protection and explicit anonymous access (1.026459ms)
+✖ HTTP, business and incomplete check responses cannot masquerade as anonymous access (1.064417ms)
+✔ account retry sends no tenant header, preserves draft and focus, and does not initialize business data (1.415417ms)
+✔ authenticated database response without user still permits logout and never shows an old name (1.759ms)
+✔ multi-tenant login preserves identity; expiry clears the old picker so a new account submits normally (1.685833ms)
+✖ legacy login normalizes the status-only success contract and serializes repeated submissions (1.0275ms)
+✔ a late account A check success cannot restore A or log account B out (1.447458ms)
+✔ a late account A check failure cannot restore A or log account B out (1.177875ms)
+✔ a late account A check 401 cannot restore A or log account B out (1.149208ms)
+✔ old business 401 returns unchanged without logging B out; same-identity 403 also preserves B (1.599459ms)
+✔ current business 401 survives an ordinary retry, including confirmed login with temporarily missing user data (1.904375ms)
+✔ logout stays single-flight on the single main entry; a business error provides recovery and retry can succeed (1.045041ms)
+✔ network, HTTP and JSON logout failures may be rechecked to recover a still-authenticated account (3.073375ms)
+✖ valid version survives invalid responses, and a brand repaint changes only the version label (1.013042ms)
+✔ 帮助与关于 opens the project site address, not the brand version row (2.152208ms)
+✔ the public brand snapshot cannot redirect integrated help off-site (1.182541ms)
+✔ an absent or unusable help_url keeps integrated help available (4.347792ms)
+✔ a failed public brand read leaves the help target usable (0.943584ms)
+✔ account menu restores focus on Escape and closes on outside pointer without taking the new focus (1.099708ms)
+✔ account and tenant menus are mutually exclusive and repeated opening does not accumulate listeners (1.0625ms)
+✔ the mobile account panel is a modal bottom sheet outside the transformed sidebar (1.103ms)
+✔ an entry inside a hidden group is not focusable, and the panel is sized to the room it has (2.311542ms)
+✔ forced password login shows the change gate and never starts tenant/business init (1.262584ms)
+✔ forced password login through the form also enters the gate (4.956208ms)
+✔ closing a forced gate is blocked, but logout is the only way out and resets the gate (1.3645ms)
+✔ ordinary password change success does not trigger the gate and clears forced state (1.36375ms)
+✔ reload selects the only effective membership even when a platform admin can list other tenants (1.398542ms)
+✔ an ordinary member restores chat without permission to list platform tenants (1.012583ms)
+✔ reload with multiple memberships waits for a visible picker, then initializes once (1.165292ms)
+✔ a stored tenant is validated against current memberships before any business initialization (1.0675ms)
+✔ membership lookup failure and no memberships keep chat gated with a working retry (2.136584ms)
+✔ a late membership result cannot restore the tenant or app after session expiry (0.985542ms)
+✔ send errors preserve actionable HTTP failure messages and never retry a rejection (2.371458ms)
+✔ non-JSON failures retain HTTP context and server details render only as plain text (0.647791ms)
+✔ a platform administrator without memberships is gated to assignment recovery, not platform management (1.249209ms)
+✖ chat initialization restores scoped selections and waits for the Agent catalog before session reads (0.995125ms)
+✔ startup shares one self-profile between tenant validation, permissions and tenant selector (1.405042ms)
+✔ retry after missing membership reads a fresh self-profile instead of reusing the denied attempt (1.072125ms)
+✔ navigation availability gate reads the authoritative /auth/context projection, not a client role array (0.941833ms)
+✔ sidebar label prefers the current tenant member display name over the account name (1.118625ms)
+✔ sidebar falls back to the account name when the selected tenant has no member display name (0.970166ms)
+✔ sidebar ignores the member name when no tenant is selected or the account is not a member (0.962584ms)
+✔ the default avatar mapping is bounded, stable and derived from the id (1.156917ms)
+✔ sidebar and account-menu discs render the bundled default when nothing was uploaded (1.04375ms)
+✔ an uploaded picture takes priority and is read from the personal endpoint (0.902167ms)
+✔ the default avatar is stable for one id across refreshes and name changes (1.002708ms)
+✔ another account's upload is read through the by-id route, with a default fallback (1.02125ms)
+✔ profile renders platform identity and tenant roles as escaped chips (1.084333ms)
+✔ profile falls back to plain copy when identity or roles are absent (1.015166ms)
+✔ the avatar picker ignores the first click and opens on the second or via keyboard (0.956834ms)
+✔ the avatar picker does not stack while an upload is in flight (0.963959ms)
+✔ the avatar file input lives outside the repainted disc in chat.html (1.320875ms)
+✔ the account panel keeps its region order and adds no personal page tab (0.496167ms)
+✔ the console top bar does not repeat the logout, appearance or language entries (0.287666ms)
+ℹ tests 61
+ℹ suites 0
+ℹ pass 54
+ℹ fail 7
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 136.976
+
+✖ failing tests:
+
+test at tests/test_sidebar_account_frontend.cjs:304:1
+✖ preferences close cleanly at login and remain available in legacy and public modes (2.441584ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  true !== false
+
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent/tests/test_sidebar_account_frontend.cjs:313:16)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/test_sidebar_account_frontend.cjs:358:1
+✖ startup check failure stays neutral; a visible retry enters database mode and initializes only once (1.101625ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'database'
+  - 'unknown'
+
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent/tests/test_sidebar_account_frontend.cjs:369:12)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'database',
+    expected: 'unknown',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/test_sidebar_account_frontend.cjs:397:1
+✖ legacy responses distinguish password protection and explicit anonymous access (1.026459ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'database'
+  - 'legacy'
+
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent/tests/test_sidebar_account_frontend.cjs:401:12)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'database',
+    expected: 'legacy',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/test_sidebar_account_frontend.cjs:412:1
+✖ HTTP, business and incomplete check responses cannot masquerade as anonymous access (1.064417ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'database'
+  - 'unknown'
+
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent/tests/test_sidebar_account_frontend.cjs:421:16)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'database',
+    expected: 'unknown',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/test_sidebar_account_frontend.cjs:510:1
+✖ legacy login normalizes the status-only success contract and serializes repeated submissions (1.0275ms)
+  TypeError: node(...).onsubmit is not a function
+      at Object.login (/Users/jiantan/ai_assistant/rsmagent/tests/test_sidebar_account_frontend.cjs:211:50)
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent/tests/test_sidebar_account_frontend.cjs:515:21)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+
+test at tests/test_sidebar_account_frontend.cjs:645:1
+✖ valid version survives invalid responses, and a brand repaint changes only the version label (1.013042ms)
+  ReferenceError: resetMemoryView is not defined
+      at Object.initApp [as realInitApp] (evalmachine.<anonymous>:552:9)
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent/tests/test_sidebar_account_frontend.cjs:650:7)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+
+test at tests/test_sidebar_account_frontend.cjs:1151:1
+✖ chat initialization restores scoped selections and waits for the Agent catalog before session reads (0.995125ms)
+  ReferenceError: resetMemoryView is not defined
+      at Object.initApp [as realInitApp] (evalmachine.<anonymous>:552:9)
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent/tests/test_sidebar_account_frontend.cjs:1171:21)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7)

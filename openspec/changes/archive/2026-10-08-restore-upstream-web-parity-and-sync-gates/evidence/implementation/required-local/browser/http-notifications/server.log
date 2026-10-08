@@ -1,0 +1,13 @@
+[ERROR][2026-10-07 23:14:09][sessions.py:746] - [WebChannel] History API error: 403 Forbidden
+[INFO][2026-10-07 23:14:09][scheduler_service.py:101] - [Scheduler] Scheduler loop started
+[INFO][2026-10-07 23:14:09][integration.py:294] - [Scheduler] Global service initialized, store=/var/folders/lq/nkc1bb_s0f7b_3krh4_r3k_c0000gn/T/console-parity-server-0c9d9rzr/tenants/acme/scheduler/tasks.json
+[INFO][2026-10-07 23:14:09][trigger.py:112] - [Evolution] Idle trigger started
+[INFO][2026-10-07 23:14:15][scheduler_service.py:97] - [Scheduler] Service stopped
+[INFO][2026-10-07 23:14:15][scheduler_service.py:127] - [Scheduler] Executing task: 23e2e93e2c8c420285e9b83b8d549482 - session-b
+[WARNING][2026-10-07 23:14:15][runtime.py:1251] - No response queue found for session session-b, response dropped
+[INFO][2026-10-07 23:14:15][integration.py:1208] - [Scheduler] Task 23e2e93e2c8c420285e9b83b8d549482 executed: sent message to session-b
+[INFO][2026-10-07 23:14:15][scheduler_service.py:127] - [Scheduler] Executing task: 21dce07777964ac0ac38cedbc19ecce4 - session-a
+[WARNING][2026-10-07 23:14:15][runtime.py:1251] - No response queue found for session session-a, response dropped
+[INFO][2026-10-07 23:14:15][integration.py:1208] - [Scheduler] Task 21dce07777964ac0ac38cedbc19ecce4 executed: sent message to session-a
+[ERROR][2026-10-07 23:14:15][sessions.py:746] - [WebChannel] History API error: 403 Forbidden
+[ERROR][2026-10-07 23:14:16][sessions.py:746] - [WebChannel] History API error: 403 Forbidden

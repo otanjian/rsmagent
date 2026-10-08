@@ -1,0 +1,3 @@
+# Preserve the reviewed evidence that was already tracked before archiving.
+!README.md
+!*.log

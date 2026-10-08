@@ -1,0 +1,74 @@
+{
+  "api_base": "https://rd.rsmxm.com.cn/Gitea/api/v1",
+  "inventory": {
+    "/version": {
+      "version": "1.27.3"
+    },
+    "/repos/rsmai/rsmagent": {
+      "full_name": "rsmai/rsmagent",
+      "default_branch": "main",
+      "permissions": {
+        "admin": true,
+        "push": true,
+        "pull": true
+      }
+    },
+    "/repos/rsmai/rsmagent/branch_protections": [],
+    "/repos/rsmai/rsmagent/actions/runners": {
+      "total_count": 0,
+      "runners": []
+    },
+    "/orgs/rsmai/actions/runners": {
+      "total_count": 0,
+      "runners": []
+    },
+    "/repos/rsmai/rsmagent/actions/runs?limit=2": {
+      "total_count": 14,
+      "runs": [
+        {
+          "id": 696,
+          "name": null,
+          "status": "queued",
+          "conclusion": null,
+          "head_branch": "rdai",
+          "head_sha": "64858d585b427ec4697dc0fb5d2ccb5911d35769"
+        },
+        {
+          "id": 695,
+          "name": null,
+          "status": "completed",
+          "conclusion": "cancelled",
+          "head_branch": "main",
+          "head_sha": "b83d533fb04090a22b2cd5c27ad1476ca9a183d5"
+        }
+      ]
+    },
+    "/admin/actions/runners": {
+      "total_count": 0,
+      "runners": []
+    },
+    "/repos/rsmai/rsmagent/actions/runs/696/jobs": {
+      "total_count": 2,
+      "jobs": [
+        {
+          "id": 768,
+          "name": "local-regression",
+          "status": "queued",
+          "conclusion": null,
+          "labels": [
+            "macos-production"
+          ]
+        },
+        {
+          "id": 769,
+          "name": "final-linux-image",
+          "status": "queued",
+          "conclusion": null,
+          "labels": [
+            "linux-production"
+          ]
+        }
+      ]
+    }
+  }
+}

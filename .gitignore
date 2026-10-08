@@ -54,9 +54,9 @@ client_config.json
 /stop-all.ps1
 /deploy.ps1
 
-# Local POC demo artifacts (plan HTML, demo scripts, screenshots, recordings).
-# Never commit these to the remote repository.
-/doc/
+# Local POC demo artifacts stay ignored; only the merge policy is versioned.
+/doc/*
+!/doc/master合并到rdai分支规范.md
 ref/
 **/.dev.vars
 .cursor/

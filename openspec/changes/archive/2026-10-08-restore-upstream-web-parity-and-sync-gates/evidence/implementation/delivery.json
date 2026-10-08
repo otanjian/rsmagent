@@ -1,0 +1,21 @@
+{
+  "pull_request": {
+    "number": 1,
+    "html_url": "https://rd.rsmxm.com.cn/Gitea/rsmai/rsmagent/pulls/1",
+    "state": "open",
+    "draft": true,
+    "title": "WIP: 恢复上游控制台功能并建立同步验收门禁",
+    "mergeable": false,
+    "base": "rdai",
+    "head": "codex/restore-upstream-web-parity"
+  },
+  "tested_source_commit": "52b1f93a25bf7696ecbb6fe11b713b23812f4896",
+  "candidate_digest": "df0513a9a4bb533af384c5be05a747a9c897b5872b07308173ee97830f1e796f",
+  "local_gate_exit_code": 0,
+  "remaining_tasks": [
+    "5.1",
+    "5.9",
+    "7.3"
+  ],
+  "production_acceptance": false
+}
