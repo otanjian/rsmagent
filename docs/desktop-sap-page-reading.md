@@ -61,7 +61,7 @@
 
 验证：公网 `/chat` 与 `/code/` 均返回 200；公开 SAP 前端文件与本地字节一致；新读取桥无凭据返回 `401 bridge_unauthorized`，受信服务调用未绑定会话返回 `403 session_not_bound`；OpenCode 健康检查通过，实际工具注册列表包含 `sap_transaction_open`、`sap_data_call`、`sap_page_read`。更新前后项目 28 个会话的 ID 集合一致。初次部署没有更改模型设置、业务数据或场景读取开关；后续仅按修复请求开启测试租户读取。
 
-修正备份为 `C:\rdai\backups\sap-page-read-20261006-165323`，包含启用前场景数据库副本。桌面与远程插件均已更新，并完成上述真实页面读取验证。初次部署的结构化证据见 `openspec/changes/add-desktop-sap-page-reading/evidence/remote-deployment.json`。
+修正备份为 `C:\rdai\backups\sap-page-read-20261006-165323`，包含启用前场景数据库副本。桌面与远程插件均已更新，并完成上述真实页面读取验证。初次部署的结构化证据见 `openspec/changes/archive/2026-10-08-add-desktop-sap-page-reading/evidence/remote-deployment.json`。
 
 ## 本地验证命令
 

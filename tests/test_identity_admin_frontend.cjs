@@ -545,6 +545,11 @@ function setupMembers(opts = {}) {
             if (url.startsWith('/api/tenant/members?')) {
                 return response({ status: 'success', items: [member], total: 1 });
             }
+            if (url === '/auth/me') return response({ status: 'success', user: { is_platform_admin: !!opts.platformAdmin } });
+            if (url.endsWith('/password')) {
+                const result = opts.resetResponse || { status: 200, data: { status: 'success', temporary_password: '123456' } };
+                return response(result.data, result.status);
+            }
             if (url.startsWith('/api/tenant/members/')) return response({ status: 'success' });
             if (url === '/api/tenant/members') {
                 if (opts.createMemberResponse && options && options.method === 'POST') {
@@ -564,6 +569,66 @@ function setupMembers(opts = {}) {
 
 function memberPosts(h) {
     return h.calls.filter(c => c.url === '/api/tenant/members' && c.options && c.options.method === 'POST');
+}
+
+const resettableMember = {
+    id: 'm-reset', user_id: 'u-reset', username: 'member', display_name: 'Member',
+    active: true, role_codes: ['member'], version: 3, user_version: 9, can_reset_password: true,
+};
+
+for (const platformAdmin of [false, true]) {
+    test(`${platformAdmin ? 'platform' : 'tenant'} member reset uses account version and keeps result visible until close`, async () => {
+        const h = setupMembers({ member: resettableMember, platformAdmin });
+        await h.ctx.loadMembersView();
+        assert.match(h.node('member-list').innerHTML, /fa-key/);
+        h.ctx.adminRowAction('member', 'reset', resettableMember.id);
+        await flush();
+        h.node('adm-fld-recent_password').value = 'OperatorPassword9';
+        h.node('admin-modal-submit').dispatch('click');
+        await flush();
+        const writes = h.calls.filter(c => c.url.endsWith('/password'));
+        assert.equal(writes.length, 1);
+        assert.equal(writes[0].url, platformAdmin
+            ? '/api/platform/users/u-reset/password' : '/api/tenant/members/m-reset/password');
+        assert.equal(writes[0].options.headers['X-Tenant-ID'], 't1');
+        assert.deepEqual(JSON.parse(writes[0].options.body), {
+            expected_version: 9, recent_password: 'OperatorPassword9',
+        });
+        assert.equal(h.node('admin-modal').classList.contains('hidden'), false);
+        assert.match(h.node('admin-modal-body').innerHTML, /123456/);
+        assert.equal(h.node('adm-fld-recent_password'), null, 'operator password cleared');
+        assert.equal(h.node('admin-modal-submit').classList.contains('hidden'), true, 'no repeat reset from the result');
+        h.node('admin-modal-cancel').dispatch('click');
+        assert.equal(h.node('admin-modal').classList.contains('hidden'), true);
+        assert.equal(h.node('admin-modal-body').innerHTML, '', 'temporary credential cleared on close');
+    });
+}
+
+test('a member without reset capability has no button and cannot open the reset dialog', async () => {
+    const h = setupMembers({ member: { ...resettableMember, can_reset_password: false } });
+    await h.ctx.loadMembersView();
+    assert.doesNotMatch(h.node('member-list').innerHTML, /fa-key/);
+    h.ctx.adminRowAction('member', 'reset', resettableMember.id);
+    await flush();
+    assert.equal(h.node('admin-modal'), null);
+    assert.equal(h.calls.filter(c => c.url.endsWith('/password')).length, 0);
+});
+
+for (const status of [401, 403, 409, 503]) {
+    test(`reset failure ${status} does not display a temporary password or success`, async () => {
+        const h = setupMembers({ member: resettableMember, resetResponse: {
+            status, data: { status: 'error', code: status === 409 ? 'conflict' : 'refused', message: 'Reset refused' },
+        } });
+        await h.ctx.loadMembersView();
+        h.ctx.adminRowAction('member', 'reset', resettableMember.id);
+        await flush();
+        h.node('adm-fld-recent_password').value = 'OperatorPassword9';
+        h.node('admin-modal-submit').dispatch('click');
+        await flush();
+        assert.doesNotMatch(h.node('admin-modal-body').innerHTML, /123456/);
+        assert.notEqual(h.node('member-status').textContent, 'admin_saved');
+        assert.equal(h.calls.filter(c => c.url.endsWith('/password')).length, 1);
+    });
 }
 
 test('member create issues create-new for the first tenant and bind-existing for the rest', async () => {

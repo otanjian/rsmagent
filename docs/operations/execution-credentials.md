@@ -1,6 +1,6 @@
 # 执行凭据映射
 
-清单仅含变量名和用途，不含真实秘密。完整本地技能登记见 `openspec/changes/harden-production-readiness/evidence/capability-inventory.json`（74 个启用 Agent、45 条仓库/工作区技能条目；重复名称代表不同来源）。它是基线盘点，不代表45条技能都已完成真实外部系统测试。
+清单仅含变量名和用途，不含真实秘密。完整本地技能登记见 `openspec/changes/archive/2026-10-08-harden-production-readiness/evidence/capability-inventory.json`（74 个启用 Agent、45 条仓库/工作区技能条目；重复名称代表不同来源）。它是基线盘点，不代表45条技能都已完成真实外部系统测试。
 
 ## 映射规则
 

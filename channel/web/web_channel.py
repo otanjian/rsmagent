@@ -74,6 +74,7 @@ from channel.web.admin_handlers import (
     PlatformTenantAgentsHandler,
     TenantInfoHandler,
     TenantMembersHandler,
+    TenantMemberPasswordHandler,
     TenantMemberHandler,
     TenantMemberExternalIdentitiesHandler,
     TenantMemberExternalIdentityHandler,

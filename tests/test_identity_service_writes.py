@@ -560,9 +560,11 @@ class TenantAdminAccountCreateTests(unittest.TestCase):
 class TenantAdminReadTests(unittest.TestCase):
     """The read-only projection the tenant editor uses to show the current admin.
 
-    Only members whose membership, account and ``tenant_admin`` binding are all
-    active count; the editor must never be told about a disabled or demoted
-    account as if it still administered the tenant.
+    A binding qualifies while its membership is active and it still holds
+    ``tenant_admin``. The account itself may be disabled: the card shows the
+    account's state and offers its enable/disable control, so a disabled admin
+    must remain locatable there to be re-enabled. A disabled account is still
+    not a *valid* admin — ``_count_valid_tenant_admins`` keeps excluding it.
     """
 
     def setUp(self):
@@ -594,22 +596,65 @@ class TenantAdminReadTests(unittest.TestCase):
         self.assertEqual(admins[0]["user_id"], self.root["id"])
         for row in admins:
             self.assertEqual(
-                set(row), {"membership_id", "user_id", "username", "display_name"},
+                set(row),
+                {"membership_id", "user_id", "username", "display_name",
+                 "account_active", "account_version", "is_platform_admin"},
                 "the projection carries no password material or other columns")
+            self.assertIsInstance(row["account_active"], bool)
+            self.assertIsInstance(row["is_platform_admin"], bool)
+            self.assertIsInstance(row["account_version"], int)
 
-    def test_excludes_disabled_account_inactive_membership_and_non_admins(self):
+    def test_fields_come_from_the_same_account_as_the_binding(self):
+        self._add_admin("carol", "Carol")
+        carol_id = self.svc._store.execute(
+            "SELECT id FROM users WHERE username='carol'")[0]["id"]
+        self.svc._store.execute(
+            "UPDATE users SET version=7, is_platform_admin=1 WHERE id=?", (carol_id,))
+        row = [a for a in self.svc.tenant_admins(self.tid)
+               if a["username"] == "carol"][0]
+        self.assertEqual(row["user_id"], carol_id)
+        self.assertEqual(row["account_version"], 7,
+                         "the version belongs to the bound account, not the membership")
+        self.assertTrue(row["is_platform_admin"],
+                        "the platform qualification is read from the same account")
+
+    def test_keeps_disabled_account_so_the_card_can_reenable_it(self):
+        self._add_admin("carol", "Carol")
+        self.svc._store.execute("UPDATE users SET active=0 WHERE username='carol'")
+
+        rows = {a["username"]: a for a in self.svc.tenant_admins(self.tid)}
+        self.assertIn("carol", rows,
+                      "a disabled admin stays readable so the card can re-enable it")
+        self.assertFalse(rows["carol"]["account_active"],
+                         "the read marks the disabled account as inactive")
+        # Disabled is not "valid": the last-admin protection must keep excluding it.
+        self.assertEqual(self.svc._count_valid_tenant_admins(self.tid), 1,
+                         "the valid-admin count still excludes a disabled account")
+
+    def test_excludes_inactive_membership_non_admin_and_removed_role(self):
         self._add_admin("carol", "Carol")
         self.svc.create_member(
             actor_user_id=self.root["id"], tenant_id=self.tid, operation="create-new",
             username="bob", display_name="Bob", temporary_password="Str0ngPassTmp",
             roles=["member"], department_id=None)
-        self.svc._store.execute("UPDATE users SET active=0 WHERE username='carol'")
         self.svc._store.execute(
             "UPDATE memberships SET active=0 WHERE user_id="
             "(SELECT id FROM users WHERE username='bob')")
+        self.svc._store.execute(
+            "UPDATE memberships SET active=0 WHERE user_id="
+            "(SELECT id FROM users WHERE username='carol')")
 
         self.assertEqual([a["username"] for a in self.svc.tenant_admins(self.tid)], ["root"],
-                         "disabled accounts and non-admin members are not current admins")
+                         "inactive memberships and non-admin members are not current admins")
+
+    def test_removed_admin_role_drops_the_binding(self):
+        self._add_admin("carol", "Carol")
+        self.svc._store.execute(
+            "DELETE FROM membership_roles WHERE membership_id="
+            "(SELECT m.id FROM memberships m JOIN users u ON u.id=m.user_id"
+            " WHERE u.username='carol')")
+        self.assertEqual([a["username"] for a in self.svc.tenant_admins(self.tid)], ["root"],
+                         "a member who no longer holds tenant_admin is not an admin")
 
     def test_inactive_admin_membership_is_excluded(self):
         self._add_admin("dave", "Dave")

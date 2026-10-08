@@ -5482,11 +5482,19 @@ textarea.doc-editor {
 /* Read-only "current tenant admin" block on the management tab. It reuses the
    space card's skin so the tab reads as information first, form second. */
 .tenant-current-admin-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
     padding: 10px 12px;
     border-radius: 10px;
     border: 1px solid #e9eef5;
     background: #f8fafc;
 }
+.tenant-current-admin-main { min-width: 0; }
+.tenant-current-admin-actions { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.tenant-current-admin-msg { min-height: 1em; }
 .dark .tenant-current-admin-card {
     border-color: rgba(255,255,255,.08);
     background: rgba(255,255,255,.04);

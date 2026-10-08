@@ -58,6 +58,7 @@ class DatabaseAuthHandlerTests(unittest.TestCase):
                 "/api/platform/tenants/([^/]+)/resources", "PlatformTenantResourcesHandler",
                 "/api/tenant", "TenantInfoHandler",
                 "/api/tenant/members", "TenantMembersHandler",
+                "/api/tenant/members/([^/]+)/password", "TenantMemberPasswordHandler",
                 "/api/tenant/members/([^/]+)", "TenantMemberHandler",
                 "/api/tenant/roles", "TenantRolesHandler",
                 "/api/tenant/roles/([^/]+)", "TenantRoleHandler",
@@ -669,6 +670,61 @@ class DatabaseAuthHandlerTests(unittest.TestCase):
         self.assertEqual(self._json(resp)["code"], "self_reset_forbidden")
 
     # --- tenant rename (task 4.4) -----------------------------------------
+    def _tenant_reset_fixture(self):
+        for name, roles in (("tenantadmin", ["tenant_admin"]), ("resetmember", ["member"])):
+            self.svc.create_member(
+                actor_user_id=self.root["id"], tenant_id=self.tid, operation="create-new",
+                username=name, display_name=name, temporary_password="InitialPassword9", roles=roles)
+            token = self.svc.login(name, "InitialPassword9").token
+            self.svc.change_password(token, "InitialPassword9", "FinalPassword9")
+        token = self.svc.login("tenantadmin", "FinalPassword9").token
+        items = self._json(self._request("/api/tenant/members", token=token, tenant=self.tid))["items"]
+        member = next(m for m in items if m["username"] == "resetmember")
+        return token, member, json.dumps({"expected_version": member["user_version"],
+                                         "recent_password": "FinalPassword9"})
+
+    def test_tenant_password_reset_returns_fixed_temporary_credential(self):
+        token, member, payload = self._tenant_reset_fixture()
+        self.assertTrue(member["can_reset_password"])
+        response = self._request(f"/api/tenant/members/{member['id']}/password",
+                                 method="POST", data=payload, token=token, tenant=self.tid)
+        data = self._json(response)
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["temporary_password"], "123456")
+        self.assertTrue(data["must_change_password"])
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+
+    def test_tenant_password_reset_requires_scope_admin_and_password(self):
+        token, member, payload = self._tenant_reset_fixture()
+        path = f"/api/tenant/members/{member['id']}/password"
+        for bad_token, tenant, body, status in (
+            (None, self.tid, payload, 401),
+            (token, None, payload, 400),
+            (token, "other-tenant", payload, 403),
+            (self.svc.login("resetmember", "FinalPassword9").token, self.tid, payload, 403),
+            (token, self.tid, json.dumps({"expected_version": member["user_version"]}), 401),
+            (token, self.tid, "[]", 400),
+            (token, self.tid, json.dumps({"expected_version": True}), 400),
+        ):
+            with self.subTest(status=status, body=body):
+                response = self._request(path, method="POST", data=body, token=bad_token, tenant=tenant)
+                self.assertEqual(int(response.status.split()[0]), status)
+
+    def test_tenant_password_reset_rejects_cookie_write_without_origin(self):
+        token, member, payload = self._tenant_reset_fixture()
+        with patch.object(auth_handlers, "_get_service", return_value=self.svc), \
+                patch.object(admin_handlers, "_get_service", return_value=self.svc):
+            response = self._app().request(
+                f"/api/tenant/members/{member['id']}/password", method="POST", data=payload,
+                headers={"Cookie": f"cow_session={token}", "X-Tenant-ID": self.tid})
+        self.assertEqual(self._json(response)["code"], "csrf_failed")
+
+    def test_tenant_reset_does_not_open_platform_password_endpoint(self):
+        token, member, payload = self._tenant_reset_fixture()
+        response = self._request(f"/api/platform/users/{member['user_id']}/password",
+                                 method="POST", data=payload, token=token, tenant=self.tid)
+        self.assertEqual(int(response.status.split()[0]), 403)
+
     def test_tenant_rename_via_handler(self):
         token = self.svc.login("root", "Str0ngAdminPass").token
         v = self.svc.get_tenant(self.tid)["version"]
@@ -1011,9 +1067,31 @@ class DatabaseAuthHandlerTests(unittest.TestCase):
         self.assertEqual(data["status"], "success")
         self.assertEqual([a["user_id"] for a in data["items"]], [self.root["id"]])
         self.assertEqual(data["items"][0]["display_name"], "Root Ops")
+        row = data["items"][0]
+        self.assertIs(row["account_active"], True)
+        self.assertIs(row["is_platform_admin"], True)
+        self.assertIsInstance(row["account_version"], int)
         raw = resp.data.decode("utf-8")
         self.assertNotIn("password", raw)
         self.assertNotIn("hash", raw)
+
+    def test_admins_get_still_returns_a_disabled_account(self):
+        """The card re-enables a disabled admin here, so the read must keep it.
+
+        Only the *account* is disabled: the membership and the ``tenant_admin``
+        binding are intact, which is exactly the state the card recovers from.
+        """
+        tid = self._bare_tenant()["id"]
+        self.svc.create_member(
+            actor_user_id=self.root["id"], tenant_id=tid, operation="create-new",
+            username="dana", display_name="Dana", temporary_password="Str0ngPassTmp",
+            roles=["tenant_admin"], department_id=None)
+        self.svc._store.execute("UPDATE users SET active=0 WHERE username='dana'")
+        token = self.svc.login("root", "Str0ngAdminPass").token
+
+        data = self._json(self._get_admins(tid, token))
+        self.assertEqual([a["username"] for a in data["items"]], ["dana"])
+        self.assertIs(data["items"][0]["account_active"], False)
 
     def test_admins_get_empty_for_tenant_without_admin(self):
         tid = self._bare_tenant()["id"]

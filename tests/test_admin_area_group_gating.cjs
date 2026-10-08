@@ -258,7 +258,10 @@ const PLATFORM_PAGES_FOR_TENANT_ADMIN = {
     'admin.token_usage': { available: true, read_allowed: true, scope: 'platform', reason: '', actions: {} },
 };
 
-const PLATFORM_ONLY_VIEWS = ['tenant', 'platform', 'branding', 'logs'];
+// 平台用户管理 is no longer a sidebar row (change
+// move-password-reset-to-tenant-management), so it is not modelled here: the
+// remaining platform-only rows are the ones still painted in chat.html.
+const PLATFORM_ONLY_VIEWS = ['tenant', 'branding', 'logs'];
 
 function platformOpsGroup() {
     const item = (view, platformOnly) => {

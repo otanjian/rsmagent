@@ -141,6 +141,8 @@ function setup(opts = {}) {
     // updated on a successful POST so "the display refreshes after save" can be
     // observed rather than assumed.
     let adminItems = (opts.currentAdmins || []).map(a => ({ ...a }));
+    let adminReadCount = 0;
+    let deferredToggleResolve = null;
     const document = { ...eventTarget(), body: element('body'), createElement: element };
     document.getElementById = id => document.body.querySelector('#' + id);
     document.querySelector = sel => document.body.querySelector(sel);
@@ -271,9 +273,16 @@ function setup(opts = {}) {
                 return response({ status: 'success', kind, items, total: items.length, page: 1 });
             }
             if (url === '/api/platform/tenants/tnt-1/admins' && method === 'GET') {
+                adminReadCount += 1;
                 if (opts.adminReadStatus && opts.adminReadStatus !== 200) {
                     return response({ status: 'error', code: 'server_error',
                                       message: 'boom' }, opts.adminReadStatus);
+                }
+                // A card refresh happens after a successful account write; making
+                // only that second read fail proves the one-time result survives.
+                if (opts.adminReadFailAfterFirst && adminReadCount > 1) {
+                    return response({ status: 'error', code: 'server_error',
+                                      message: 'boom' }, 500);
                 }
                 return response({ status: 'success', items: adminItems.map(a => ({ ...a })) });
             }
@@ -378,6 +387,47 @@ function setup(opts = {}) {
                     default_agent_id: defaultAgentId,
                 });
             }
+            if (/^\/api\/platform\/users\/[^/]+$/.test(url) && method === 'PATCH') {
+                if (opts.toggleStatus && opts.toggleStatus !== 200) {
+                    return response({ status: 'error', code: opts.toggleCode || 'conflict',
+                                      message: opts.toggleMessage || 'toggle failed' },
+                                    opts.toggleStatus);
+                }
+                if (body.recent_password !== password) {
+                    return response({ status: 'error', code: 'invalid_old',
+                                      message: 'recent password required' }, 401);
+                }
+                const uid = decodeURIComponent(url.split('/').pop());
+                const apply = () => {
+                    adminItems = adminItems.map(a => a.user_id === uid
+                        ? { ...a, account_active: body.active,
+                            account_version: (a.account_version || 0) + 1,
+                            is_platform_admin: body.is_platform_admin }
+                        : a);
+                    return response({ status: 'success', user: { id: uid, active: body.active } });
+                };
+                if (opts.deferToggle) {
+                    // Hold the response so a test can change the editing target
+                    // before this "late" reply lands.
+                    return await new Promise(resolve => {
+                        deferredToggleResolve = () => resolve(apply());
+                    });
+                }
+                return apply();
+            }
+            if (/^\/api\/platform\/users\/[^/]+\/password$/.test(url) && method === 'POST') {
+                if (opts.resetStatus && opts.resetStatus !== 200) {
+                    return response({ status: 'error', code: opts.resetCode || 'conflict',
+                                      message: opts.resetMessage || 'reset failed' },
+                                    opts.resetStatus);
+                }
+                if (body.recent_password !== password) {
+                    return response({ status: 'error', code: 'invalid_old',
+                                      message: 'recent password required' }, 401);
+                }
+                return response({ status: 'success', temporary_password: 'Tmp-Pass-123',
+                                  must_change_password: true });
+            }
             if (url.startsWith('/api/platform/users')) {
                 return response({ status: 'success', items: [
                     { id: 'usr-root', username: 'root', display_name: 'Root', active: true },
@@ -391,6 +441,7 @@ function setup(opts = {}) {
     document.dispatch('DOMContentLoaded');
     return {
         ctx, calls, state, storageWrites,
+        deferToggle: () => { if (deferredToggleResolve) deferredToggleResolve(); },
         node: id => document.getElementById(id),
         passwordModalOpen: () => {
             const el = document.getElementById('tenant-password-modal');
@@ -1444,6 +1495,211 @@ test('a committed admin change refreshes the read-only current admin', async () 
 
     assert.ok(currentAdminHtml(h).includes('Root Ops'),
         'the just-committed admin is what the tab reports');
+});
+
+// ---- 5.z the card's own account enable/disable and reset controls ---------
+// These two controls act on the account the card *shows*. They are separate
+// from the tab's save: they must not read or commit the picker's unsaved
+// selection, and they must not change the platform qualification they were
+// handed. A disabled account stays on the card so it can be re-enabled there.
+
+function toggleCalls(h) {
+    return h.calls.filter(c => c.options && c.options.method === 'PATCH'
+        && /^\/api\/platform\/users\/[^/]+$/.test(c.url));
+}
+function resetCalls(h) {
+    return h.calls.filter(c => c.options && c.options.method === 'POST'
+        && /^\/api\/platform\/users\/[^/]+\/password$/.test(c.url));
+}
+const activeAdmin = {
+    membership_id: 'mem-1', user_id: 'usr-root', username: 'root',
+    display_name: 'Root', account_active: true, account_version: 3,
+    is_platform_admin: true,
+};
+
+test('the card offers disable and reset for an active account', async () => {
+    const h = setup({ currentAdmins: [{ ...activeAdmin }] });
+    await openAdminTab(h);
+    const html = currentAdminHtml(h);
+    assert.ok(html.includes('tenant_admin_disable_account'), 'an active account offers disable');
+    assert.ok(html.includes('tenant_admin_account_active'), 'the card names the account state');
+    assert.ok(html.includes('admin_reset'), 'the card offers reset');
+    assert.equal(html.includes('tenant_admin_enable_account'), false,
+        'the disable control is not offered while the account is active');
+});
+
+test('a disabled card account offers enable instead of disable', async () => {
+    const h = setup({ currentAdmins: [{ ...activeAdmin, account_active: false }] });
+    await openAdminTab(h);
+    const html = currentAdminHtml(h);
+    assert.ok(html.includes('tenant_admin_enable_account'), 'a disabled account offers enable');
+    assert.ok(html.includes('tenant_admin_account_disabled'), 'the card marks it disabled');
+    assert.equal(html.includes('tenant_admin_disable_account'), false,
+        'the enable control replaces disable rather than duplicating it');
+});
+
+test('an unreadable or absent admin gets no account controls', async () => {
+    const failed = setup({ adminReadStatus: 500 });
+    await openAdminTab(failed);
+    assert.equal(currentAdminHtml(failed).includes('tenant_admin_disable_account'), false,
+        'a failed read offers no account controls');
+    assert.equal(currentAdminHtml(failed).includes('admin_reset'), false);
+
+    const empty = setup({ currentAdmins: [] });
+    await openAdminTab(empty);
+    assert.equal(currentAdminHtml(empty).includes('admin_reset'), false,
+        'no admin means no account to act on');
+});
+
+test('disabling the card account submits its version and original platform qualification', async () => {
+    const h = setup({ currentAdmins: [{ ...activeAdmin }] });
+    await openAdminTab(h);
+    h.ctx.tenantCardToggleAccount();
+    await flush();
+    assert.equal(h.modalOpen(), true, 'the operator password is re-checked before the write');
+    h.node('adm-fld-recent_password').value = 'Str0ngAdminPass';
+    h.node('admin-modal-submit').dispatch('click');
+    await flush();
+
+    assert.equal(toggleCalls(h).length, 1, 'the account status is written once');
+    assert.equal(toggleCalls(h)[0].url, '/api/platform/users/usr-root');
+    const body = JSON.parse(toggleCalls(h)[0].options.body);
+    assert.equal(body.active, false, 'the toggle disables the shown account');
+    assert.equal(body.is_platform_admin, true,
+        'the original platform qualification is preserved, never dropped');
+    assert.equal(body.expected_version, 3, 'the account version guards the write');
+    assert.equal(body.recent_password, 'Str0ngAdminPass');
+    assert.ok(currentAdminHtml(h).includes('tenant_admin_enable_account'),
+        'the card refreshes to the disabled state so it can be re-enabled');
+});
+
+test('a disabled account can be re-enabled from the refreshed card', async () => {
+    const h = setup({ currentAdmins: [{ ...activeAdmin, account_active: false }] });
+    await openAdminTab(h);
+    h.ctx.tenantCardToggleAccount();
+    await flush();
+    h.node('adm-fld-recent_password').value = 'Str0ngAdminPass';
+    h.node('admin-modal-submit').dispatch('click');
+    await flush();
+    const body = JSON.parse(toggleCalls(h)[0].options.body);
+    assert.equal(body.active, true, 'the enable writes the active flag back');
+    assert.ok(currentAdminHtml(h).includes('tenant_admin_disable_account'));
+});
+
+test('the card controls never target the picker\u2019s unsaved selection', async () => {
+    const h = setup({ currentAdmins: [{ ...activeAdmin }] });
+    await openAdminTab(h);
+    // Pick another candidate, leaving the tab dirty: this is a draft, not a
+    // committed choice, and the card buttons must ignore it.
+    const option = h.ctx.document.querySelector('.user-picker-option');
+    assert.ok(option, 'a different candidate is available to pick');
+    option.dispatch('click');
+    await flush();
+    assert.equal(h.node('tenant-dirty-pill').classList.contains('show'), true,
+        'picking a candidate leaves an unsaved draft');
+
+    h.ctx.tenantCardResetPassword();
+    await flush();
+    h.node('adm-fld-recent_password').value = 'Str0ngAdminPass';
+    h.node('admin-modal-submit').dispatch('click');
+    await flush();
+
+    assert.equal(resetCalls(h).length, 1, 'the reset runs for the card account');
+    assert.equal(resetCalls(h)[0].url, '/api/platform/users/usr-root/password',
+        'the target is the card account, never the unsaved picker selection');
+    assert.equal(JSON.parse(resetCalls(h)[0].options.body).expected_version, 3,
+        'the reset uses the card account version');
+    assert.equal(profilePosts(h).length, 0, 'the card action commits no tenant draft');
+    assert.equal(h.node('tenant-dirty-pill').classList.contains('show'), true,
+        'the picker draft is preserved, not discarded');
+});
+
+test('a reset from the card keeps its one-time password visible and clears on close', async () => {
+    const h = setup({ currentAdmins: [{ ...activeAdmin }] });
+    await openAdminTab(h);
+    h.ctx.tenantCardResetPassword();
+    await flush();
+    h.node('adm-fld-recent_password').value = 'Str0ngAdminPass';
+    h.node('admin-modal-submit').dispatch('click');
+    await flush();
+
+    assert.equal(h.modalOpen(), false, 'the password prompt is dismissed on success');
+    const dialog = h.node('one-time-secret-modal');
+    assert.ok(dialog && !dialog.classList.contains('hidden'),
+        'the one-time result is not closed with the generic submit');
+    assert.equal(h.node('one-time-secret-value').textContent, 'Tmp-Pass-123',
+        'the returned temporary password is shown for copying');
+    assert.equal(h.storageWrites.some(w => String(w.value).includes('Tmp-Pass-123')), false,
+        'the password is never written to browser storage');
+
+    h.node('one-time-secret-close').dispatch('click');
+    assert.equal(h.node('one-time-secret-modal').classList.contains('hidden'), true);
+    assert.equal(h.node('one-time-secret-value').textContent, '',
+        'closing clears the password from the page');
+});
+
+test('a one-time password does not survive a context switch', async () => {
+    // The secret belongs to the account of the context that produced it: a
+    // tenant switch / identity change (bumpTenantGeneration) must drop it so it
+    // cannot reappear over the next tenant, and closing the editor clears it too.
+    const h = setup({ currentAdmins: [{ ...activeAdmin }] });
+    await openAdminTab(h);
+    h.ctx.tenantCardResetPassword();
+    await flush();
+    h.node('adm-fld-recent_password').value = 'Str0ngAdminPass';
+    h.node('admin-modal-submit').dispatch('click');
+    await flush();
+    assert.equal(h.node('one-time-secret-value').textContent, 'Tmp-Pass-123');
+
+    h.ctx.bumpTenantGeneration();
+    assert.equal(h.node('one-time-secret-modal').classList.contains('hidden'), true,
+        'leaving the context hides a result that belonged to it');
+    assert.equal(h.node('one-time-secret-value').textContent, '',
+        'the secret is dropped from the page, not merely hidden');
+});
+
+test('a failed card refresh after a successful reset does not hide the password', async () => {
+    const h = setup({ currentAdmins: [{ ...activeAdmin }], adminReadFailAfterFirst: true });
+    await openAdminTab(h);
+    h.ctx.tenantCardResetPassword();
+    await flush();
+    h.node('adm-fld-recent_password').value = 'Str0ngAdminPass';
+    h.node('admin-modal-submit').dispatch('click');
+    await flush();
+
+    assert.equal(h.node('one-time-secret-value').textContent, 'Tmp-Pass-123',
+        'a refresh failure must not erase a password the server already returned');
+});
+
+test('a stale card toggle after leaving does not overwrite the next target', async () => {
+    const h = setup({ currentAdmins: [{ ...activeAdmin }], deferToggle: true });
+    await openAdminTab(h);
+    h.ctx.tenantCardToggleAccount();
+    await flush();
+    h.node('adm-fld-recent_password').value = 'Str0ngAdminPass';
+    h.node('admin-modal-submit').dispatch('click');
+    await flush();
+
+    // The operator switches tenant generation before the reply lands.
+    h.ctx.bumpTenantGeneration();
+    h.deferToggle();
+    await flush();
+    assert.equal(h.node('tenant-editor').classList.contains('hidden'), false,
+        'the late reply does not throw the editor away');
+});
+
+test('resetting your own account guides to the self change-password flow', async () => {
+    const h = setup({ currentAdmins: [
+        { ...activeAdmin, user_id: 'u-root', username: 'root' },
+    ]});
+    await openAdminTab(h);
+    h.ctx.tenantCardResetPassword();
+    await flush();
+
+    assert.equal(resetCalls(h).length, 0, 'a self reset is not submitted');
+    assert.equal(h.modalOpen(), false, 'no password prompt is opened for a self reset');
+    assert.ok(h.node('tenant-current-admin-msg').textContent.includes('account_self_reset_hint'),
+        'the operator is guided to the existing self change-password flow');
 });
 
 // ---- the server's reason must reach the operator --------------------------
