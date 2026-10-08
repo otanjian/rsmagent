@@ -1,0 +1,16 @@
+{
+  "platform": "darwin",
+  "electron": "33.4.11",
+  "scenarios": [
+    {
+      "name": "native: registered deep route, refresh, back and bridge generation",
+      "passed": true
+    },
+    {
+      "name": "native: Web logout precedes host sign-out and new document rebinds",
+      "passed": true
+    }
+  ],
+  "pageErrors": [],
+  "scope": "production Electron container/preload/IPC; controlled HTTP identities; no installed-package acceptance"
+}

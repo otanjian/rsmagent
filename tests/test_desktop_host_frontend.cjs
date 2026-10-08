@@ -264,7 +264,7 @@ test('logging out suspends local context before the session ends', () => {
 
 test('the adapter is loaded before console.js and carries a cache-bust stamp', () => {
     const html = read('channel/web/chat.html');
-    const order = [...html.matchAll(/<script defer src="assets\/(js\/[^"?]+)/g)].map((m) => m[1]);
+    const order = [...html.matchAll(/<script defer src="\/?assets\/(js\/[^"?]+)/g)].map((m) => m[1]);
     const adapter = order.indexOf('js/fork/desktop-host.js');
     assert.ok(adapter >= 0, 'the adapter must be on the page');
     assert.ok(adapter < order.indexOf('js/console.js'), 'console.js uses the namespace at load');

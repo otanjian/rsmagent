@@ -184,7 +184,7 @@ def test_a_runtime_built_view_still_ships_its_container_and_loader():
     for view, module in RUNTIME_VIEWS.items():
         assert f'id="view-{view}"' in template.render("chat.html"), view
         source = open(os.path.join(ROOT, module), encoding="utf-8").read()
-        assert "loadTasksView" in source or f"registerConsoleView" in source, module
+        assert "loadTasksView" in source or "registerConsoleView" in source, module
 
 
 def test_the_shell_is_assembled_and_self_contained(web):
@@ -196,13 +196,11 @@ def test_the_shell_is_assembled_and_self_contained(web):
     assert 'id="view-tasks"' in html
     assert 'id="tasks-list"' in html
 
-    # Every *asset* is addressed relatively: the container loads the shell from
-    # the server origin, and the same document also has to work under a
-    # configured sub-path. Same-origin shell links (``/chat``, ``/admin``) are
-    # the nav area's, and are the two routes the container accepts.
-    assets = re.findall(r'(?:src|href)="(/assets/[^"]*)"', html)
+    # Deep links must resolve assets at the configured server's origin, not
+    # relative to /knowledge/graph or /settings/models.
+    assets = re.findall(r'(?:src|href)="(assets/[^"]*)"', html)
     assert not assets, assets
-    shell_links = {r for r in re.findall(r'href="(/[^"]*)"', html)}
+    shell_links = {r for r in re.findall(r'href="(/[^"]*)"', html) if not r.startswith('/assets/')}
     assert shell_links <= {"/chat", "/admin"}, sorted(shell_links)
     assert "localhost" not in html and "127.0.0.1" not in html
 
@@ -210,7 +208,7 @@ def test_the_shell_is_assembled_and_self_contained(web):
 def test_the_desktop_adapter_is_loaded_before_the_console():
     """console.js reads ``CowDesktopHost`` at load, so the order is a contract."""
     html = open(os.path.join(WEB, "chat.html"), encoding="utf-8").read()
-    scripts = re.findall(r'<script defer src="assets/(js/[^"?]+)', html)
+    scripts = re.findall(r'<script defer src="/?assets/(js/[^"?]+)', html)
     assert "js/fork/desktop-host.js" in scripts, "the adapter must be on the page"
     assert scripts.index("js/fork/desktop-host.js") < scripts.index("js/console.js")
     # ...and the served page keeps that order after assembly.

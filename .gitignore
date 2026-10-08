@@ -199,3 +199,7 @@ README*.md
 /scenes/sap_workbench_runtime/
 
 # ======================================================================
+
+# Generated machine results; reviewed summaries live with the change.
+/artifacts/upstream-sync/
+/tests/browser/node_modules/

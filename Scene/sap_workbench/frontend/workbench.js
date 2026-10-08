@@ -495,6 +495,16 @@
         find('form').replaceChildren();
         previousFocus?.focus();
     }
+    // Identity loss is not a user leave decision: do not prompt for an old
+    // tenant's draft or send pause/control requests using a replacement login.
+    window.addEventListener('account-invalidated', () => {
+        generation++; startingSession = false; pendingRequest = null;
+        dirty = false; data = null; binding = null; previousFocus = null;
+        if (!dialog) return;
+        stopView(false); unmountCode();
+        dialog.dataset.live = 'false';
+        dialog.close(); find('form').replaceChildren();
+    });
     function returnHome() {
         close();
         // A rejected unsaved-settings confirmation must keep this scene open.
@@ -1175,10 +1185,10 @@
             if (live()) timer = window.setTimeout(ping, 1000);
         };
         timer = window.setTimeout(ping, 1000);
-        state.disposeResize = () => {
+        state.disposeResize = (notify = true) => {
             disposed = true; reading = null; window.clearTimeout(timer);
             state.frame.removeEventListener('load', loaded);
-            if (readProtocol) void sessionRequest({binding_id: session.binding_id, action: 'heartbeat',
+            if (notify && readProtocol) void sessionRequest({binding_id: session.binding_id, action: 'heartbeat',
                 view_id: viewId, page_read_supported: false, view_active: false}).catch(() => {});
         };
     }
@@ -1387,9 +1397,9 @@
             target.addEventListener('paste', paste);
         }
     }
-    function stopView() {
+    function stopView(notify = true) {
         const state = view;
-        state?.disposeResize?.();
+        state?.disposeResize?.(notify);
         view = null;
         reconnects = 0;
         if (retryTimer !== null) { window.clearTimeout(retryTimer); retryTimer = null; }

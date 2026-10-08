@@ -116,6 +116,7 @@
     }
 
     function restoreRememberedTab() {
+        if (window.ConsoleRoutes) return; // the registered path owns selection
         if (!recordsOpen()) return;
         let tab = rememberedTab;
         if (!tab) {
@@ -343,13 +344,18 @@
             title: t('task_run_confirm_title'),
             message: `${task.name || task.id}: ${t('task_run_confirm_msg')}`,
             okText: t('task_run_now'),
-            onConfirm: () => {
+            onConfirm: async () => {
                 const originalHtml = button.innerHTML;
                 button.disabled = true;
                 button.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i>${t('task_run_now')}`;
                 const runKey = (window.crypto && window.crypto.randomUUID)
                     ? window.crypto.randomUUID()
                     : String(Date.now()) + '-' + Math.random().toString(36).slice(2);
+                // Claim only notification presentation; server authorization and
+                // run_key remain the authority for scheduling the execution.
+                if (window.SchedulerNotifications) {
+                    await window.SchedulerNotifications.registerManualRun(task).catch(() => {});
+                }
                 fetch('/api/scheduler/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -749,7 +755,7 @@
     // a global function binding is writable, so the property is what those
     // lookups resolve to.
     // ------------------------------------------------------------------
-    window.routeNoteTab = routeNoteTab;
+    if (!window.ConsoleRoutes) window.routeNoteTab = routeNoteTab;
     window.loadTasksView = loadTasksView;
     window.refreshTasksView = refreshTasksView;
     window.loadRunsView = loadRunsView;

@@ -253,7 +253,7 @@ class TasksPagePortDriftTests(unittest.TestCase):
 
         html = (self.ROOT / "chat.html").read_text(encoding="utf-8")
         loaded = [f"static/{asset}" for asset
-                  in re.findall(r'<script defer src="assets/(js/[^"]+)"></script>', html)]
+                  in re.findall(r'<script defer src="/?assets/(js/[^"]+)"></script>', html)]
         self.assertIn(self.PARALLEL_FORK_MODULE, loaded, "the patch module is not loaded")
 
         collisions = {}
@@ -284,7 +284,7 @@ class TasksPagePortDriftTests(unittest.TestCase):
         so a page that loads it first leaves it with nothing to capture (its own
         guard then bows out and the fork semantics never install)."""
         html = (self.ROOT / "chat.html").read_text(encoding="utf-8")
-        order = re.findall(r'<script defer src="assets/(js/[^"]+)"></script>', html)
+        order = re.findall(r'<script defer src="/?assets/(js/[^"]+)"></script>', html)
         patch = order.index("js/fork/tasks-console.js")
         for relative in ("js/views/tasks.js", "js/views/tasks-modal.js",
                          "js/console.js"):

@@ -26,6 +26,7 @@ let chromium;
 try {
     ({ chromium } = require('playwright'));
 } catch (error) {
+    if (process.env.COW_PARITY_BROWSER === '1') throw error;
     // Without Playwright the file still loads, so a wrapper can skip it.
     console.log('SKIP knowledge console browser contract: playwright is not installed');
     process.exit(0);
@@ -101,15 +102,12 @@ const SOURCE_DETAIL = {
 const WEB_DIR = path.join(repo, 'channel/web');
 const INCLUDE_RE = /<!--#include\s+([^\s>]+?)\s*-->/g;
 function assembleShell() {
-    const expand = (relPath, depth) => {
-        if (depth > 8) throw new Error('include cycle at ' + relPath);
-        const text = fs.readFileSync(path.join(WEB_DIR, relPath), 'utf8');
-        return text.replace(INCLUDE_RE, (_, fragment) => {
-            const expanded = expand(fragment, depth + 1);
-            return expanded.endsWith('\n') ? expanded.slice(0, -1) : expanded;
-        });
-    };
-    return expand('chat.html', 0)
+    const python = process.env.PYTHON_BIN || path.join(repo, '.venv/bin/python');
+    const rendered = require('node:child_process').execFileSync(python, ['-B', '-c',
+        'import json; from channel.web.core import template; from channel.web.route_registry import console_page_metadata; '
+        + 'print(template.render("chat.html").replace("{{COW_CONSOLE_ROUTES}}", json.dumps(console_page_metadata())))'],
+        { cwd: repo, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
+    return rendered
         .replaceAll('{{COW_DEFAULT_LANG}}', 'zh')
         .replaceAll('{{COW_NAVIGATION_MODE}}', 'classic')
         .replaceAll('{{COW_WORKBENCH_SIDEBAR_LAUNCH_V2}}', '0');
@@ -127,10 +125,11 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify(data));
     };
     const identity = { status: 'success', identity_mode: 'database', auth_required: true,
-        authenticated: true, user: { username: 'knowledge-member', display_name: '知识成员',
+        authenticated: true, user: { id: 'fixture-user', username: 'knowledge-member', display_name: '知识成员',
             roles: ['member'], is_admin: false } };
 
-    if (pathname === '/chat' || pathname === '/' || pathname === '/admin') {
+    if (['/chat', '/', '/admin', '/knowledge', '/knowledge/graph', '/knowledge/sources',
+        '/agents', '/settings', '/settings/catalog', '/settings/models', '/scheduler', '/scheduler/records'].includes(pathname)) {
         res.writeHead(200, { 'Content-Type': mime['.html'], 'Cache-Control': 'no-store' });
         res.end(assembleShell());
     } else if (pathname.startsWith('/assets/')) {
@@ -161,6 +160,9 @@ const server = http.createServer((req, res) => {
     } else if (pathname === '/config') json({ status: 'success', title: '容大AI',
         model: 'fixture-model', providers: {}, agent_permission_mode: 'workspace-write',
         permission_modes: ['read-only', 'workspace-write', 'full-access'] });
+    else if (pathname === '/api/agents' && url.searchParams.get('view') === 'workbench') {
+        json({ status: 'success', agents: AGENTS.map(a => ({ ...a, can_chat: true, is_default: a.id === 'agent-a' })) });
+    }
     else if (pathname === '/api/agents') json({ status: 'success', default_agent_id: 'agent-a',
         revision: 'fixture', agents: AGENTS.map(a => ({ ...a, is_default: a.id === 'agent-a' })),
         channel_instances: [] });
@@ -210,16 +212,34 @@ async function open(options = {}) {
     }, options.lang || 'zh');
     const page = await context.newPage();
     page.setDefaultTimeout(15000);
+    if (options.mode) await page.route('**/*', async route => {
+        if (route.request().resourceType() !== 'document') return route.continue();
+        const response = await route.fetch();
+        const body = (await response.text()).replace(
+            "window.__COW_NAVIGATION_MODE__ = 'classic'", "window.__COW_NAVIGATION_MODE__ = '" + options.mode + "'");
+        await route.fulfill({response, body});
+    });
+    if (options.prepare) await options.prepare(page);
     // The knowledge view belongs to the workbench area (`workbench.knowledge`),
     // so it is reached from `/chat`; `/admin` would keep it hidden.
-    await page.goto(origin + (options.path || '/chat') + (options.hash || '#view-knowledge'),
+    await page.goto(origin + (options.path || '/chat') + (options.hash === undefined ? '#view-knowledge' : options.hash),
         { waitUntil: 'networkidle' });
-    await page.locator('#app').waitFor({ state: 'visible' });
-    await page.locator('#view-knowledge').waitFor({ state: 'visible' });
+    if (options.beforeReady) await options.beforeReady(page);
+    try { await page.locator('#app').waitFor({ state: 'visible' }); }
+    catch (error) {
+        console.error('Fixture boot state:', await page.evaluate(() => ({
+            phase: typeof _accountState === 'undefined' ? '' : _accountState.phase,
+            gate: document.getElementById('auth-check-message')?.textContent,
+        })));
+        await context.close();
+        throw error;
+    }
+    await page.locator('#view-' + (options.view || 'knowledge')).waitFor({ state: 'visible' });
     return page;
 }
 
 async function scenario(name, run, options) {
+    if (process.env.COW_BROWSER_SCENARIO && !name.includes(process.env.COW_BROWSER_SCENARIO)) return;
     report.currentScenario = name;
     report.scenarioBase = report.requests.length;
     const start = Date.now();
@@ -230,6 +250,13 @@ async function scenario(name, run, options) {
         report.scenarios.push({ name, passed: true, durationMs: Date.now() - start });
     } catch (error) {
         report.scenarios.push({ name, passed: false, message: error.message, stack: error.stack });
+        if (page) {
+            await page.screenshot({ path: path.join(output, 'failure.png') }).catch(() => {});
+            console.error('Scenario state:', await page.evaluate(() => ({ view: currentView,
+                top: messagesDiv.scrollTop, height: messagesDiv.scrollHeight, client: messagesDiv.clientHeight,
+                following: _autoScrollEnabled, display: getComputedStyle(messagesDiv).display,
+            })).catch(() => null));
+        }
         throw error;
     } finally {
         if (page) await page.context().close().catch(() => {});
@@ -262,6 +289,25 @@ async function main() {
     browser = await launchBrowser();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     origin = 'http://127.0.0.1:' + server.address().port;
+
+    if (process.env.COW_NATIVE_PARITY === '1') {
+        await require('./test_console_native_parity.cjs').run(origin, output);
+        return;
+    }
+
+    if (process.env.COW_PARITY_BROWSER === '1') {
+        await require('./test_console_parity_browser.cjs').run(scenario);
+        if (!process.env.COW_BROWSER_SCENARIO) {
+            const liveOutput = path.join(output, 'http-notifications');
+            fs.mkdirSync(liveOutput, {recursive:true});
+            await require('node:util').promisify(require('node:child_process').execFile)(
+                process.execPath, [require.resolve('./test_notifications_http_browser.cjs')],
+                {env:{...process.env, COW_NOTIFICATION_BROWSER_OUTPUT:liveOutput}, timeout:120000});
+            const live = JSON.parse(fs.readFileSync(path.join(liveOutput,'results.json'),'utf8'));
+            report.scenarios.push(...live.scenarios);
+            report.pageErrors.push(...live.pageErrors);
+        }
+    }
 
     await scenario('desktop: the Agent search filters its own menu, not the document search', async page => {
         // The search box belongs to the Agent menu (task 3.1): typing narrows the

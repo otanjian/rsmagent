@@ -44,6 +44,10 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# This compatibility facade deliberately exports globals consumed by web.py
+# and retains the legacy import aliases after the fork split. Runtime route
+# coverage checks these bindings; unused/repeated import diagnostics do not.
+"channel/web/web_channel.py" = ["F401", "F811"]
 # Modules that use try/except ImportError as an availability probe import the
 # symbols for the probe and never use them again; keep the marker explicit.
 "agent/tools/browser/browser_service.py" = ["F401"]

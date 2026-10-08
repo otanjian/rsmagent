@@ -53,8 +53,10 @@ run_check 'Python production regressions' "$python_bin" -m pytest -q \
     tests/test_trusted_proxy.py tests/test_production_document_tools.py tests/test_image_content_gate.py tests/test_production_candidate.py tests/test_desktop_auth_flow.py tests/test_startup_hook_seam.py \
     tests/test_tenant_admin_tool_execution.py tests/test_rbac_execution_permission.py
 run_check 'Route coverage' "$python_bin" scripts/check-route-coverage.py
+run_check 'Upstream sync required behavior' "$python_bin" scripts/check-upstream-sync.py --output artifacts/upstream-sync
 run_check 'Web module seams' "$python_bin" scripts/check-web-module-seams.py
 run_check 'Desktop typecheck and build' npm --prefix desktop run build
+run_check 'Native Web container navigation and lifecycle' env COW_KNOWLEDGE_BROWSER_OUTPUT="$PWD/artifacts/upstream-sync/native" node tests/test_console_native_parity.cjs
 run_check 'Web and Desktop behavior' node --test \
     tests/test_audit_console_frontend.cjs \
     tests/test_desktop_relogin_frontend.cjs \

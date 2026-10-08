@@ -131,7 +131,7 @@ git ls-files -u
 
 “产品不采用”须有明确产品依据和评审记录，列为范围差异，不能由合并执行者用来隐藏适配工作，也不能计入全部能力支持。“适配/等价替代”没有验收证据时仍为待验收；待实施项不得在后续轮次悄然删除。旧来源哈希一致只说明文件来源，不能证明 fork 消费方仍覆盖其行为。
 
-持续机器清单拟落在 `docs/design/upstream-sync/capabilities.json`，由 [本轮 change](../openspec/changes/archive/2026-10-08-restore-upstream-web-parity-and-sync-gates/proposal.md) 实现。该文件及汇总检查尚未落地前，按上表在每轮版本化证据中保存完整清单，并显式承接上一轮未关闭 ID；不得用空清单通过。首批七项缺口及已恢复项见 [核查基线](../openspec/changes/archive/2026-10-08-restore-upstream-web-parity-and-sync-gates/evidence/baseline.md)，后续状态以持续清单及候选证据为准，不反写历史证据。
+持续机器清单已落在 [capabilities.json](../docs/design/upstream-sync/capabilities.json)，由 [本轮 change](../openspec/changes/restore-upstream-web-parity-and-sync-gates/proposal.md) 维护。`history.json` 保存首轮历史，后续必须同时与实际 PR 基线中的清单比较；不得删除未关闭 ID 或用空清单通过。首批七项缺口见 [核查基线](../openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md)；本轮验收追加发现成员模型目录面板缺失，登记为 GAP-008。后续状态以持续清单及候选证据为准，不反写历史证据。
 
 覆盖源版本实际具备的对话/流式、附件/工作区、模型/工具、技能/MCP、知识/记忆、定时任务、渠道/消息、项目、OpenAI 兼容 API 和 Desktop；配置、读取、执行、通知、上传及回读等动作分别核对。未适配、缺依赖或待真实验收的能力保留在缺口清单中。
 
@@ -194,6 +194,9 @@ git write-tree > "$MERGE_RUN_DIR/candidate-tree.txt"
 ```bash
 .venv/bin/python scripts/check-route-coverage.py
 .venv/bin/python scripts/check-web-module-seams.py
+# 先按 docs/design/upstream-sync/README.md 安装锁定的浏览器依赖
+NODE_PATH="$PWD/tests/browser/node_modules" .venv/bin/python scripts/check-upstream-sync.py \
+  --source <本轮固定上游SHA> --baseline <已验收目标SHA> --output artifacts/upstream-sync
 .venv/bin/python -m pytest -q -p no:randomly \
   tests/test_sync_report.py tests/test_upstream_core_seams.py \
   tests/test_no_resurrection_legacy_identity.py tests/test_conversation_schema_seam.py \
@@ -281,7 +284,7 @@ node desktop/e2e/run-remote-workbench.mjs --spec ./relogin-session-sync.spec.mjs
 
 先列必要用例标识，再核对真实结果，不能用固定总通过数代替覆盖。2026-10-07 基线中的 25 个跳过及历史刷新夹具的 6 个失败均不算通过：前者须改测实际装配，后者补真实依赖并保留原断言。基线只作问题定位；后续数量可随合理拆分变化，最终按行为和用例标识核对。必要用例不得用环境跳过规避；不适用形态须有明确范围与评审依据。
 
-**自动化实施状态**：拟新增的 `scripts/check-upstream-sync.py`、持续 JSON 清单及新增专项用例由本轮 change 的 tasks 跟踪，本次修改规范不代表它们已实现。实施前依第 3.2 节保存逐项证据；实施后由统一入口聚合既有检查，接入 `scripts/check-production.sh` 及实际流水线。已有 `.gitea/workflows/production-readiness.yml` 触发 main/rdai，须核实 runner 和必需检查；只改 GitHub 的触发范围不能证明 Gitea 交付受保护。
+**自动化实施状态**：`scripts/check-upstream-sync.py`、持续 JSON 清单、实际入口/资源探针及必要用例结果核对已实现，接入 `scripts/check-production.sh`、Gitea production-readiness 的 `local-regression` 与 GitHub `upstream-sync`。本地故障注入已证明缺路由/依赖/样式、删历史项、只改来源，以及 skip/xfail/零收集/缺浏览器结果会失败。受控源码更新的正向、并发、准备失败保全与代码/数据恢复用例已实现，并保持为必要用例；不得以删除用例或只验证拒绝来放行。实际部署必须配置并验收受信源和独立进程管理器。Gitea 仓库/组织 runner 清单为空，分支保护未配置；远端必需检查和测试 PR 阻断仍未验证，CI 交付任务不得关闭。运行说明及范围见 [同步检查说明](../docs/design/upstream-sync/README.md)。
 
 验证门禁时，使用测试候选故意移除依赖/页面、删除未关闭清单项或跳过必要用例，确认本地汇总失败且实际交付检查阻断，恢复后再跑同候选。未取得远端 runner/阻断证据时写明未验证并保留任务，不得标记自动门禁交付完成。
 

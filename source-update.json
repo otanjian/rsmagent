@@ -1,0 +1,4 @@
+{
+  "recovery": "cold-instance-v1",
+  "description": "Offline instance backup and isolated restore; host manager quarantines all ingress and jobs until promotion."
+}

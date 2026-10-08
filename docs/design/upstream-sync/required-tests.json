@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "pytest": [
+    {
+      "file": "tests/test_web_console_routing.py",
+      "ids": [
+        "test_actual_app_serves_every_registered_page",
+        "test_page_paths_do_not_shadow_apis",
+        "test_deep_shell_does_not_preserve_revoked_platform_data_access"
+      ]
+    },
+    {
+      "file": "tests/test_scheduler_notification_cursor.py",
+      "ids": [
+        "test_late_completion_same_clock_and_paging",
+        "test_notification_cursor_is_authorized"
+      ]
+    },
+    {
+      "file": "tests/test_fork_source_update.py",
+      "ids": [
+        "test_check_and_start_bind_the_same_target",
+        "test_preparation_failure_preserves_running_environment",
+        "test_duplicate_start_is_idempotent",
+        "test_health_failure_restores_candidate",
+        "test_actual_http_platform_csrf_and_fixed_request_contract",
+        "test_failed_promotion_never_restores_over_possible_new_writes",
+        "test_configuration_cannot_target_a_different_running_instance",
+        "test_current_commit_change_and_non_fast_forward_are_refused"
+      ]
+    },
+    {
+      "file": "tests/test_upstream_sync_gate.py",
+      "ids": [
+        "test_deleted_history_and_source_only_edits_fail",
+        "test_skip_xfail_missing_and_zero_collection_are_not_passes",
+        "test_actual_assembly_detects_removed_route_script_and_style"
+      ]
+    }
+  ],
+  "node": [
+    {
+      "file": "tests/test_session_history_refresh_frontend.cjs",
+      "names": [
+        "SSE error uses the loaded scheduler predicate and cleans up exactly once",
+        "errors after completion or cancellation preserve the terminal result",
+        "background and stale-identity errors never render into the foreground"
+      ]
+    },
+    {
+      "file": "tests/test_knowledge_console_frontend.cjs",
+      "names": [
+        "empty knowledge keeps docs and graph hidden but preserves the sources panel",
+        "late list respects the currently selected panel",
+        "stale knowledge responses cannot overwrite a new identity or library"
+      ]
+    },
+    {
+      "file": "tests/test_scheduler_notifications_frontend.cjs",
+      "names": [
+        "notification polling stops across identities",
+        "terminal cursor pages are fully consumed",
+        "concurrent windows claim a run once"
+      ]
+    }
+  ],
+  "browser": {
+    "file": "tests/test_console_parity_browser.cjs",
+    "names": [
+      "parity: empty docs/graph and independent sources",
+      "parity: delayed lists preserve graph and sources selection",
+      "parity: slight upward scroll pauses streaming and explicit bottom resumes",
+      "parity: message wrapping and local overflow (light)",
+      "parity: message wrapping and local overflow (dark)",
+      "parity: deep paths survive refresh and back",
+      "parity: legacy links and cancelled leave preserve the target",
+      "parity: two browser windows atomically claim one terminal run",
+      "parity: member model route renders the granted catalog",
+      "parity: scheduler observer honors identity preferences and authorized clicks",
+      "parity: denied deep route preserves address (classic)",
+      "parity: denied deep route preserves address (split)",
+      "parity: deep route survives login and explicit tenant selection",
+      "parity: source update binds confirmation and clears it across identities",
+      "parity: revoked model management restores only the member catalog",
+      "parity: SAP iframe navigation preserves deep shell and identity teardown",
+      "http: console-created tasks dispatch into two owned sessions",
+      "http: long completion, 205 rows, reconnect and two windows",
+      "http: preference off consumes event and revoked grant rejects notification click"
+    ]
+  }
+}

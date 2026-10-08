@@ -284,7 +284,7 @@ def _page_scripts_source(root: Path) -> str:
     static = root / "channel/web/static"
     return "\n".join(
         (static / rel).read_text(encoding="utf-8")
-        for rel in re.findall(r'<script[^>]+src="assets/(js/[^"?]+)', page))
+        for rel in re.findall(r'<script[^>]+src="/?assets/(js/[^"?]+)', page))
 
 
 def test_manual_run_is_exposed_by_explicit_web_and_desktop_controls():

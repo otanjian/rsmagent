@@ -237,11 +237,15 @@ def container_proof(container, data_root):
         raise ValueError('a registered business root is not persistently mounted')
     return proof, mapper, container_env
 
-def create(output, data_root, *, container=None):
+def create(output, data_root, *, container=None, cold_proof=None):
     from cli import __version__
     from common.maintenance import stopped
     output = Path(output).expanduser().resolve()
     proof, mapper, runtime_environment = container_proof(container, data_root) if container else (None, None, os.environ)
+    if cold_proof is not None:
+        if container or not callable(cold_proof):
+            raise ValueError('exactly one trusted stop-proof provider is required')
+        proof = cold_proof
     with stopped(data_root, proof) as check_stopped:
         config, logical, roots, versions, credentials = inventory(data_root, mapper, runtime_environment)
         _key_check(credentials)

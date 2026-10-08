@@ -11,13 +11,32 @@ jobs:
     runs-on: macos-production
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Prepare Python and Desktop dependencies
         run: |
           python3.11 -m venv .venv
           .venv/bin/python -m pip install -r requirements.txt -r requirements-optional.txt -r requirements-scenes.txt pytest pytest-subtests
           npm --prefix desktop ci
+          npm --prefix tests/browser ci
+          tests/browser/node_modules/.bin/playwright install chromium
       - name: Run the common local gate
+        env:
+          NODE_PATH: ${{ github.workspace }}/tests/browser/node_modules
+          UPSTREAM_SYNC_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: bash scripts/check-production.sh --local
+      - name: Preserve upstream synchronization evidence
+        if: always()
+        # Gitea-compatible v4; stock v4 requires Runner 3 cache-v2 support.
+        # Runner/artifact reachability must still be verified on the delivery host.
+        uses: https://github.com/ChristopherHX/gitea-upload-artifact@81f940d004763f986ba3582c007fd842dd5cb0d7
+        with:
+          name: upstream-sync-local
+          path: artifacts/upstream-sync
+          if-no-files-found: error
   final-linux-image:
     runs-on: linux-production
     steps:
