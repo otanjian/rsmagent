@@ -62,6 +62,17 @@
         "terminal cursor pages are fully consumed",
         "concurrent windows claim a run once"
       ]
+    },
+    {
+      "file": "tests/test_admin_area_group_gating.cjs",
+      "names": [
+        "an unqualified identity opening /admin is still bounced back to /chat",
+        "registered admin addresses resolve from the authoritative route table",
+        "a denied identity keeps registered admin deep paths and sets the denial marker",
+        "a denied identity writes the marker and bounces /admin with and without routes",
+        "a qualified member reaches /admin and its granted page without a new denial marker",
+        "without the route module a registered deep path falls back to the workbench"
+      ]
     }
   ],
   "browser": {
@@ -82,6 +93,10 @@
       "parity: deep route survives login and explicit tenant selection",
       "parity: source update binds confirmation and clears it across identities",
       "parity: revoked model management restores only the member catalog",
+      "parity: denied admin entry keeps registered deep routes (classic)",
+      "parity: denied admin entry keeps registered deep routes (split)",
+      "parity: denied admin landing returns to the conversation (classic)",
+      "parity: denied admin landing returns to the conversation (split)",
       "parity: SAP iframe navigation preserves deep shell and identity teardown",
       "http: console-created tasks dispatch into two owned sessions",
       "http: long completion, 205 rows, reconnect and two windows",

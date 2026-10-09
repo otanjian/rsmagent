@@ -60,6 +60,7 @@ run_check 'Native Web container navigation and lifecycle' env COW_KNOWLEDGE_BROW
 run_check 'Web and Desktop behavior' node --test \
     tests/test_audit_console_frontend.cjs \
     tests/test_desktop_relogin_frontend.cjs \
+    tests/test_admin_area_group_gating.cjs \
     tests/test_desktop_local_execution.cjs
 run_check 'Native environment diagnostic (not production acceptance)' "$python_bin" -c 'from common.readiness import probe_execution, execution_checks; import json; ready = probe_execution(); print("Native production environment: " + ("PASS" if ready else "NOT VERIFIED / PREREQUISITE UNMET")); print(json.dumps(execution_checks()))'
 if [[ "$mode" == "--all" ]]; then
