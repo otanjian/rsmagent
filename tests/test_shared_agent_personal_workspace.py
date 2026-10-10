@@ -165,9 +165,16 @@ class SharedAgentPersonalWorkspaceTest(_SharedAgentFixture):
 
     # -- 1.2 / 1.3 the shapes that must NOT move ------------------------
 
-    def test_a_private_agent_keeps_the_legacy_default(self):
-        self.assertIsNone(self._resolve(PRIVATE_AGENT, self._ident(self.alice)))
-        # ...and the owner is no more entitled than anyone else to a per-user dir.
+    def test_a_private_agent_uses_the_owners_personal_directory(self):
+        """change ``unify-private-agent-personal-workspace``.
+
+        The owner works out of the same ``user/<uid>`` layout as a shared Agent;
+        a non-owner resolves nothing (and so never gets a directory here).
+        """
+        self.assertEqual(
+            self._resolve(PRIVATE_AGENT, self._ident(self.alice)),
+            self._expect(self.registry.get(PRIVATE_AGENT).workspace,
+                         "user", self.alice))
         self.assertIsNone(self._resolve(PRIVATE_AGENT, self._ident(self.bob)))
 
     def test_a_coding_agent_keeps_the_legacy_default(self):
@@ -308,12 +315,12 @@ class SharedAgentPersonalCwdTest(_SharedAgentFixture):
         self.assertEqual(os.path.realpath(result.result["output"].strip()),
                          os.path.realpath(project))
 
-    def test_a_private_agent_keeps_the_agent_workspace(self):
+    def test_a_private_agents_owner_runs_in_their_personal_directory(self):
         agent = self._agent(self.alice, "s-private", agent_id=PRIVATE_AGENT)
         workspace = self.registry.get(PRIVATE_AGENT).workspace
 
         self.assertEqual(os.path.realpath(agent.effective_cwd()),
-                         os.path.realpath(workspace))
+                         self._expect(workspace, "user", self.alice))
 
     # -- the switch is a per-session cwd, nothing wider (task 2.1) ------
 
@@ -500,14 +507,15 @@ class SharedAgentWorkspaceHintTest(_SharedAgentFixture):
         self.assertEqual(os.path.realpath(bob["default_workspace"]),
                          self._personal(self.bob))
 
-    def test_a_private_agent_hint_keeps_the_preexisting_value(self):
-        """A private Agent is not re-pointed by this change (unchanged value)."""
+    def test_a_private_agents_owner_hint_is_their_personal_directory(self):
+        """change ``unify-private-agent-personal-workspace``: the picker hint
+        for the owner is the same ``user/<uid>`` directory the tools use."""
         state = self._hint(self.alice, "s-private", agent_id=PRIVATE_AGENT)
-        shared = self.svc.tenant_shared_root(self.tid)
+        workspace = self.registry.get(PRIVATE_AGENT).workspace
         self.assertEqual(os.path.realpath(state["default_workspace"]),
-                         os.path.realpath(shared))
+                         self._expect(workspace, "user", self.alice))
         self.assertNotEqual(os.path.realpath(state["default_workspace"]),
-                            self._personal(self.alice))
+                            os.path.realpath(workspace))
 
     def test_a_selected_project_is_current_but_the_default_stays_personal(self):
         from agent.workspace import project_store

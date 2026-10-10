@@ -14,12 +14,12 @@ description: SAP 智能工作台的操作纪律与能力边界。当用户在 SA
 | 在左侧画面打开事务码 | **有限可用** | 调用 `sap_transaction_open` |
 | 读取 SAP 业务数据 | **可用** | 调用 `sap_data_call`（`read_table` / `run_query`） |
 | 写入 SAP 业务数据（经 BAPI） | **可用，且会改变数据** | 调用 `sap_data_call`（`call_rfc`）；需场景已配置 RFC 端点，否则该调用明确失败 |
-| 读取左侧页面内容（字段、表格、标签、消息） | **macOS 按启用状态可用** | 调用无参数的 `sap_page_read`，按实际结果回答 |
+| 读取左侧页面内容（字段、表格、标签、消息） | **macOS / Windows 桌面按启用状态可用** | 调用无参数的 `sap_page_read`，按实际结果回答 |
 | 在左侧页面填写字段 / 执行 / 保存单据 | **不可用** | 不要尝试，也不要用其他浏览器代替 |
 
-左侧 SAP 是跨域 iframe。macOS 桌面可通过固定宿主读取桥提供 DOM 观察；普通 Web、Windows、旧客户端或未启用时工具会明确拒绝。因此：
+左侧 SAP 是跨域 iframe。macOS 与 Windows 桌面可通过固定宿主读取桥提供 DOM 观察；普通 Web、旧客户端或未启用时工具会明确拒绝。因此：
 
-- 支持的平台指用户桌面客户端，**不是 OpenCode 服务所在机器**。即使服务端为 Windows，也要调用 `sap_page_read` 判断已连接的 macOS 桌面能力；`page_read_disabled` 只表示场景开关关闭，不能回答“当前环境是 Windows”。
+- 支持的平台指用户桌面客户端，**不是 OpenCode 服务所在机器**。即使服务端操作系统不同，也要调用 `sap_page_read` 判断已连接桌面的能力；`page_read_disabled` 只表示场景开关关闭，不能回答客户端操作系统。
 - 只有 `sap_page_read` 成功返回后才能引用当前页面字段；结果来自采集时刻的已渲染 DOM，可含未保存输入，不等同完整订单或后台已保存数据；
 - 询问当前 SAP 登录用户时只依据 `currentUser.account`，同时可引用 `client`、`systemId` 和 `sourceDocument`。字段为 null 或旧桌面未返回时，说明无法确认，可请用户显示 SAP 系统状态信息再读取；不能从订单创建人、SU01 业务用户、记住的账号、平台账号或 MCP 连接账号推断。`sap_session_ui` 仅为当前页面观察，不是鉴权证明。
 - 阅读 `limitations`，明确未加载、未知和截断项。工具不截图、不翻页、不填写；不可读时不能借用其他浏览器、旧结果或后台查询冒充当前页面；

@@ -9,7 +9,8 @@ cookie and the handler's own scope all sit between the rule and the bytes.
 The fixture is the product's own shape: Alice and Bob are two ``member``s of one
 tenant sharing one Agent that lives inside the tenant's shared root (so the
 console can address it as ``agents/<id>``), plus a second Agent owned privately
-by Alice, whose whole directory is her writable range.
+by Alice. Both Agents keep a user's business files under ``user/<uid>``, so
+Alice's writable range is her own subtree in each.
 
 Refusals are asserted by their response ``code`` rather than by "it did not say
 success": a bare failure assertion is also satisfied by a handler that refuses
@@ -41,8 +42,8 @@ def web(tmp_path):
     harness.add_agent(AGENT)
     harness.alice = harness.member("alice", ["member"])
     harness.bob = harness.member("bob", ["member"])
-    # A second Agent owned privately by Alice: she is its only user, so the whole
-    # directory is her writable range.
+    # A second Agent owned privately by Alice: she writes under its own
+    # ``user/<uid>`` subtree, the same unified layout a shared Agent uses.
     harness.private_agent(harness.alice, PRIVATE)
     harness.private_ws = os.path.join(harness.shared_root, "agents", PRIVATE)
     for path in (os.path.join(harness.workspace, "memory"),
@@ -247,31 +248,58 @@ def test_the_bin_is_not_a_landing_point(web):
     assert body["code"] == "trash_not_targetable"
 
 
-def test_a_private_agents_owner_uploads_anywhere_in_its_workspace(web):
+def test_a_private_agents_owner_uploads_into_their_personal_directory(web):
     body = json_of(upload(web, "alice", agent=PRIVATE,
-                          target_dir="agents/" + PRIVATE,
+                          target_dir="agents/%s/user/%s" % (PRIVATE, web.alice),
                           relative="docs/mine.txt", filename="mine.txt",
                           content=b"mine"))
 
     assert body["status"] == "success", body
-    with open(os.path.join(web.private_ws, "docs", "mine.txt"), "rb") as handle:
+    with open(os.path.join(web.private_ws, "user", web.alice, "docs", "mine.txt"),
+              "rb") as handle:
         assert handle.read() == b"mine"
 
 
-def test_a_private_agents_owner_may_append_to_the_agents_own_directories(web):
-    """Uploading is appending, so the delete-protection list does not apply.
+def test_a_private_agents_root_is_not_a_landing_point(web):
+    """The unified layout keeps business uploads out of the Agent root.
 
-    Adding a file to the Agent's ``memory/`` does not break the Agent; deleting
-    ``memory/`` does. Constraining both would only stop the owner from filing
-    anything into their own Agent.
+    The root holds configuration (AGENT.md, knowledge/, memory/); a drop there
+    is refused rather than silently re-pointed into the owner's own folder.
+    """
+    body = json_of(upload(web, "alice", agent=PRIVATE,
+                          target_dir="agents/" + PRIVATE,
+                          relative="mine.txt", filename="mine.txt"))
+
+    assert body["status"] == "error"
+    assert body["code"] == "outside_own_directory"
+    assert not os.path.exists(os.path.join(web.private_ws, "mine.txt"))
+
+
+def test_a_private_agents_own_directories_are_outside_the_write_range(web):
+    """The Agent's ``memory/`` at the root is configuration, not personal data.
+
+    Its personal ``memory/`` is inside ``user/<uid>/`` and remains ordinary
+    content (see the delete suite); the root one is outside the range.
     """
     body = json_of(upload(web, "alice", agent=PRIVATE,
                           target_dir="agents/%s/memory" % PRIVATE,
                           relative="note.md", filename="note.md",
                           content=b"n"))
 
+    assert body["status"] == "error"
+    assert body["code"] == "outside_own_directory"
+    assert not os.path.exists(os.path.join(web.private_ws, "memory", "note.md"))
+
+
+def test_a_private_agents_personal_memory_dir_is_writable(web):
+    body = json_of(upload(web, "alice", agent=PRIVATE,
+                          target_dir="agents/%s/user/%s/memory" % (PRIVATE, web.alice),
+                          relative="note.md", filename="note.md",
+                          content=b"n"))
+
     assert body["status"] == "success", body
-    with open(os.path.join(web.private_ws, "memory", "note.md"), "rb") as handle:
+    with open(os.path.join(web.private_ws, "user", web.alice, "memory", "note.md"),
+              "rb") as handle:
         assert handle.read() == b"n"
 
 
@@ -452,7 +480,7 @@ def test_a_member_cannot_delete_the_agents_own_entries(web):
     assert os.path.isdir(os.path.join(web.workspace, "memory"))
 
 
-def test_a_private_agents_owner_cannot_delete_the_agents_own_entries(web):
+def test_a_private_agents_own_entries_are_outside_the_writable_range(web):
     agent_md = os.path.join(web.private_ws, "AGENT.md")
     with open(agent_md, "wb") as handle:
         handle.write(b"persona")
@@ -463,20 +491,22 @@ def test_a_private_agents_owner_cannot_delete_the_agents_own_entries(web):
 
     assert body["status"] == "success"
     assert body["deleted"] == []
-    assert [f["code"] for f in body["failed"]] == ["agent_internal", "agent_internal"]
+    assert [f["code"] for f in body["failed"]] == [
+        "outside_own_directory", "outside_own_directory"]
     assert os.path.exists(agent_md)
 
 
 def test_a_private_agents_owner_deletes_their_own_ordinary_files(web):
-    target = os.path.join(web.private_ws, "notes.md")
+    rel = "agents/%s/user/%s/notes.md" % (PRIVATE, web.alice)
+    target = os.path.join(web.private_ws, "user", web.alice, "notes.md")
+    os.makedirs(os.path.dirname(target), exist_ok=True)
     with open(target, "wb") as handle:
         handle.write(b"n")
 
-    body = json_of(delete(web, "alice", ["agents/%s/notes.md" % PRIVATE],
-                          agent=PRIVATE))
+    body = json_of(delete(web, "alice", [rel], agent=PRIVATE))
 
     assert body["status"] == "success", body
-    assert body["deleted"] == ["agents/%s/notes.md" % PRIVATE]
+    assert body["deleted"] == [rel]
     assert not os.path.exists(target)
 
 
@@ -738,25 +768,23 @@ def test_restore_of_an_unknown_batch_says_so(web):
 
 
 def test_restore_refuses_a_destination_the_agent_no_longer_allows(web):
-    """A private Agent made shared narrows the range; a restore may not bypass it.
+    """Restore re-runs the range guard rather than trusting the old path.
 
-    The item was deleted while Alice owned the whole Agent, so its original path
-    is at the Agent root -- outside ``user/<uid>``, which is all a shared Agent's
-    member may write.
+    An entry deleted while it was writable may be refused when the destination
+    rule is applied again (the Agent's visibility or the caller's range can
+    change between the two); it then stays in the bin instead of bypassing the
+    rule.
     """
-    os.makedirs(os.path.join(web.private_ws, "docs"), exist_ok=True)
-    with open(os.path.join(web.private_ws, "docs", "a.txt"), "wb") as handle:
+    rel = "agents/%s/user/%s/docs/a.txt" % (PRIVATE, web.alice)
+    target = os.path.join(web.private_ws, "user", web.alice, "docs", "a.txt")
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    with open(target, "wb") as handle:
         handle.write(b"a")
-    batch = json_of(delete(web, "alice", ["agents/%s/docs/a.txt" % PRIVATE],
-                           agent=PRIVATE))["batch_id"]
+    batch = json_of(delete(web, "alice", [rel], agent=PRIVATE))["batch_id"]
 
-    # Alice is still the private owner, so narrow the range the way a
-    # visibility flip would: the same items, listed through a shared-like scope.
     from agent.workspace.service import WorkspaceService
     svc = WorkspaceService(web.shared_root)
-    guard = lambda rel: (
-        None if rel.startswith("agents/%s/user/%s/" % (PRIVATE, web.alice))
-        else "outside_own_directory")
+    guard = lambda _rel: "outside_own_directory"
     result = svc.restore_from_trash(web.alice, batch, agent_rel="agents/" + PRIVATE,
                                     dest_guard=guard)
 
@@ -766,18 +794,18 @@ def test_restore_refuses_a_destination_the_agent_no_longer_allows(web):
 
 
 def test_a_private_agents_owner_has_a_bin_of_their_own(web):
-    target = os.path.join(web.private_ws, "notes.md")
+    rel = "agents/%s/user/%s/notes.md" % (PRIVATE, web.alice)
+    target = os.path.join(web.private_ws, "user", web.alice, "notes.md")
+    os.makedirs(os.path.dirname(target), exist_ok=True)
     with open(target, "wb") as handle:
         handle.write(b"n")
-    batch = json_of(delete(web, "alice", ["agents/%s/notes.md" % PRIVATE],
-                           agent=PRIVATE))["batch_id"]
+    batch = json_of(delete(web, "alice", [rel], agent=PRIVATE))["batch_id"]
 
     listing = json_of(trash(web, "alice", agent=PRIVATE))
-    assert [e["rel"] for e in listing["entries"]] == [
-        "agents/%s/notes.md" % PRIVATE]
+    assert [e["rel"] for e in listing["entries"]] == [rel]
 
     body = json_of(restore(web, "alice", batch, agent=PRIVATE))
-    assert body["restored"][0]["path"] == "agents/%s/notes.md" % PRIVATE
+    assert body["restored"][0]["path"] == rel
     assert os.path.exists(target)
 
 

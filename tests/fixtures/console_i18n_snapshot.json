@@ -2161,7 +2161,19 @@
     "ws_upload_retry": "重试 {count} 项",
     "ws_upload_sending": "正在上传",
     "ws_upload_walking": "正在读取拖入的内容",
-    "yesterday": "昨天"
+    "yesterday": "昨天",
+    "admin_reset_member_hint": "临时密码将重置为 123456，24 小时内有效，登录后必须修改密码。",
+    "admin_reset_global_hint": "此操作影响该账号在所有租户的登录。",
+    "admin_reset_next_step": "后续操作",
+    "admin_reset_result_hint": "请通知成员在 24 小时内使用临时密码登录并修改密码。原有登录已失效，关闭后不再展示本次结果。",
+    "admin_reset_temp_copy": "复制",
+    "account_self_reset_hint": "这是你自己的账号，请改用账号菜单中的「修改密码」。",
+    "tenant_admin_account_active": "账号已启用",
+    "tenant_admin_account_disabled": "账号已停用",
+    "tenant_admin_disable_account": "停用账号",
+    "tenant_admin_enable_account": "启用账号",
+    "tenant_admin_disable_confirm": "确定停用「{name}」？该账号将在所有位置退出登录。",
+    "tenant_admin_enable_confirm": "确定启用「{name}」？"
   },
   "zh-Hant": {
     "account_about_title": "關於",
@@ -4326,7 +4338,19 @@
     "ws_upload_retry": "重試 {count} 項",
     "ws_upload_sending": "正在上傳",
     "ws_upload_walking": "正在讀取拖入的內容",
-    "yesterday": "昨天"
+    "yesterday": "昨天",
+    "admin_reset_member_hint": "臨時密碼將重設為 123456，24 小時內有效，登入後必須修改密碼。",
+    "admin_reset_global_hint": "此操作影響該帳號在所有租戶的登入。",
+    "admin_reset_next_step": "後續操作",
+    "admin_reset_result_hint": "請通知成員在 24 小時內使用臨時密碼登入並修改密碼。原有登入已失效，關閉後不再顯示本次結果。",
+    "admin_reset_temp_copy": "複製",
+    "account_self_reset_hint": "這是您自己的帳號，請改用帳號選單中的「修改密碼」。",
+    "tenant_admin_account_active": "帳號已啟用",
+    "tenant_admin_account_disabled": "帳號已停用",
+    "tenant_admin_disable_account": "停用帳號",
+    "tenant_admin_enable_account": "啟用帳號",
+    "tenant_admin_disable_confirm": "確定停用「{name}」？該帳號將在所有位置登出。",
+    "tenant_admin_enable_confirm": "確定啟用「{name}」？"
   },
   "en": {
     "account_about_title": "About",
@@ -6490,6 +6514,18 @@
     "ws_upload_retry": "Retry {count}",
     "ws_upload_sending": "Uploading",
     "ws_upload_walking": "Reading what was dropped",
-    "yesterday": "Yesterday"
+    "yesterday": "Yesterday",
+    "admin_reset_member_hint": "The temporary password will be 123456, valid for 24 hours. The member must change it after signing in.",
+    "admin_reset_global_hint": "This affects the account's sign-in across all tenants.",
+    "admin_reset_next_step": "Next step",
+    "admin_reset_result_hint": "Ask the member to sign in and change this temporary password within 24 hours. Previous sessions have been revoked. This result is cleared when closed.",
+    "admin_reset_temp_copy": "Copy",
+    "account_self_reset_hint": "This is your own account. Use \"Change password\" in your account menu instead.",
+    "tenant_admin_account_active": "Account enabled",
+    "tenant_admin_account_disabled": "Account disabled",
+    "tenant_admin_disable_account": "Disable account",
+    "tenant_admin_enable_account": "Enable account",
+    "tenant_admin_disable_confirm": "Disable \"{name}\"? They will be signed out everywhere.",
+    "tenant_admin_enable_confirm": "Enable \"{name}\"?"
   }
 }

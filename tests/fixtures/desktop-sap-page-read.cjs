@@ -9,7 +9,7 @@ const server = handler => new Promise(resolve => {
 let shell, sap, window;
 app.whenReady().then(async () => {
   try {
-    assert.equal(process.platform, 'darwin');
+    assert.ok(process.platform === 'darwin' || process.platform === 'win32');
     sap = await server((_req, res) => res.end(`<title>SAP fixture</title>
       <label for="quantity">Quantity</label><input id="quantity" value="2">
       <div role="grid"><div role="row"><span role="columnheader">Material</span></div>

@@ -14,6 +14,25 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../channel/web/static/js/console.js'), 'utf8');
+// The shipped address module. Loaded into the sandbox when a scenario needs the
+// real routing seam, so a stub cannot claim a path is a registered page.
+const ROUTER_SOURCE = fs.readFileSync(path.join(__dirname, '../channel/web/static/js/fork/router.js'), 'utf8');
+
+// The authoritative address table the server injects into #console-page-routes
+// (channel/web/route_registry.py -> console_page_metadata). Read the production
+// source instead of copying a second path list that could drift from it.
+let consolePagesCache = null;
+function consolePages() {
+    if (!consolePagesCache) {
+        const python = process.env.PYTHON_BIN || path.join(__dirname, '../.venv/bin/python');
+        const out = require('node:child_process').execFileSync(python, ['-B', '-c',
+            'import json; from channel.web.route_registry import console_page_metadata; '
+            + 'print(json.dumps(console_page_metadata()))'],
+            { cwd: path.join(__dirname, '..'), encoding: 'utf8' });
+        consolePagesCache = JSON.parse(out);
+    }
+    return consolePagesCache;
+}
 
 // Extract one top-level function by brace matching (the navigation section has
 // many neighbours and `section()` boundaries would drag in unrelated deps).
@@ -54,7 +73,9 @@ function makeEl(attrs = {}) {
 
 // Model the real markup: each `.menu-group` owns its own `.sidebar-item`s, and
 // the group element is what carries `sidebar-hidden-admin-area`.
-function boot({ ctx = null, isPlatformAdmin = false, groups = [], area = 'workbench' } = {}) {
+function boot({ ctx = null, isPlatformAdmin = false, groups = [], area = 'workbench',
+                pathname = null, windowMembers = null, realAreaFromPath = false,
+                consoleRoutes = null } = {}) {
     const allItems = [];
     groups.forEach(g => { g.el._items = g.items; allItems.push(...g.items); });
     const adminGroups = groups.map(g => g.el);
@@ -73,6 +94,14 @@ function boot({ ctx = null, isPlatformAdmin = false, groups = [], area = 'workbe
         '#sidebar-nav .sidebar-item': allItems,
     };
     const navOpenAdmin = makeEl();
+    // An explicit pathname lets a scenario point at a registered deep address;
+    // the legacy `area` calls keep deriving their old /admin or /chat address.
+    const resolvedPath = pathname === null ? (area === 'admin' ? '/admin' : '/chat') : pathname;
+    // Only routing-available fixtures carry the shipped address table; every
+    // other fixture leaves window.ConsoleRoutes absent, which is the production
+    // fallback. `window` is a real global _applySidebarPermissions reads.
+    const routeNode = consoleRoutes ? { textContent: JSON.stringify(consoleRoutes) } : null;
+    const windowObj = { addEventListener() {}, ...(windowMembers || {}) };
     const sandbox = {
         VIEW_META: {
             agents: { console: 'admin.agents' },
@@ -89,30 +118,38 @@ function boot({ ctx = null, isPlatformAdmin = false, groups = [], area = 'workbe
             token_usage: { console: 'admin.token_usage' },
         },
         document: {
-            getElementById(id) { return id === 'nav-open-admin' ? navOpenAdmin : null; },
+            getElementById(id) {
+                if (id === 'nav-open-admin') return navOpenAdmin;
+                if (id === 'console-page-routes') return routeNode;
+                return null;
+            },
             querySelectorAll(selector) { return selectors[selector] || []; },
             querySelector(selector) { return (selectors[selector] || [])[0] || null; },
         },
         location: {
-            pathname: area === 'admin' ? '/admin' : '/chat',
+            pathname: resolvedPath,
             replaced: null,
             replace(url) { this.replaced = url; },
             assign(url) { this.replaced = url; },
         },
+        history: { pushState() {}, replaceState() {} },
+        window: windowObj,
         sessionStorage: { _m: {}, setItem(k, v) { this._m[k] = v; }, getItem(k) { return this._m[k] || null; } },
         _identityMode: () => 'database',
         _baseAuthContext: () => ctxRef.value,
         _baseAccountSelf: () => ({ user: { is_platform_admin: isPlatformAdmin } }),
-        _navAreaFromPath: () => area,
         _openNavArea() {},
     };
-    vm.runInNewContext(
-        [fnSource('_consolePageForView'), fnSource('_viewNavDenied'),
-         fnSource('_sidebarRecentDenied'), fnSource('_qualifyAdminConsoleEntry'),
-         fnSource('_isPlatformOnlyEntry'),
-         fnSource('_applySidebarPermissions')].join('\n'),
-        sandbox);
-    return { sandbox, groups, navOpenAdmin, ctxRef };
+    // Legacy fixtures keep the area stub; a real-path scenario loads the actual
+    // production _navAreaFromPath so the sandbox exercises the shipped seam.
+    if (!realAreaFromPath) sandbox._navAreaFromPath = () => area;
+    const functions = [fnSource('_consolePageForView'), fnSource('_viewNavDenied'),
+        fnSource('_sidebarRecentDenied'), fnSource('_qualifyAdminConsoleEntry'),
+        fnSource('_isPlatformOnlyEntry'), fnSource('_applySidebarPermissions')];
+    if (realAreaFromPath) functions.push(fnSource('_navAreaFromPath'));
+    if (consoleRoutes) functions.push(ROUTER_SOURCE);
+    vm.runInNewContext(functions.join('\n'), sandbox);
+    return { sandbox, groups, navOpenAdmin, ctxRef, window: windowObj };
 }
 
 const READABLE_AGENT = { available: true, read_allowed: true, scope: 'agent', reason: '', actions: {} };
@@ -216,6 +253,103 @@ test('an unqualified identity opening /admin is still bounced back to /chat', ()
     assert.equal(sandbox.sessionStorage.getItem('cow_nav_admin_denied'), '1');
 });
 
+// ---------------------------------------------------------------------------
+// 入口资格被拒: landing vs registered deep paths (change
+// restore-console-admin-entry-coverage). These drive the shipped address table
+// and the production _navAreaFromPath instead of a stub that always says admin.
+// ---------------------------------------------------------------------------
+
+const PAGES = consolePages();
+
+// An authenticated member with a known projection, no platform/tenant bypass
+// and no reachable 管理区 page: every signed admin page is withheld.
+function deniedMemberCtx() {
+    const denied = { ...DENIED_MEMBERS, scope: 'agent' };
+    return memberCtx({ 'admin.agents': denied, 'admin.skills': denied, 'admin.memory': denied });
+}
+
+test('registered admin addresses resolve from the authoritative route table', () => {
+    const adminPaths = PAGES.filter(page => page.area === 'admin').map(page => page.path);
+    assert.ok(adminPaths.includes('/agents'), '/agents is a registered 管理区 address');
+    assert.ok(adminPaths.includes('/settings'), '/settings is a registered 管理区 address');
+    assert.equal(PAGES.some(page => page.path === '/admin/agents'), false,
+        'no /admin/<page> address is registered');
+    const { sandbox } = boot({ pathname: '/agents', realAreaFromPath: true, consoleRoutes: PAGES });
+    const routes = sandbox.window.ConsoleRoutes;
+    assert.equal(routes.area('/agents'), 'admin');
+    assert.equal(routes.area('/settings/models'), 'admin', 'a registered tab address belongs to 管理区');
+    const modelsRoute = routes.parse('/settings/models');
+    assert.equal(modelsRoute.view, 'config');
+    assert.equal(modelsRoute.tab, 'models');
+    assert.equal(routes.parse('/admin/agents'), null, 'an unregistered /admin/<page> is not a page');
+    assert.equal(routes.area('/admin/agents'), null);
+    assert.equal(sandbox._navAreaFromPath('/agents'), 'admin');
+    assert.equal(sandbox._navAreaFromPath('/admin/agents'), 'workbench',
+        'the production fallback does not infer 管理区 from an unregistered path');
+});
+
+test('a denied identity keeps registered admin deep paths and sets the denial marker', () => {
+    for (const pathname of ['/agents', '/settings/models']) {
+        const agentDev = agentDevGroup();
+        const orgPerm = orgPermGroup();
+        const { sandbox, navOpenAdmin } = boot({
+            ctx: deniedMemberCtx(), groups: [agentDev, orgPerm],
+            pathname, realAreaFromPath: true, consoleRoutes: PAGES,
+        });
+        sandbox._applySidebarPermissions();
+        assert.equal(sandbox.location.replaced, null, pathname + ' keeps its address');
+        assert.equal(sandbox.sessionStorage.getItem('cow_nav_admin_denied'), '1',
+            pathname + ' records the entry denial');
+        assert.equal(navOpenAdmin.classList.contains('hidden'), true,
+            pathname + ' must not offer the 控制台 entry');
+        assert.equal(agentDev.el.classList.contains('hidden'), true);
+        assert.equal(orgPerm.el.classList.contains('hidden'), true);
+    }
+});
+
+test('a denied identity writes the marker and bounces /admin with and without routes', () => {
+    for (const consoleRoutes of [PAGES, null]) {
+        const { sandbox } = boot({
+            ctx: deniedMemberCtx(), groups: [agentDevGroup()],
+            pathname: '/admin', realAreaFromPath: true, consoleRoutes,
+        });
+        sandbox._applySidebarPermissions();
+        assert.equal(sandbox.location.replaced, '/chat',
+            'the landing page keeps its historical redirect');
+        assert.equal(sandbox.sessionStorage.getItem('cow_nav_admin_denied'), '1');
+    }
+});
+
+test('a qualified member reaches /admin and its granted page without a new denial marker', () => {
+    const landing = boot({ ctx: memberCtx(), pathname: '/admin',
+        realAreaFromPath: true, consoleRoutes: PAGES });
+    landing.sandbox._applySidebarPermissions();
+    assert.equal(landing.sandbox.location.replaced, null,
+        'a qualified member is not bounced from /admin');
+    assert.equal(landing.sandbox.sessionStorage.getItem('cow_nav_admin_denied'), null);
+    assert.equal(landing.navOpenAdmin.classList.contains('hidden'), false);
+
+    const deep = boot({ ctx: memberCtx(), pathname: '/agents',
+        realAreaFromPath: true, consoleRoutes: PAGES });
+    deep.sandbox._applySidebarPermissions();
+    assert.equal(deep.sandbox.location.replaced, null);
+    assert.equal(deep.sandbox.sessionStorage.getItem('cow_nav_admin_denied'), null);
+    assert.equal(deep.navOpenAdmin.classList.contains('hidden'), false);
+});
+
+test('without the route module a registered deep path falls back to the workbench', () => {
+    const { sandbox } = boot({
+        ctx: deniedMemberCtx(), groups: [agentDevGroup()],
+        pathname: '/settings/models', realAreaFromPath: true,
+    });
+    assert.equal(sandbox._navAreaFromPath('/settings/models'), 'workbench',
+        'the fallback only recognises /admin, not every registered 管理区 address');
+    sandbox._applySidebarPermissions();
+    assert.equal(sandbox.location.replaced, null,
+        'the entry check does not redirect an address the fallback reads as workbench');
+    assert.equal(sandbox.sessionStorage.getItem('cow_nav_admin_denied'), null);
+});
+
 test('group visibility is recomputed, never accumulated', () => {
     // Re-running the projection after a grant is withdrawn must hide the group
     // again: the console computes visibility, it does not only ever reveal.
@@ -258,7 +392,10 @@ const PLATFORM_PAGES_FOR_TENANT_ADMIN = {
     'admin.token_usage': { available: true, read_allowed: true, scope: 'platform', reason: '', actions: {} },
 };
 
-const PLATFORM_ONLY_VIEWS = ['tenant', 'platform', 'branding', 'logs'];
+// 平台用户管理 is no longer a sidebar row (change
+// move-password-reset-to-tenant-management), so it is not modelled here: the
+// remaining platform-only rows are the ones still painted in chat.html.
+const PLATFORM_ONLY_VIEWS = ['tenant', 'branding', 'logs'];
 
 function platformOpsGroup() {
     const item = (view, platformOnly) => {

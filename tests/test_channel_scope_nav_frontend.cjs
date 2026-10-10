@@ -220,7 +220,7 @@ test('平台管理 gates its platform-only rows per item, not per group', () => 
         assert.ok(at >= 0, `${view} row exists inside 平台管理`);
         return body.slice(body.lastIndexOf('<a ', at), body.indexOf('>', at));
     };
-    for (const view of ['tenant', 'platform', 'branding', 'logs']) {
+    for (const view of ['tenant', 'branding', 'logs']) {
         assert.ok(rowFor(view).includes('platform-scope-only'),
             `${view} is platform-only and must carry the per-item marker`);
     }
@@ -228,4 +228,9 @@ test('平台管理 gates its platform-only rows per item, not per group', () => 
         assert.ok(!rowFor(view).includes('platform-scope-only'),
             `${view} must stay reachable below platform scope`);
     }
+    // 平台用户管理 left the sidebar (change move-password-reset-to-tenant-management):
+    // its compat page stays addressable but no menu row — and therefore no
+    // derived shortcut — is painted.
+    assert.equal(body.indexOf('data-view="platform"'), -1,
+        '平台用户管理 must not be a sidebar row any more');
 });

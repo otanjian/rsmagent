@@ -101,7 +101,8 @@ test('host reads only verified frame, rechecks request, and cleans navigation li
   const f = fixture(); let reads = 0;
   assert.equal((await readSapPage(f.wc, f.request, async () => {reads++;return f.context();}, 'darwin')).source,'sap_page_dom');
   assert.equal(reads,2); assert.equal(f.wc.listenerCount('did-frame-navigate'),0);
-  await assert.rejects(readSapPage(f.wc,f.request,f.context,'win32'), /page_read_unsupported/);
+  assert.equal((await readSapPage(f.wc, f.request, f.context, 'win32')).source,'sap_page_dom');
+  await assert.rejects(readSapPage(f.wc,f.request,f.context,'linux'), /page_read_unsupported/);
   await assert.rejects(readSapPage(f.wc,f.request,async()=>({...await f.context(),binding_id:'another'}),'darwin'),/page_changed/);
   f.wc.mainFrame.frames.push({...f.root});
   await assert.rejects(readSapPage(f.wc,f.request,f.context,'darwin'),/page_read_unavailable/);
@@ -110,15 +111,15 @@ test('host reads only verified frame, rechecks request, and cleans navigation li
 test('navigation and late revocation prevent delivery', async () => {
   const f = fixture();
   f.root.executeJavaScript = async () => {f.wc.emit('did-frame-navigate',{},f.root.url,200,'OK',false,2,4);return {source:'sap_page_dom'};};
-  await assert.rejects(readSapPage(f.wc,f.request,f.context,'darwin'),/page_changed/);
+  await assert.rejects(readSapPage(f.wc,f.request,f.context,'win32'),/page_changed/);
   const next = fixture(); let calls=0;
-  await assert.rejects(readSapPage(next.wc,next.request,async()=>{if(++calls===2)throw new Error('revoked');return next.context();},'darwin'),/revoked/);
+  await assert.rejects(readSapPage(next.wc,next.request,async()=>{if(++calls===2)throw new Error('revoked');return next.context();},'win32'),/revoked/);
   assert.equal(next.wc.listenerCount('did-frame-navigate'),0);
   const replaced = fixture(); let checks=0;
   await assert.rejects(readSapPage(replaced.wc,replaced.request,async()=>{
     if (++checks===2) replaced.wc.mainFrame.frames.push({...replaced.root});
     return replaced.context();
-  },'darwin'),/page_changed/);
+  },'win32'),/page_changed/);
 });
 
 test('bridge rejects arbitrary scripts and URLs before reaching the host', () => {
@@ -134,7 +135,7 @@ test('nested SAP document results retain provenance and truncation warnings', as
     ...await f.root.executeJavaScript(script), fields:[{label:'Supplier',value:'fixture'}],
     limitations:['子文档文本已截断。'], activeTabs:['交货计划']})};
   f.root.framesInSubtree=[f.root,child];
-  const result=await readSapPage(f.wc,f.request,f.context,'darwin');
+  const result=await readSapPage(f.wc,f.request,f.context,'win32');
   assert.equal(result.fields[0].sourceDocument,2);
   assert.ok(result.limitations.includes('子文档文本已截断。'));
   assert.match(result.activeTabs[0], /SAP 文档 2/);
@@ -145,10 +146,10 @@ test('current user has document provenance; conflicting SAP frames return unknow
   const user={account:'SAP_TEST',client:'200',systemId:'S4H',source:'sap_session_ui'};
   const child={...f.root,name:'sap-content',routingId:8,executeJavaScript:async script=>({...await original(script),currentUser:user})};
   f.root.framesInSubtree=[f.root,child];
-  assert.deepEqual((await readSapPage(f.wc,f.request,f.context,'darwin')).currentUser,{...user,sourceDocument:2});
+  assert.deepEqual((await readSapPage(f.wc,f.request,f.context,'win32')).currentUser,{...user,sourceDocument:2});
   f.root.executeJavaScript=async script=>({...await original(script),currentUser:{...user,account:'OTHER'}});
-  const conflict=await readSapPage(f.wc,f.request,f.context,'darwin');assert.equal(conflict.currentUser,null);
+  const conflict=await readSapPage(f.wc,f.request,f.context,'win32');assert.equal(conflict.currentUser,null);
   assert.ok(conflict.limitations.some(s=>s.includes('文档间')));
   f.root.executeJavaScript=original;child.url='https://approved-content.example/';
-  assert.equal((await readSapPage(f.wc,f.request,async()=>({...await f.context(),allowed_origins:['https://approved-content.example']}),'darwin')).currentUser,null);
+  assert.equal((await readSapPage(f.wc,f.request,async()=>({...await f.context(),allowed_origins:['https://approved-content.example']}),'win32')).currentUser,null);
 });

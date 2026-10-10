@@ -922,6 +922,21 @@ class FileServeHandler:
                 file_path = params.path
                 if not file_path or not os.path.isabs(file_path):
                     raise web.notfound()
+                # A file the layout migration moved still arrives under its old
+                # absolute path (messages and exported artifacts keep it). The
+                # single-hop table names its new location; resolution happens
+                # *before* any gate and grants nothing -- the mapped path is
+                # authorized below exactly like any other. A reused old path or a
+                # broken table is refused rather than served as a same-named
+                # replacement.
+                from agent.workspace.legacy_attachment_map import (
+                    CONFLICT, MISSING, resolve_attachment_path)
+                resolution = resolve_attachment_path(file_path)
+                if resolution.status == CONFLICT:
+                    raise web.HTTPError("409 Conflict")
+                if resolution.status == MISSING:
+                    raise web.notfound()
+                file_path = resolution.path
                 # Resolve symlinks and confine access to tenant/platform roots;
                 # never fall back to operator home or the whole filesystem.
                 file_path = os.path.realpath(file_path)
@@ -995,6 +1010,22 @@ class PreviewHandler:
 
             full_path = os.path.realpath(os.path.join(base_dir, rel_path))
             base_real = os.path.realpath(base_dir)
+            # A token minted *before* the layout migration mounts the old
+            # directory, while the file has since moved into ``user/<uid>/``.
+            # Translate the addressed file to its new location, but only when the
+            # target still sits inside the mount the token authorized: the table
+            # must never widen a capability URL's reach. Ownership is
+            # re-derived below regardless.
+            from agent.workspace.legacy_attachment_map import (
+                CONFLICT, MAPPED, resolve_attachment_path)
+            resolution = resolve_attachment_path(full_path)
+            if resolution.status == CONFLICT:
+                raise web.notfound()
+            if resolution.status == MAPPED:
+                candidate = os.path.realpath(resolution.path)
+                if os.path.commonpath([candidate, base_real]) != base_real:
+                    raise web.notfound()
+                full_path = candidate
             # Confine to the mounted directory, then to the globally allowed roots.
             if os.path.commonpath([full_path, base_real]) != base_real:
                 raise web.notfound()

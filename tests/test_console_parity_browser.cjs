@@ -2,6 +2,28 @@
 // Reuse the knowledge fixture's authenticated HTTP responses; never a live account.
 const assert = require('node:assert/strict');
 
+// Every 管理区 page id the console signs. An identity whose projection withholds
+// all of them, with no platform/tenant bypass, is the "all admin pages
+// unreadable" variant: the entry itself must be refused, not just one page.
+const ADMIN_PAGE_KEYS = ['admin.agents', 'admin.skills', 'admin.memory', 'admin.models',
+    'admin.channels', 'admin.external_connections', 'admin.roles', 'admin.organization',
+    'admin.tenants', 'admin.branding', 'admin.logs', 'admin.audit', 'admin.token_usage'];
+
+// Keep the granted workbench page; withhold every admin page as unavailable,
+// unreadable and menu-denied, as an ordinary member sees it.
+function denyEveryAdminPage(data) {
+    data.authorization_mode = 'role';
+    data.is_tenant_admin = false;
+    data.is_platform_admin = false;
+    data.console_pages = data.console_pages || {};
+    data.console_pages['workbench.knowledge'] = { available: true, read_allowed: true, scope: 'self', actions: {} };
+    for (const key of ADMIN_PAGE_KEYS) {
+        data.console_pages[key] = { available: false, read_allowed: false, menu_denied: true,
+            scope: 'tenant', reason: 'no_permission', actions: {} };
+    }
+    return data;
+}
+
 exports.run = async function (scenario) {
     await scenario('parity: SAP iframe navigation preserves deep shell and identity teardown', async page => {
         await page.addScriptTag({path: require('node:path').resolve(__dirname, '../Scene/sap_workbench/frontend/workbench.js')});
@@ -134,6 +156,55 @@ exports.run = async function (scenario) {
                 await route.fulfill({json:data});
             });
             page.on('request', request=>{if(new URL(request.url()).pathname==='/api/models')modelReads++;});
+        }});
+    }
+
+    // The entry itself can be refused while a registered deep path keeps its
+    // address and renders the denial. Keep the single-page case above; this
+    // variant withholds every 管理区 page from an ordinary member.
+    for (const mode of ['classic', 'split']) {
+        let modelReads = 0;
+        await scenario('parity: denied admin entry keeps registered deep routes (' + mode + ')', async page => {
+            assert.equal(new URL(page.url()).pathname, '/settings/models');
+            assert.equal(await page.locator('#view-unavailable').isVisible(), true);
+            assert.equal(await page.locator('#nav-unavailable-title').innerText(), '无权访问');
+            assert.equal(await page.locator('#app').getAttribute('data-nav-mode'), mode);
+            assert.equal(await page.locator('#app').getAttribute('data-nav-area'), 'admin');
+            assert.equal(await page.locator('#nav-open-admin').isVisible(), false,
+                'a refused entry must not be offered with every admin page unreadable');
+            assert.equal(modelReads, 0);
+            await page.reload({waitUntil:'networkidle'});
+            await page.locator('#view-unavailable').waitFor();
+            assert.equal(new URL(page.url()).pathname, '/settings/models');
+            assert.equal(await page.locator('#nav-open-admin').isVisible(), false);
+            assert.equal(modelReads, 0);
+            await page.evaluate(() => navigateTo('knowledge'));
+            await page.locator('#view-knowledge').waitFor();
+            await page.goBack(); await page.locator('#view-unavailable').waitFor();
+            assert.equal(new URL(page.url()).pathname, '/settings/models');
+            assert.equal(await page.locator('#nav-open-admin').isVisible(), false);
+            assert.equal(modelReads, 0);
+        }, {mode, path:'/settings/models', hash:'', view:'unavailable', prepare:async page=>{
+            await page.route('**/auth/context**', async route=>{
+                const response=await route.fetch();
+                await route.fulfill({json:denyEveryAdminPage(await response.json())});
+            });
+            page.on('request', request=>{if(new URL(request.url()).pathname==='/api/models')modelReads++;});
+        }});
+
+        let landingReads = 0;
+        await scenario('parity: denied admin landing returns to the conversation (' + mode + ')', async page => {
+            const landed = new URL(page.url()).pathname;
+            assert.ok(landed === '/' || landed === '/chat', 'landed at the conversation entry: ' + landed);
+            assert.equal(await page.locator('#view-chat').isVisible(), true);
+            assert.equal(await page.locator('#nav-open-admin').isVisible(), false);
+            assert.equal(landingReads, 0);
+        }, {mode, path:'/admin', hash:'', view:'chat', prepare:async page=>{
+            await page.route('**/auth/context**', async route=>{
+                const response=await route.fetch();
+                await route.fulfill({json:denyEveryAdminPage(await response.json())});
+            });
+            page.on('request', request=>{if(new URL(request.url()).pathname==='/api/models')landingReads++;});
         }});
     }
 

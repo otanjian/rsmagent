@@ -168,6 +168,24 @@ test('chat.html keeps the history panel entry below the workbench menus', () => 
     assert.match(htmlSource, /历史会话/);
 });
 
+// 平台用户管理 left the sidebar (change
+// move-password-reset-to-tenant-management). Its compat page has to stay
+// addressable from an existing bookmark without restoring a menu row: the menu
+// is gone, the view id / container / title remain, and the address still
+// resolves. No sidebar row also means no admin-home shortcut derives from it and
+// no menu item can be wrongly marked current.
+test('the hidden 平台用户管理 compat page stays addressable without a menu row', () => {
+    const htmlSource = fs.readFileSync(path.join(__dirname, '../channel/web/chat.html'), 'utf8');
+    assert.equal(htmlSource.indexOf('data-view="platform"'), -1,
+        '平台用户管理 must not paint a sidebar row (nor derive a shortcut)');
+    assert.match(htmlSource, /id="view-platform"/, 'the compat page container stays in the shell');
+    assert.match(htmlSource, /data-i18n="platform_title"/, 'the compat page keeps its own title');
+    // The view id is still registered, so `#view-platform` resolves and the
+    // breadcrumb can name the page it opened instead of selecting another menu.
+    assert.match(source, /platform:\s*\{\s*group:\s*'nav_group_platform_ops',\s*page:\s*'menu_platform'/,
+        'VIEW_META.platform still exists for the retired address');
+});
+
 test('history permission still comes from the authoritative navigation grant', () => {
     const code = section('// === SIDEBAR_RECENT_BEGIN ===', '// === SIDEBAR_RECENT_END ===');
     const sandbox = {};

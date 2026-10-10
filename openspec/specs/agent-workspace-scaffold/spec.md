@@ -9,6 +9,8 @@ TBD - created by archiving change fix-persona-workspace-facts. Update Purpose af
 
 段落 SHALL 至少标注：本智能体工作区的核心文件（`AGENT.md`、`USER.md`、`RULE.md`、`MEMORY.md`）、`memory/`（含 `long-term/index.db`，会话与长期记忆索引）、`scheduler/`、`tmp/`，以及共享层与用户私有层的位置和可见范围。
 
+新建普通 Agent 的段落 SHALL 同时描述工作区下 `user/<不可变用户ID>/{uploads,outputs,work}` 业务布局，说明无项目时的默认工作位置为本人目录，区别于共享根下跨 Agent 的 `users/<user_id>` 个人数据域。`tmp/` SHALL 标明为既有内部或兼容位置，不能描述为统一布局下新业务上传的默认目录；私有与共享普通 Agent 使用同一业务布局说明，具体可见性仍以授权为准。
+
 系统 MUST NOT 在该段落中以其它部署的根路径充当本部署的工作区或共享根。
 
 #### Scenario: 多智能体部署下的布局段落
@@ -25,4 +27,8 @@ TBD - created by archiving change fix-persona-workspace-facts. Update Purpose af
 
 - **WHEN** 本部署解析出的工作区与共享根不是 `~/cow`
 - **THEN** 生成的段落 MUST NOT 以 `~/cow/` 作为本部署的工作区或共享根
+
+#### Scenario: 新建私有与共享普通工作区
+- **WHEN** 系统分别为新建私有普通 Agent 和共享普通 Agent 生成工作空间说明
+- **THEN** 两者都说明配置根与 user/<用户ID> 业务目录的区别，uploads/outputs/work 位于该业务目录，users/<用户ID> 的跨 Agent 数据位置不被混淆
 

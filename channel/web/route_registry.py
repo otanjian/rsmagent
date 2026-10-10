@@ -266,6 +266,7 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/api/tenant/members", "TenantMembersHandler", "fork:tenant-console", {"GET": P("tenant", "tenant.members.read", comment="list members"), "POST": P("tenant", comment="create/bind member (tenant_admin)")}),
     RouteEntry("/api/tenant/members/([^/]+)/external-identities", "TenantMemberExternalIdentitiesHandler", "fork:tenant-console", {"GET": P("tenant", "tenant.members.read", comment="list a member's external identity bindings"), "POST": P("tenant", comment="bind external identity to a member")}),
     RouteEntry("/api/tenant/members/([^/]+)/external-identities/([^/]+)", "TenantMemberExternalIdentityHandler", "fork:tenant-console", {"DELETE": P("tenant", comment="delete a member's external identity binding")}),
+    RouteEntry("/api/tenant/members/([^/]+)/password", "TenantMemberPasswordHandler", "fork:tenant-console", {"POST": P("tenant", comment="reset an exclusive ordinary member password (tenant_admin)")}),
     RouteEntry("/api/tenant/members/([^/]+)", "TenantMemberHandler", "fork:tenant-console", {"POST": P("tenant", comment="update member (tenant_admin)")}),
     RouteEntry("/api/tenant/external-identity-attempts", "ExternalIdentityAttemptsHandler", "fork:tenant-console", {"GET": P("tenant", comment="unbound inbound authors for this tenant")}),
     RouteEntry("/api/tenant/roles/([^/]+)", "TenantRoleHandler", "fork:tenant-console", {"POST": P("tenant", comment="update role (tenant_admin)"), "DELETE": P("tenant", comment="delete role (tenant_admin)")}),

@@ -554,11 +554,15 @@ def _agent_tree_zh(root: str, agent_id: str) -> str:
         ("│       ├── MEMORY.md", "长期记忆索引（会话启动时自动加载）"),
         ("│       ├── memory/", "每日记忆 YYYY-MM-DD.md；long-term/index.db 为会话与长期记忆索引"),
         ("│       ├── scheduler/", "定时任务 tasks.json"),
-        ("│       └── tmp/", "系统临时文件（自动管理，勿手动存放重要文件）"),
+        ("│       ├── tmp/", "既有内部/兼容临时目录；不是统一布局下的业务上传默认位置"),
+        ("│       └── user/<用户ID>/", "本人业务目录：无项目时的默认工作位置"),
+        ("│           ├── uploads/", "本人上传的文件"),
+        ("│           ├── outputs/", "交付给本人的生成结果"),
+        ("│           └── work/", "本人临时工作目录"),
         ("├── knowledge/", "知识库数据根（index.md 索引 + log.md 操作日志）"),
         ("├── skills/", "共享技能"),
         ("├── websites/", "共享网页产物"),
-        ("└── users/<user_id>/", "每位用户私有：MEMORY.md、memory/、output/、runs/"),
+        ("└── users/<user_id>/", "每位用户私有（跨智能体）：记忆/产出；区别于工作区 user/<用户ID> 业务目录"),
     ])
 
 
@@ -574,7 +578,8 @@ def _root_tree_zh(root: str) -> str:
         ("├── skills/", "共享技能"),
         ("├── websites/", "共享网页产物"),
         ("├── scheduler/", "定时任务 tasks.json"),
-        ("├── tmp/", "系统临时文件（自动管理，勿手动存放重要文件）"),
+        ("├── tmp/", "既有内部/兼容临时目录；不是统一布局下的业务上传默认位置"),
+        ("├── user/<用户ID>/", "本人业务目录：无项目时的默认工作位置（uploads/outputs/work）"),
         ("└── agents/<id>/", "其它智能体的工作区（同一套人设与记忆文件，各自一份）"),
     ])
 
@@ -590,11 +595,15 @@ def _agent_tree_en(root: str, agent_id: str) -> str:
         ("│       ├── MEMORY.md", "long-term memory index (auto-loaded at session start)"),
         ("│       ├── memory/", "daily memory YYYY-MM-DD.md; long-term/index.db indexes sessions and memory"),
         ("│       ├── scheduler/", "scheduled tasks (tasks.json)"),
-        ("│       └── tmp/", "system temp files (auto-managed, don't store important files here)"),
+        ("│       ├── tmp/", "legacy/internal temp dir; NOT the business upload default under the unified layout"),
+        ("│       └── user/<user id>/", "your business folder: the default working location without a project"),
+        ("│           ├── uploads/", "files you uploaded"),
+        ("│           ├── outputs/", "generated results delivered to you"),
+        ("│           └── work/", "your scratch work"),
         ("├── knowledge/", "knowledge base root (index.md + log.md)"),
         ("├── skills/", "shared skills"),
         ("├── websites/", "shared web artifacts"),
-        ("└── users/<user_id>/", "private to each user: MEMORY.md, memory/, output/, runs/"),
+        ("└── users/<user_id>/", "private to each user (across Agents): memory/artifacts; distinct from the workspace user/<user id>/ business folder"),
     ])
 
 
@@ -610,7 +619,8 @@ def _root_tree_en(root: str) -> str:
         ("├── skills/", "shared skills"),
         ("├── websites/", "shared web artifacts"),
         ("├── scheduler/", "scheduled tasks (tasks.json)"),
-        ("├── tmp/", "system temp files (auto-managed, don't store important files here)"),
+        ("├── tmp/", "legacy/internal temp dir; NOT the business upload default under the unified layout"),
+        ("├── user/<user id>/", "your business folder: the default working location without a project (uploads/outputs/work)"),
         ("└── agents/<id>/", "other Agents' workspaces (same persona and memory files, one set each)"),
     ])
 
@@ -625,7 +635,8 @@ _LAYOUT_AGENT_ZH = """## 工作空间目录结构
 
 归属分三档，写入前先想清楚是哪一档：
 
-- **本智能体私有**：工作区 `agents/{agent_id}/` 下的 `AGENT.md`、`USER.md`、`RULE.md`、`MEMORY.md`、`memory/`、`scheduler/`、`tmp/`——只有你能读写。
+- **本智能体私有**：工作区 `agents/{agent_id}/` 下的 `AGENT.md`、`USER.md`、`RULE.md`、`MEMORY.md`、`memory/`、`scheduler/`、`tmp/`——只有你能读写。其中 `tmp/` 是既有内部/兼容临时目录，不是统一布局下的业务上传默认位置。
+- **本人业务目录**：工作区下的 `user/<用户ID>/{{uploads,outputs,work}}`——无项目时的默认工作位置，按不可变用户ID分开；与共享根下的 `users/<user_id>` 个人数据域（跨智能体的记忆/产出）不是同一个位置。
 - **共享层**：共享根下的 `skills/`、`websites/` 与知识库 `knowledge/`——同一共享根下的每个智能体都看得到。知识库模式决定 `knowledge/` 是哪一份：「共享」模式读取共享根的 `knowledge/`（写入共享层需要维护资格，以每轮系统提示的「共享内容维护范围」为准）；「独立」模式读写自己工作区内的 `knowledge/`。
 - **每位用户私有**：`users/<user_id>/`——当前用户的个人长期记忆与产出，其他用户看不到。
 """
@@ -641,7 +652,8 @@ _LAYOUT_ROOT_ZH = """## 工作空间目录结构
 
 归属分三档，写入前先想清楚是哪一档：
 
-- **本智能体私有**：本目录下的 `AGENT.md`、`USER.md`、`RULE.md`、`MEMORY.md`、`memory/`、`scheduler/`、`tmp/`——只有你能读写。
+- **本智能体私有**：本目录下的 `AGENT.md`、`USER.md`、`RULE.md`、`MEMORY.md`、`memory/`、`scheduler/`、`tmp/`——只有你能读写。其中 `tmp/` 是既有内部/兼容临时目录，不是统一布局下的业务上传默认位置。
+- **本人业务目录**：本目录下的 `user/<用户ID>/{{uploads,outputs,work}}`——无项目时的默认工作位置，按不可变用户ID分开；与 `users/<user_id>` 个人数据域（跨智能体的记忆/产出）不是同一个位置。
 - **共享层**：同一目录下的 `knowledge/`、`skills/`、`websites/`——`agents/<id>/` 下的其它智能体也读它；单智能体部署下这两档是同一处。知识库模式决定 `knowledge/` 是哪一份：「共享」模式读取共享根的 `knowledge/`（写入共享层需要维护资格，以每轮系统提示的「共享内容维护范围」为准）；「独立」模式读写该智能体工作区内的 `knowledge/`。
 - **每位用户私有**：`users/<user_id>/`——当前用户的个人长期记忆与产出，其他用户看不到。
 """
@@ -658,7 +670,8 @@ resolves**. Your workspace sits under the shared root, not at the instance root.
 
 Ownership has three tiers; decide which one you are writing into:
 
-- **Private to this Agent**: `AGENT.md`, `USER.md`, `RULE.md`, `MEMORY.md`, `memory/`, `scheduler/` and `tmp/` under the workspace `agents/{agent_id}/` -- only you read and write them.
+- **Private to this Agent**: `AGENT.md`, `USER.md`, `RULE.md`, `MEMORY.md`, `memory/`, `scheduler/` and `tmp/` under the workspace `agents/{agent_id}/` -- only you read and write them. `tmp/` is a legacy/internal temp dir, not the business upload default under the unified layout.
+- **Your own business folder**: `user/<user id>/{{uploads,outputs,work}}` under the workspace -- the default working location with no project, split by immutable user id; it is *not* the same place as the shared root's `users/<user_id>` personal data domain (cross-Agent memory/artifacts).
 - **Shared layer**: `skills/`, `websites/` and the knowledge base `knowledge/` under the shared root -- every Agent under the same shared root sees them. The knowledge-base mode decides which `knowledge/` applies: in **shared** mode you read the shared root's `knowledge/` (writing to the shared layer requires maintenance qualification, per this turn's "Shared content maintenance scope"); in **own** mode you read and write only the `knowledge/` inside your workspace.
 - **Private to each user**: `users/<user_id>/` -- the current user's personal long-term memory and artifacts, invisible to other users.
 """
@@ -675,7 +688,8 @@ resolves**. Your workspace *is* the shared root.
 
 Ownership has three tiers; decide which one you are writing into:
 
-- **Private to this Agent**: `AGENT.md`, `USER.md`, `RULE.md`, `MEMORY.md`, `memory/`, `scheduler/` and `tmp/` in this directory -- only you read and write them.
+- **Private to this Agent**: `AGENT.md`, `USER.md`, `RULE.md`, `MEMORY.md`, `memory/`, `scheduler/` and `tmp/` in this directory -- only you read and write them. `tmp/` is a legacy/internal temp dir, not the business upload default under the unified layout.
+- **Your own business folder**: `user/<user id>/{{uploads,outputs,work}}` in this directory -- the default working location with no project, split by immutable user id; it is *not* the same place as the `users/<user_id>` personal data domain (cross-Agent memory/artifacts).
 - **Shared layer**: `knowledge/`, `skills/` and `websites/` in the same directory -- the other Agents under `agents/<id>/` read them too; on a single-Agent install the two tiers are the same place. The knowledge-base mode decides which `knowledge/` applies: in **shared** mode you read the shared root's `knowledge/` (writing to the shared layer requires maintenance qualification, per this turn's "Shared content maintenance scope"); in **own** mode you read and write the one inside that Agent's workspace.
 - **Private to each user**: `users/<user_id>/` -- the current user's personal long-term memory and artifacts, invisible to other users.
 """

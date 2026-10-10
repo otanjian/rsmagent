@@ -120,22 +120,27 @@ function wsAgentVisibility(agentId) {
 }
 
 /**
- * This caller's own file folder inside a tenant-shared Agent, or ''.
+ * This caller's own file folder inside a normal Agent, or ''.
  *
- * A shared Agent keeps the things every member shares (`AGENT.md`,
+ * A tenant-shared Agent keeps the things every member shares (`AGENT.md`,
  * `knowledge/`, `memory/`) at its own root, and each member's own uploads and
  * delivered results under `user/<user id>`. Opening the panel on the shared
  * root would show a member a folder that is not theirs, so a shared Agent opens
  * on the caller's own subtree instead.
  *
- * Empty whenever the answer would be a guess: a private Agent has no such split
- * (its whole root is the owner's), an unknown roster row is not treated as
- * shared, and an unknown user id is not invented.
+ * The caller's own **private** Agent uses the same layout (change
+ * ``unify-private-agent-personal-workspace``): its business files also live
+ * under `user/<user id>`, while AGENT.md, knowledge and memory stay at the
+ * Agent root. A coding Agent and an unknown roster row get no split here.
+ *
+ * Empty whenever the answer would be a guess: an unknown roster row is not
+ * treated as either state, and an unknown user id is not invented.
  */
 function wsOwnUserDirPath(agentId) {
     const dir = wsAgentDirPath(agentId);
     if (!dir || !wsOwnUserIdCache) return '';
-    if (wsAgentVisibility(agentId) !== 'tenant') return '';
+    const visibility = wsAgentVisibility(agentId);
+    if (visibility !== 'tenant' && visibility !== 'private') return '';
     return `${dir}/${WS_USER_DIR}/${wsOwnUserIdCache}`;
 }
 
@@ -2513,18 +2518,19 @@ let wsUploadSeq = 0;
 /**
  * The directory the caller may write into for the Agent being browsed, or ''.
  *
- * A tenant-shared Agent keeps each member's files under `user/<user id>`; a
- * private one has no such split (its whole workspace is the owner's). Both
- * answers are the ones the panel already derives for its landing path, so the
- * drop affordance asks the same question rather than a second one. This is a
- * UI hint only: the server decides, and it refuses regardless of what the
+ * A tenant-shared Agent and the caller's own private Agent both keep the
+ * member's files under `user/<user id>` (changes
+ * ``use-personal-workspace-for-shared-agents`` and
+ * ``unify-private-agent-personal-workspace``); a coding Agent keeps its whole
+ * workspace. This is the same answer the panel derives for its landing path,
+ * so the drop affordance asks the same question rather than a second one. This
+ * is a UI hint only: the server decides, and it refuses regardless of what the
  * panel believes.
  */
 function wsWritableRootPath() {
     const agentId = wsScopedAgentId();
     if (!agentId) return '';
-    if (wsAgentVisibility(agentId) === 'tenant') return wsOwnUserDirPath(agentId);
-    return wsAgentDirPath(agentId);
+    return wsOwnUserDirPath(agentId) || wsAgentDirPath(agentId);
 }
 
 /** Whether the folder currently listed is one the caller may write into. */

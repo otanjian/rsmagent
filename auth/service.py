@@ -229,6 +229,10 @@ def _validate_new_account(username: str, temporary_password: str) -> None:
 #: forced-password-change account is never left without a deadline.
 TEMPORARY_PASSWORD_TTL_SECONDS = 86400  # 24 hours
 
+# Product policy for tenant-admin member resets only. New accounts and the
+# user's permanent password still use the normal password-strength rules.
+TENANT_RESET_TEMPORARY_PASSWORD = "123456"
+
 
 def _now() -> int:
     return int(time.time())
@@ -4821,24 +4825,123 @@ class IdentityService:
                 raise IdentityServiceError(
                     "cannot reset your own account; use the change-password flow",
                     code="self_reset_forbidden", status=409)
-            con.execute(
-                "UPDATE users SET password_hash=?, must_change_password=1,"
-                " temp_password_expires_at=?, version=version+1 WHERE id=?",
-                (temp_hash, int(time.time()) + TEMPORARY_PASSWORD_TTL_SECONDS, user_id),
-            )
-            con.execute(
-                "UPDATE auth_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
-                (int(time.time()), user_id),
-            )
-            self._audit_in_tx(
-                con, actor_user_id=actor_user_id, actor_username=actor["username"],
-                tenant_id=None, target_tenant_id=None, action="user.password.reset",
-                target=f"user:{user_id}",
-                redacted_changes={"must_change": True}, result="success")
+            expires_at = self._reset_account_password_in_tx(
+                con, actor=actor, user_id=user_id, temp_hash=temp_hash)
             con.commit()
         # Only here, after commit, is the one-time temp password returned.
         return {"id": user_id, "temporary_password": temp_password,
-                "must_change_password": True}
+                "must_change_password": True,
+                "temporary_password_expires_at": expires_at}
+
+    def _reset_account_password_in_tx(
+        self, con, *, actor, user_id: str, temp_hash: str,
+        tenant_id: Optional[str] = None,
+    ) -> int:
+        """Commit neither credentials nor revocations without their audit."""
+        now = int(time.time())
+        expires_at = now + TEMPORARY_PASSWORD_TTL_SECONDS
+        con.execute(
+            "UPDATE users SET password_hash=?, must_change_password=1,"
+            " temp_password_expires_at=?, version=version+1 WHERE id=?",
+            (temp_hash, expires_at, user_id),
+        )
+        con.execute(
+            "UPDATE auth_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+            (now, user_id),
+        )
+        try:
+            self._audit_in_tx(
+                con, actor_user_id=actor["id"], actor_username=actor["username"],
+                tenant_id=tenant_id, target_tenant_id=tenant_id,
+                action="user.password.reset", target=f"user:{user_id}",
+                redacted_changes={"must_change": True}, result="success")
+        except Exception as exc:
+            raise IdentityServiceError(
+                "password reset unavailable", code="identity_unavailable", status=503) from exc
+        return expires_at
+
+    @staticmethod
+    def _tenant_password_reset_eligible_sql() -> str:
+        """One target rule for the member-list projection and locked write.
+
+        Uses the m (membership) and u (account) aliases. Even disabled tenant
+        memberships count as sharing: restoring one must not expose another
+        tenant's account to a password chosen by this tenant's administrator.
+        """
+        return """
+            u.active=1 AND m.active=1
+            AND NOT EXISTS (
+                SELECT 1 FROM memberships other
+                WHERE other.user_id=u.id AND other.tenant_id<>m.tenant_id)
+            AND NOT EXISTS (
+                SELECT 1 FROM user_platform_roles upr
+                JOIN platform_roles pr ON pr.id=upr.platform_role_id
+                WHERE upr.user_id=u.id AND pr.code='platform_admin')
+            AND NOT EXISTS (
+                SELECT 1 FROM memberships am
+                JOIN membership_roles mr ON mr.membership_id=am.id
+                JOIN roles r ON r.id=mr.role_id AND r.tenant_id=am.tenant_id
+                WHERE am.user_id=u.id AND r.code='tenant_admin')
+        """
+
+    def reset_tenant_member_password(
+        self, *, actor_user_id: str, actor_session_id: str, tenant_id: str,
+        member_id: str, expected_version: int, recent_password: str,
+    ) -> Dict[str, Any]:
+        """Reset an exclusive ordinary member; recheck all authority under lock."""
+        self._require_tenant_admin_of(actor_user_id, tenant_id)
+        actor_snapshot = self._find_user_by_id(actor_user_id)
+        if not actor_snapshot or not verify_password(recent_password, actor_snapshot["password_hash"]):
+            raise IdentityServiceError("recent password required", code="invalid_old", status=401)
+        # Only this fixed temporary credential is exempt from minimum length.
+        # Both password verification and hashing happen outside the write lock.
+        temp_hash = hash_password(TENANT_RESET_TEMPORARY_PASSWORD, min_length=6)
+        try:
+            with self._tx() as con:
+                actor = con.execute("SELECT * FROM users WHERE id=?", (actor_user_id,)).fetchone()
+                session = con.execute(
+                    "SELECT 1 FROM auth_sessions WHERE id=? AND user_id=?"
+                    " AND revoked_at IS NULL AND expires_at>? AND restricted=0",
+                    (actor_session_id, actor_user_id, int(time.time())),
+                ).fetchone()
+                if (not actor or not actor["active"] or actor["must_change_password"]
+                        or not session or actor["version"] != actor_snapshot["version"]
+                        or actor["password_hash"] != actor_snapshot["password_hash"]):
+                    raise IdentityServiceError("session changed", code="session_invalid", status=401)
+                admin = con.execute(
+                    "SELECT 1 FROM memberships m JOIN tenants t ON t.id=m.tenant_id"
+                    " JOIN membership_roles mr ON mr.membership_id=m.id"
+                    " JOIN roles r ON r.id=mr.role_id AND r.tenant_id=m.tenant_id"
+                    " WHERE m.user_id=? AND m.tenant_id=? AND m.active=1"
+                    " AND t.active=1 AND r.code=?",
+                    (actor_user_id, tenant_id, TENANT_ADMIN_CODE),
+                ).fetchone()
+                if not admin:
+                    raise IdentityServiceError("tenant administrator required", code="forbidden", status=403)
+                target = con.execute(
+                    "SELECT u.id, u.version, (" + self._tenant_password_reset_eligible_sql()
+                    + ") AS eligible FROM memberships m JOIN users u ON u.id=m.user_id"
+                    " WHERE m.id=? AND m.tenant_id=?", (member_id, tenant_id),
+                ).fetchone()
+                if not target:
+                    raise IdentityServiceError("member not found", code="not_found", status=404)
+                if target["id"] == actor_user_id:
+                    raise IdentityServiceError(
+                        "use the change-password flow", code="self_reset_forbidden", status=409)
+                if not target["eligible"]:
+                    raise IdentityServiceError(
+                        "this account requires a platform administrator",
+                        code="platform_reset_required", status=403)
+                if target["version"] != expected_version:
+                    raise IdentityServiceError("version conflict", code="conflict", status=409)
+                expires_at = self._reset_account_password_in_tx(
+                    con, actor=actor, user_id=target["id"], temp_hash=temp_hash, tenant_id=tenant_id)
+                con.commit()
+        except sqlite3.Error as exc:
+            raise IdentityServiceError(
+                "password reset unavailable", code="identity_unavailable", status=503) from exc
+        return {"id": target["id"], "temporary_password": TENANT_RESET_TEMPORARY_PASSWORD,
+                "must_change_password": True, "temporary_password_expires_at": expires_at}
 
     def _check_platform_admin_continuity(self, con, *, actor_user_id, target,
                                          target_active, target_admin) -> None:
@@ -6267,7 +6370,8 @@ class IdentityService:
                      department_id: Optional[str] = None,
                      status: Optional[str] = None,
                      role: Optional[str] = None,
-                     page: int = 1, page_size: int = 100) -> Dict[str, Any]:
+                     page: int = 1, page_size: int = 100, *,
+                     actor_user_id: Optional[str] = None) -> Dict[str, Any]:
         if page_size > 100:
             page_size = 100
         where = ["m.tenant_id=?"]
@@ -6297,12 +6401,16 @@ class IdentityService:
         count_where = " AND ".join(where)
         count_params = list(params)
         page_params = params + [page_size, (page - 1) * page_size]
+        may_reset = bool(actor_user_id and self._is_tenant_admin(actor_user_id, tenant_id))
+        platform_reset = bool(may_reset and self.is_platform_admin(actor_user_id))
+        reset_rule = "1" if platform_reset else self._tenant_password_reset_eligible_sql()
         rows = self._store.execute(
             f"SELECT m.id, m.display_name, m.active, m.department_id, m.position_text,"
-            f" m.version, u.username, u.id AS user_id, u.avatar"
+            f" m.version, u.username, u.id AS user_id, u.avatar, u.version AS user_version,"
+            f" (? AND u.id<>? AND ({reset_rule})) AS can_reset_password"
             f" FROM memberships m JOIN users u ON u.id=m.user_id"
             f" WHERE {count_where} ORDER BY u.username LIMIT ? OFFSET ?",
-            page_params,
+            [may_reset, actor_user_id or ""] + page_params,
         )
         total = self._store.execute(
             f"SELECT COUNT(*) AS c FROM memberships m JOIN users u ON u.id=m.user_id"
@@ -6314,35 +6422,48 @@ class IdentityService:
         items = []
         for r in rows:
             item = dict(r)
+            item["can_reset_password"] = bool(item["can_reset_password"])
             item["role_codes"] = self._role_codes_for_membership(r["id"])
             items.append(item)
         return {"items": items, "total": total, "page": page}
 
     def tenant_admins(self, tenant_id: str) -> List[Dict[str, Any]]:
-        """Current valid ``tenant_admin`` members of a tenant, earliest first.
+        """``tenant_admin`` bindings of a tenant, earliest first.
 
-        "Valid" uses the same predicate as ``_count_valid_tenant_admins``: the
-        membership, the account and the role binding must all be active. The
-        tenant editor reads this to show who currently administers the tenant
-        without guessing from the candidate account list.
+        A binding qualifies while its membership is active and it still holds the
+        ``tenant_admin`` role. The account itself may be disabled: the tenant
+        editor renders the account's enable/disable control on this card, so a
+        disabled admin must stay locatable there to be re-enabled. A disabled
+        account is still not a *valid* admin — ``_count_valid_tenant_admins``
+        keeps excluding it, so last-admin protection is unchanged.
 
-        Read-only projection: only the membership/account identifiers, the login
-        name and the membership display name are returned. Password material is
-        never selected, so it cannot leak through this path. An unknown tenant
-        (or one with no valid admin) yields an empty list rather than an error.
+        Read-only projection: identifiers, login/display name and the
+        account-state fields the card's two buttons need (account active flag,
+        account version, platform qualification). A disabled membership or a
+        removed role drops the binding; password material is never selected, so
+        it cannot leak through this path. An unknown tenant (or one with no admin
+        binding) yields an empty list rather than an error.
         """
         rows = self._store.execute(
             "SELECT m.id AS membership_id, u.id AS user_id,"
-            " u.username, m.display_name"
+            " u.username, m.display_name,"
+            " u.active AS account_active, u.version AS account_version,"
+            " u.is_platform_admin"
             " FROM memberships m"
             " JOIN users u ON u.id=m.user_id"
             " JOIN membership_roles mr ON mr.membership_id=m.id"
             " JOIN roles r ON r.id=mr.role_id"
-            " WHERE m.tenant_id=? AND m.active=1 AND u.active=1 AND r.code=?"
+            " WHERE m.tenant_id=? AND m.active=1 AND r.code=?"
             " ORDER BY m.created_at, m.rowid",
             (tenant_id, TENANT_ADMIN_CODE),
         )
-        return [dict(r) for r in rows]
+        items = []
+        for r in rows:
+            item = dict(r)
+            item["account_active"] = bool(item["account_active"])
+            item["is_platform_admin"] = bool(item["is_platform_admin"])
+            items.append(item)
+        return items
 
     # ------------------------------------------------------------------ #
     # Delegation receiver projection (todo-delegation)

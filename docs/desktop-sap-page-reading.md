@@ -1,10 +1,10 @@
-# macOS SAP 当前页面读取
+# 桌面 SAP 当前页面读取
 
-实现对应 OpenSpec change `add-desktop-sap-page-reading`。首版只支持 macOS 桌面的原生 SAP iframe；普通 Web、Windows 和旧桌面不会自动获得读取能力。
+实现对应 OpenSpec change `add-desktop-sap-page-reading`，Windows 扩展见 `add-desktop-sap-windows-support`。支持 macOS 与 Windows 桌面的原生 SAP iframe；普通 Web、Linux 宿主和旧桌面不会自动获得读取能力。
 
 ## 使用与开关
 
-服务端场景配置新增 `desktop_sap_page_read_enabled`，默认 `false`。管理者可在 SAP 场景连接设置中看到“macOS 当前页面读取”。服务端、项目插件和 macOS 桌面都需包含本次更新。2026-10-06 已在当前测试租户启用，macOS + 真实 SAP + OpenCode 页面读取联调通过；其他配置默认仍关闭。
+服务端场景配置新增 `desktop_sap_page_read_enabled`，默认 `false`。管理者可在 SAP 场景连接设置中看到“桌面当前页面读取”。服务端、项目插件和桌面客户端都需包含本次更新。2026-10-06 已在当前测试租户启用，macOS + 真实 SAP + OpenCode 页面读取联调通过；2026-10-07 宿主门禁扩展到 Windows。其他配置默认仍关闭。
 
 在测试租户临时开启开关并重新进入 SAP 工作台进行验收，使新绑定使用新的配置版本；真实环境验收通过后才保持开启。确认 OpenCode 已加载更新后的项目插件、当前工具列表包含 `sap_page_read`。在同一个 OpenCode 会话中要求“读取左侧当前页面”，模型调用这个无参数工具，无需额外绑定操作。普通获授权成员可读取自己的当前工作台。OpenCode 新建/切换会话仍走平台原有 attach 核验，核验后的链接同步到现有场景绑定；旧读取失效。重新打开历史会话会通过同一 attach 更新工具权限，不创建聊天副本。
 
@@ -12,7 +12,7 @@
 
 ## 数据路径与边界
 
-`sap_page_read` → 既有服务端场景桥 `/api/scenes/sap-workbench/bridge/read` → owner/runtime dispatch → heartbeat → 当前 macOS 宿主 → 固定 DOM 脚本 → 结果回执 → 原始工具调用。
+`sap_page_read` → 既有服务端场景桥 `/api/scenes/sap-workbench/bridge/read` → owner/runtime dispatch → heartbeat → 当前 macOS / Windows 宿主 → 固定 DOM 脚本 → 结果回执 → 原始工具调用。
 
 插件携带 OpenCode 的受信 `context.sessionID`；模型不能指定窗口、URL、selector、脚本或身份。服务桥要求同机 OpenCode 服务认证，再按会话解析归属。宿主只接受现有受信主 frame 的 IPC，读取前后通过登录会话向服务端核对 pending；目标必须是该宿主内当前绑定的 SAP 直接子 frame，嵌套文档只允许场景配置的源。
 
@@ -45,7 +45,9 @@
 
 验证结果：SAP 与 coding routes Python 回归 1,499 通过、3 跳过（两条既有弃用警告）；历史会话权限刷新附加测试 2 通过。前端、项目插件、宿主边界和 DOM 测试合计 125 通过，其中最终前端回归 71 通过。`npm run build`、最终宿主编译、Electron fixture 和 OpenSpec 严格校验通过。
 
-2026-10-06 后续联调已重启 macOS 桌面，并修正开关关闭被误报为 Windows 的问题：服务端现在返回独立的 `page_read_disabled`，插件区分远程服务端系统与桌面客户端能力。测试租户配置版本由 1 更新为 2 并开启读取。真实 `sap_page_read` 已读取 SMEN 首页和 ME23N 订单 4500000127、供应商 EWM17-SU01、两条 EWMS4-01 行项目（各 2 CAR）、交货计划页签。OpenSpec 1.1 完成；3.3 的真实未保存输入仍待验证，Windows 桌面未验证。
+2026-10-06 后续联调已重启 macOS 桌面，并修正开关关闭被误报为 Windows 的问题：服务端现在返回独立的 `page_read_disabled`，插件区分远程服务端系统与桌面客户端能力。测试租户配置版本由 1 更新为 2 并开启读取。真实 `sap_page_read` 已读取 SMEN 首页和 ME23N 订单 4500000127、供应商 EWM17-SU01、两条 EWMS4-01 行项目（各 2 CAR）、交货计划页签。OpenSpec 1.1 完成；3.3 的真实未保存输入仍待验证。
+
+2026-10-07：Windows 桌面与 macOS 共用同一宿主桥；`win32` 不再返回 `page_read_unsupported`。自动化覆盖 Windows 平台参数；真实 Windows + SAP 现场验收仍待补齐。
 
 订单号、供应商、行项目和交货计划已对照真实画面。尚需在可丢弃测试单据验证未保存输入，然后恢复输入且不提交业务；目前该项只有独立 fixture 证据。
 
@@ -61,7 +63,7 @@
 
 验证：公网 `/chat` 与 `/code/` 均返回 200；公开 SAP 前端文件与本地字节一致；新读取桥无凭据返回 `401 bridge_unauthorized`，受信服务调用未绑定会话返回 `403 session_not_bound`；OpenCode 健康检查通过，实际工具注册列表包含 `sap_transaction_open`、`sap_data_call`、`sap_page_read`。更新前后项目 28 个会话的 ID 集合一致。初次部署没有更改模型设置、业务数据或场景读取开关；后续仅按修复请求开启测试租户读取。
 
-修正备份为 `C:\rdai\backups\sap-page-read-20261006-165323`，包含启用前场景数据库副本。桌面与远程插件均已更新，并完成上述真实页面读取验证。初次部署的结构化证据见 `openspec/changes/add-desktop-sap-page-reading/evidence/remote-deployment.json`。
+修正备份为 `C:\rdai\backups\sap-page-read-20261006-165323`，包含启用前场景数据库副本。桌面与远程插件均已更新，并完成上述真实页面读取验证。初次部署的结构化证据见 `openspec/changes/archive/2026-10-08-add-desktop-sap-page-reading/evidence/remote-deployment.json`。
 
 ## 本地验证命令
 

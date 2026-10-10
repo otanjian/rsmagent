@@ -25,9 +25,13 @@
     let _generation = 0;
 
     // Bump on tenant switch or page cleanup so in-flight responses from the
-    // previous tenant are discarded (task 3.7 late-response guard).
+    // previous tenant are discarded (task 3.7 late-response guard). The same
+    // events are a context switch for a one-time password result: the secret
+    // belongs to the account of the context that was left, so it is dropped
+    // here rather than allowed to appear over the next tenant or identity.
     function bumpTenantGeneration() {
         _generation += 1;
+        _clearOneTimeSecret();
     }
 
     async function apiFetch(path, options) {
@@ -894,7 +898,8 @@
         const submitLabel = submitBtn.querySelector('.admin-modal-submit-label');
         if (submitLabel) submitLabel.textContent = cfg.submitLabel || t('save');
         submitBtn.disabled = false;
-        document.getElementById('admin-modal-cancel').textContent = t('cancel');
+        submitBtn.classList.toggle('hidden', !cfg.submit);
+        document.getElementById('admin-modal-cancel').textContent = cfg.cancelLabel || t('cancel');
         _adminModal = {
             open: true, dirty: false,
             fields: cfg.fields || [],
@@ -954,6 +959,8 @@
     function closeAdminModalNoPrompt() {
         const el = document.getElementById('admin-modal');
         if (el) el.classList.add('hidden');
+        const body = document.getElementById('admin-modal-body');
+        if (body) body.innerHTML = '';
         _adminModal = { open: false, dirty: false, fields: [], submit: null, onConflictReload: null, afterSuccess: null, statusEl: null, successMsg: '' };
     }
 
@@ -980,15 +987,17 @@
         btn.disabled = true;
         closeAdminErr();
         try {
-            await cfg.submit(body);
+            const result = await cfg.submit(body);
             closeAdminModalNoPrompt();
             if (cfg.statusEl) status(cfg.statusEl, cfg.successMsg, true);
             // `afterSuccess` runs AFTER the modal is dismissed and `_adminModal`
             // is reset, so a follow-up dialog opened here is not immediately
-            // closed and does not inherit this modal's dirty/field state. Its
-            // failures must not turn a committed write back into an error.
+            // closed and does not inherit this modal's dirty/field state. It
+            // receives the submit's return value (e.g. the one-time password)
+            // and its failures must not turn a committed write back into an
+            // error.
             if (cfg.afterSuccess) {
-                try { await cfg.afterSuccess(body); } catch (e) { /* follow-up only */ }
+                try { await cfg.afterSuccess(body, result); } catch (e) { /* follow-up only */ }
             }
         } catch (err) {
             if (err.status === 409 || err.code === 'conflict') {
@@ -1635,6 +1644,7 @@
             // dedicated read. It is not a form control: it never preselects the
             // picker nor dirties the tab.
             '<div id="tenant-current-admin" class="tenant-current-admin mb-3"></div>' +
+            '<div id="tenant-current-admin-msg" class="tenant-current-admin-msg text-xs mb-3"></div>' +
             '<div class="tenant-admin-modes" role="group">' +
             '<button type="button" class="tenant-admin-mode active" id="tenant-admin-mode-existing" data-mode="existing"></button>' +
             '<button type="button" class="tenant-admin-mode" id="tenant-admin-mode-new" data-mode="new"></button>' +
@@ -1829,12 +1839,202 @@
                 label + ': ' + escapeHtml(t('tenant_current_admin_none')) + '</div>';
             return;
         }
+        // The account's own enable/disable and reset live on this card. They act
+        // on the account shown here (never the picker's unsaved selection) and
+        // are independent of the tab's save, so they use the account's version
+        // and keep its original platform qualification.
+        const active = admin.account_active !== false;
         el.innerHTML = '<div class="tenant-current-admin-card">' +
+            '<div class="tenant-current-admin-main">' +
             '<div class="text-[10px] uppercase tracking-wide text-slate-400">' + label + '</div>' +
             '<div class="text-sm text-slate-700 dark:text-slate-200">' +
             escapeHtml(admin.display_name || admin.username) + '</div>' +
-            '<div class="text-[10px] text-slate-400">' + escapeHtml(admin.username) + '</div>' +
+            '<div class="text-[10px] text-slate-400">' + escapeHtml(admin.username) +
+            ' · ' + escapeHtml(t(active ? 'tenant_admin_account_active'
+                                        : 'tenant_admin_account_disabled')) + '</div>' +
+            '</div>' +
+            '<div class="tenant-current-admin-actions">' +
+            '<button type="button" class="admin-row-btn" onclick="tenantCardToggleAccount()">' +
+            escapeHtml(t(active ? 'tenant_admin_disable_account'
+                                : 'tenant_admin_enable_account')) + '</button>' +
+            '<button type="button" class="admin-row-btn" onclick="tenantCardResetPassword()">' +
+            escapeHtml(t('admin_reset')) + '</button>' +
+            '</div>' +
             '</div>';
+    }
+
+    function _setTenantAdminMsg(msg) {
+        const el = document.getElementById('tenant-current-admin-msg');
+        if (el) el.textContent = msg || '';
+    }
+
+    // Enable/disable the account shown on the card. Reuses the platform account
+    // PATCH so last-admin protection, session revocation and audit stay put;
+    // the write is independent of the tenant editor's save and only refreshes
+    // the card.
+    function tenantCardToggleAccount() {
+        const admin = (_tenantEditor.admins || [])[0];
+        if (!admin || !_tenantEditor.id) return;
+        const targetId = _tenantEditor.id;
+        const enabling = admin.account_active === false;
+        const name = admin.username || admin.display_name || '';
+        _setTenantAdminMsg('');
+        if (!window.confirm(t(enabling ? 'tenant_admin_enable_confirm'
+                                       : 'tenant_admin_disable_confirm').replace('{name}', name))) {
+            return;
+        }
+        openAdminModal({
+            title: t(enabling ? 'tenant_admin_enable_account' : 'tenant_admin_disable_account'),
+            subtitle: name,
+            icon: enabling ? 'fa-circle-check' : 'fa-ban',
+            fields: [
+                { name: 'recent_password', label: t('admin_field_recent_password'),
+                  type: 'password', required: true, hint: t('admin_field_recent_password_hint') },
+            ],
+            submitLabel: t(enabling ? 'tenant_admin_enable_account' : 'tenant_admin_disable_account'),
+            statusEl: document.getElementById('tenant-current-admin-msg'),
+            submit: async function (body) {
+                // The account version guards the write and the original platform
+                // qualification is carried back so this never demotes the target.
+                body.expected_version = admin.account_version;
+                body.active = enabling;
+                body.is_platform_admin = !!admin.is_platform_admin;
+                await apiFetch('/api/platform/users/' + encodeURIComponent(admin.user_id),
+                    { method: 'PATCH', body: body });
+                if (_tenantEditor.id === targetId) await _loadTenantCurrentAdmin();
+            },
+            onConflictReload: function () {
+                if (_tenantEditor.id === targetId) _loadTenantCurrentAdmin();
+            },
+        });
+    }
+
+    // Reset the card account's password. Shares the platform reset dialog with
+    // the platform users view so the one-time result behaves identically.
+    function tenantCardResetPassword() {
+        const admin = (_tenantEditor.admins || [])[0];
+        if (!admin || !_tenantEditor.id) return;
+        const targetId = _tenantEditor.id;
+        _setTenantAdminMsg('');
+        _openAccountReset({
+            user_id: admin.user_id,
+            username: admin.username,
+            display_name: admin.display_name,
+            version: admin.account_version,
+        }, {
+            statusEl: document.getElementById('tenant-current-admin-msg'),
+            onDone: function () {
+                if (_tenantEditor.id === targetId) _loadTenantCurrentAdmin();
+            },
+        });
+    }
+
+    // The self profile is only cached once isPlatformAdmin() has fetched it; the
+    // reset flow needs the actor's id to keep "reset yourself" out of the
+    // platform reset path.
+    async function selfProfile() {
+        if (!_selfProfile) { try { await isPlatformAdmin(); } catch (e) { /* best effort */ } }
+        return _selfProfile || null;
+    }
+
+    // Shared platform account reset. Both entry points (the platform account
+    // list and the tenant admin card) reuse it, so the one-time result contract
+    // is defined once. A self-reset is routed to the existing self
+    // change-password flow instead of the admin reset.
+    async function _openAccountReset(target, opts) {
+        opts = opts || {};
+        const self = await selfProfile();
+        if (self && self.user && self.user.id === target.user_id) {
+            status(opts.statusEl, t('account_self_reset_hint'), true);
+            if (typeof window.openAccountPassword === 'function') window.openAccountPassword();
+            return;
+        }
+        if (!window.confirm(t('admin_reset_confirm').replace('{name}',
+                target.username || target.display_name || ''))) {
+            return;
+        }
+        openAdminModal({
+            title: t('admin_reset'),
+            // A platform reset changes the account everywhere it signs in, so
+            // the scope is named in the dialog, not just the confirm.
+            subtitle: (target.username || '') + ' · ' + t('admin_reset_global_hint'),
+            icon: 'fa-key',
+            fields: [
+                { name: 'recent_password', label: t('admin_field_recent_password'),
+                  type: 'password', required: true, hint: t('admin_field_recent_password_hint') },
+            ],
+            submitLabel: t('admin_reset_do'),
+            statusEl: opts.statusEl,
+            submit: async function (body) {
+                body.expected_version = target.version;
+                return await apiFetch(
+                    '/api/platform/users/' + encodeURIComponent(target.user_id) + '/password',
+                    { method: 'POST', body: body, suppressAuthOverlay: true });
+            },
+            // The generic submit closes its modal before this runs, so the
+            // one-time password is shown in its own dialog and the follow-up
+            // refresh is a separate step whose failure cannot hide it.
+            afterSuccess: function (body, result) {
+                _showOneTimeSecret(result && result.temporary_password);
+                if (opts.onDone) opts.onDone();
+            },
+            onConflictReload: function () { if (opts.onDone) opts.onDone(); },
+        });
+    }
+
+    // ---- one-time password result ----------------------------------------
+    // The temporary password is shown once and never written to storage, the
+    // URL or a log. It is cleared on close, on a successful leave and when the
+    // editing target changes, so it cannot reappear in another context.
+    let _oneTimeSecret = '';
+
+    function _clearOneTimeSecret() {
+        _oneTimeSecret = '';
+        const el = document.getElementById('one-time-secret-modal');
+        if (el) el.classList.add('hidden');
+        const value = document.getElementById('one-time-secret-value');
+        if (value) value.textContent = '';
+    }
+
+    function _copyOneTimeSecret() {
+        if (!_oneTimeSecret) return;
+        try {
+            if (typeof copyToClipboard === 'function') {
+                const pending = copyToClipboard(_oneTimeSecret);
+                if (pending && typeof pending.catch === 'function') pending.catch(function () {});
+            }
+        } catch (e) { /* copying is best-effort */ }
+    }
+
+    function _showOneTimeSecret(secret) {
+        if (!secret) return;
+        _clearOneTimeSecret();
+        let el = document.getElementById('one-time-secret-modal');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'one-time-secret-modal';
+            el.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40';
+            el.innerHTML =
+                '<div class="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md p-6">' +
+                '<div class="text-sm font-medium text-slate-800 dark:text-slate-100" id="one-time-secret-title"></div>' +
+                '<div class="text-lg font-semibold break-all text-emerald-600 dark:text-emerald-400 mt-3" id="one-time-secret-value"></div>' +
+                '<div class="flex justify-end gap-2 mt-5">' +
+                '<button type="button" class="admin-row-btn" id="one-time-secret-copy"></button>' +
+                '<button type="button" class="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium" id="one-time-secret-close"></button>' +
+                '</div></div>';
+            document.body.appendChild(el);
+            document.getElementById('one-time-secret-copy')
+                .addEventListener('click', _copyOneTimeSecret);
+            document.getElementById('one-time-secret-close')
+                .addEventListener('click', _clearOneTimeSecret);
+        }
+        document.getElementById('one-time-secret-title').textContent =
+            t('admin_reset_temp_result');
+        document.getElementById('one-time-secret-copy').textContent = t('admin_reset_temp_copy');
+        document.getElementById('one-time-secret-close').textContent = t('close');
+        document.getElementById('one-time-secret-value').textContent = secret;
+        _oneTimeSecret = secret;
+        el.classList.remove('hidden');
     }
 
     // Best-effort read: a failure is surfaced (and stays distinct from "no
@@ -2324,6 +2524,9 @@
         const el = document.getElementById('tenant-editor');
         if (el) el.classList.add('hidden');
         _tenantEditor = _tenantEditorIdle();
+        // Leaving the editor (or switching its target) is a context switch: any
+        // one-time password shown for the previous target is cleared with it.
+        _clearOneTimeSecret();
     }
 
     // Reveal the unsaved-draft prompt without closing (navigation guard path).
@@ -2635,7 +2838,6 @@
             _memberById = {};
             const rolesByCode = {};
             _roles.forEach(function (r) { rolesByCode[r.code] = r; });
-            const platformAdmin = await isPlatformAdmin();
             const rows = data.items.map(function (m) {
                 _memberById[m.id] = m;
                 const roleNames = (m.role_codes || []).map(function (c) {
@@ -2650,7 +2852,7 @@
                     + '<button class="admin-row-btn" onclick="adminRowAction(\'member\',\'edit\',\'' + escapeHtml(m.id) + '\')"><i class="fas fa-pen mr-1"></i>' + escapeHtml(t('admin_edit')) + '</button>'
                     + '<button class="admin-row-btn" onclick="openExternalIdentities(\'member\',\'' + escapeHtml(m.id) + '\')"><i class="fas fa-link mr-1"></i>' + escapeHtml(t('extid_title')) + '</button>'
                     + '<button class="admin-row-btn" onclick="adminRowAction(\'member\',\'tenants\',\'' + escapeHtml(m.id) + '\')"><i class="fas fa-building mr-1"></i>' + escapeHtml(t('member_tenants')) + '</button>'
-                    + (platformAdmin && m.user_id
+                    + (m.can_reset_password && m.user_id
                         ? '<button class="admin-row-btn" onclick="adminRowAction(\'member\',\'reset\',\'' + escapeHtml(m.id) + '\')"><i class="fas fa-key mr-1"></i>' + escapeHtml(t('admin_reset')) + '</button>'
                         : '')
                     + '</div></div>';
@@ -2830,12 +3032,12 @@
 
     async function resetMemberPassword(id) {
         const m = _memberById[id];
-        if (!m) return;
-        if (!(await isPlatformAdmin())) return;
+        if (!m || !m.can_reset_password) return;
+        const platformAdmin = await isPlatformAdmin();
         if (!window.confirm(t('admin_reset_confirm').replace('{name}', m.username || m.display_name))) return;
         openAdminModal({
             title: t('admin_reset'),
-            subtitle: m.username || '',
+            subtitle: (m.username || '') + ' · ' + t(platformAdmin ? 'admin_reset_global_hint' : 'admin_reset_member_hint'),
             icon: 'fa-key',
             fields: [
                 { name: 'recent_password', label: t('admin_field_recent_password'), type: 'password', required: true, hint: t('admin_field_recent_password_hint') },
@@ -2843,17 +3045,30 @@
             submitLabel: t('admin_reset_do'),
             statusEl: document.getElementById('member-status'),
             submit: async function (body) {
-                body.expected_version = m.version;
-                const r = await apiFetch('/api/platform/users/' + encodeURIComponent(m.user_id) + '/password', { method: 'POST', body: body });
-                // Show the one-time temp password once, then clear on close.
-                const td = document.getElementById('admin-modal-body');
-                const d = document.createElement('div');
-                d.className = 'text-sm text-emerald-600 dark:text-emerald-400 mt-3 font-semibold break-all';
-                d.textContent = t('admin_reset_temp_result') + ': ' + (r.temporary_password || '');
-                td.appendChild(d);
+                body.expected_version = m.user_version;
+                const url = platformAdmin
+                    ? '/api/platform/users/' + encodeURIComponent(m.user_id) + '/password'
+                    : '/api/tenant/members/' + encodeURIComponent(m.id) + '/password';
+                return await apiFetch(url, { method: 'POST', body: body, suppressAuthOverlay: true });
+            },
+            afterSuccess: async function (body, result) {
+                showPasswordResetResult(m.username || m.display_name, result);
                 await loadMembersView();
             },
             onConflictReload: function () { loadMembersView(); },
+        });
+    }
+
+    function showPasswordResetResult(username, result) {
+        openAdminModal({
+            title: t('admin_reset'),
+            subtitle: username || '',
+            icon: 'fa-key',
+            cancelLabel: t('close'),
+            fields: [
+                { name: 'temporary_password', type: 'locked', label: t('admin_reset_temp_result'), value: result.temporary_password || '' },
+                { name: 'reset_notice', type: 'locked', label: t('admin_reset_next_step'), value: t('admin_reset_result_hint') },
+            ],
         });
     }
 
@@ -2929,27 +3144,16 @@
     function resetPlatformUser(id) {
         const u = _platformUsers[id];
         if (!u) return;
-        if (!window.confirm(t('admin_reset_confirm').replace('{name}', u.username || u.display_name))) return;
-        openAdminModal({
-            title: t('admin_reset'),
-            subtitle: u.username || '',
-            icon: 'fa-key',
-            fields: [
-                { name: 'recent_password', label: t('admin_field_recent_password'), type: 'password', required: true, hint: t('admin_field_recent_password_hint') },
-            ],
-            submitLabel: t('admin_reset_do'),
+        // The platform account list uses the same shared reset contract as the
+        // tenant admin card, so the one-time result behaves identically.
+        _openAccountReset({
+            user_id: u.id,
+            username: u.username,
+            display_name: u.display_name,
+            version: u.version,
+        }, {
             statusEl: document.getElementById('platform-user-status-msg'),
-            submit: async function (body) {
-                body.expected_version = u.version;
-                const r = await apiFetch('/api/platform/users/' + encodeURIComponent(id) + '/password', { method: 'POST', body: body });
-                const td = document.getElementById('admin-modal-body');
-                const d = document.createElement('div');
-                d.className = 'text-sm text-emerald-600 dark:text-emerald-400 mt-3 font-semibold break-all';
-                d.textContent = t('admin_reset_temp_result') + ': ' + (r.temporary_password || '');
-                td.appendChild(d);
-                await loadPlatformUsersView();
-            },
-            onConflictReload: function () { loadPlatformUsersView(); },
+            onDone: loadPlatformUsersView,
         });
     }
 
@@ -4336,6 +4540,10 @@
     }
     window.bumpTenantGeneration = bumpTenantGeneration;
     window.adminRowAction = adminRowAction;
+    // The tenant admin card's two account controls are inline onclicks, so they
+    // must be reachable from the global scope like the other menu entries.
+    window.tenantCardToggleAccount = tenantCardToggleAccount;
+    window.tenantCardResetPassword = tenantCardResetPassword;
     window.openExternalIdentities = openExternalIdentities;
     window.extidSubmit = extidSubmit;
     window.extidDelete = extidDelete;

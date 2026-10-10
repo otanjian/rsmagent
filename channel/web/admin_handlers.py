@@ -539,8 +539,9 @@ class PlatformTenantHandler:
 class PlatformTenantAdminsHandler:
     """Read/configure a tenant's admin (platform admin).
 
-    ``GET`` exposes the tenant's current valid ``tenant_admin`` members so the
-    editor can show who administers it; the projection carries no credentials.
+    ``GET`` exposes the tenant's ``tenant_admin`` bindings so the editor can show
+    who administers it, including an account whose login is disabled (the card's
+    enable control needs it). The projection carries no credentials.
     ``POST`` binds an existing account or creates a new one.
     """
 
@@ -720,6 +721,7 @@ class TenantMembersHandler:
         try:
             result = svc.list_members(
                 ctx.tenant_id,
+                actor_user_id=ctx.user_id,
                 q=inp.q or None,
                 department_id=inp.department_id or None,
                 status=inp.status or None,
@@ -755,6 +757,33 @@ class TenantMembersHandler:
         except IdentityServiceError as e:
             return _service_error(e)
         return _json({"status": "success", "member": result})
+
+
+class TenantMemberPasswordHandler:
+    """POST /api/tenant/members/{id}/password (tenant admin, exclusive member)."""
+
+    def POST(self, member_id: str):
+        _require_management_write()
+        ctx = _require_context(require_tenant=True)
+        _require_tenant_admin(ctx)
+        try:
+            data = json.loads(web.data())
+            if not isinstance(data, dict) or type(data.get("expected_version")) is not int:
+                return _error("expected_version is required", 400, "invalid_request")
+        except (ValueError, TypeError):
+            return _error("Invalid request", 400, "invalid_request")
+        try:
+            result = _get_service().reset_tenant_member_password(
+                actor_user_id=ctx.user_id,
+                actor_session_id=verified_auth_session_id(),
+                tenant_id=ctx.tenant_id,
+                member_id=member_id,
+                expected_version=data["expected_version"],
+                recent_password=str(data.get("recent_password", "") or ""),
+            )
+        except IdentityServiceError as e:
+            return _service_error(e)
+        return _json({"status": "success", **result})
 
 
 class TenantMemberHandler:

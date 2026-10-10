@@ -1,0 +1,33 @@
+{
+  "scope": "required-local-behavior",
+  "production_acceptance": false,
+  "candidate_digest": "ab2b958b565516b15b4e574f3448b579c0009eb9ecfaf0ae72994d6ad4a99de5",
+  "source_sha": "48c0d79c36146950667f8d1884ab823deae62305",
+  "layers": {
+    "ledger": [],
+    "source-history": [],
+    "actual-entry-dependencies": [],
+    "check-route-coverage.py": [],
+    "check-web-module-seams.py": [],
+    "required-cases": [
+      "pytest required case did not pass: test_check_and_start_bind_the_same_target",
+      "pytest required case did not pass: test_preparation_failure_preserves_running_environment",
+      "pytest required case did not pass: test_duplicate_start_is_idempotent",
+      "pytest required case did not pass: test_health_failure_restores_candidate",
+      "tests/test_fork_source_update.py exited nonzero"
+    ],
+    "candidate-stability": []
+  },
+  "ending_digest": "ab2b958b565516b15b4e574f3448b579c0009eb9ecfaf0ae72994d6ad4a99de5",
+  "unaccepted_capabilities": [
+    "GAP-001",
+    "GAP-002",
+    "GAP-003",
+    "GAP-004",
+    "GAP-005",
+    "GAP-006",
+    "GAP-007",
+    "GAP-008"
+  ],
+  "passed": false
+}

@@ -712,9 +712,18 @@ def _write_scope(ctx, svc, agent_id: str) -> WriteScope:
             "not_agent_workspace",
             "the file panel is not showing the Agent's own workspace")
 
+    # Both a tenant-shared normal Agent and the caller's own private normal
+    # Agent use the same per-user range (change
+    # ``unify-private-agent-personal-workspace``); a coding Agent and the
+    # legacy private shape keep the Agent's whole directory. The predicate is
+    # the same one the default-directory resolver uses, so the panel's writable
+    # range cannot drift from the directory the tools run in.
+    from agent.workspace.personal_default import uses_personal_workspace
+    personal = uses_personal_workspace(agent_id, ident)
+
     return WriteScope(
         agent_rel=agent_rel,
-        root_rel=agent_rel if visibility == "private" else user_rel,
+        root_rel=user_rel if personal else agent_rel,
         user_id=user_root.name,
         visibility=visibility,
     )
