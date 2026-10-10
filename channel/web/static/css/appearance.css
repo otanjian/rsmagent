@@ -938,14 +938,14 @@ html[data-web-palette] #composer-card .composer-hint { margin: 0; padding: 0 4px
 #chat-main.chat-home .composer-toolbar { gap: 10px; }
 #chat-main.chat-home .composer-send-btn { width: 36px; height: 36px; border-radius: 11px; }
 /* Empty-home: command lists open below the composer and use the room left
-   under the hero. Attachment and agent menus stay above it. Workspace and
-   model selectors stay above the toolbar with their shared 380px height cap. */
+   under the hero. Attachments stay above the composer. Agent, workspace and
+   model menus retain their trigger placement and shared 380px height cap. */
 #chat-main.chat-home :is(#slash-menu, #mention-menu) {
     top: calc(100% + 8px);
     bottom: auto;
     max-height: max(96px, calc(100dvh - var(--home-header-h) - var(--home-hero-offset) - var(--home-hero-h) - 24px));
 }
-#chat-main.chat-home :is(#attach-menu, #composer-agent-menu) {
+#chat-main.chat-home #attach-menu {
     top: auto;
     bottom: calc(100% + 8px);
     max-height: max(96px, calc(100dvh - var(--home-header-h) - var(--home-hero-offset) - var(--home-hero-h) - 24px));
@@ -1102,12 +1102,13 @@ html[data-web-palette] #composer-card #optimize-btn.text-primary-500 { color: va
     .home-suggestions :is(.home-suggestion-list, .home-suggestions-list) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
-    /* A 300px team menu cannot be right-anchored to the toolbar's 22px avatar
-       on a phone. Anchor it to the existing composer card instead. */
+    /* On phones, use the card's width to keep the agent menu on-screen,
+       but open above the toolbar so a full list has room to grow upward. */
     #composer-card .composer-identity { position: static; }
     #composer-card #composer-agent-menu {
         left: auto;
         right: 8px;
+        bottom: calc(2rem + 14px);
         width: min(300px, calc(100% - 16px));
         max-width: calc(100vw - 48px);
     }
