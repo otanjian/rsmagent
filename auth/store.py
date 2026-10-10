@@ -2948,6 +2948,40 @@ def _migration_47(con: sqlite3.Connection) -> None:
 _migrations.append(_migration_47)
 
 
+def _migration_48(con: sqlite3.Connection) -> None:
+    """Shared-Agent release governance: immutable release history + binding state.
+
+    Change ``add-shared-agent-release-governance``. ``agent_releases`` keeps every
+    release as an append-only, content-hashed snapshot; ``agent_bindings`` gains
+    the *current* release state and pointer so member visibility can be decided
+    without a join. The columns carry no state by default, so a deployment that
+    never enables the feature (the default) is unaffected; enabling it backfills
+    existing shared bindings (see ``IdentityService.backfill_agent_releases``).
+    """
+    con.execute("""CREATE TABLE IF NOT EXISTS agent_releases(
+        id                  TEXT PRIMARY KEY,
+        agent_id            TEXT NOT NULL,
+        tenant_id           TEXT NOT NULL REFERENCES tenants(id),
+        version             INTEGER NOT NULL,
+        snapshot_json       TEXT NOT NULL,
+        content_hash        TEXT NOT NULL,
+        released_by_user_id TEXT,
+        approval_id         TEXT,
+        created_at          INTEGER NOT NULL DEFAULT (unixepoch()),
+        UNIQUE (agent_id, version))""")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_agent_releases_agent"
+                " ON agent_releases(agent_id, version)")
+    _add_missing_column(con, "agent_bindings", "release_state", "TEXT")
+    _add_missing_column(con, "agent_bindings", "released_version", "INTEGER")
+    _add_missing_column(con, "agent_bindings", "released_at", "INTEGER")
+    _add_missing_column(con, "agent_bindings", "released_by_user_id", "TEXT")
+    _add_missing_column(con, "agent_bindings", "released_approval_id", "TEXT")
+    _add_missing_column(con, "agent_bindings", "released_snapshot_hash", "TEXT")
+
+
+_migrations.append(_migration_48)
+
+
 class IdentityStoreError(RuntimeError):
     """Raised when the identity store cannot be opened or migrated."""
 

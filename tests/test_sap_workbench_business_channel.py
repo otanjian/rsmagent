@@ -72,6 +72,10 @@ def test_business_arguments_accepts_bounded_business_calls(tool, arguments):
     ('run_query', {'sql_query': 'SELECT 1 -- trailing', 'row_count': 1}),
     ('run_query', {'sql_query': 'SELECT 1', 'row_count': 501}),
     ('run_query', {'sql_query': 'SELECT 1'}),                        # row_count required
+    # The RFC endpoint is configuration, not a business parameter: it must not
+    # become a way to point the mediated connection at another system.
+    ('read_table', {'table_name': 'EKKO', 'row_count': 1, 'rfc_host': 'other.example.test'}),
+    ('read_table', {'table_name': 'EKKO', 'row_count': 1, 'rfc_sysnr': '01'}),
     # call_rfc parameters are business fields, not a second identity surface.
     ('call_rfc', {'function_name': 'BAPI_X', 'parameters_json': '{"PASSWORD":"x"}'}),
     ('call_rfc', {'function_name': 'BAPI_X', 'parameters_json': 'not json'}),

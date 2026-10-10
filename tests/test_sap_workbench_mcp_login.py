@@ -14,9 +14,10 @@ def result(value, error=False):
 
 
 class Gateway:
-    def __init__(self, kind, *, connected=True, user="ALICE", connection_id=None):
+    def __init__(self, kind, *, connected=True, user="ALICE", connection_id=None, rfc=None):
         self.kind, self.connected, self.user = kind, connected, user
         self.connection_id = connection_id or f'{kind}-private'
+        self.rfc_meta = rfc
         self.calls = []
         self.closed = False
         self.connect_args = None
@@ -38,7 +39,16 @@ class Gateway:
                 who.update({key: self.connect_args[key] for key in ('host', 'port', 'https')})
             else:
                 who['url'] = self.connect_args['url']
-            return result(who if self.kind == "adt" else {"adt": who})
+            payload = who if self.kind == "adt" else {"adt": who}
+            if self.kind == 'pyrfc':
+                # The real gateway echoes the RFC registry metadata it was
+                # handed; mirror that so the RFC target check is exercised.
+                reported = self.rfc_meta
+                if reported is None and 'ashost' in (self.connect_args or {}):
+                    reported = {key: self.connect_args[key] for key in ('ashost', 'sysnr')}
+                if reported is not None:
+                    payload['rfc'] = reported
+            return result(payload)
         if name == "healthcheck":
             return result({"status": "connected"})
         return result({"ok": True})
@@ -371,4 +381,55 @@ def test_two_trusted_sap_accounts_use_only_their_own_connection_and_reject_forei
             await login.close()
             assert gateway.calls[-1] == ('sap_disconnect', {'connection_id':gateway.connection_id})
             assert gateway.closed
+    asyncio.run(run())
+
+
+def test_rfc_target_is_handed_to_the_gateway_only_when_the_scene_supplies_one():
+    async def run():
+        gateways = {"sap-abap": Gateway("adt"), "sap-pyrfc": Gateway("pyrfc")}
+        bridge, _ = setup(gateways)
+        await bridge.connect([config("sap-abap"), config("sap-pyrfc")],
+                             "https://sap.example:44300/webgui", "synthetic-password",
+                             {"host": "sap.example", "sysnr": "00"})
+        return gateways["sap-pyrfc"].connect_args
+    args = asyncio.run(run())
+    # `auto` is what lets the gateway resolve `call_rfc` to PyRFC while the
+    # table reads keep resolving to ADT; a pinned `adt` would defeat the change.
+    assert args["ashost"] == "sap.example" and args["sysnr"] == "00"
+    assert args["backend"] == "auto"
+
+
+def test_adt_only_login_still_pins_the_gateway_to_adt():
+    async def run():
+        gateway = Gateway("pyrfc")
+        bridge, _ = setup({"sap-pyrfc": gateway})
+        await bridge.connect([config("sap-pyrfc")], "https://sap.example:44300/webgui",
+                             "synthetic-password")
+        return gateway.connect_args
+    args = asyncio.run(run())
+    # No RFC endpoint configured: the connection must not be offered one, so
+    # `call_rfc` fails loudly instead of silently doing something else.
+    assert "ashost" not in args and "sysnr" not in args and args["backend"] == "adt"
+
+
+def test_a_gateway_reporting_a_different_rfc_endpoint_is_destroyed_and_unverified():
+    async def run():
+        gateway = Gateway("pyrfc", rfc={"ashost": "another.sap.example", "sysnr": "00"})
+        bridge, _ = setup({"sap-pyrfc": gateway})
+        with pytest.raises(McpLoginError, match="mcp_identity_mismatch"):
+            await bridge.connect([config("sap-pyrfc")], "https://sap.example:44300/webgui",
+                                 "synthetic-password", {"host": "sap.example", "sysnr": "00"})
+        assert gateway.closed and not bridge._connections and not bridge._verification
+        assert gateway.calls[-1][0] == "sap_disconnect"
+    asyncio.run(run())
+
+
+def test_an_unreachable_rfc_endpoint_fails_the_login_instead_of_the_first_write():
+    async def run():
+        gateway = Gateway("pyrfc", connected=False)
+        bridge, _ = setup({"sap-pyrfc": gateway})
+        with pytest.raises(McpLoginError, match="mcp_login_failed"):
+            await bridge.connect([config("sap-pyrfc")], "https://sap.example:44300/webgui",
+                                 "synthetic-password", {"host": "sap.example", "sysnr": "00"})
+        assert gateway.closed
     asyncio.run(run())

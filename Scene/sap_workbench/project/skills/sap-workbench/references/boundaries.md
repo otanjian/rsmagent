@@ -50,6 +50,15 @@
 - 返回的是 MCP 传输结果。RFC 返回里通常要检查 `RETURN` / `BAPIRET2` 之类的消息结构才能判断业务是否成功；
 - 在检查之前，**任何**"已创建/已保存/已过账/已审批"的说法都缺少依据。这与编造没有区别。
 
+### RFC 端点是写入路径的前置条件
+
+`call_rfc` 只能由网关的 RFC（PyRFC）后端承接。配置里的 `sap.rfc_host` / `sap.rfc_sysnr` 就是交给 `sap_connect` 的 `ashost` / `sysnr`：
+
+- 两项留空 → 连接只走 ADT，`call_rfc` **失败**并如实回报后端不可用，不会静默换成别的调用；
+- 填了两项 → 连接以 `auto` 建立，`call_rfc` 走 RFC；`read_table` / `run_query` 仍走 ADT。两条路径形状不同：PyRFC 侧没有 `column_meta`，行由 `RFC_READ_TABLE` 的 `|` 拼接串拆分重建；ADT 侧不支持 `row_skip`；
+- 登录阶段会做一次健康检查：RFC 端点不通时登录即失败（`mcp_login_failed`），不会等到第一次写入才暴露；
+- 改这两项会改变凭据绑定，与改 SAP 系统或 Client 同等对待；从未配置 RFC 的部署绑定串不变，升级不作废既有凭据。
+
 ## 相关配置
 
 | 配置 | 作用 | 注意 |
@@ -57,6 +66,7 @@
 | `sap.web_gui_url` | 左侧画面的目标地址 | 导航地址只从这里拼出 |
 | `sap.allowed_origins` | 允许的 SAP 源 | 导航目标必须落在其中 |
 | `sap.client` | SAP 客户端 | 不从对话取得 |
+| `sap.rfc_host` / `sap.rfc_sysnr` | 写入路径（BAPI）的 RFC 端点 | 留空＝只走 ADT，`call_rfc` 会明确失败；填写后与改 SAP 系统／Client 同等对待，已存口令需重填 |
 | `mcp.username` + 加密口令 | 场景中介调用所用的 SAP 账号 | 口令加密存储，**从不下发给模型**；未配置时 `sap_data_call` 会以 `mcp_login_failed` 失败 |
 | `mcp.connections` | 已登记连接 | 业务工具面只指向其中的 `sap-pyrfc` |
 | `commit_enabled` | 提交开关 | 与 `sap_data_call` 无关：BAPI 写入不经此开关 |

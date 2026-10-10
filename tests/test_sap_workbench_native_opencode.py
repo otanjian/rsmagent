@@ -102,6 +102,8 @@ def test_native_gateway_forwards_payloads_catalog_defaults_and_websockets(tmp_pa
             assert 'data-value="session"' in html and 'data-value="changes"' in html
             assert 'display:none!important' in html
             assert 'header:has(#opencode-titlebar-right)' in html
+            assert '[data-session-title]' in html
+            assert '--sticky-accordion-top:0px!important' in html
             with pytest.raises(WSServerHandshakeError) as denied:
                 await client.ws_connect(gateway.make_url('/pty/test/connect'), headers={**headers, 'Origin': 'http://other'})
             assert denied.value.status == 403

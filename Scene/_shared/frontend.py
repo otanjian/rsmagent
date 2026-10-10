@@ -9,29 +9,80 @@ import web
 
 from Scene.catalog import ROOT
 
+# The console asks for /scene-assets/runtime.js, assembled here from every scene's
+# frontend/workbench.js. The assembly is cached -- concatenating a few hundred
+# kilobytes on every request is not free -- but a cached copy must not outlive an
+# edit: it is served with ``no-cache``, and a scene author expects a reload to show
+# their change rather than a process restart. So each cache below is keyed on a
+# stamp of the exact files it was built from: unchanged sources reuse the cached
+# bytes, and any content, rename or removal rebuilds.
+_SHARED_SCRIPTS = ("_shared/frontend/i18n.js", "_shared/frontend/activation.js",
+                   "_shared/frontend/greeting.js", "_shared/frontend/ui.js",
+                   "_shared/frontend/erp.js", "_shared/frontend/workbench.js")
+_ADAPTER = "_shared/frontend/adapter.js"
+_MANIFEST = "source-manifest.json"
 
-@lru_cache(maxsize=1)
+
+def _stamp(paths):
+    """A hashable fingerprint of ``paths``: each name with its mtime and size.
+
+    Exact rather than aggregated, so two edits that cancel out in a sum still
+    differ, and a file that has appeared or vanished changes the key too. The
+    path list is short, so the key stays small.
+    """
+    parts = []
+    for path in paths:
+        try:
+            stat = (ROOT / path).stat()
+        except OSError:
+            parts.append((path, None))
+            continue
+        parts.append((path, stat.st_mtime_ns, stat.st_size))
+    return tuple(parts)
+
+
+@lru_cache(maxsize=4)
+def _manifest(stamp):
+    return json.loads((ROOT / _MANIFEST).read_text(encoding="utf-8"))["files"]
+
+
 def source_manifest():
-    return json.loads((ROOT / "source-manifest.json").read_text(encoding="utf-8"))["files"]
+    return _manifest(_stamp((_MANIFEST,)))
 
 
-@lru_cache(maxsize=1)
-def runtime_script():
-    ordered = ["_shared/frontend/i18n.js", "_shared/frontend/activation.js",
-               "_shared/frontend/greeting.js", "_shared/frontend/ui.js", "_shared/frontend/erp.js", "_shared/frontend/workbench.js"]
+def _ordered_scripts():
+    """The shared slices followed by every scene's own workbench.js."""
+    ordered = list(_SHARED_SCRIPTS)
     ordered += [entry["path"] for entry in source_manifest()
                 if entry["path"].endswith("/frontend/workbench.js") and not entry["path"].startswith("_shared/")]
-    source = b"\n".join((ROOT / path).read_bytes() for path in ordered)
+    return ordered
+
+
+@lru_cache(maxsize=4)
+def _runtime_script(stamp):
+    source = b"\n".join((ROOT / path).read_bytes() for path in _ordered_scripts())
     functions = re.findall(rb"^(?:async )?function (\w+)\(", source, re.M)
     exports = b", ".join(functions)
-    adapter = (ROOT / "_shared/frontend/adapter.js").read_bytes()
+    adapter = (ROOT / _ADAPTER).read_bytes()
     return b"(function () {\n'use strict';\n" + adapter + b"\n" + source + b"\nObject.assign(window.SceneOriginal, {" + exports + b"});\n" + b"Object.entries(window.SceneOriginal).forEach(([name,fn]) => { if (!['open','activateScene','activateSceneKeepSession'].includes(name)) window[name] = fn; });\n})();\n"
 
 
-@lru_cache(maxsize=1)
+def runtime_script():
+    return _runtime_script(_stamp([_MANIFEST, _ADAPTER] + _ordered_scripts()))
+
+
+def _workbench_pages():
+    return [item["path"] for item in source_manifest()
+            if "/frontend/" in item["path"] and item["path"].endswith(".html")]
+
+
+@lru_cache(maxsize=4)
+def _workbench_html(stamp):
+    return b"\n".join((ROOT / path).read_bytes() for path in _workbench_pages())
+
+
 def workbench_html():
-    return b"\n".join((ROOT / item["path"]).read_bytes() for item in source_manifest()
-                       if "/frontend/" in item["path"] and item["path"].endswith(".html"))
+    return _workbench_html(_stamp([_MANIFEST] + _workbench_pages()))
 
 
 class SceneAssetHandler:

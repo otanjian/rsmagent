@@ -11,7 +11,9 @@
     "allowed_origins": [
       "https://sap.example.test"
     ],
-    "login_mode": "manual"
+    "login_mode": "manual",
+    "rfc_host": "",
+    "rfc_sysnr": ""
   },
   "mcp": {
     "username": "SAP_TEST_USER",

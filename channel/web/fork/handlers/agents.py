@@ -273,8 +273,18 @@ def _iter_tenant_agents(ctx: "RequestContext", *, action: str = SCOPE_USE,
         allowed_agent_ids = _resource_ids(ctx, "agent", "read", permission="agent.read")
     for profile, tenant_default in _tenant_agent_candidates(
             ctx, include_disabled=include_disabled):
-        if not scope.allows_agent(_agent_binding_for(ctx, profile.id), action=action):
+        binding = _agent_binding_for(ctx, profile.id)
+        if not scope.allows_agent(binding, action=action):
             continue
+        # Release governance (change add-shared-agent-release-governance): the
+        # member/use range only shows released shared Agents, while the
+        # management range keeps drafts so an administrator can publish them.
+        if action != SCOPE_MANAGE:
+            from auth.agent_release import (
+                binding_member_visible, release_governance_enabled)
+            if release_governance_enabled() and not binding_member_visible(
+                    binding, enabled=True):
+                continue
         if (allowed_agent_ids is not None
                 and f"agent:{profile.id}" not in allowed_agent_ids
                 and not _tenant_shared_default_agent(
@@ -451,6 +461,15 @@ def _tenant_agents_admin_projection(ctx: "Optional[RequestContext]") -> Dict:
         # Narrowing a read range again is administration, never the owner's own
         # call — sharing handed the object over, it was not lent.
         data["can_unshare"] = bool(owner_user_id is None and is_admin)
+        # Shared-Agent release governance (change
+        # ``add-shared-agent-release-governance``): the console renders the
+        # release badge and the publish/rollback/suspend affordances from this.
+        # Present only while the deployment switch is on, so the delivered
+        # contract is unchanged when the feature is off.
+        from auth.agent_release import release_governance_enabled
+        if release_governance_enabled():
+            from auth.service import get_identity_service
+            data["release"] = get_identity_service().agent_release_status(profile.id)
         agents.append(data)
     return {"agents": agents, "default_agent_id": _tenant_default_agent_id(ctx),
             "user_default": user_default,
@@ -492,7 +511,8 @@ def _agent_bound_to_tenant(ctx: "Optional[RequestContext]", agent_id: str) -> bo
 #: the service's row is the better one (it commits in the same transaction as
 #: the binding it describes).
 _SELF_AUDITED_AGENT_ACTIONS = frozenset(
-    {"set_default", "set_user_default", "set_visibility"}
+    {"set_default", "set_user_default", "set_visibility",
+     "request_release", "release", "rollback_release", "suspend_release"}
 )
 
 #: The other lifecycle mutations, in the ``resource.action`` naming the identity
@@ -504,6 +524,7 @@ _AGENT_AUDIT_ACTIONS = {
     "delete": "agent.delete",
     "set_knowledge_mode": "agent.knowledge_mode.set",
     "bind_channel_instance": "agent.bind_channel_instance",
+    "list_releases": "agent.release.list",
 }
 
 
@@ -931,6 +952,69 @@ class AgentsHandler:
                         # bad_request) must reach the console as-is, not degrade
                         # into the handler's opaque 200-with-status:error.
                         from channel.web.auth_handlers import _error
+                        _error(exc.args[0], exc.status, exc.code)
+                    return json.dumps(
+                        {"status": "success", "result": result},
+                        ensure_ascii=False,
+                    )
+                elif action in ("request_release", "release", "rollback_release",
+                                "suspend_release", "list_releases"):
+                    # Shared-Agent release governance (change
+                    # ``add-shared-agent-release-governance``). The binding lives
+                    # in the identity database, so these are not roster edits and
+                    # return early like ``set_visibility``. The service owns the
+                    # approval / eligibility / quota / enterprise gates and writes
+                    # its own audit event in the same transaction as the binding.
+                    from auth.service import IdentityServiceError, get_identity_service
+                    from channel.web.auth_handlers import _error
+                    if ctx is None or not ctx.tenant_id:
+                        _raise_forbidden()
+                    if not agent_id:
+                        return json.dumps(
+                            {"status": "error", "code": "invalid_agent_id",
+                             "message": "agent id is required"},
+                            ensure_ascii=False)
+                    if not _agent_bound_to_tenant(ctx, agent_id):
+                        raise web.HTTPError(
+                            "404 Not Found", {"Content-Type": "application/json"},
+                            json.dumps({"status": "error", "message": "agent not found",
+                                        "code": "not_found"}))
+                    identity = get_identity_service()
+                    try:
+                        if action == "request_release":
+                            result = identity.request_agent_release(
+                                actor_user_id=ctx.user_id, tenant_id=ctx.tenant_id,
+                                agent_id=agent_id,
+                                kind=str(body.get("kind") or "publish"),
+                                version=body.get("version"))
+                        elif action == "release":
+                            result = identity.release_agent(
+                                actor_user_id=ctx.user_id, tenant_id=ctx.tenant_id,
+                                agent_id=agent_id,
+                                approval_id=str(body.get("approval_id") or ""))
+                        elif action == "rollback_release":
+                            result = identity.rollback_agent_release(
+                                actor_user_id=ctx.user_id, tenant_id=ctx.tenant_id,
+                                agent_id=agent_id,
+                                version=int(body.get("version") or 0),
+                                approval_id=str(body.get("approval_id") or ""))
+                        elif action == "suspend_release":
+                            result = identity.suspend_agent_release(
+                                actor_user_id=ctx.user_id, tenant_id=ctx.tenant_id,
+                                agent_id=agent_id,
+                                approval_id=str(body.get("approval_id") or ""))
+                        else:  # list_releases
+                            result = {
+                                "release_status": identity.agent_release_status(agent_id),
+                                "releases": identity.list_agent_releases(
+                                    actor_user_id=ctx.user_id,
+                                    tenant_id=ctx.tenant_id, agent_id=agent_id),
+                            }
+                    except IdentityServiceError as exc:
+                        # A business refusal with its own code (403 forbidden, 409
+                        # approval_*/release_governance_disabled/quota_exceeded…)
+                        # must reach the console as-is, not degrade into the
+                        # handler's opaque 200-with-status:error.
                         _error(exc.args[0], exc.status, exc.code)
                     return json.dumps(
                         {"status": "success", "result": result},

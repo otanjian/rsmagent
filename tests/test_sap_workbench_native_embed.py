@@ -158,7 +158,11 @@ def test_resume_converts_legacy_screen_without_allocating_another_browser(tmp_pa
     asyncio.run(run())
 
 
-def test_native_projection_names_the_coding_session_and_withholds_every_grant(tmp_path):
+def test_native_projection_names_the_coding_session_and_withholds_every_grant(tmp_path, monkeypatch):
+    # Pin the default: with no browser-facing proxy origin the pane keeps the
+    # configured SAP URL. (SAP_WORKBENCH_DISPLAY_ORIGIN may be set on the host.)
+    monkeypatch.delenv('SAP_WORKBENCH_DISPLAY_ORIGIN', raising=False)
+
     async def run():
         store, row = binding(tmp_path)
         row['display_mode'] = 'iframe'

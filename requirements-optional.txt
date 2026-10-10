@@ -22,6 +22,15 @@ python-docx
 openpyxl
 python-pptx
 
+# scanned PDFs: pages with no text layer are rasterised (pypdfium2, the
+# Chromium PDFium binding -- no Ghostscript/poppler on the host) and read with
+# RapidOCR (PaddleOCR models on onnxruntime, Chinese + English, models bundled
+# in the wheel so recognition needs no network). Installed by
+# agent.tools.utils.pdf_scan; the read tool and web_fetch degrade to their
+# previous "no text layer" message when either is absent.
+pypdfium2
+rapidocr-onnxruntime
+
 # memory rerank: install on demand for rerank_provider=local (pulls in torch)
 # sentence-transformers
 

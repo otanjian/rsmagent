@@ -15,7 +15,8 @@ async def main():
         return identity  # owner process revalidates platform/config on each IPC call
     login = SapMcpLogin(identity, revalidate=revalidate)
     try:
-        ready = await login.connect(initial['connections'], initial['url'], initial.pop('password'))
+        ready = await login.connect(initial['connections'], initial['url'], initial.pop('password'),
+                                    initial.get('rfc'))
         print(json.dumps(ready), flush=True)
         while True:
             line = await asyncio.to_thread(sys.stdin.readline)

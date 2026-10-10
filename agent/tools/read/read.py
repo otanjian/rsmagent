@@ -4,7 +4,7 @@ Supports text files, images (jpg, png, gif, webp), and PDF files
 """
 
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from pathlib import Path
 
 from agent.tools.base_tool import BaseTool, ToolResult
@@ -81,7 +81,7 @@ class Read(BaseTool):
     """Tool for reading file contents"""
     
     name: str = "read"
-    description: str = f"Read or inspect file contents. For text/PDF/Word/Excel/PPT files, returns content (truncated to {DEFAULT_MAX_LINES} lines or {DEFAULT_MAX_BYTES // 1024}KB). Each line is prefixed with its line number as `12|content` - these prefixes are display aids for locating lines and are NOT part of the file, so strip them whenever you reuse the content (in edit's oldText/newText, when writing it elsewhere, or when quoting it to the user). For images/videos/audio, returns metadata only (file info, size, type). Use offset/limit for large text files."
+    description: str = f"Read or inspect file contents. For text/PDF/Word/Excel/PPT files, returns content (truncated to {DEFAULT_MAX_LINES} lines or {DEFAULT_MAX_BYTES // 1024}KB). PDF pages with no text layer (scans, printed-to-PDF forms, photos) are recognised with OCR and marked '(OCR)' - never assume such a PDF is unreadable before trying. Each line is prefixed with its line number as `12|content` - these prefixes are display aids for locating lines and are NOT part of the file, so strip them whenever you reuse the content (in edit's oldText/newText, when writing it elsewhere, or when quoting it to the user). For images/videos/audio, returns metadata only (file info, size, type). Use offset/limit for large text files."
     
     params: dict = {
         "type": "object",
@@ -551,6 +551,29 @@ class Read(BaseTool):
 
         return ""
 
+    def _pdf_ocr_enabled(self) -> bool:
+        """Whether a PDF page without a text layer may be recognised by OCR.
+
+        On by default: a scanned business document is the normal case here,
+        and "no text layer" used to mean "unreadable". Set
+        ``tools.read.pdf_ocr=false`` on a deployment that would rather fail
+        fast than spend seconds per page in the recogniser.
+        """
+        value = (self.config or {}).get("pdf_ocr", True)
+        if isinstance(value, str):
+            return value.strip().lower() not in ("0", "false", "no", "off")
+        return bool(value)
+
+    def _pdf_ocr_scale(self) -> float:
+        """Rasterisation scale for OCR; see ``pdf_scan.DEFAULT_SCALE``."""
+        from agent.tools.utils import pdf_scan
+
+        try:
+            scale = float((self.config or {}).get("pdf_ocr_scale", pdf_scan.DEFAULT_SCALE))
+        except (TypeError, ValueError):
+            return pdf_scan.DEFAULT_SCALE
+        return scale if 0.5 <= scale <= 6.0 else pdf_scan.DEFAULT_SCALE
+
     def _read_pdf(self, absolute_path: str, display_path: str, offset: int = None,
                   limit: int = None, pages: str = None) -> ToolResult:
         """
@@ -582,23 +605,60 @@ class Read(BaseTool):
 
             # Only extract the requested window; a large PDF is expensive to
             # parse in full and the model rarely needs every page.
-            text_parts = []
+            page_texts: Dict[int, str] = {}
+            ocr_pages: List[int] = []
+            missing_pages: List[int] = []
             for page_num in range(first_page, last_page + 1):
                 page_text = reader.pages[page_num - 1].extract_text()
-                if page_text.strip():
-                    text_parts.append(f"--- Page {page_num} ---\n{page_text}")
+                if page_text and page_text.strip():
+                    page_texts[page_num] = page_text
+                else:
+                    missing_pages.append(page_num)
 
-            if not text_parts:
+            # No text layer: the page is an image (a printed-to-PDF form, a
+            # scan, a photo). Recognise it rather than handing the model a
+            # dead end -- see agent.tools.utils.pdf_scan.
+            ocr_error = None
+            if missing_pages:
+                if not self._pdf_ocr_enabled():
+                    ocr_error = "the PDF OCR fallback is disabled (tools.read.pdf_ocr=false)"
+                else:
+                    from agent.tools.utils import pdf_scan
+
+                    recognised, ocr_error = pdf_scan.ocr_pages(
+                        absolute_path, missing_pages, scale=self._pdf_ocr_scale()
+                    )
+                    for page_num, text in recognised.items():
+                        if text and text.strip():
+                            page_texts[page_num] = text
+                            ocr_pages.append(page_num)
+
+            if not page_texts:
                 scope = (
                     f"pages {first_page}-{last_page} of {total_pages}"
                     if (first_page, last_page) != (1, total_pages)
                     else f"{total_pages} pages"
                 )
+                detail = f" ({ocr_error})" if ocr_error else ""
                 return ToolResult.success({
-                    "content": f"[PDF file with {scope}, but no text content could be extracted]",
+                    "content": (
+                        f"[PDF file with {scope}, but no text could be extracted: "
+                        f"the pages carry no text layer and OCR produced nothing{detail}. "
+                        f"The document may be blank, encrypted, or unreadably low-resolution.]"
+                    ),
                     "total_pages": total_pages,
-                    "message": "PDF may contain only images or be encrypted"
+                    "pages_without_text": missing_pages,
+                    "message": "PDF may contain only images or be encrypted",
                 })
+
+            text_parts = [
+                # The source is marked per page so the model can tell exact
+                # extraction from recognition, and so a later re-read of the
+                # same document is not mistaken for a different copy.
+                f"--- Page {page_num}{' (OCR)' if page_num in ocr_pages else ''} ---\n"
+                f"{page_texts[page_num]}"
+                for page_num in sorted(page_texts)
+            ]
 
             result, error = self._paginate(
                 split_lines("\n\n".join(text_parts)), offset, limit, display_path
@@ -608,10 +668,22 @@ class Read(BaseTool):
 
             result["total_pages"] = total_pages
             result["pages_read"] = f"{first_page}-{last_page}"
+            if ocr_pages:
+                result["ocr_pages"] = ocr_pages
             if last_page < total_pages:
                 result["content"] += (
                     f"\n\n[Read pages {first_page}-{last_page} of {total_pages}. "
                     f"Use pages=\"{last_page + 1}-\" to continue.]"
+                )
+            if ocr_pages:
+                result["content"] += (
+                    f"\n\n[Pages {', '.join(str(p) for p in ocr_pages)} have no text "
+                    f"layer and were read by OCR; treat their numbers and codes as "
+                    f"recognised text to verify, not as exact characters.]"
+                )
+            if ocr_error:
+                result["content"] += (
+                    f"\n\n[OCR stopped early: {ocr_error}]"
                 )
 
             note_read(absolute_path)

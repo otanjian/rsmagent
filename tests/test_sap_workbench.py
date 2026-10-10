@@ -399,7 +399,7 @@ def test_mcp_password_is_write_only_encrypted_and_blank_preserves_it(app):
     assert "config" not in member and "mcp_password_configured" not in member
 
 
-@pytest.mark.parametrize("change", ["username", "client", "web_gui_url", "system_id", "clear"])
+@pytest.mark.parametrize("change", ["username", "client", "web_gui_url", "system_id", "rfc_host", "clear"])
 def test_mcp_password_is_revoked_when_account_target_changes_or_explicitly_cleared(app, change):
     token = app.login("root")
     config = configured(); config["mcp"]["username"] = "ALICE"
@@ -413,6 +413,8 @@ def test_mcp_password_is_revoked_when_account_target_changes_or_explicitly_clear
         config["sap"][change] = "https://other.example.test/webgui?sap-client=200"
     elif change == "system_id":
         config["sap"][change] = "OTHER"
+    elif change == "rfc_host":
+        config["sap"].update(rfc_host="sap.example.test", rfc_sysnr="00")
     saved = payload(app, app.put(API + "/config", {"version": 1, "config": config,
                         "clear_mcp_password": change == "clear"}, token=token))
     assert saved["mcp_password_configured"] is False
@@ -493,10 +495,47 @@ def test_capabilities_publish_the_honest_limitations_table():
     # usable" mistake this table exists to avoid.
     assert reported["notes"] == ["navigation_limited", "mcp_credentials_missing",
                                 "page_readwrite_unavailable"]
-    # A saved MCP account is what makes the row available.
+    # A saved MCP account is what makes the read row available.
     configured = capabilities({**DEFAULT_CONFIG, "enabled": True}, mcp_credentials=True)
+    # The BAPI row has an extra prerequisite the reads do not: without an RFC
+    # endpoint the gateway has no PyRFC backend, so `call_rfc` cannot work even
+    # though reads do. Saying only "business available" would imply the write
+    # path works when it cannot.
     assert configured["notes"] == ["navigation_limited", "mcp_business_available",
-                                  "page_readwrite_unavailable"]
+                                  "mcp_bapi_unavailable", "page_readwrite_unavailable"]
+    rfc = capabilities({**DEFAULT_CONFIG, "enabled": True,
+                        "sap": {**DEFAULT_CONFIG["sap"], "rfc_host": "sap.example.test"}},
+                       mcp_credentials=True)
+    assert rfc["notes"] == ["navigation_limited", "mcp_business_available",
+                           "mcp_bapi_available", "page_readwrite_unavailable"]
     # `sap_data_call` reaches BAPIs through `call_rfc`, so "business submission
     # is unavailable" is no longer true and must not be published.
     assert "business_submission_unavailable" not in reported["blockers"]
+
+
+@pytest.mark.parametrize("host,sysnr,code", [
+    ("sap.example.test", "00", None),
+    ("sap.example.test", "sap.example.test:3300", "invalid_rfc"),
+    ("sap.example.test:3300", "00", "invalid_rfc"),
+    ("https://sap.example.test", "00", "invalid_rfc"),
+    ("sap.example.test", "0", "invalid_rfc"),
+    ("sap.example.test", "0a", "invalid_rfc"),
+])
+def test_rfc_endpoint_fields_are_validated_without_accepting_a_smuggled_port(host, sysnr, code):
+    config = configured()
+    config["sap"].update(rfc_host=host, rfc_sysnr=sysnr)
+    if code is None:
+        assert validate_config(config)["sap"]["rfc_host"] == host
+    else:
+        with pytest.raises(WorkbenchError) as failure:
+            validate_config(config)
+        assert failure.value.code == code
+
+
+def test_an_empty_rfc_endpoint_leaves_the_credential_binding_unchanged():
+    """An ADT-only deployment must not lose its saved password on upgrade."""
+    before = WorkbenchStore._binding(configured())
+    assert before == WorkbenchStore._binding(validate_config(configured()))
+    with_rfc = configured()
+    with_rfc["sap"].update(rfc_host="sap.example.test", rfc_sysnr="00")
+    assert WorkbenchStore._binding(with_rfc) != before

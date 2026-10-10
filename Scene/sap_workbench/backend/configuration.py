@@ -20,7 +20,8 @@ DEFAULT_CONFIG = {
     "desktop_sap_page_read_enabled": False,
     "coding_agent_id": "",
     "sap": {"system_id": "", "web_gui_url": "", "client": "", "language": "ZH",
-            "allowed_origins": [], "login_mode": "manual"},
+            "allowed_origins": [], "login_mode": "manual",
+            "rfc_host": "", "rfc_sysnr": ""},
     "mcp": {"username": "", "connections": fixed_mcp_connections()},
     "browser_service_ref": "",
     "max_sessions": 4,
@@ -106,6 +107,16 @@ def validate_config(value):
     sap["login_mode"] = _string(sap["login_mode"])
     if sap["login_mode"] not in {"password", "manual", "sso"}:
         raise WorkbenchError("invalid_config")
+    # Optional RFC endpoint. Empty keeps the connection ADT-only, which is what
+    # every deployment had before this was configurable. A colon is refused so a
+    # port cannot be smuggled in: the gateway takes the host and the system
+    # number as separate arguments, and the RFC port is derived from the latter.
+    sap["rfc_host"] = _string(sap["rfc_host"], 253)
+    if sap["rfc_host"] and not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.\-]{0,251}[A-Za-z0-9])?", sap["rfc_host"]):
+        raise WorkbenchError("invalid_rfc")
+    sap["rfc_sysnr"] = _string(sap["rfc_sysnr"], 253)
+    if sap["rfc_sysnr"] and not re.fullmatch(r"[0-9]{2}", sap["rfc_sysnr"]):
+        raise WorkbenchError("invalid_rfc")
     # Legacy password mode predates the explicit decision to maintain MCP
     # credentials separately. It must not advertise shared Web GUI sign-in.
     if sap['login_mode'] == 'password':
@@ -189,9 +200,17 @@ def capabilities(config, *, mcp_credentials=False):
     # therefore published from the *stored* credential state rather than from
     # the channel's existence: with no saved MCP account the server cannot
     # establish the connection and every call fails with `mcp_login_failed`.
+    rfc_ready = bool(config["sap"].get("rfc_host"))
     notes = ["navigation_limited",
-             "mcp_business_available" if mcp_credentials else "mcp_credentials_missing",
-             "desktop_page_read_conditional" if config.get('desktop_sap_page_read_enabled') else "page_readwrite_unavailable"]
+             "mcp_business_available" if mcp_credentials else "mcp_credentials_missing"]
+    # The BAPI row has a prerequisite the reads do not. `call_rfc` can only be
+    # served by the gateway's PyRFC backend, which needs an RFC endpoint; a
+    # credential-only connection reads but cannot call one. Publishing the
+    # business row alone would imply the write path works when it cannot.
+    if mcp_credentials:
+        notes.append("mcp_bapi_available" if rfc_ready else "mcp_bapi_unavailable")
+    notes.append("desktop_page_read_conditional" if config.get('desktop_sap_page_read_enabled')
+                 else "page_readwrite_unavailable")
     return {"configuration": True, "visual": bool(config["enabled"] and node_ready),
             "automation": bool(config["enabled"] and node_ready and config["automation_enabled"]),
             "commit": False, "blockers": blockers, "notes": notes}

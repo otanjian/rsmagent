@@ -14,6 +14,7 @@ from urllib.parse import urlencode, urlsplit
 from aiohttp import web, ClientSession, ClientTimeout, WSMsgType
 
 from .configuration import WorkbenchError
+from .deployment import browser_sap_url
 from .legacy import engine_enabled
 from .model_relay import configured_model, relay
 from ..browser_service.gateway import build_app
@@ -482,7 +483,8 @@ class WorkbenchRuntime:
                     'coding_session_id': self.coding_session, 'agent_id': self.agent_id,
                     'display_mode': 'iframe',
                     'desktop_sap_page_read_enabled': self.config.get('desktop_sap_page_read_enabled', False),
-                    'sap_url': self.config['sap']['web_gui_url'], 'gui_automation': False, 'control': 'manual'}
+                    'sap_url': browser_sap_url(self.config['sap']['web_gui_url']),
+                    'gui_automation': False, 'control': 'manual'}
         grant = self.boot.issue(self.tenant, self.user, origin=self.origin)
         view = self.views.issue(self.tenant, self.user, origin=self.origin, url=self.config['sap']['web_gui_url'])
         return {'binding_id': self.id, 'remote_session_id': self.remote, 'port': self.port,
@@ -697,7 +699,7 @@ class WorkbenchRuntime:
             from .navigation import transaction_url
             if set(arguments) != {'transaction'}:
                 raise WorkbenchError('invalid_request', 400)
-            transaction_url(self.config['sap']['web_gui_url'], arguments['transaction'])
+            transaction_url(browser_sap_url(self.config['sap']['web_gui_url']), arguments['transaction'])
         if action == 'sap_data_call' and (set(arguments) != {'connection', 'tool', 'arguments'}
                                           or not isinstance(arguments['arguments'], dict)):
             # Framing is checked here, before the ledger, for the same reason as
@@ -992,8 +994,10 @@ class WorkbenchRuntime:
         if request.method == 'GET' and spa_route:
             html = (self.assets / 'index.html').read_text(encoding='utf-8')
             # Scene-owned presentation only; the native OpenCode build stays
-            # untouched. Hide exactly the compact session/changes tab bar.
-            style = '<style>header:has(#opencode-titlebar-right),[data-slot="tabs-list"]:has([data-value="session"]):has([data-value="changes"]) {display:none!important}</style>'
+            # untouched. Hide the compact session/changes tab bar, the empty
+            # title strip and the conversation's sticky session-title bar, and
+            # stop tool accordions reserving the title bar's 48px.
+            style = '<style>header:has(#opencode-titlebar-right),[data-session-title],[data-slot="tabs-list"]:has([data-value="session"]):has([data-value="changes"]) {display:none!important}.scroll-view{--sticky-accordion-top:0px!important}</style>'
             return web.Response(text=html.replace('</head>', style + '</head>'), content_type='text/html')
         from common.log import logger
         logger.info('[SapWorkbench] refused UI route %s %s', request.method, path[:180])

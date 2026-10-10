@@ -39,6 +39,19 @@ class SapIdentity:
     generation: int
 
 
+def rfc_target(sap):
+    """The RFC endpoint the scene hands the gateway, or ``None`` for ADT-only.
+
+    Absent is what every deployment had before an RFC endpoint was
+    configurable, and it is what keeps the connection on ADT. ``sysnr`` defaults
+    to ``00``, the same default the gateway applies to ``sap_connect``.
+    """
+    host = (sap.get('rfc_host') or '').strip()
+    if not host:
+        return None
+    return {'host': host, 'sysnr': (sap.get('rfc_sysnr') or '').strip() or '00'}
+
+
 @asynccontextmanager
 async def sdk_session(url):
     # Optional scene dependency. Ordinary application startup does not import it.
@@ -109,7 +122,7 @@ class SapMcpLogin:
             await self.close()
             raise McpLoginError("sap_login_changed")
 
-    async def connect(self, configurations, sap_url, password):
+    async def connect(self, configurations, sap_url, password, rfc=None):
         """Receive a password resolved by the trusted scene configuration caller.
 
         Credentials come from the trusted login handler, never a model tool's
@@ -142,7 +155,7 @@ class SapMcpLogin:
                 if name in self._connections:
                     raise McpLoginError("mcp_duplicate_connection")
                 try:
-                    await self._open_gateway(name, endpoint, target, tls_verify, password)
+                    await self._open_gateway(name, endpoint, target, tls_verify, password, rfc)
                 except McpLoginError as error:
                     await self._abandon(name)
                     if error.code in _FATAL_GATEWAY_ERRORS:
@@ -161,7 +174,7 @@ class SapMcpLogin:
                 raise
             raise McpLoginError("mcp_login_failed") from None
 
-    async def _open_gateway(self, name, endpoint, target, tls_verify, password):
+    async def _open_gateway(self, name, endpoint, target, tls_verify, password, rfc=None):
         session = await self._stack.enter_async_context(self._session_factory(endpoint))
         listing = await session.list_tools()
         tools = {tool.name: tool for tool in listing.tools}
@@ -173,7 +186,15 @@ class SapMcpLogin:
             args.update(host=target.hostname, port=target.port or 443, https=True, insecure=not tls_verify, timeout=30)
             kind = "adt"
         elif "url" in properties and "healthcheck" in tools:
-            args.update(url=f"https://{target.netloc}", backend="adt", tls_verify=tls_verify, timeout=30)
+            # The gateway selects its transport from these arguments. Without an
+            # RFC target it stays on ADT and `call_rfc` cannot work at all; with
+            # one, `auto` resolves the BAPI calls to PyRFC while the reads keep
+            # resolving to ADT (see the gateway's `read_table`).
+            args.update(url=f"https://{target.netloc}", tls_verify=tls_verify, timeout=30)
+            if rfc:
+                args.update(ashost=rfc['host'], sysnr=rfc['sysnr'], backend="auto")
+            else:
+                args.update(backend="adt")
             kind = "pyrfc"
         else:
             raise McpLoginError("mcp_login_protocol_unsupported")
@@ -210,6 +231,17 @@ class SapMcpLogin:
                     or reported.hostname != target.hostname
                     or (reported.port or 443) != (target.port or 443)
                     or reported.username or reported.password or reported.query or reported.fragment):
+                raise McpLoginError('mcp_identity_mismatch')
+        if kind == 'pyrfc' and rfc:
+            # The gateway echoes the registry metadata it was handed, not a
+            # value read back from SAP. A mismatch still means the connection is
+            # not the endpoint the scene asked for, so it is refused rather than
+            # reported as verified. `system` stays `unverified` as before: this
+            # never claims a SAP-side observation.
+            endpoint = who.get('rfc')
+            if (not isinstance(endpoint, dict)
+                    or str(endpoint.get('ashost', '')).lower() != target.hostname.lower()
+                    or str(endpoint.get('sysnr', '')) != rfc['sysnr']):
                 raise McpLoginError('mcp_identity_mismatch')
         self._verification[name] = {'account': 'gateway_metadata',
             'target': 'gateway_metadata' if target_reported else 'unverified', 'system': 'unverified'}
@@ -251,7 +283,8 @@ class SapMcpLogin:
         if self.identity != expected:
             await self.close()
             raise McpLoginError("mcp_identity_mismatch")
-        return await self.connect(config["mcp"]["connections"], sap["web_gui_url"], password)
+        return await self.connect(config["mcp"]["connections"], sap["web_gui_url"], password,
+                                  rfc_target(sap))
 
     async def call(self, name, tool, arguments):
         return await self._call(name, tool, arguments, self.READ_TOOLS)

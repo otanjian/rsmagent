@@ -197,6 +197,17 @@ README*.md
 /scenes/sap_workbench_browser/
 /scenes/sap_workbench_assets/
 /scenes/sap_workbench_runtime/
+# Timestamped snapshot of the assets tree taken before an editor rewrite; a
+# local rollback copy, not source (same class as the *.bak-tags-* copies below).
+/scenes/sap_workbench_assets_backup*/
+
+# Timestamped pre-edit copies of preset/agent configs written next to the live
+# file (same convention as config.json.bak-* above, but named `*.bak-tags-<stamp>`).
+*.bak-tags-*
+
+# PowerShell's ModuleAnalysisCache, created under the CWD on Windows when a
+# module is imported. A machine-local cache, never source.
+/Microsoft/
 
 # ======================================================================
 
