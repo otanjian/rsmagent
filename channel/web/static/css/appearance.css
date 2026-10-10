@@ -939,7 +939,7 @@ html[data-web-palette] #composer-card .composer-hint { margin: 0; padding: 0 4px
 #chat-main.chat-home .composer-send-btn { width: 36px; height: 36px; border-radius: 11px; }
 /* Empty-home: command lists open below the composer and use the room left
    under the hero. Attachment and agent menus stay above it. Workspace and
-   model selectors keep the shared upstream positioning and 380px height cap. */
+   model selectors stay above the toolbar with their shared 380px height cap. */
 #chat-main.chat-home :is(#slash-menu, #mention-menu) {
     top: calc(100% + 8px);
     bottom: auto;

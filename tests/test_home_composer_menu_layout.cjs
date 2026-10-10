@@ -1,5 +1,5 @@
-// Homepage composer menus: toolbar chip popovers must open above the composer
-// so they are not clipped by #chat-main's overflow edge (hero sits mid/low).
+// Homepage composer menus: workspace selection stays beside the toolbar,
+// while attachment/agent menus and command lists retain their own placement.
 // NODE_PATH="$(npm root -g)" node --test tests/test_home_composer_menu_layout.cjs
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -28,7 +28,7 @@ test('chat-home CSS opens toolbar chip menus upward and command menus downward',
     );
 });
 
-test('workspace menu stays inside the viewport above the composer on chat-home', async (t) => {
+test('workspace menu stays inside the viewport above its toolbar button on chat-home', async (t) => {
     let chromium;
     try {
         ({ chromium } = require('playwright'));
@@ -45,6 +45,7 @@ test('workspace menu stays inside the viewport above the composer on chat-home',
 <link rel="stylesheet" href="/assets/css/console.css">
 <link rel="stylesheet" href="/assets/css/appearance.css">
 <style>
+  * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
   #chat-main.chat-home {
     display: flex; flex-direction: column; height: 100vh;
@@ -63,13 +64,18 @@ test('workspace menu stays inside the viewport above the composer on chat-home',
 <div id="chat-main" class="chat-main chat-home">
   <div class="home-intro">hero</div>
   <div id="chat-input-area">
-    <div id="composer-card">
-      <div style="height:92px">input</div>
+    <div id="composer-card" class="composer-card">
+      <div class="composer-identity-row" style="min-height:92px">input</div>
+      <div class="composer-toolbar">
+        <div class="composer-group">
+          <button id="workspace-selector-btn" type="button" class="composer-chip">默认空间</button>
+        </div>
+      </div>
       <div id="workspace-selector-menu" class="workspace-selector-menu">
         <div class="ws-sel-section-title">选择工作空间</div>
         <button type="button" class="ws-sel-item active"><span>默认空间</span><i class="ws-sel-check"></i></button>
         <button type="button" class="ws-sel-item"><span>项目甲</span></button>
-        <button type="button" class="ws-sel-item"><span>项目乙</span></button>
+        <button type="button" class="ws-sel-item"><span>新建项目</span></button>
       </div>
     </div>
   </div>
@@ -117,7 +123,7 @@ test('workspace menu stays inside the viewport above the composer on chat-home',
         for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 720 }, { width: 375, height: 812 }]) {
             const page = await browser.newPage({ viewport });
             await page.goto(origin + '/fixture', { waitUntil: 'networkidle' });
-            const geometry = await page.evaluate(() => {
+            const readGeometry = () => page.evaluate(() => {
                 const menu = document.getElementById('workspace-selector-menu');
                 const card = document.getElementById('composer-card');
                 const menuBox = menu.getBoundingClientRect();
@@ -125,19 +131,32 @@ test('workspace menu stays inside the viewport above the composer on chat-home',
                 return {
                     menuTop: menuBox.top,
                     menuBottom: menuBox.bottom,
+                    menuLeft: menuBox.left,
+                    menuRight: menuBox.right,
                     cardTop: cardBox.top,
+                    buttonTop: document.getElementById('workspace-selector-btn').getBoundingClientRect().top,
+                    lastItemBottom: menu.lastElementChild.getBoundingClientRect().bottom,
                     viewportHeight: innerHeight,
+                    viewportWidth: innerWidth,
                 };
             });
-            assert.ok(geometry.menuTop >= 0, `${viewport.width}x${viewport.height}: not clipped above`);
-            assert.ok(
-                geometry.menuBottom <= geometry.viewportHeight + 1,
-                `${viewport.width}x${viewport.height}: not clipped below`,
-            );
-            assert.ok(
-                geometry.menuBottom <= geometry.cardTop + 1,
-                `${viewport.width}x${viewport.height}: menu opens above composer`,
-            );
+            for (const inputHeight of [92, 220]) {
+                await page.locator('.composer-identity-row').evaluate((el, height) => {
+                    el.style.minHeight = height + 'px';
+                }, inputHeight);
+                const geometry = await readGeometry();
+                const label = `${viewport.width}x${viewport.height}, input ${inputHeight}px`;
+                assert.ok(geometry.menuTop >= 0, `${label}: not clipped above`);
+                assert.ok(geometry.menuBottom <= geometry.viewportHeight + 1, `${label}: not clipped below`);
+                assert.ok(geometry.menuLeft >= 0 && geometry.menuRight <= geometry.viewportWidth + 1,
+                    `${label}: not clipped horizontally`);
+                assert.ok(geometry.menuBottom > geometry.cardTop + 16,
+                    `${label}: menu is beside the input, not above the entire card`);
+                const gap = geometry.buttonTop - geometry.menuBottom;
+                assert.ok(gap >= -1 && gap <= 24, `${label}: menu hugs its toolbar button (gap ${gap}px)`);
+                assert.ok(geometry.lastItemBottom <= geometry.menuBottom,
+                    `${label}: new-project action is fully visible`);
+            }
             await page.close();
         }
     } finally {
