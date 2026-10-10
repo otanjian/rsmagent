@@ -894,7 +894,7 @@ const translations: Record<string, Record<string, string>> = {
     // Desktop remote web workbench (change add-desktop-remote-web-workbench).
     // The trusted local connection shell: server management only, no business.
     remote_shell_title: '远程服务器',
-    remote_shell_desc: '将桌面端连接到服务器上的同一套 Web 工作台。平台登录凭据不落盘；SAP 登录可选择由 macOS 钥匙串加密记住。',
+    remote_shell_desc: '将桌面端连接到服务器上的同一套 Web 工作台。平台登录凭据不落盘；SAP 登录可选择由本机系统加密记住。',
     remote_open_shell: '打开服务器连接设置',
     remote_servers: '已保存的服务器',
     remote_no_servers: '尚未添加服务器。',
@@ -1823,7 +1823,7 @@ const translations: Record<string, Record<string, string>> = {
     slash_version: 'Show version',
     // Desktop remote web workbench (change add-desktop-remote-web-workbench).
     remote_shell_title: 'Remote server',
-    remote_shell_desc: 'Connect the desktop app to the server’s Web workbench. Platform credentials stay in memory; SAP login can optionally be remembered with macOS Keychain encryption.',
+    remote_shell_desc: 'Connect the desktop app to the server’s Web workbench. Platform credentials stay in memory; SAP login can optionally be remembered with local OS encryption.',
     remote_open_shell: 'Open server connection settings',
     remote_servers: 'Saved servers',
     remote_no_servers: 'No server has been added yet.',

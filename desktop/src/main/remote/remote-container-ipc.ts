@@ -48,7 +48,7 @@ import { resolveBackendPath } from '../backend-path'
 import { InterpreterRegistry, findWorkerRuntime } from '../local-execution/interpreter'
 import { registerRemoteHost, setupRemoteHostIPC, teardownRemoteHostIPC } from './remote-host-ipc'
 import { remoteCoveringScript } from './shell-covering'
-import type { ReadContext } from './sap-page-read'
+import { isSapDesktopHost, type ReadContext } from './sap-page-read'
 import { SapLoginMemory, SapLoginVault, type SapLoginContext } from './sap-login-memory'
 import { partitionName, isValidInstanceId } from './web-session'
 import { SignOutCoordinator, type SignOutOutcome } from './session-signout'
@@ -732,7 +732,7 @@ export async function attachRemoteContainer(options: {
     return {server: options.origin, user:current.session.userId, tenant:current.session.tenantId,
       epoch:current.session.epoch}
   }
-  const sapLogin = process.platform === 'darwin' ? new SapLoginMemory(view.webContents,
+  const sapLogin = isSapDesktopHost() ? new SapLoginMemory(view.webContents,
     new SapLoginVault(path.join(app.getPath('userData'), 'sap-login'), safeStorage), sapScope) : undefined
   if (sapLogin) partitionDisposers.push(() => sapLogin.dispose())
   let sapLoginQueue = Promise.resolve<object>({})
@@ -763,8 +763,8 @@ export async function attachRemoteContainer(options: {
           if (!scope) throw new Error('sap_login_unavailable')
           if (action === 'enable') {
             const answer = await dialog.showMessageBox({type:'question', title:'记住 SAP 登录',
-              message:`在这台 Mac 上记住 ${new URL(body.sap_login.sap_url).origin} 的 SAP 登录？`,
-              detail:'仅用于当前平台账号、团队和 SAP Client。登录状态与账号密码由 macOS 钥匙串加密保护；会话过期后自动填入，由你点击登录。可随时在工作台清除。',
+              message:`在这台电脑上记住 ${new URL(body.sap_login.sap_url).origin} 的 SAP 登录？`,
+              detail:'仅用于当前平台账号、团队和 SAP Client。登录状态与账号密码由本机系统加密保护；会话过期后自动填入，由你点击登录。可随时在工作台清除。',
               buttons:['记住登录', '取消'], defaultId:0, cancelId:1})
             if (answer.response !== 0) action = 'prepare'
           }

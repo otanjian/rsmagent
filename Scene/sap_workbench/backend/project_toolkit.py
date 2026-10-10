@@ -56,6 +56,10 @@ HIDDEN_TOOLS = ('sap_transaction_open', 'sap_data_call', 'sap_page_read')
 #: 那份文件既不是新内容、也不是"用户改动"，迁移会被误判为冲突而拒绝替换。
 #: 规则同旧实现：每替换一次修订，就把被替换版本的摘要加进来，并保留最早的条目。
 UPGRADEABLE_REVISIONS = frozenset({
+    # Last macOS-only page reader guidance, before Windows desktop support.
+    '5b1498b26c80781d498e1674800c66e0622dd74f68103fc9e135646fc6157205',
+    'a38528011f3cd00a34376d1760f27882d5ce9796d4381d642fd8b8a413c92cd7',
+
     # Last deployed page reader, before explicit current-user observations.
     '1151c54b4e06a41a6d0351c4090b7cb6800e6d8ca45256bb16c26120bb7e1b85',
     '93e7bd4bdacb8db2b75c2b5a2e6e20fd4be742049833bd0fffa3b35b1f19beea',

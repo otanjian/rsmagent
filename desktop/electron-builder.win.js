@@ -118,6 +118,12 @@ async function customSign(configuration) {
 // require deep-signing every nested lib — a signed top-level exe is enough for
 // SmartScreen/Defender to attribute the publisher).
 config.win = { ...config.win, signtoolOptions: { sign: customSign, signingHashAlgorithms: ['sha256'] } }
+// Unsigned local/CI dry builds must not unpack winCodeSign: that archive contains
+// macOS symlinks and 7-Zip fails without Windows Developer Mode / admin rights.
+// When signing credentials are present, keep the default (edit + sign) path.
+if (!canSign()) {
+  config.win.signAndEditExecutable = false
+}
 
 // Bundle ripgrep — Windows only. The "Bundle ripgrep binary" CI step downloads
 // rg.exe to resources/bin; ship it under <resources>/bin so python-manager can

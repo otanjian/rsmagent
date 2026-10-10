@@ -11,10 +11,15 @@ type Snapshot = { capturedAt: string; source: string; scope: string; title: stri
 const fail = (code: string): never => { throw Object.assign(new Error(code), { code }) }
 const origin = (url: string): string => { try { return new URL(url).origin } catch { return '' } }
 
+/** Host platforms that expose the native SAP iframe bridge (page read + login memory). */
+export function isSapDesktopHost(platform = process.platform): boolean {
+  return platform === 'darwin' || platform === 'win32'
+}
+
 /** Reads only a server-verified pending request in this container. */
 export async function readSapPage(contents: WebContents, request: ReadRequest,
   context: () => Promise<ReadContext>, platform = process.platform): Promise<Snapshot> {
-  if (platform !== 'darwin') return fail('page_read_unsupported')
+  if (!isSapDesktopHost(platform)) return fail('page_read_unsupported')
   const allowed = await context()
   if (allowed.binding_id !== request.binding_id || allowed.id !== request.read_id || allowed.view_id !== request.view_id ||
       allowed.expires_at <= Date.now()) return fail('page_changed')

@@ -33,7 +33,7 @@ export function loginSubmission(body: string, client: string): SapCredentials | 
   return {user, password, client, language: (data.get('sap-language') || '').slice(0, 8)}
 }
 
-/** macOS safeStorage protects the encryption key in Keychain; disk contains ciphertext only. */
+/** safeStorage protects the encryption key (Keychain on macOS, DPAPI on Windows); disk contains ciphertext only. */
 export class SapLoginVault {
   constructor(private directory: string, private cipher: Cipher) {}
   available(): boolean { return this.cipher.isEncryptionAvailable() }

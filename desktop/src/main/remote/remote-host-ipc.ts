@@ -38,7 +38,7 @@ import { installationIdentityFor } from '../installation-identity'
 import { remoteGrantRegistry } from './local-files-bridge'
 import { confirmLocalContext, type BindingTransport } from './binding-setup'
 import type { GrantScope } from '../local-files/grants'
-import { readSapPage, type ReadContext, type ReadRequest } from './sap-page-read'
+import { isSapDesktopHost, readSapPage, type ReadContext, type ReadRequest } from './sap-page-read'
 
 /**
  * One selection state machine for the process. State is keyed by scope inside it,
@@ -287,13 +287,13 @@ async function dispatch(
           bridge: BRIDGE_VERSION,
           generation: context.generation,
           saveAsApproval: saveAsApprovalApplicability(),
-        }), sapPageRead: process.platform === 'darwin' && Boolean(current.sapReadContext),
-          sapLoginMemory: process.platform === 'darwin' && Boolean(current.sapLogin) },
+        }), sapPageRead: isSapDesktopHost() && Boolean(current.sapReadContext),
+          sapLoginMemory: isSapDesktopHost() && Boolean(current.sapLogin) },
       }
     case 'sapWorkbenchLayout':
       return current.sapLayout ? {ok: true, data: current.sapLayout(params)} : refusal('feature_unavailable', 'Layout preferences are unavailable')
     case 'manageSapLogin': {
-      if (!current.sapLogin || process.platform !== 'darwin') return refusal('sap_login_unavailable', 'SAP login memory is unavailable')
+      if (!current.sapLogin || !isSapDesktopHost()) return refusal('sap_login_unavailable', 'SAP login memory is unavailable')
       const broker = status()
       if (!broker.session || broker.blockedReason) return signInRequired()
       try {
@@ -306,7 +306,7 @@ async function dispatch(
       }
     }
     case 'readSapPage': {
-      if (!current.sapReadContext || process.platform !== 'darwin') return refusal('page_read_unsupported', 'macOS page reading is unavailable')
+      if (!current.sapReadContext || !isSapDesktopHost()) return refusal('page_read_unsupported', 'desktop page reading is unavailable')
       const broker = status()
       if (!broker.session || broker.blockedReason) return signInRequired()
       const request = params as ReadRequest
