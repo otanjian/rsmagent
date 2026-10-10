@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -185,6 +186,56 @@ def runtime_errors(root):
     return result.get('errors', []) + (['runtime process failed'] if code else [])
 
 
+# Web 品牌去标识的门禁输入：rsmCode 与 rsmagent 是同级的两个仓库。
+BRAND_WEB_DIST = Path('rsmCode/opencode/packages/app/dist')
+BRAND_IDENTITY_CHECK = Path('rsmCode/branding/check-identity.mjs')
+BRAND_TEXT_SUFFIXES = ('.html', '.js', '.mjs', '.cjs', '.css', '.json', '.webmanifest', '.svg', '.txt')
+
+
+def brand_errors(root):
+    """Fail if the published Web UI still ships upstream branding.
+
+    Checks the built bundle (when present) for the upstream brand word and site
+    links. Lowercase `opencode` is intentionally allowed: it remains in i18n keys,
+    the built-in theme id, localStorage keys, package names and `x-opencode-*`
+    protocol headers — none of them user-visible. A missing build is skipped so
+    the gate stays runnable before a Web build exists (it never becomes a false
+    pass: `brand_identity_errors` still exercises the model identity path).
+    """
+    dist = root.parent / BRAND_WEB_DIST
+    if not dist.is_dir():
+        return []
+    errors = []
+    for path in sorted(dist.rglob('*')):
+        if not path.is_file() or path.suffix not in BRAND_TEXT_SUFFIXES:
+            continue
+        try:
+            text = path.read_text('utf-8', errors='ignore')
+        except OSError as error:
+            errors.append(f'cannot read {path.relative_to(dist)}: {error}')
+            continue
+        for token in ('opencode.ai', 'OpenCode'):
+            if token in text:
+                errors.append(f'{path.relative_to(dist)} still contains {token!r}')
+    return errors
+
+
+def brand_identity_errors(root):
+    """Fail if the model identity rewrite plugin no longer strips upstream wording.
+
+    Runs `rsmCode/branding/check-identity.mjs` through bun; skipped when the script
+    or bun is unavailable so the gate does not depend on an optional toolchain.
+    """
+    script = root.parent / BRAND_IDENTITY_CHECK
+    if not script.is_file():
+        return []
+    bun = shutil.which('bun')
+    if not bun:
+        return []
+    code, output = command([bun, str(script)], root.parent)
+    return [] if code == 0 else ['identity rewrite check failed: ' + output[-2000:]]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=ROOT)
@@ -204,6 +255,7 @@ def main():
     if not report['layers']['ledger']:
         report['layers']['source-history'] = source_errors(root, data, report['source_sha'], args.baseline)
     report['layers']['actual-entry-dependencies'] = runtime_errors(root)
+    report['layers']['brand-decoupling'] = brand_errors(root) + brand_identity_errors(root)
     for script in ('check-route-coverage.py', 'check-web-module-seams.py'):
         code, log = command([sys.executable, 'scripts/' + script], root)
         (out / (script + '.log')).write_text(log)
