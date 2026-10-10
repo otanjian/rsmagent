@@ -13,12 +13,12 @@ const appearanceCss = fs.readFileSync(path.join(repo, 'channel/web/static/css/ap
 test('chat-home CSS opens toolbar chip menus upward and command menus downward', () => {
     assert.match(
         appearanceCss,
-        /#chat-main\.chat-home :is\(#slash-menu, #mention-menu, #model-selector-menu\)\s*\{\s*top:\s*calc\(100% \+ 8px\);\s*bottom:\s*auto;/s,
-        'long command/model lists stay below the composer on home',
+        /#chat-main\.chat-home :is\(#slash-menu, #mention-menu\)\s*\{\s*top:\s*calc\(100% \+ 8px\);\s*bottom:\s*auto;/s,
+        'long command lists stay below the composer on home',
     );
     assert.match(
         appearanceCss,
-        /#chat-main\.chat-home :is\(#attach-menu, #workspace-selector-menu, #composer-agent-menu\)\s*\{\s*top:\s*auto;\s*bottom:\s*calc\(100% \+ 8px\);/s,
+        /#chat-main\.chat-home :is\(#attach-menu, #composer-agent-menu\)\s*\{\s*top:\s*auto;\s*bottom:\s*calc\(100% \+ 8px\);/s,
         'toolbar chip menus open above the composer on home',
     );
     assert.doesNotMatch(

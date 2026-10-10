@@ -937,18 +937,15 @@ html[data-web-palette] #composer-card .composer-hint { margin: 0; padding: 0 4px
 }
 #chat-main.chat-home .composer-toolbar { gap: 10px; }
 #chat-main.chat-home .composer-send-btn { width: 36px; height: 36px; border-radius: 11px; }
-/* Empty-home: long command/model lists open below the composer so they are not
-   clipped against the top of the scrollable welcome area. Cap height to the
-   room left under the centred hero and scroll inside the menu. Toolbar chip
-   menus (attach / workspace / agent) stay above the composer instead — the
-   hero sits low in the viewport, so opening those downward clips against
-   #chat-main's overflow edge. */
-#chat-main.chat-home :is(#slash-menu, #mention-menu, #model-selector-menu) {
+/* Empty-home: command lists open below the composer and use the room left
+   under the hero. Attachment and agent menus stay above it. Workspace and
+   model selectors keep the shared upstream positioning and 380px height cap. */
+#chat-main.chat-home :is(#slash-menu, #mention-menu) {
     top: calc(100% + 8px);
     bottom: auto;
     max-height: max(96px, calc(100dvh - var(--home-header-h) - var(--home-hero-offset) - var(--home-hero-h) - 24px));
 }
-#chat-main.chat-home :is(#attach-menu, #workspace-selector-menu, #composer-agent-menu) {
+#chat-main.chat-home :is(#attach-menu, #composer-agent-menu) {
     top: auto;
     bottom: calc(100% + 8px);
     max-height: max(96px, calc(100dvh - var(--home-header-h) - var(--home-hero-offset) - var(--home-hero-h) - 24px));
