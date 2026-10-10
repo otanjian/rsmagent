@@ -423,6 +423,18 @@ def _build_preview_url(abs_path: str) -> str:
     referenced by an HTML page (./style.css, ./img/a.png) resolve correctly.
     """
     from channel.web.fork.runtime import _encode_dir_token
+    try:
+        from agent.workspace.legacy_attachment_map import (
+            MAPPED, resolve_attachment_path)
+        resolution = resolve_attachment_path(abs_path)
+        if resolution.status == MAPPED:
+            # Mint the token for where the page *is*, so its relative assets
+            # mount from the migrated directory rather than the emptied legacy
+            # one. A conflict or a missing target keeps the original path: the
+            # preview then reports not-found instead of serving a replacement.
+            abs_path = resolution.path
+    except Exception:  # noqa: BLE001 - compatibility must never break a URL
+        pass
     directory = os.path.dirname(abs_path)
     name = os.path.basename(abs_path)
     return f"/preview/{_encode_dir_token(directory)}/{quote(name)}"
@@ -733,6 +745,12 @@ def _artifacts_from_steps(steps, session_id: str = None, agent_id: str = None) -
         if not isinstance(step, dict) or step.get("type") != "tool" or step.get("is_error"):
             continue
         for path in _paths_written_by_step(step):
+            if os.path.isabs(path):
+                # A card is only published for a file that exists, and a
+                # migrated attachment no longer sits at the recorded path. One
+                # hop through the compatibility table keeps the historical card
+                # (and its URLs) pointing at the real file.
+                path = _resolve_legacy_attachment(path)
             if root is None:
                 root = (_session_workspace_root(session_id, agent_id)
                         if session_id else get_workspace_root())
@@ -768,6 +786,25 @@ def _artifacts_from_steps(steps, session_id: str = None, agent_id: str = None) -
             if payload:
                 out.append(payload)
     return out
+
+
+def _resolve_legacy_attachment(path: str) -> str:
+    """Translate a migrated attachment's old absolute path to its new one.
+
+    The single-hop table is the same one ``/api/file`` and ``/preview`` use, so a
+    historical artifact card, its download URL and its preview all agree. Only a
+    ``mapped`` result is substituted: a conflict or a missing target keeps the
+    original path, and the card then reports not-found rather than a same-named
+    replacement. Any failure degrades to the original path -- compatibility must
+    never break replay.
+    """
+    try:
+        from agent.workspace.legacy_attachment_map import (
+            MAPPED, resolve_attachment_path)
+        resolution = resolve_attachment_path(path)
+    except Exception:  # noqa: BLE001
+        return path
+    return resolution.path if resolution.status == MAPPED else path
 
 
 def _under(path: str, root: str) -> bool:
