@@ -180,6 +180,32 @@ def test_an_unknown_link_reads_as_none(store):
     assert store.find_coding_link_by_external("default", "ses_missing") is None
 
 
+# --- personal workspace binding (add-coding-agent-personal-workspace) ------
+
+
+def test_the_link_carries_an_optional_personal_workspace_id(store):
+    """A nullable ``workspace_id`` is the only new field: empty means the
+    pre-existing project-directory behaviour, non-empty marks a personal
+    session whose ``project_dir`` is the account directory ``U``."""
+    assert "workspace_id" in _columns(store)
+    with _as():
+        legacy = _link(store, session_id="oc_legacy",
+                       external_session_id="ses_rsm_legacy")
+    assert legacy["workspace_id"] == ""
+
+
+def test_a_personal_link_round_trips_its_workspace_id(store):
+    with _as():
+        _link(store, session_id="oc_personal",
+              external_session_id="ses_rsm_personal",
+              project_dir="/srv/checkouts/erp/user/tanjian",
+              workspace_id="ocws_abc")
+        read_back = store.get_coding_link("oc_personal")
+    assert read_back["workspace_id"] == "ocws_abc"
+    # The actual Location stays in the existing project_dir field, as U.
+    assert read_back["project_dir"] == "/srv/checkouts/erp/user/tanjian"
+
+
 def test_links_are_listed_for_their_owner_only(store):
     """Sync must never refresh a row the caller cannot see."""
     with _as(owner="u-1"):

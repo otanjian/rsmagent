@@ -892,6 +892,9 @@ function _renderSidebarAccount() {
     } else if (leaving || logoutError) {
         name = t(leaving ? 'account_logging_out' : 'account_logout_unconfirmed');
         subtitle = logoutError ? t('account_retry_hint') : '';
+    } else if (state.phase === 'timeout') {
+        name = t('account_check_timeout');
+        subtitle = t('account_retry_hint');
     } else if (state.phase === 'error') {
         name = t('account_unavailable');
         subtitle = t('account_retry_hint');
@@ -930,7 +933,7 @@ function _renderSidebarAccount() {
     document.getElementById('account-menu-status')?.classList.remove('opacity-0');
     _accountText('account-menu-status', hasUser ? '' : name);
     _accountHidden('account-menu-status', hasUser || state.phase === 'unauthenticated');
-    _accountHidden('account-menu-retry', !['error', 'logout_error', 'loading'].includes(state.phase));
+    _accountHidden('account-menu-retry', !['error', 'logout_error', 'loading', 'timeout'].includes(state.phase));
     _accountHidden('account-menu-logout', !canLogout);
     _accountText('account-menu-logout-label', t(leaving ? 'account_logging_out' : logoutError ? 'account_retry_logout' : 'account_logout'));
     // Six-item menu for an authenticated database account.
@@ -956,8 +959,10 @@ function _renderSidebarAccount() {
     });
     if (!_accountAppVisible && state.phase !== 'unauthenticated' && !_pendingTenantPicker) {
         _accountText('login-subtitle', '');
-        _accountText('auth-check-message', t(state.phase === 'error' ? 'account_unavailable' : 'account_loading'));
-        _accountHidden('auth-check-retry', state.phase !== 'error');
+        _accountText('auth-check-message', t(
+            state.phase === 'timeout' ? 'account_check_timeout'
+                : state.phase === 'error' ? 'account_unavailable' : 'account_loading'));
+        _accountHidden('auth-check-retry', !['error', 'timeout'].includes(state.phase));
     } else if (!_accountAppVisible) {
         _accountText('login-subtitle', t('account_login_hint'));
         _accountText('login-btn', t(_pendingTenantPicker ? 'login_enter_tenant' : 'account_login'));
@@ -1154,6 +1159,13 @@ function _invalidateAccountIdentity(phase) {
     if (typeof resetAgentWorkbenchFilters === 'function') resetAgentWorkbenchFilters(true);
     ++_accountCheckSeq;
     _accountCheckRequest = null;
+    // Drop an unconsumed startup check: it belongs to the identity that just
+    // changed and a late answer must not restore the old account. An already
+    // consumed result keeps flowing through the ordinary epoch/sequence guard.
+    const checkPrimitive = _accountCheckPrimitive();
+    if (checkPrimitive && typeof checkPrimitive.discardStartup === 'function') {
+        checkPrimitive.discardStartup();
+    }
     _accountIdentityKey = null;
     _accountEntryRequest = null;
     ++_accountSelfSeq;
@@ -1396,6 +1408,47 @@ function _closeForcedPasswordModal() {
     _setAccountPanel(null);
 }
 
+// The bounded /auth/check primitive ships separately (loaded from <head>
+// ahead of this bundle) so the first read-only check overlaps the download.
+// It is a hard startup dependency: when it is absent the check fails closed
+// rather than growing a second authentication implementation here.
+function _accountCheckPrimitive() {
+    return typeof window !== 'undefined' ? window.__cowAccountCheck__ : null;
+}
+
+// A startup result may only be reused while it is recent. Matches the
+// primitive's own 5s deadline, so a check that outlived it is rechecked.
+function _startupCheckFresh(startup, primitive) {
+    if (!startup || typeof startup.issuedAt !== 'number') return false;
+    const maxAge = Number(primitive && primitive.STARTUP_MAX_AGE_MS) || 5000;
+    return Date.now() - startup.issuedAt <= maxAge;
+}
+
+// One check for a startup or a retry. The primitive hands out the eager
+// startup result at most once; a fresh one is reused, a completed but expired
+// one is discarded and rechecked, and one that already timed out or failed is
+// surfaced to the existing retry UI rather than replayed automatically.
+function _accountCheckOutcome() {
+    const primitive = _accountCheckPrimitive();
+    if (!primitive || typeof primitive.request !== 'function') {
+        return Promise.resolve({ kind: 'error', error: new Error('Account check unavailable') });
+    }
+    // `request()` hands back a cancellable handle whose `outcome` is the
+    // captured result; an injected test double may return the promise directly.
+    const startFresh = () => {
+        const handle = primitive.request();
+        return handle && handle.outcome ? handle.outcome : handle;
+    };
+    const startup = typeof primitive.takeStartup === 'function' ? primitive.takeStartup() : null;
+    if (!startup) return startFresh();
+    return Promise.resolve(startup.outcome).then(outcome => {
+        if (outcome && outcome.kind === 'response' && !_startupCheckFresh(startup, primitive)) {
+            return startFresh();
+        }
+        return outcome;
+    });
+}
+
 function refreshAccountIdentity() {
     if (_accountWritePending || _pendingTenantPicker) return Promise.resolve();
     if (_accountCheckRequest) return _accountCheckRequest;
@@ -1406,15 +1459,28 @@ function refreshAccountIdentity() {
     else _renderSidebarAccount();
     const request = Promise.resolve().then(async () => {
         try {
-            // Global identity is independent of the selected tenant. Do not
-            // use the tenant-admin request helper or cache a credentials body.
-            const response = await fetch('/auth/check', { credentials: 'same-origin', cache: 'no-store' });
+            // Global identity is independent of the selected tenant. The
+            // primitive issues the fixed endpoint without a tenant header and
+            // captures its own errors, so no startup failure rejects here.
+            const outcome = await _accountCheckOutcome();
             if (!current()) return;
-            if (response.status === 401) { showLoginScreen(); return; }
-            if (!response.ok) throw new Error('Authentication check failed');
-            const data = await response.json();
-            if (!current()) return;
-            const next = _normalizeAccountCheck(data);
+            // A bounded wait that expired is recoverable, not an anonymous or
+            // authenticated conclusion: show the timeout copy and the existing
+            // retry entry instead of guessing a login mode.
+            if (outcome.kind === 'timeout') {
+                _accountState = _emptyAccount('timeout');
+                if (!_accountAppVisible) _showAccountCheckGate();
+                else _renderSidebarAccount();
+                return;
+            }
+            if (outcome.kind !== 'response' || !outcome.validBody) {
+                throw new Error('Authentication check failed');
+            }
+            if (outcome.status === 401) { showLoginScreen(); return; }
+            if (outcome.status < 200 || outcome.status >= 300) {
+                throw new Error('Authentication check failed');
+            }
+            const next = _normalizeAccountCheck(outcome.data);
             if (next.phase === 'unauthenticated') {
                 showLoginScreen();
                 return;
@@ -12239,6 +12305,29 @@ let _dragSpaceKey = null;
 let _sessionActionMenu = null;
 let _sessionMenuCleanup = null;
 
+// One row action is submitted at most once until its answer lands. The key is
+// per action, target Agent and session, so archiving session A never blocks
+// deleting session B, and a double click cannot send two mutations. Lives here
+// rather than next to any one caller because archive, restore and delete all
+// share it.
+const _sessionActionsInFlight = new Set();
+
+function _sessionActionKey(action, sid, agentId) {
+    return `${action}:${agentId || ''}:${sid}`;
+}
+
+// A visible "this row is being changed" mark, on whichever surface owns the row
+// (the ordinary list or the archived dialog). It carries no behavior of its own;
+// the in-flight set is what prevents a duplicate submission.
+function _sessionMarkBusy(sid, agentId, busy) {
+    document.querySelectorAll('.session-item[data-session-id], .archived-session-row[data-session-id]')
+        .forEach(el => {
+            if (el.dataset.sessionId === sid && (!agentId || el.dataset.agentId === agentId)) {
+                el.classList.toggle('busy', busy);
+            }
+        });
+}
+
 function _isOptimisticSession(sid, owner) {
     return _sessionItems.some(s => s.optimistic && s.session_id === sid
         && (!owner || s.agent?.id === owner));
@@ -12249,17 +12338,27 @@ function _isOptimisticSession(sid, owner) {
 function archiveSidebarSession(sid, agentId) {
     if (!sid || _isOptimisticSession(sid, agentId)) return;
     const owner = agentId || activeAgentId || '';
+    const key = _sessionActionKey('archive', sid, owner);
+    // A second click while the first request is unanswered would archive an
+    // already-archived session; the answer marks the row idle again.
+    if (_sessionActionsInFlight.has(key)) return;
+    _sessionActionsInFlight.add(key);
     const context = _sessionListContext();
+    _sessionMarkBusy(sid, owner, true);
     return fetch(`/api/sessions/${encodeURIComponent(sid)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ archived: true, agent_id: owner }),
-    }).then(r => r.json()).then(data => {
+    }).then(r => r.json().catch(() => ({}))).then(data => {
         if (context !== _sessionListContext()) return;
-        _wsToast(data.status === 'success' ? t('session_archived') : data.message || t('session_archive_failed'));
-        if (data.status === 'success') _refreshHistoryList();
+        const ok = data && data.status === 'success';
+        _wsToast(ok ? t('session_archived') : (data && data.message) || t('session_archive_failed'));
+        if (ok) _refreshHistoryList();
     }).catch(() => {
         if (context === _sessionListContext()) _wsToast(t('session_archive_failed'));
+    }).finally(() => {
+        _sessionActionsInFlight.delete(key);
+        _sessionMarkBusy(sid, owner, false);
     });
 }
 
@@ -12421,22 +12520,36 @@ function openArchivedSessionsModal() {
 function restoreArchivedSession(sessionId, agentId) {
     if (!sessionId) return;
     const owner = agentId || activeAgentId || '';
-    fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+    const key = _sessionActionKey('restore', sessionId, owner);
+    if (_sessionActionsInFlight.has(key)) return;
+    _sessionActionsInFlight.add(key);
+    // Remember which dialog asked, so a delayed answer does not repaint a
+    // dialog that was dismissed and reopened on another set of records.
+    const body = _archivedSessionsBody;
+    const context = _sessionListContext();
+    _sessionMarkBusy(sessionId, owner, true);
+    return fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ archived: false, agent_id: owner }),
     })
-        .then(r => r.json())
+        .then(r => r.json().catch(() => ({})))
         .then(data => {
-            if (data.status !== 'success') {
-                _wsToast(data.message || t('session_restore_failed'));
+            if (!data || data.status !== 'success') {
+                _wsToast((data && data.message) || t('session_restore_failed'));
                 return;
             }
             _wsToast(t('session_restored'));
             _refreshHistoryList();
-            _loadArchivedSessions(_archivedSessionsBody);
+            if (context === _sessionListContext() && body && body === _archivedSessionsBody) {
+                _loadArchivedSessions(body);
+            }
         })
-        .catch(() => _wsToast(t('session_restore_failed')));
+        .catch(() => _wsToast(t('session_restore_failed')))
+        .finally(() => {
+            _sessionActionsInFlight.delete(key);
+            _sessionMarkBusy(sessionId, owner, false);
+        });
 }
 // === ARCHIVED_SESSIONS_END ===
 
@@ -13121,11 +13234,12 @@ function isCodingAgent(agentId) {
 }
 
 // A restored/stale composer (including voice callbacks) must never submit a
-// coding Agent to the ordinary runtime. Keep the user's draft intact.
+// coding Agent to the ordinary runtime. Keep the user's draft intact. It must
+// not rescue the draft by *creating* a session either: only the user's explicit
+// new-chat action does that, so with no pane mounted the send is refused and
+// the coding entry is named instead.
 function guardCodingMessage() {
     if (!isCodingAgent(activeAgentId)) return false;
-    const current = activeCodingSession();
-    if (!current || current.agent_id !== activeAgentId) openCodingSession(activeAgentId, '');
     _wsToast(t('coding_send_in_pane'));
     return true;
 }
@@ -13209,11 +13323,15 @@ function openCodingSession(agentId, requestedSessionId, options) {
     return Promise.resolve(mounted).then(described => !!(described && described.session_id));
 }
 
-/** Tear the coding pane down, through the module's own leave confirmation. */
-function leaveCodingSession() {
+/** Tear the coding pane down, through the module's own leave confirmation.
+
+    ``options`` is forwarded to the module (``{skipConfirm:true}`` after the
+    page already settled the unsaved guard itself, so a completed confirmation
+    is not asked twice). */
+function leaveCodingSession(options) {
     const module = codingChatModule();
     if (!module || !module.isActive()) return true;
-    return module.leave();
+    return module.leave(options);
 }
 
 /** The conversation currently mounted as a coding session, if any. */
@@ -13509,30 +13627,117 @@ function renameSession(sid, agentId) {
 
 function deleteSession(sid, agentId) {
     if (_isOptimisticSession(sid, agentId)) return;
+    const owner = agentId || activeAgentId || '';
     showConfirmModal(t('delete_session_title'), t('delete_session_confirm'), () => {
-        const owner = agentId || activeAgentId;
         const deletingCurrent = sid === sessionId && (!owner || owner === activeAgentId);
-        const next = deletingCurrent ? _findNextSession(sid, owner) : null;
-
-        fetch(`/api/sessions/${encodeURIComponent(sid)}?agent_id=${encodeURIComponent(owner || '')}`, { method: 'DELETE' })
-            .then(r => r.json())
-            .then(data => {
-                if (data.status !== 'success') { _wsToast(data.message || t('session_settings_failed')); return; }
-                _invalidateHistoryCache();
-                if (!deletingCurrent) {
-                    _refreshHistoryList();
-                    return;
-                }
-                if (next) {
-                    switchSession(next.sessionId, next.agentId);
-                    _refreshHistoryList();
-                } else {
-                    newChat(false);
-                }
-            })
-            .catch(() => _wsToast(t('session_settings_failed')));
+        // Settle an open editor before anything is submitted; a cancel must
+        // send no delete at all. Runs once, before the request, so the success
+        // path never asks the leave confirmation again.
+        if (deletingCurrent && typeof wsGuardUnsaved === 'function'
+            && !wsGuardUnsaved(() => submitSessionDelete(sid, owner))) return;
+        submitSessionDelete(sid, owner);
     });
 }
+
+function submitSessionDelete(sid, owner) {
+    const key = _sessionActionKey('delete', sid, owner);
+    if (_sessionActionsInFlight.has(key)) return;
+    _sessionActionsInFlight.add(key);
+    const context = _sessionListContext();
+    const deletingCurrent = sid === sessionId && (!owner || owner === activeAgentId);
+    const next = deletingCurrent ? _findNextSession(sid, owner) : null;
+    _sessionMarkBusy(sid, owner, true);
+    return fetch(`/api/sessions/${encodeURIComponent(sid)}?agent_id=${encodeURIComponent(owner || '')}`, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(data => {
+            _invalidateHistoryCache();
+            if (!data || data.status !== 'success') {
+                _wsToast((data && data.message) || t('session_settings_failed'));
+                return;
+            }
+            // The identity, the surface or the selection may have moved on
+            // while the request was in flight. Then the list is refreshed and
+            // nothing here navigates or closes what the user opened.
+            if (context !== _sessionListContext() || sid !== sessionId) {
+                _refreshHistoryList();
+                return;
+            }
+            if (next) {
+                // The unsaved guard already ran; do not ask again on the way out.
+                if (typeof codingSeam === 'function' && codingSeam().isCodingAgent(activeAgentId)
+                    && codingSeam().activeSession()) {
+                    codingSeam().leave({ skipConfirm: true });
+                }
+                switchSession(next.sessionId, next.agentId);
+                _refreshHistoryList();
+            } else if (typeof codingSeam === 'function'
+                && codingSeam().isCodingAgent(owner || activeAgentId)) {
+                enterCodingEmptyState(owner || activeAgentId);
+                _refreshHistoryList();
+            } else {
+                newChat(false);
+            }
+        })
+        .catch(() => _wsToast(t('session_settings_failed')))
+        .finally(() => {
+            _sessionActionsInFlight.delete(key);
+            _sessionMarkBusy(sid, owner, false);
+        });
+}
+
+// The coding surface with no conversation. The pane is closed and the ordinary
+// composer is withheld: with a coding Agent selected there is nothing an
+// ordinary send could reach, and only the explicit new-chat action creates a
+// remote session. The Agent stays selected and its new-chat entry stays usable.
+function enterCodingEmptyState(agentId) {
+    const owner = agentId || activeAgentId || '';
+    const seam = (typeof codingSeam === 'function') ? codingSeam() : null;
+    // The leave confirmation already ran before the delete request.
+    if (seam) seam.leave({ skipConfirm: true });
+    if (owner) {
+        activeAgentId = owner;
+        writeScopedPreference('cow_active_agent', activeAgentId);
+    }
+    // No conversation: drop the selection and its remembered id, so a reload
+    // does not try to reopen the session that was just removed.
+    sessionId = '';
+    if (typeof removeScopedPreference === 'function') removeScopedPreference(activeSessionStorageKey());
+    _sessCfg = null;
+    if (typeof resetTimeline === 'function') resetTimeline();
+    messagesDiv.innerHTML = '';
+    renderCodingEmptyState(owner);
+    renderComposerIdentity();
+    if (currentView !== 'chat') navigateTo('chat');
+    const composerArea = document.getElementById('chat-input-area');
+    if (composerArea) composerArea.classList.add('hidden');
+    if (seam) seam.markRows();
+}
+
+// The empty state's own markup: a short explanation and one explicit control
+// that goes through the existing coding creation entry (newChat -> seam.open).
+function renderCodingEmptyState(agentId) {
+    const agent = (typeof findAgent === 'function' && findAgent(agentId)) || null;
+    const wrap = document.createElement('div');
+    wrap.id = 'coding-empty-state';
+    wrap.className = 'coding-empty-state';
+    const title = document.createElement('div');
+    title.className = 'coding-empty-title';
+    title.textContent = t('coding_empty_title');
+    const hint = document.createElement('div');
+    hint.className = 'coding-empty-hint';
+    hint.textContent = t('coding_empty_hint');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'coding-empty-new';
+    button.textContent = t('coding_empty_new');
+    button.addEventListener('click', () => { newChat(true); });
+    wrap.appendChild(title);
+    wrap.appendChild(hint);
+    wrap.appendChild(button);
+    messagesDiv.appendChild(wrap);
+    if (typeof syncChatHomeLayout === 'function') syncChatHomeLayout();
+}
+
 
 // Pick the session to show after deleting `sid` (the current session): prefer
 // the next item below it in the list, otherwise the previous one. Returns null

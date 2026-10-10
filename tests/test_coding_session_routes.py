@@ -821,6 +821,65 @@ def test_deleting_twice_is_idempotent(web):
     assert web.opencode.calls.count(("delete", created["external_session_id"])) == 1
 
 
+def test_a_link_read_failure_refuses_the_delete_and_keeps_the_record(web, monkeypatch):
+    """An unreadable association must not look like "an ordinary session".
+
+    Reading the link is how the delete path decides which half to remove. A
+    store failure swallowed into ``None`` would clear only the platform row and
+    silently leave the service's conversation behind, so the delete refuses and
+    the record survives for a retry.
+    """
+    token = _member_with_coding_access(web, "alice")
+    created = _create_named(web, token)
+    from agent.memory.conversation_store import ConversationStore
+
+    def boom(self, session_id):
+        raise RuntimeError("link store unavailable")
+
+    monkeypatch.setattr(ConversationStore, "get_coding_link", boom)
+
+    response = web.delete(f"/api/sessions/{created['session_id']}?agent_id=erp-coder",
+                          token=token)
+
+    assert _status(response) == 500
+    assert _json(response)["code"] == "coding_link_unavailable"
+    listed = _json(web.get("/api/sessions?agent_id=erp-coder", token=token))
+    assert [s["session_id"] for s in listed["sessions"]] == [created["session_id"]]
+    assert web.opencode.calls.count(("delete", created["external_session_id"])) == 0
+
+
+def test_a_coding_record_without_its_link_refuses_the_delete(web):
+    """A surviving coding row with no link is inconsistent, not an ordinary one.
+
+    The delete must not guess: with the row still present the only honest
+    answer is a refusal that keeps the record, never a local-only cleanup.
+    """
+    token = _member_with_coding_access(web, "alice")
+    created = _create_named(web, token)
+    from agent.memory import get_conversation_store
+    from agent.registry import get_agent_registry
+
+    store = get_conversation_store(
+        get_agent_registry().get("erp-coder", require_enabled=False).workspace)
+    with store._lock:
+        conn = store._connect()
+        try:
+            with conn:
+                conn.execute(
+                    "DELETE FROM opencode_session_links WHERE session_id = ?",
+                    (created["session_id"],))
+        finally:
+            conn.close()
+
+    response = web.delete(f"/api/sessions/{created['session_id']}?agent_id=erp-coder",
+                          token=token)
+
+    assert _status(response) == 409
+    assert _json(response)["code"] == "coding_not_linked"
+    listed = _json(web.get("/api/sessions?agent_id=erp-coder", token=token))
+    assert [s["session_id"] for s in listed["sessions"]] == [created["session_id"]]
+
+
 def test_deleting_a_coding_session_never_touches_the_project(web):
     """Deleting a conversation is not deleting a checkout."""
     token = _member_with_coding_access(web, "alice")

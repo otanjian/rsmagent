@@ -336,6 +336,43 @@ def test_create_does_not_swallow_an_upstream_refusal():
     assert caught.value.status == 502
 
 
+# --- prepare a personal workspace -----------------------------------------
+
+
+def test_prepare_workspace_hands_the_remote_both_paths():
+    """The remote creates ``U`` under the verified ``P``; the platform neither
+    creates nor resolves the remote path locally."""
+    transport = _Transport(_Response(200, {
+        "effective_directory": "/srv/checkouts/erp/user/tanjian",
+        "created": True,
+    }))
+    client = _client(transport)
+
+    result = client.prepare_workspace(
+        "/srv/checkouts/erp", "/srv/checkouts/erp/user/tanjian")
+
+    call = transport.calls[0]
+    assert call["method"] == "POST"
+    assert call["url"] == "http://127.0.0.1:4096/api/coding/workspace/prepare"
+    assert call["json"] == {
+        "base_project_dir": "/srv/checkouts/erp",
+        "effective_directory": "/srv/checkouts/erp/user/tanjian",
+    }
+    assert call["headers"]["Authorization"].startswith("Basic ")
+    assert result["effective_directory"] == "/srv/checkouts/erp/user/tanjian"
+    assert result["created"] is True
+
+
+def test_prepare_workspace_maps_a_remote_failure_to_a_stable_code():
+    transport = _Transport(_Response(500, {"message": "disk full"}, text="disk full"))
+    client = _client(transport)
+
+    with pytest.raises(CodingError) as caught:
+        client.prepare_workspace("/srv/checkouts/erp", "/srv/checkouts/erp/user/tanjian")
+
+    assert caught.value.code == CODING_UPSTREAM_UNAVAILABLE
+
+
 def test_remote_session_is_a_plain_value():
     """Callers compare and store these, so no behaviour hides inside."""
     session = RemoteSession(

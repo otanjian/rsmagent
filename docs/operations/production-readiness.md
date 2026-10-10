@@ -68,6 +68,8 @@ Linux 需支持非 root bubblewrap 的 user/PID/IPC/UTS namespace；当前不添
 
 `docker/nginx.conf.example` 提供宿主 Nginx TLS 示例；替换域名/证书，覆盖 Host、X-Forwarded-For、X-Forwarded-Proto、X-Forwarded-Host，避免拼接客户端伪造链。配置 `trusted_proxies` 为后端实际看到的代理对端 IP 的精确列表；容器中它可能是网桥地址，不能机械填写 127.0.0.1 或信任任意来源。限制后端端口仅代理可达。
 
+`docker/nginx.conf.example` 同时启用 gzip，并只对**不含用户数据的公开控制台外壳与第一方 JS/CSS**生效：`gzip_types` 仅含 `text/html text/css text/javascript application/javascript`，`gzip_types` 中不含 `application/json`（API 与用户数据）与 `text/event-stream`（SSE），WebSocket 升级本身不被压缩，因此认证、业务数据、流式接口和该站的 `proxy_buffering off` 语义不变。`gzip_vary` 负责 `Vary: Accept-Encoding`；带版本的 JS/CSS 继续使用各自的 ETag/immutable 缓存，外壳继续 no-store。候选配置先做语法校验再定向重载，并核对 gzip/identity 解码内容一致、条件请求（304）与缓存校验正确、流式响应无新增缓冲。这是代理侧变更：需要回退时恢复上一份代理备份并重载，应用版本回退与实例恢复见下文。
+
 可信 TLS 终止时，登录 Cookie 为 Secure/HttpOnly/SameSite=Lax；来源校验同时比较 scheme 与 host。单元测试验证可信/不可信来源，真实 TLS 与远程断线重连仍需目标部署验证。
 
 `/api/health` 保持桌面存活契约。`/api/ready` 检查只读身份库查询、必要目录访问与缓存的启动隔离实测，仅返回布尔分类，不迁移数据、不调用模型。状态异常时依次检查容器退出原因、挂载属主/磁盘空间、数据库读取、原生隔离前置。修复内核/隔离配置后需重新启动以刷新缓存探测。

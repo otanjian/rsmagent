@@ -80,7 +80,39 @@ def test_the_capability_is_registered_so_a_deployment_can_edit_it():
     block = available_setting["opencode"]
     assert block["enabled"] is False
     assert set(block) == {"enabled", "service_id", "api_url", "web_url",
-                          "username", "password_env"}
+                          "username", "password_env", "browser_sso",
+                          "personal_workspace"}
+    assert block["personal_workspace"] == {"enabled": False}
+
+
+def test_the_personal_workspace_switch_is_one_closed_default():
+    """The personal file capability is one deployment switch, off by default.
+
+    It is deliberately a *single* switch rather than a per-Agent tri-state: a
+    deployment either serves personal directories or it does not, and an
+    unparsable value must degrade to the closed default like every other key in
+    this block.
+    """
+    assert resolve_settings({}).personal_workspace_enabled is False
+    assert resolve_settings({"personal_workspace": {}}) \
+        .personal_workspace_enabled is False
+    assert resolve_settings({"personal_workspace": {"enabled": None}}) \
+        .personal_workspace_enabled is False
+    assert resolve_settings({"personal_workspace": {"enabled": "definitely"}}) \
+        .personal_workspace_enabled is False
+    assert resolve_settings({"personal_workspace": {"enabled": True}}) \
+        .personal_workspace_enabled is True
+
+
+def test_the_template_ships_the_personal_workspace_switch_closed():
+    import json
+    from pathlib import Path
+
+    template = json.loads(
+        (Path(__file__).resolve().parents[1] / "config-template.json")
+        .read_text(encoding="utf-8")
+    )
+    assert template["opencode"]["personal_workspace"] == {"enabled": False}
 
 
 # -- enabled / configured are different questions --------------------------

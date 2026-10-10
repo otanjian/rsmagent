@@ -2317,7 +2317,7 @@ class ConversationStore:
 
     _CODING_LINK_COLUMNS = (
         "agent_id, session_id, service_id, external_session_id,"
-        " project_dir, state, request_id"
+        " project_dir, state, request_id, workspace_id"
     )
 
     @staticmethod
@@ -2330,6 +2330,7 @@ class ConversationStore:
             "project_dir": row[4],
             "state": row[5],
             "request_id": row[6],
+            "workspace_id": row[7],
         }
 
     def create_coding_link(
@@ -2342,6 +2343,7 @@ class ConversationStore:
         state: str = "creating",
         title: str = "",
         channel_type: str = "web",
+        workspace_id: str = "",
     ) -> Dict[str, Any]:
         """Reserve the association and its cache row in one transaction.
 
@@ -2382,11 +2384,11 @@ class ConversationStore:
                         """
                         INSERT INTO opencode_session_links
                             (agent_id, session_id, service_id, external_session_id,
-                             project_dir, state, request_id)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                             project_dir, state, request_id, workspace_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (agent_dim, session_id, service_id, external_session_id,
-                         project_dir, state, request_id),
+                         project_dir, state, request_id, workspace_id or ""),
                     )
             finally:
                 conn.close()
@@ -2398,7 +2400,30 @@ class ConversationStore:
             "project_dir": project_dir,
             "state": state,
             "request_id": request_id,
+            "workspace_id": workspace_id or "",
         }
+
+    def session_exists(self, session_id: str) -> bool:
+        """Whether this Agent's store holds a ``sessions`` row for the id.
+
+        One question only: does the conversation record exist. It is what lets
+        a coding delete tell a repeat of an already-removed session (no row:
+        idempotent) from a surviving coding record with no link (inconsistent:
+        refuse), without re-deriving ownership, which the caller already
+        verified.
+        """
+        clause, params = dimension_clause(
+            values=self._dimensions(), keys=("agent_id",))
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(
+                    f"SELECT 1 FROM sessions WHERE session_id = ?{clause}",
+                    (session_id, *params),
+                ).fetchone()
+            finally:
+                conn.close()
+        return row is not None
 
     def get_coding_link(self, session_id: str) -> Optional[Dict[str, Any]]:
         """This Agent's link for a session, or None when it is not a coding one."""

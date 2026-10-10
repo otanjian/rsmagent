@@ -6,6 +6,11 @@
     <script type="application/json" id="console-page-routes">{{COW_CONSOLE_ROUTES}}</script>
     <title>容大AI 控制台</title>
     <meta name="application-name" content="容大AI">
+    <!-- The account check is independent of the console bundle: start it here,
+         ahead of the heavy scripts below, so the read-only /auth/check overlaps
+         their download instead of queueing behind them. console.js consumes
+         this one bounded result (change optimize-console-login-startup). -->
+    <script src="/assets/js/fork/auth-check-prefetch.js"></script>
     <link rel="icon" href="/assets/favicon.ico?v=rongda-ai" sizes="any">
     <link rel="icon" href="/assets/rongda-ai-mark.svg" type="image/svg+xml">
     <!-- Vendored third-party assets (no external CDN dependency).

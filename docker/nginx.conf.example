@@ -10,6 +10,22 @@ server {
     ssl_certificate /etc/ssl/agent/fullchain.pem;
     ssl_certificate_key /etc/ssl/agent/privkey.pem;
     client_max_body_size 100m;
+
+    # Compress only the non-sensitive public console shell and its first-party
+    # JS/CSS. `gzip_types` deliberately omits application/json (API and user
+    # data) and text/event-stream (SSE), and Nginx never compresses WebSocket
+    # upgrades -- so authentication, business data and streaming endpoints keep
+    # their existing delivery behavior, including this server's
+    # `proxy_buffering off`. `gzip_vary` adds `Vary: Accept-Encoding`; the
+    # versioned JS/CSS keep their own ETag/immutable caching and the shell keeps
+    # its no-store response, which gzip does not change.
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_min_length 1024;
+    gzip_comp_level 5;
+    gzip_types text/html text/css text/javascript application/javascript;
+
     location / {
         proxy_pass http://127.0.0.1:9899;
         proxy_http_version 1.1;

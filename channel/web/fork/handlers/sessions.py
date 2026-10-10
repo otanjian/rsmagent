@@ -67,6 +67,48 @@ def _coding_link(agent_id: Optional[str], session_id: str):
         return None
 
 
+def _agent_is_coding(agent_id: Optional[str]) -> bool:
+    """Whether the addressed Agent's type is ``coding``. Absent/unknown: no."""
+    try:
+        from agent.registry import get_agent_registry
+
+        profile = get_agent_registry().get(agent_id or None, require_enabled=False)
+    except Exception:  # noqa: BLE001 - a type read must not fail a delete
+        return False
+    return bool(getattr(profile, "is_coding", False))
+
+
+def _coding_link_for_delete(agent_id: Optional[str], session_id: str):
+    """The coding link for a delete, or None for an ordinary/absent session.
+
+    Unlike :func:`_coding_link` this must not fail open. A store read error
+    raises a distinguishable refusal instead of looking like "not a coding
+    session", and a coding Agent's *surviving* record without a link is refused
+    rather than cleaned up as an ordinary conversation — the two are different
+    facts, and only the latter (a repeated delete of an already-removed session)
+    keeps the idempotent ordinary path.
+    """
+    service = _coding_service_for(agent_id)
+    try:
+        link = service.link_for_delete(session_id)
+    except Exception as error:  # noqa: BLE001 - report, never downgrade
+        from agent.coding import CODING_LINK_UNAVAILABLE
+        from channel.web.fork.handlers.coding import _coding_error
+
+        logger.error(f"[WebChannel] Coding link read failed: {error}")
+        _coding_error("could not read the coding session link",
+                      "500 Internal Server Error", CODING_LINK_UNAVAILABLE)
+    if link is not None:
+        return link
+    if _agent_is_coding(agent_id) and service.store.session_exists(session_id):
+        from agent.coding import CODING_NOT_LINKED
+        from channel.web.fork.handlers.coding import _coding_error
+
+        _coding_error("the coding session's link is missing",
+                      "409 Conflict", CODING_NOT_LINKED)
+    return None
+
+
 def _coding_refusal(error) -> NoReturn:
     """Report a service refusal with its own status and stable code."""
     from channel.web.fork.handlers.coding import _coding_error, _reason
@@ -213,7 +255,11 @@ class SessionDetailHandler:
                 # shows a conversation the service still holds. The runtime
                 # teardown below is skipped deliberately — a coding session has
                 # no platform runtime, queue or cancellation key to clear.
-                link = _coding_link(agent_id, session_id)
+                #
+                # The strict read is deliberate: a store failure or a surviving
+                # coding record with no link must refuse here rather than fall
+                # through to the ordinary cleanup below.
+                link = _coding_link_for_delete(agent_id, session_id)
                 if link is not None:
                     service = _coding_service_for(agent_id)
                     _coding_write(agent_id, service.delete, session_id=session_id)

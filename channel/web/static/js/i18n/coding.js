@@ -30,6 +30,9 @@
             coding_type_coding: '编码（Opencode）',
             coding_type_normal: '普通',
             coding_session_hint: '此对话由 Opencode 提供，支持代码编辑、差异与终端。',
+            coding_empty_title: '当前没有编码会话',
+            coding_empty_hint: '上一条编码会话已删除。这个智能体仍处于选中状态，新建会话后会由 Opencode 提供服务。',
+            coding_empty_new: '新建编码会话',
         },
         en: {
             coding_loading: 'Opening the coding session…',
@@ -48,6 +51,9 @@
             coding_type_coding: 'Coding (Opencode)',
             coding_type_normal: 'Normal',
             coding_session_hint: 'This conversation runs in Opencode: code editing, diffs and a terminal.',
+            coding_empty_title: 'No coding session is open',
+            coding_empty_hint: 'The last coding session was deleted. This Agent is still selected; a new session will be served by Opencode.',
+            coding_empty_new: 'New coding session',
         },
         'zh-Hant': {
             coding_loading: '正在開啟編碼工作階段…',
@@ -66,6 +72,9 @@
             coding_type_coding: '編碼（Opencode）',
             coding_type_normal: '普通',
             coding_session_hint: '此對話由 Opencode 提供，支援程式碼編輯、差異與終端。',
+            coding_empty_title: '目前沒有編碼工作階段',
+            coding_empty_hint: '上一條編碼工作階段已刪除。這個智慧體仍為選取狀態，新建工作階段後會由 Opencode 提供服務。',
+            coding_empty_new: '新建編碼工作階段',
         },
     };
 }());

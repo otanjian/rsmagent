@@ -902,8 +902,16 @@ test('stale text and voice send controls cannot send a coding Agent to ordinary 
     await h.pump();
     h.ctx.sendVoiceMessage('hello', '/audio.wav');
     assert.equal(h.ctx.chatInput.value, '保留这条消息');
-    assert.equal(h.count('/api/coding/sessions'), 1);
-    assert.equal(h.isHidden('chat-input-area'), true);
+    // Refused, not rescued (change fix-coding-session-history-management): a
+    // stale composer must not create the remote session the user never asked
+    // for. Only the explicit new-chat action creates one, so no session is
+    // created here and the coding entry is named instead.
+    assert.equal(h.count('/api/coding/sessions'), 0);
+    assert.ok(h.calls.notes.some(m => String(m).includes('请在编码会话中发送消息。')),
+        h.calls.notes.join(' | '));
+    // And nothing fell through to the ordinary runtime: the composer is not a
+    // back door into it for a coding Agent.
+    assert.equal(h.count('/message'), 0);
 });
 
 test('console.js routes a conversation by the Agent type', () => {

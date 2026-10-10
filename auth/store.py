@@ -2982,6 +2982,48 @@ def _migration_48(con: sqlite3.Connection) -> None:
 _migrations.append(_migration_48)
 
 
+def _migration_49(con: sqlite3.Connection) -> None:
+    """Personal coding workspace bindings (change add-coding-agent-personal-workspace).
+
+    One row per ``(service, tenant, project root, account)`` naming the account
+    directory ``P/user/<username>`` a coding Agent's personal files live in. It
+    is owned by the *identity* database on purpose: the binding is protected
+    from the Web file surface (operators/users cannot write it) and it is the
+    single answer to "whose directory is this", keyed by the immutable
+    ``user_id`` rather than by anything a request supplied.
+
+    Two unique constraints carry the safety:
+
+    * ``(service_id, tenant_id, base_project_dir, user_id)`` — a subject has one
+      binding per service and project root, so a retry reuses it;
+    * ``(service_id, effective_directory)`` — one canonical directory belongs to
+      exactly one subject, so an account alias or a second user cannot silently
+      share (or steal) an existing personal tree.
+
+    ``username_at_creation`` freezes the canonical spelling: a later login in a
+    different case, or a rename, does not move files. ``state`` is ``creating``
+    until the remote confirms the directory, which is what makes a preparation
+    whose response was lost safely retryable.
+    """
+    con.execute("""CREATE TABLE IF NOT EXISTS coding_user_workspaces (
+        workspace_id          TEXT PRIMARY KEY,
+        service_id            TEXT NOT NULL,
+        tenant_id             TEXT NOT NULL DEFAULT '',
+        user_id               TEXT NOT NULL,
+        username_at_creation  TEXT NOT NULL,
+        base_project_dir      TEXT NOT NULL,
+        effective_directory   TEXT NOT NULL,
+        state                 TEXT NOT NULL DEFAULT 'creating',
+        created_at            INTEGER NOT NULL DEFAULT (unixepoch()),
+        UNIQUE (service_id, tenant_id, base_project_dir, user_id),
+        UNIQUE (service_id, effective_directory))""")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_coding_user_workspaces_owner"
+                " ON coding_user_workspaces(service_id, tenant_id, user_id)")
+
+
+_migrations.append(_migration_49)
+
+
 class IdentityStoreError(RuntimeError):
     """Raised when the identity store cannot be opened or migrated."""
 

@@ -222,3 +222,78 @@ test('the archived dialog offers retry when the read fails', async () => {
     await settle();
     assert.equal(dialogBody.querySelectorAll('.archived-session-row').length, 1);
 });
+
+test('a second archive click while the first is unanswered sends one request', async () => {
+    let resolveFirst;
+    let calls = 0;
+    const h = setup(() => {
+        calls += 1;
+        if (calls === 1) return new Promise(r => { resolveFirst = r; });
+        return payload([]);
+    });
+    h.setItems([session('s1')]);
+
+    const pending = h.ctx.archiveSidebarSession('s1', 'agent-a');
+    // The row is still on screen; a double click must not queue a second
+    // archive of the same, already-archived session.
+    h.ctx.archiveSidebarSession('s1', 'agent-a');
+    assert.equal(h.calls.length, 1);
+
+    resolveFirst(payload([]));
+    await pending;
+    // Once the answer lands the row is idle again: a fresh archive is allowed.
+    await h.ctx.archiveSidebarSession('s1', 'agent-a');
+    assert.equal(h.calls.length, 2);
+});
+
+test('a second restore click while the first is unanswered sends one request', async () => {
+    let release;
+    const pendingPut = new Promise(r => { release = r; });
+    const h = setup((url, options) => (options && options.method === 'PUT')
+        ? pendingPut
+        : payload([session('gone', { title: 'Old chat' })]));
+    h.ctx.openArchivedSessionsModal();
+    await settle();
+
+    const row = h.run('_archivedSessionsBody').querySelectorAll('.archived-session-row')[0];
+    const restore = row.querySelectorAll('.archived-session-restore')[0];
+    restore.handlers.click({});
+    restore.handlers.click({});
+
+    const puts = () => h.calls.filter(c => c.options && c.options.method === 'PUT');
+    assert.equal(puts().length, 1, 'one restore request for a double click');
+
+    release({ json: async () => ({ status: 'success' }) });
+    await settle();
+});
+
+test('a delayed restore answer does not repaint a dialog that was reopened', async () => {
+    let release;
+    const pendingPut = new Promise(r => { release = r; });
+    const h = setup((url, options) => (options && options.method === 'PUT')
+        ? pendingPut
+        : payload([session('gone', { title: 'Old chat' })]));
+    h.ctx.openArchivedSessionsModal();
+    await settle();
+
+    const firstBody = h.run('_archivedSessionsBody');
+    firstBody.querySelectorAll('.archived-session-row')[0]
+        .querySelectorAll('.archived-session-restore')[0].handlers.click({});
+
+    // The user closes and reopens the dialog while the restore is in flight.
+    // `dismiss()` bumps the sequence and drops the body; the harness cannot
+    // reach the real overlay element it also removes, so the close is expressed
+    // as the two state changes that matter to the guard.
+    h.run('_archivedSessionsSeq++; _archivedSessionsBody = null;');
+    h.ctx.openArchivedSessionsModal();
+    await settle();
+    const secondBody = h.run('_archivedSessionsBody');
+    assert.notEqual(secondBody, firstBody);
+
+    const before = secondBody.children.length;
+    release({ json: async () => ({ status: 'success' }) });
+    await settle();
+
+    // The stale answer must not inject rows into the dialog that is now open.
+    assert.equal(secondBody.children.length, before);
+});

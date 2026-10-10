@@ -307,6 +307,15 @@ OPENCODE_SESSION_LINKS_SPEC = TableSpec(
         ColumnSpec("project_dir", "project_dir TEXT NOT NULL DEFAULT ''"),
         ColumnSpec("state", "state TEXT NOT NULL DEFAULT 'creating'"),
         ColumnSpec("request_id", "request_id TEXT NOT NULL DEFAULT ''"),
+        # Optional personal-workspace binding id
+        # (change add-coding-agent-personal-workspace). Empty means the
+        # pre-existing behaviour: ``project_dir`` is the Agent's configured
+        # project root P. Non-empty marks a personal session whose actual
+        # Location is the account directory U; the binding itself, and the
+        # account name it was frozen with, live in the identity database
+        # (``coding_user_workspaces``), so a re-configured Agent never moves an
+        # existing conversation.
+        ColumnSpec("workspace_id", "workspace_id TEXT NOT NULL DEFAULT ''"),
     ),
     key=("agent_id", "session_id"),
     unique=(("service_id", "external_session_id"),),

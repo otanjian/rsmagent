@@ -438,6 +438,15 @@ available_setting = {
         "username": "opencode",
         "password_env": "RSM_OPENCODE_PASSWORD",
         "browser_sso": False,
+        # The single deployment switch for personal coding workspaces. When
+        # enabled (and the remote service/Web capabilities are verified), new
+        # coding sessions run under ``<project>/user/<account>`` and the file
+        # panel opens that account directory. Deliberately one switch, not a
+        # per-Agent tri-state: existing personal sessions keep their binding
+        # even after it is turned back off.
+        "personal_workspace": {
+            "enabled": False,
+        },
     },
     # Delegation between configured agents. Unlike a sub agent, the target is a
     # standing peer that answers in its own workspace. The call is synchronous:

@@ -58,7 +58,10 @@
     "web_url": "",
     "username": "opencode",
     "password_env": "RSM_OPENCODE_PASSWORD",
-    "browser_sso": false
+    "browser_sso": false,
+    "personal_workspace": {
+      "enabled": false
+    }
   },
   "enable_thinking": false,
   "reasoning_effort": "high",

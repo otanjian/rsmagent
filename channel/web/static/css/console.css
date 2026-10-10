@@ -1677,6 +1677,13 @@ body.account-menu-sheet-open { overflow: hidden; }
 .session-item.active {
     background: var(--history-selected);
 }
+/* One row action at a time: while its own request is unanswered the row dims
+   and stops reacting, so a second click cannot submit the same mutation. */
+.session-item.busy,
+.archived-session-row.busy {
+    opacity: 0.55;
+    pointer-events: none;
+}
 .session-row-main {
     display: flex;
     align-items: center;

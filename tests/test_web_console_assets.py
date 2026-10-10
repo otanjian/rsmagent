@@ -85,6 +85,40 @@ def test_the_handler_actually_serves_the_nested_script_paths():
             assert "javascript" in content_type, (script, content_type)
 
 
+def test_the_head_starts_the_account_check_before_the_bundle():
+    """The first /auth/check must overlap the bundle download instead of
+    queueing behind it, so the tiny prefetch primitive loads synchronously in
+    <head> ahead of every heavy script, and carries a version stamp."""
+    page = _page()
+    head = page[:page.index("</head>")]
+    prefetch = "/assets/js/fork/auth-check-prefetch.js"
+    at = head.find(prefetch)
+    assert at >= 0, "the prefetch primitive must load from <head>"
+    # Before the head's blocking vendor scripts...
+    for heavy in ("/assets/vendor/tailwind/tailwind.min.js",
+                  "/assets/vendor/markdown-it/markdown-it.min.js"):
+        assert at < head.index(heavy), heavy
+    # ...and before the deferred console bundle that consumes the result.
+    assert page.index(prefetch) < page.index("/assets/js/console.js")
+    # render() stamps first-party assets with their own mtime, so the query
+    # sits right after the path rather than being absent.
+    assert "?v=" in head[at:at + len(prefetch) + 24]
+
+
+def test_the_head_account_check_script_is_served_as_javascript():
+    from unittest.mock import patch
+
+    import channel.web.fork.handlers.pages as pages_api
+
+    sent = []
+    with patch.object(pages_api.web, "header",
+                      lambda name, value=None: sent.append((name.lower(), value))):
+        handler = pages_api.AssetsHandler()
+        body = handler.GET("js/fork/auth-check-prefetch.js")
+    assert body, "the prefetch script must be reachable through /assets/"
+    assert "javascript" in dict(sent).get("content-type", "")
+
+
 def test_the_handler_serves_the_assembled_page():
     """ChatHandler answers with the assembled shell, not the raw file: the raw
     chat.html is include markers, which a browser renders as nothing."""

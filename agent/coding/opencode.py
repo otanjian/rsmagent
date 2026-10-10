@@ -215,6 +215,32 @@ class OpenCodeClient:
         response = self._request("POST", "/api/session", json=body)
         return self._remote(self._json(response, "create the session"))
 
+    def prepare_workspace(
+        self,
+        base_project_dir: str,
+        effective_directory: str,
+    ) -> Mapping[str, Any]:
+        """Ask the service to prepare the caller's personal directory under ``P``.
+
+        The platform resolves ``P`` and ``U`` (see :mod:`agent.coding.workspace`)
+        and the service confirms the project exists and creates ``U`` on its own
+        host; the platform never creates a same-named local directory and never
+        resolves the remote path itself. Idempotent on the service side, so a
+        retry for the same binding resumes rather than producing a second tree.
+
+        The field names are the change's provisional contract with RSMCode
+        (design: the remote protocol is fixed with the companion repository);
+        they are isolated here so a realignment touches only this method.
+        """
+        body: Dict[str, Any] = {
+            "base_project_dir": base_project_dir,
+            "effective_directory": effective_directory,
+        }
+        response = self._request(
+            "POST", "/api/coding/workspace/prepare", json=body)
+        payload = self._json(response, "prepare the personal workspace")
+        return payload if isinstance(payload, Mapping) else {}
+
     def set_permission(
         self,
         session_id: str,

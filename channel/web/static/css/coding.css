@@ -127,3 +127,53 @@ html.dark .coding-agent-badge {
     background: rgba(59, 130, 246, 0.16);
     border-color: rgba(147, 197, 253, 0.3);
 }
+
+/* Deleting the last coding session leaves the Agent selected but with no
+ * conversation: the embedded app is gone, so the pane says why and offers the
+ * one explicit control that creates a remote session (console.js
+ * `renderCodingEmptyState`). It deliberately looks like the ordinary empty
+ * chat: a short line and a single button, not a second composer. */
+.coding-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    height: 100%;
+    min-height: 220px;
+    padding: 24px;
+    text-align: center;
+}
+
+.coding-empty-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--history-text, #1f2937);
+}
+
+.coding-empty-hint {
+    max-width: 420px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--history-muted, #6b7280);
+}
+
+.coding-empty-new {
+    margin-top: 6px;
+    padding: 8px 18px;
+    border: 0;
+    border-radius: 8px;
+    background: #228547;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.coding-empty-new:hover {
+    background: #1C6B3B;
+}
+
+html.dark .coding-empty-title { color: #e5e7eb; }
+html.dark .coding-empty-hint { color: #9ca3af; }

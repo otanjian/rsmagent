@@ -8,6 +8,8 @@ const vm = require('node:vm');
 const { createAppearanceController } = require('../channel/web/static/js/appearance.js');
 
 const source = fs.readFileSync(path.join(__dirname, '../channel/web/static/js/console.js'), 'utf8');
+const forkSource = fs.readFileSync(
+    path.join(__dirname, '../channel/web/static/js/fork/auth-check-prefetch.js'), 'utf8');
 function section(start, end) {
     const from = source.indexOf(start);
     assert.ok(from >= 0, `Missing console section ${start}`);
@@ -191,6 +193,10 @@ function setup(transport = async () => response(database()), { agentWrapper = fa
     vm.createContext(ctx);
     const run = code => vm.runInContext(code, ctx);
     run("const PRODUCT_NAME = '容大AI'; let APP_VERSION = ''; let _knowledgeTreeData = []; let _knowledgeRootFiles = [];");
+    // The bounded account-check primitive is a real startup dependency (loaded
+    // from <head> in production), not an optional fallback: run the shipped
+    // module here so the tests drive the same eager startup check the page does.
+    run(forkSource);
     run(section('// Sidebar account state', '// End sidebar account state'));
     if (agentWrapper) run(section('const _nativeFetch = window.fetch.bind(window);', 'function generateSessionId()'));
     run(section('// Authentication\n', '// Initialization\n'));
@@ -376,6 +382,87 @@ test('startup check failure stays neutral; a visible retry enters database mode 
     await h.ctx.refreshAccountIdentity();
     await settle();
     assert.equal(h.counter.init, 1);
+});
+
+// --- eager startup check (change optimize-console-login-startup) -----------
+// The head-loaded primitive issues one read-only /auth/check before the bundle
+// runs; startup consumes that result once and manual retries issue their own.
+
+test('startup consumes the eager account check once and a retry checks again', async () => {
+    const h = setup(async () => response(database('alice')));
+    await settle();
+    assert.equal(h.fetches('/auth/check').length, 1,
+        'the eager startup check is reused, not repeated at initialization');
+    assert.equal(h.state().username, 'alice');
+    assert.equal(h.node('login-overlay').classList.contains('hidden'), true);
+    await h.ctx.refreshAccountIdentity();
+    await settle();
+    assert.equal(h.fetches('/auth/check').length, 2,
+        'a manual retry issues a new check rather than reusing the startup result');
+});
+
+function installCheckStub(h, stub) { h.ctx.window.__cowAccountCheck__ = stub; }
+
+test('a fresh startup result is reused without a second request', async () => {
+    const h = setup(async () => response(database('alice')));
+    await settle();
+    const stub = { STARTUP_MAX_AGE_MS: 5000, requests: 0,
+        takeStartup: () => ({ issuedAt: Date.now(), outcome: Promise.resolve(
+            { kind: 'response', status: 200, data: { marker: 'prefetch' }, validBody: true }) }),
+        request: () => { stub.requests++; return Promise.resolve({ kind: 'error' }); } };
+    installCheckStub(h, stub);
+    const outcome = await h.run('_accountCheckOutcome()');
+    assert.equal(outcome.data.marker, 'prefetch');
+    assert.equal(stub.requests, 0, 'a fresh startup result must not be re-requested');
+});
+
+test('a completed but stale startup success is discarded and rechecked', async () => {
+    const h = setup(async () => response(database('alice')));
+    await settle();
+    const stub = { STARTUP_MAX_AGE_MS: 5000, requests: 0,
+        takeStartup: () => ({ issuedAt: Date.now() - 6000, outcome: Promise.resolve(
+            { kind: 'response', status: 200, data: { marker: 'stale' }, validBody: true }) }),
+        request: () => { stub.requests++; return Promise.resolve(
+            { kind: 'response', status: 200, data: { marker: 'fresh' }, validBody: true }); } };
+    installCheckStub(h, stub);
+    const outcome = await h.run('_accountCheckOutcome()');
+    assert.equal(outcome.data.marker, 'fresh', 'an expired success must not be shown as the account');
+    assert.equal(stub.requests, 1, 'the stale result triggers exactly one recheck');
+});
+
+for (const kind of ['timeout', 'error']) {
+    test(`a startup check that already ${kind === 'timeout' ? 'timed out' : 'failed'} is not replayed automatically`, async () => {
+        const h = setup(async () => response(database('alice')));
+        await settle();
+        const stub = { STARTUP_MAX_AGE_MS: 5000, requests: 0,
+            takeStartup: () => ({ issuedAt: Date.now(), outcome: Promise.resolve(
+                kind === 'timeout' ? { kind: 'timeout' } : { kind: 'error', error: Error('offline') }) }),
+            request: () => { stub.requests++; return Promise.resolve({ kind: 'response', status: 200 }); } };
+        installCheckStub(h, stub);
+        const outcome = await h.run('_accountCheckOutcome()');
+        assert.equal(outcome.kind, kind);
+        assert.equal(stub.requests, 0, 'recovery is left to the existing manual retry entry');
+    });
+}
+
+test('a timed-out account check renders the timeout copy with a working retry entry', async () => {
+    const h = setup(async () => response(database('alice')));
+    await settle();
+    h.run("_accountAppVisible = false; _accountState = _emptyAccount('timeout'); _showAccountCheckGate();");
+    assert.equal(h.node('auth-check-message').textContent, 'account_check_timeout');
+    assert.equal(h.node('auth-check-retry').classList.contains('hidden'), false);
+    assert.equal(h.node('login-overlay').classList.contains('hidden'), false);
+    assert.equal(h.node('login-form').classList.contains('hidden'), true);
+    assert.equal(h.state().authenticated, null, 'a timeout is not an unauthenticated conclusion');
+});
+
+test('identity invalidation discards an unconsumed startup check', async () => {
+    const h = setup(async () => response(database('alice')));
+    await settle();
+    let discarded = 0;
+    installCheckStub(h, { discardStartup: () => { discarded++; } });
+    h.run("_invalidateAccountIdentity('unauthenticated')");
+    assert.equal(discarded, 1, 'login/logout/expiry must drop the pending startup check');
 });
 
 test('database display is plain text, preserves the name, and falls back to username for whitespace names', async () => {

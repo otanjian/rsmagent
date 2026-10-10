@@ -152,10 +152,12 @@ class CodingSessionService:
         *,
         settings: Optional[CodingSettings] = None,
         client: Any = None,
+        workspace: Any = None,
     ):
         self.store = store
         self.settings = settings or resolve_settings()
         self._client = client
+        self._workspace = workspace
 
     # -- wiring ------------------------------------------------------------
 
@@ -164,6 +166,22 @@ class CodingSessionService:
         if self._client is None:
             self._client = OpenCodeClient(self.settings)
         return self._client
+
+    @property
+    def workspace_service(self) -> Any:
+        """The personal-workspace resolver, built on first use.
+
+        Imported lazily so a deployment that never enables the personal
+        capability pays nothing for it, and injectable so the whole create path
+        can be exercised without an identity database.
+        """
+        if self._workspace is None:
+            from agent.coding.workspace import CodingWorkspaceService
+            from auth.service import get_identity_service
+
+            self._workspace = CodingWorkspaceService(
+                get_identity_service(), settings=self.settings)
+        return self._workspace
 
     def _require_enabled(self) -> CodingSettings:
         """Refuse the capability, never the user: 503 and a stable code.
@@ -196,6 +214,9 @@ class CodingSessionService:
             "external_session_id": link["external_session_id"],
             "state": link["state"],
             "project_dir": link["project_dir"],
+            # Empty for a legacy (project-root) session. Non-empty marks a
+            # personal session whose ``project_dir`` is the account directory U.
+            "workspace_id": link.get("workspace_id", ""),
             "iframe_url": session_url(
                 self.settings.web_url, link["external_session_id"], link["project_dir"]),
         }
@@ -243,6 +264,21 @@ class CodingSessionService:
         identity = _ambient_identity()
         tenant_id = tenant_id or identity.get("tenant_id", "")
         user_id = user_id or identity.get("user_id", "")
+        workspace_id = ""
+        if settings.personal_workspace_enabled:
+            # Resolve the account directory *before* the reservation: the link,
+            # the remote session and the file panel must all name the same U,
+            # and a preparation failure is a refusal here rather than a session
+            # created against the wrong directory. The binding is idempotent, so
+            # a retry reuses it instead of moving the reservation.
+            personal = self.workspace_service.open(
+                agent_id=agent_id,
+                base_project_dir=project_dir,
+                user_id=user_id,
+                tenant_id=tenant_id,
+            )
+            project_dir = personal["effective_directory"]
+            workspace_id = personal["workspace_id"]
         session_id, external_id = derive_ids(
             service_id=settings.service_id,
             tenant_id=tenant_id,
@@ -254,7 +290,7 @@ class CodingSessionService:
         link = self._link_or_service_error(session_id)
         if link is None:
             link = self._reserve_link(
-                session_id, external_id, project_dir, request_id)
+                session_id, external_id, project_dir, request_id, workspace_id)
         elif link["state"] != "ready" and link["project_dir"] != project_dir:
             # An unfinished reservation is a promise about one project. Letting a
             # second click change the directory would point an id that may
@@ -285,6 +321,7 @@ class CodingSessionService:
         external_id: str,
         project_dir: str,
         request_id: str,
+        workspace_id: str = "",
     ) -> Dict[str, Any]:
         """Write the reservation, or adopt the one a concurrent request wrote.
 
@@ -300,6 +337,7 @@ class CodingSessionService:
                 project_dir=project_dir,
                 request_id=request_id,
                 state="creating",
+                workspace_id=workspace_id,
             )
         except sqlite3.IntegrityError:
             existing = self.store.get_coding_link(session_id)
@@ -713,6 +751,17 @@ class CodingSessionService:
             return self.store.get_coding_link(session_id)
         except Exception:  # noqa: BLE001 - a probe must not fail the request
             return None
+
+    def link_for_delete(self, session_id: str):
+        """The link for a delete, letting a store read failure propagate.
+
+        The management probe (:meth:`link_for`) only has to answer "is this a
+        coding session?" for paths that must not fail. The delete path instead
+        has to *know* its source: swallowing a read failure as ``None`` would
+        read as "ordinary session" and remove only the platform half of a
+        conversation the service still holds. Used only there.
+        """
+        return self.store.get_coding_link(session_id)
 
     def _read_batch(self, links):
         """Read every remote session in the batch, bounded and order-stable.

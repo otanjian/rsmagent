@@ -30,11 +30,23 @@ CODING_WEB_ONLY = "coding_web_only"
 CODING_SERVICE_CHANGED = "coding_service_changed"
 CODING_UPSTREAM_UNAVAILABLE = "coding_upstream_unavailable"
 CODING_NOT_LINKED = "coding_not_linked"
+#: The platform's own association row could not be read. Deliberately distinct
+#: from ``coding_not_linked``: "the link says this is not coding" is a valid
+#: answer, while "the link could not be read" is a failure that must never be
+#: taken as one.
+CODING_LINK_UNAVAILABLE = "coding_link_unavailable"
 #: The request itself is unusable: a missing field, or an endpoint addressed at
 #: an Agent that is not a coding Agent at all.
 CODING_INVALID_REQUEST = "coding_invalid_request"
 #: ``attach`` found the remote session in a different project than its source.
 CODING_PROJECT_MISMATCH = "coding_project_mismatch"
+#: The verified account cannot be turned into one safe path segment (unknown
+#: user, or a stored name that is not a single plain directory name). The
+#: request is refused rather than rewritten into a possibly-ambiguous path.
+CODING_WORKSPACE_UNSAFE = "coding_workspace_unsafe"
+#: The canonical personal directory is already claimed by another subject (an
+#: account alias or a different user/tenant). Refused rather than shared.
+CODING_WORKSPACE_CONFLICT = "coding_workspace_conflict"
 
 #: The codes that mean "the capability cannot do this right now, but the user's
 #: own session is fine". None of these are 401/403, which the platform reserves
@@ -107,6 +119,12 @@ class CodingSettings:
     password_env: str = "RSM_OPENCODE_PASSWORD"
     password: Optional[str] = None
     browser_sso: bool = False
+    #: The single deployment switch for personal coding workspaces
+    #: (``opencode.personal_workspace.enabled``). Off by default; when on, new
+    #: coding sessions run under ``<project>/user/<account>``. Existing personal
+    #: sessions keep their binding, so turning this back off only stops *new*
+    #: personal bindings rather than moving files.
+    personal_workspace_enabled: bool = False
 
     @property
     def configured(self) -> bool:
@@ -163,6 +181,8 @@ def resolve_settings(raw: Optional[Mapping[str, Any]] = None) -> CodingSettings:
         raw = {}
     password_env = _as_str(raw.get("password_env"), "RSM_OPENCODE_PASSWORD")
     password = os.environ.get(password_env) or None
+    personal = raw.get("personal_workspace")
+    personal = personal if isinstance(personal, Mapping) else {}
     return CodingSettings(
         enabled=_as_bool(raw.get("enabled"), False),
         service_id=_as_str(raw.get("service_id"), "default"),
@@ -172,6 +192,7 @@ def resolve_settings(raw: Optional[Mapping[str, Any]] = None) -> CodingSettings:
         password_env=password_env,
         password=password,
         browser_sso=_as_bool(raw.get("browser_sso"), False),
+        personal_workspace_enabled=_as_bool(personal.get("enabled"), False),
     )
 
 
