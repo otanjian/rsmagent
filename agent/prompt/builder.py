@@ -1141,9 +1141,10 @@ def _build_personal_workspace_section(
         lines = [
             "## 📂 Workspace",
             "",
-            "This Agent is **shared** with other members. With no project selected,"
-            " your working directory is **your own folder** inside it — everything"
-            " you write with a relative path stays there and is not shared.",
+            "This Agent keeps each user's business files in that user's own folder."
+            " With no project selected, your working directory is **your own folder**"
+            " inside it — everything you write with a relative path stays there and"
+            " is not shared with another member.",
             "",
             f"- **Current working directory (your own folder)**: `{personal_dir}`",
             f"- **System directory (memory & skills)**: `{workspace_dir}`",
@@ -1151,7 +1152,9 @@ def _build_personal_workspace_section(
             "**Path rules** (very important):",
             "",
             f"1. **Relative paths are based on your working directory** `{personal_dir}`."
-            " Put your work products here (documents, code, generated files, etc.).",
+            " Put your work products here (documents, code, generated files, etc.)."
+            " Uploads, delivered results and scratch work live in"
+            " `uploads/`, `outputs/` and `work/` under it.",
             f"   - ✅ relative `output/report.html` → `{personal_dir}/output/report.html`",
             "",
             f"2. **Memory and skills stay in the system directory** `{workspace_dir}`."
@@ -1173,7 +1176,7 @@ def _build_personal_workspace_section(
         lines = [
             "## 📂 工作空间",
             "",
-            "该智能体由**多人共享**。未选择项目时，你的工作目录是你在其中的**个人目录**——"
+            "该智能体的业务文件按用户分开存放。未选择项目时，你的工作目录是你在其中的**个人目录**——"
             "用相对路径生成的内容都落在这里，不会与其他人共享。",
             "",
             f"- **当前工作目录（你的个人目录）**: `{personal_dir}`",
@@ -1181,7 +1184,8 @@ def _build_personal_workspace_section(
             "",
             "**路径使用规则** (非常重要):",
             "",
-            f"1. **相对路径基于当前工作目录** `{personal_dir}`。你的工作产物（文档、代码、生成的文件等）都放在这里。",
+            f"1. **相对路径基于当前工作目录** `{personal_dir}`。你的工作产物（文档、代码、生成的文件等）都放在这里；"
+            f"上传、交付结果与临时工作分别位于其下的 `uploads/`、`outputs/`、`work/`。",
             f"   - ✅ 相对路径 `output/report.html` → `{personal_dir}/output/report.html`",
             "",
             f"2. **记忆和技能仍在系统目录** `{workspace_dir}`，不要写入个人目录。记忆操作由记忆工具自动完成；若确需直接访问这些文件，请使用系统目录下的**绝对路径**。",

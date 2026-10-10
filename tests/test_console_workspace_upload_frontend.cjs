@@ -331,12 +331,34 @@ test('a finished drop refreshes the directory it landed in', async () => {
 
 // -- the write scope, as the panel understands it -------------------------
 
-test('a private Agent is writable from its own root down', () => {
+test('a private Agent without an end-user id keeps the Agent root as its range', () => {
+    // Legacy single-user installs carry no `usr_...` id, so the panel cannot
+    // derive a per-user folder and stays on the Agent's own directory. This is
+    // the same degradation the shared case has.
     const s = setup();
     s.poke(`wsCurrentDir = ${JSON.stringify(AGENT_DIR)};`);
     assert.equal(s.ctx.wsCanWriteHere(), true);
     s.poke(`wsCurrentDir = ${JSON.stringify(`${AGENT_DIR}/uploads/deep`)};`);
     assert.equal(s.ctx.wsCanWriteHere(), true);
+    s.poke('wsCurrentDir = "agents/another";');
+    assert.equal(s.ctx.wsCanWriteHere(), false);
+    s.poke('wsCurrentDir = "";');
+    assert.equal(s.ctx.wsCanWriteHere(), false);
+});
+
+test('a private Agent uses the same per-user range as a shared Agent', () => {
+    // change ``unify-private-agent-personal-workspace``: once the caller's
+    // immutable id is known, the owner writes under `user/<uid>`, not the root.
+    const s = setup();
+    const ownDir = `agents/${AGENT}/user/${UID}`;
+    s.poke(`wsOwnUserIdCache = ${JSON.stringify(UID)};`);
+    s.poke(`wsCurrentDir = ${JSON.stringify(ownDir)};`);
+    assert.equal(s.ctx.wsCanWriteHere(), true);
+    s.poke(`wsCurrentDir = ${JSON.stringify(`${ownDir}/uploads`)};`);
+    assert.equal(s.ctx.wsCanWriteHere(), true);
+    // The Agent's root (configuration) is not a drop target.
+    s.poke(`wsCurrentDir = ${JSON.stringify(AGENT_DIR)};`);
+    assert.equal(s.ctx.wsCanWriteHere(), false);
     s.poke('wsCurrentDir = "agents/another";');
     assert.equal(s.ctx.wsCanWriteHere(), false);
     s.poke('wsCurrentDir = "";');

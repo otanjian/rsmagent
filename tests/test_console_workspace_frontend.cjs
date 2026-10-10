@@ -321,6 +321,25 @@ test('a private Agent keeps opening on the Agent own folder', async () => {
     assert.equal(peek(ctx, 'wsCurrentDir'), `agents/${AGENT}`);
 });
 
+test('a private Agent lands on the caller own folder too', async () => {
+    // change ``unify-private-agent-personal-workspace``: the owner's landing is
+    // the same `user/<uid>` directory a shared Agent uses, not the Agent root.
+    const { ctx, nodes, requests } = makeCtx(ROOT_TREE,
+        { '/auth/me': ME, [userDirQ(AGENT)]: userTree(AGENT) });
+    rosterSays(ctx, AGENT, 'private');
+    asCaller(ctx);
+    withAgent(ctx);
+    nodes.set('ws-file-list', element(2));
+    nodes.set('workspace-panel', element());
+    ctx.toggleWorkspacePanel();
+    await flush();
+    assert.equal(peek(ctx, 'wsCurrentDir'), `agents/${AGENT}/user/${UID}`);
+    assert.match(nodes.get('ws-file-list').innerHTML, /uploads/);
+    const asked = folderRequests(requests);
+    assert.equal(asked.length, 1, requests.join('\n'));
+    assert.match(asked[0], new RegExp(`path=${userDirQ(AGENT)}`));
+});
+
 test('an Agent the roster did not report is not treated as shared', async () => {
     const { ctx, nodes } = makeCtx(agentTree(AGENT));
     poke(ctx, `chatAgentCatalog = [{id: ${JSON.stringify(AGENT)}}];`);
