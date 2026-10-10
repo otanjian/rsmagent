@@ -50,7 +50,7 @@ async function refreshWorkspaceSelector() {
 }
 
 // Sync the selector button's label and hover tooltip with the current state.
-// Called after every selection so the tooltip always shows the live full path.
+// Called after every selection so the tooltip shows the last two folders.
 function _wsSelUpdateLabel() {
     const label = document.getElementById('workspace-selector-label');
     if (label) {
@@ -67,9 +67,10 @@ function _wsSelUpdateLabel() {
         const full = _wsSelState.current
             ? _wsSelState.current.path
             : _wsSelState.defaultWorkspace;
-        btn.setAttribute('data-tooltip', full || t('ws_sel_title'));
+        const shortPath = String(full || '').split(/[\\/]+/).filter(Boolean).slice(-2).join('/');
+        btn.setAttribute('data-tooltip', shortPath || full || t('ws_sel_title'));
         btn.setAttribute('data-tooltip-pos', 'top');
-        // Route through the body-level floating tooltip so the full path isn't
+        // Route through the body-level floating tooltip so the folder hint isn't
         // clipped/covered by the chat history above the input bar.
         btn.setAttribute('data-tip-float', '');
     }
