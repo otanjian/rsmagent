@@ -1,6 +1,6 @@
 # 实施与验证证据 — add-shared-agent-release-governance
 
-> 本文保留自远端 `7f303f25`，记录较早的仅共享发布切片。文中的任务编号对应 [旧任务清单](legacy-shared-release/tasks.md)，不对应当前统一治理方案；现有代码和历史证据予以保留，不据此宣称当前方案已实现或验收。差异见 [历史方案说明](legacy-shared-release/README.md)。
+> 本文保留自远端 `7f303f25`，记录较早的仅共享发布切片。文中的任务编号对应 [旧任务清单](legacy-shared-release/tasks.md)，不对应当前统一治理方案；现有代码和历史证据予以保留，不据此宣称当前方案已实现或验收。差异见 [历史方案说明](legacy-shared-release/merge-notes.md)。
 
 日期：2026-10-10
 范围：租户共享智能体的**发布治理**（审批 / 审计 / 版本不可变 / 权限冻结 / 配额），

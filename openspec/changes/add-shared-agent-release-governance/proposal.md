@@ -38,7 +38,7 @@
 ## Impact
 
 - 保留 change 标识 `add-shared-agent-release-governance`，适用私有与共享普通 Agent；外部 coding 仍遵循原独立契约，不能承接无法落实保护的受治理委派。
-- 合并保留已存在的共享发布切片及其默认关闭开关；该切片不是本方案的完整实现。较早方案、任务完成记录和规格存于 [历史方案说明](evidence/legacy-shared-release/README.md)，后续以当前 proposal/design/specs/tasks 为目标适配并验收。
+- 合并保留已存在的共享发布切片及其默认关闭开关；该切片不是本方案的完整实现。较早方案、任务完成记录和规格存于 [历史方案说明](evidence/legacy-shared-release/merge-notes.md)，后续以当前 proposal/design/specs/tasks 为目标适配并验收。
 - 复用 `agent/admin.py` 的修订校验、`auth/` 的 owner/资源授权、`common/runtime_identity.py` 的运行上下文、`agent/protocol/agent_stream.py` 的调用检查及 `agent/execution/sandbox.py` 的 OS 隔离；接入既有 Registry、初始化、文件、渠道与任务服务。
 - 数据只新增“当前草稿及活动指针”和“不可变版本”两个领域概念。身份库仍拥有归属与授权；发布服务拥有定义修订和版本。Registry/`team.json` 不成为受治理运行的第二份可写真相源；预览复用现有会话/运行记录。
 - 以现行 `openspec/specs/` 为权威；`unify-private-agent-personal-workspace` 已归档，直接保留其已纳入现行规格的个人目录、文件 owner 和历史附件语义，不增加等待该 change 的合并门槛。
