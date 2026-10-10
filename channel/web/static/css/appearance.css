@@ -937,14 +937,8 @@ html[data-web-palette] #composer-card .composer-hint { margin: 0; padding: 0 4px
 }
 #chat-main.chat-home .composer-toolbar { gap: 10px; }
 #chat-main.chat-home .composer-send-btn { width: 36px; height: 36px; border-radius: 11px; }
-/* Empty-home: command lists open below the composer and use the room left
-   under the hero. Attachments stay above the composer. Agent, workspace and
-   model menus retain their trigger placement and shared 380px height cap. */
-#chat-main.chat-home :is(#slash-menu, #mention-menu) {
-    top: calc(100% + 8px);
-    bottom: auto;
-    max-height: max(96px, calc(100dvh - var(--home-header-h) - var(--home-hero-offset) - var(--home-hero-h) - 24px));
-}
+/* Empty-home attachments use the room above the composer. Other menus keep
+   their shared placement and height limits, including upward command lists. */
 #chat-main.chat-home #attach-menu {
     top: auto;
     bottom: calc(100% + 8px);

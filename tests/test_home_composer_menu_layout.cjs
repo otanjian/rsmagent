@@ -9,12 +9,7 @@ const path = require('node:path');
 const repo = path.resolve(__dirname, '..');
 const appearanceCss = fs.readFileSync(path.join(repo, 'channel/web/static/css/appearance.css'), 'utf8');
 
-test('chat-home CSS keeps attachment and command menu placement', () => {
-    assert.match(
-        appearanceCss,
-        /#chat-main\.chat-home :is\(#slash-menu, #mention-menu\)\s*\{\s*top:\s*calc\(100% \+ 8px\);\s*bottom:\s*auto;/s,
-        'long command lists stay below the composer on home',
-    );
+test('chat-home CSS keeps attachment placement without forcing menus downward', () => {
     assert.match(
         appearanceCss,
         /#chat-main\.chat-home #attach-menu\s*\{\s*top:\s*auto;\s*bottom:\s*calc\(100% \+ 8px\);/s,
