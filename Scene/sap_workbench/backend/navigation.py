@@ -6,6 +6,7 @@ import time
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .configuration import WorkbenchError
+from .deployment import browser_sap_url
 
 
 def transaction_url(base, transaction):
@@ -30,7 +31,8 @@ class IframeNavigation:
     async def open(self, arguments, *, timeout=20):
         if set(arguments) != {'transaction'}:
             raise WorkbenchError('invalid_request', 400)
-        transaction, url = transaction_url(self.runtime.config['sap']['web_gui_url'], arguments['transaction'])
+        transaction, url = transaction_url(
+            browser_sap_url(self.runtime.config['sap']['web_gui_url']), arguments['transaction'])
         if self.pending:
             raise WorkbenchError('navigation_in_progress', 409)
         command = {'id': secrets.token_urlsafe(18), 'generation': self.runtime.row['generation'],

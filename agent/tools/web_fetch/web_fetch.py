@@ -9,7 +9,7 @@ Supports:
 import os
 import re
 import uuid
-from typing import Dict, Any, Optional, Set
+from typing import Dict, Any, List, Optional, Set
 from urllib.parse import urlparse, unquote
 
 import requests
@@ -271,20 +271,54 @@ class WebFetch(BaseTool):
             return self._parse_text(file_path)
 
     def _parse_pdf(self, file_path: str) -> str:
-        """Extract text from PDF using pypdf."""
+        """Extract text from PDF using pypdf, recognising scanned pages.
+
+        A fetched PDF is as likely to be a scan as a local one, so a page with
+        no text layer goes through the same OCR fallback the ``read`` tool
+        uses; without it a downloaded customs declaration or invoice would come
+        back empty.
+        """
         try:
             from pypdf import PdfReader
         except ImportError:
             raise ImportError("pypdf library is required for PDF parsing. Install with: pip install pypdf")
 
         reader = PdfReader(file_path)
-        text_parts = []
+        total_pages = len(reader.pages)
+
+        page_texts: Dict[int, str] = {}
+        missing_pages: List[int] = []
         for page_num, page in enumerate(reader.pages, 1):
             page_text = page.extract_text()
             if page_text and page_text.strip():
-                text_parts.append(f"--- Page {page_num}/{len(reader.pages)} ---\n{page_text}")
+                page_texts[page_num] = page_text
+            else:
+                missing_pages.append(page_num)
 
-        return "\n\n".join(text_parts)
+        ocr_pages: List[int] = []
+        missing_note = ""
+        if missing_pages:
+            from agent.tools.utils import pdf_scan
+
+            recognised, error = pdf_scan.ocr_pages(file_path, missing_pages)
+            for page_num, text in recognised.items():
+                if text and text.strip():
+                    page_texts[page_num] = text
+                    ocr_pages.append(page_num)
+            if len(ocr_pages) < len(missing_pages):
+                reason = error or "no text was recognised"
+                missing_note = (
+                    f"\n[Pages without a text layer that could not be read: "
+                    f"{', '.join(str(p) for p in missing_pages if p not in ocr_pages)} "
+                    f"-- {reason}]"
+                )
+
+        parts = [
+            f"--- Page {page_num}/{total_pages}"
+            f"{' (OCR)' if page_num in ocr_pages else ''} ---\n{page_texts[page_num]}"
+            for page_num in sorted(page_texts)
+        ]
+        return "\n\n".join(parts) + missing_note
 
     def _parse_word(self, file_path: str) -> str:
         """Extract text from Word documents (.docx)."""

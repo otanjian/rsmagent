@@ -355,8 +355,15 @@ class WorkbenchStore:
     def _binding(config):
         sap = config["sap"]
         target = urlsplit(sap["web_gui_url"])
-        return json.dumps([sap["system_id"], target.scheme, target.hostname, target.port,
-                           sap["client"], config["mcp"]["username"]], ensure_ascii=False)
+        parts = [sap["system_id"], target.scheme, target.hostname, target.port,
+                 sap["client"], config["mcp"]["username"]]
+        # The RFC endpoint is appended only when one is set. A deployment that
+        # never configures one keeps the exact binding string it already had, so
+        # upgrading does not revoke a credential that is still correct.
+        rfc = [sap.get("rfc_host", ""), sap.get("rfc_sysnr", "")]
+        if any(rfc):
+            parts += rfc
+        return json.dumps(parts, ensure_ascii=False)
 
     def resolve_mcp_credentials(self, tenant_id, expected_version):
         """Trusted runtime only: caller must authorize this tenant's scene use.

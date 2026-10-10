@@ -327,6 +327,16 @@ available_setting = {
     # and an action that is declared here is refused — with no side effect —
     # until one approved, matching, unconsumed approval covers it.
     "approval_required_actions": "",
+    # Shared-Agent release governance (change ``add-shared-agent-release-governance``,
+    # default off). When enabled, a tenant-shared Agent is only visible to and
+    # runnable by members after an explicit, approved, audited *release*; editing a
+    # released Agent forms a draft that members never see. The gate reuses the
+    # existing approval engine, audit log, resource quota and enterprise
+    # enablement; it adds no separate quota or approval store. Shipped off: while
+    # disabled, member visibility, default resolution and runtime assembly are
+    # byte-for-byte the delivered behaviour and existing bindings are never
+    # demoted to a draft.
+    "shared_agent_release_governance": False,
     # Identity: database only. Explicit identity_mode=legacy is refused at boot.
     # The key may be omitted (treated as database).
     "identity_mode": "database",

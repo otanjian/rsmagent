@@ -294,14 +294,17 @@ test('the shared build pane is trimmed in its own document without a proxy', asy
     const pane = h.dialogs[0].querySelector('[data-sap="code-pane"]');
     const frame = pane.children.find(child => child.tagName === 'iframe');
     // The scene serves no copy of the Web build; it trims the frame's own
-    // document instead, so the compact tabs and the empty title strip stop
-    // sitting above the header this dialog already renders.
+    // document instead, so the compact tabs, the empty title strip and the
+    // conversation's sticky session-title bar stop sitting above the header this
+    // dialog already renders.
     const style = frame.contentDocument.getElementById('sap-code-trim');
     assert.ok(style, 'the frame document must carry the scene trim');
     assert.match(style.textContent, /header:has\(#opencode-titlebar-right\)/);
+    assert.match(style.textContent, /\[data-session-title\]/);
     assert.match(style.textContent, /data-value="session"/);
     assert.match(style.textContent, /data-value="changes"/);
     assert.match(style.textContent, /display:none!important/);
+    assert.match(style.textContent, /--sticky-accordion-top:0px!important/);
     // A reload of the same frame must not stack a second copy.
     frame.dispatch('load');
     assert.equal(frame.contentDocument.head.children.filter(child => child.id === 'sap-code-trim').length, 1);
@@ -1248,6 +1251,27 @@ test('MCP settings show fixed read-only URLs and allow only enablement', async (
     assert.equal(password.value, '');
     assert.ok(nodes.some(node => node.name === 'mcp_username'));
     assert.ok(nodes.some(node => node.textContent === '密码尚未设置。'));
+});
+
+test('the RFC endpoint is an explicit optional field and never derived from the URL', async () => {
+    const h = setupWorkbench({canManage: true});
+    await h.ctx.SapWorkbench.open({view: 'settings'});
+    const descendants = node => [node, ...node.children.flatMap(descendants)];
+    const nodes = descendants(h.dialogs[0].querySelector('[data-sap="form"]'));
+    const host = nodes.find(node => node.name === 'rfc_host');
+    const sysnr = nodes.find(node => node.name === 'rfc_sysnr');
+    assert.ok(host && sysnr, 'both RFC fields are rendered');
+    // An ADT-only deployment starts empty, and filling the SAP URL must not
+    // prefill them: a pre-filled field would enable RFC at save time.
+    assert.equal(host.value, '');
+    assert.equal(sysnr.value, '');
+    assert.equal(sysnr.maxLength, 2);
+    const url = nodes.find(node => node.name === 'web_gui_url');
+    url.value = 'https://sap.example.test:44300/webgui';
+    url.dispatch('blur', {});
+    url.dispatch('change', {});
+    assert.equal(host.value, '', 'the RFC host is never derived from the Web GUI URL');
+    assert.equal(sysnr.value, '', 'the system number is never derived from the Web GUI URL');
 });
 
 for (const browserRef of ['', 'sap-browser-worker', 'local', 'retired-node']) {

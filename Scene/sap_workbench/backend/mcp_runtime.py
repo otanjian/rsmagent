@@ -8,7 +8,7 @@ from pathlib import Path
 from .configuration import WorkbenchError
 from .deployment import MCP_ENDPOINTS
 from .environment import mcp_python, subprocess_env
-from .mcp_login import SapMcpLogin
+from .mcp_login import SapMcpLogin, rfc_target
 
 WORKER_CLOSE_TIMEOUT = 12
 WORKER_KILL_TIMEOUT = 2
@@ -61,7 +61,8 @@ class ConfiguredMcp:
         sap = config['sap']
         initial = {'identity': {'system': sap['system_id'], 'client': sap['client'], 'user': config['mcp']['username'],
                                'generation': self.owner.row['config_version']},
-                   'connections': config['mcp']['connections'], 'url': sap['web_gui_url'], 'password': password}
+                   'connections': config['mcp']['connections'], 'url': sap['web_gui_url'], 'password': password,
+                   'rfc': rfc_target(sap)}
         try:
             self.process.stdin.write(json.dumps(initial).encode() + b'\n')
             await self.process.stdin.drain()

@@ -152,6 +152,23 @@ class OriginalSceneRuntimeTests(unittest.TestCase):
         self.assertIn(b'function openVoucherWorkbench', runtime_script())
         self.assertTrue(Path(load('sap.query_planner').QueryPlanner().skill_planner_path).is_file())
 
+    def test_edited_scene_source_reassembles_the_bundle_without_a_restart(self):
+        """The console's /scene-assets/runtime.js is assembled and cached.
+
+        A cached copy that outlives its source means a scene edit shows up only
+        after the process restarts, which is exactly the trap the console's
+        ``no-cache`` header is meant to rule out for a plain reload.
+        """
+        from Scene.catalog import ROOT
+        target = ROOT / 'sap_workbench/frontend/workbench.js'
+        original = target.read_bytes()
+        self.addCleanup(target.write_bytes, original)
+        self.assertNotIn(b'marker-for-the-cache-test', runtime_script())
+        target.write_bytes(original + b'\n// marker-for-the-cache-test\n')
+        self.assertIn(b'marker-for-the-cache-test', runtime_script())
+        target.write_bytes(original)
+        self.assertNotIn(b'marker-for-the-cache-test', runtime_script())
+
 
 if __name__ == '__main__':
     unittest.main()

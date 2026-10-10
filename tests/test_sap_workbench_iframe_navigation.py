@@ -9,8 +9,47 @@ import pytest
 from aiohttp import web
 
 from Scene.sap_workbench.backend.configuration import WorkbenchError
+from Scene.sap_workbench.backend.deployment import browser_display_origin, browser_sap_url
 from Scene.sap_workbench.backend.navigation import IframeNavigation, transaction_url
 from tests.test_sap_workbench_bridge_boundary import prepared, request_body, action_states
+
+DIRECT_SAP = 'https://sap.goodsap.cn:44300/sap/bc/gui/sap/its/webgui/?sap-client=200&sap-language=zh'
+
+
+def test_display_origin_rehosts_only_the_visible_iframe(monkeypatch):
+    monkeypatch.delenv('SAP_WORKBENCH_DISPLAY_ORIGIN', raising=False)
+    assert browser_display_origin() == ''
+    assert browser_sap_url(DIRECT_SAP) == DIRECT_SAP
+    monkeypatch.setenv('SAP_WORKBENCH_DISPLAY_ORIGIN', 'https://rd.rsmxm.com.cn')
+    assert browser_display_origin() == 'https://rd.rsmxm.com.cn'
+    # Only scheme/host/port move; the SAP path and query must survive intact.
+    assert browser_sap_url(DIRECT_SAP) == (
+        'https://rd.rsmxm.com.cn/sap/bc/gui/sap/its/webgui/?sap-client=200&sap-language=zh')
+    # Anything that is not a bare https origin is ignored, never half-applied.
+    for bad in ('http://rd.rsmxm.com.cn', 'rd.rsmxm.com.cn', 'https://rd.rsmxm.com.cn/proxy',
+                'https://rd.rsmxm.com.cn/?x=1', 'https://rd.rsmxm.com.cn/#f',
+                'https://user:pw@rd.rsmxm.com.cn', ''):
+        monkeypatch.setenv('SAP_WORKBENCH_DISPLAY_ORIGIN', bad)
+        assert browser_display_origin() == ''
+        assert browser_sap_url(DIRECT_SAP) == DIRECT_SAP
+
+
+def test_iframe_navigation_rehosts_when_display_origin_configured(monkeypatch):
+    monkeypatch.setenv('SAP_WORKBENCH_DISPLAY_ORIGIN', 'https://rd.rsmxm.com.cn')
+
+    async def run():
+        runtime = SimpleNamespace(config={'sap': {'web_gui_url': DIRECT_SAP}}, row={'generation': 1})
+        nav = IframeNavigation(runtime)
+        task = asyncio.create_task(nav.open({'transaction': 'ME21N'}))
+        await asyncio.sleep(0)
+        command = nav.command()
+        parts = urlsplit(command['url'])
+        assert parts.scheme == 'https' and parts.netloc == 'rd.rsmxm.com.cn'
+        assert parts.path == '/sap/bc/gui/sap/its/webgui/'
+        assert parse_qs(parts.query) == {'sap-client': ['200'], 'sap-language': ['zh'], '~transaction': ['ME21N']}
+        nav.acknowledge(command['id'])
+        assert (await task)['status'] == 'navigation_applied'
+    asyncio.run(run())
 
 
 @pytest.mark.parametrize('transaction', ['me21n', 'ME23N', 'SPRO', '/IWFND/ERROR_LOG'])

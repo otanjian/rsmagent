@@ -24,6 +24,8 @@
             saved: '配置已保存。运行功能仍需通过联调后开放。', save: '保存配置', saving: '正在保存…',
             system: 'SAP 系统标识', sapUrl: 'SAP Web GUI 完整 URL', client: 'SAP Client',
             language: 'SAP 语言', origins: '允许的 SAP / SSO 来源（每行一项）', loginMode: '登录方式',
+            rfcHost: 'SAP RFC 主机（可留空）', rfcSysnr: 'SAP 系统号（可留空）',
+            rfcHint: 'RFC 主机与系统号留空即只走 ADT 取数；填写后，BAPI 调用（call_rfc）才会经 RFC 后端到达 SAP。更改这两项需重新填写 MCP 密码。',
             password: '统一 SAP 账号密码登录', manual: '在 SAP 页面登录', sso: '企业 SSO',
             accountRule: '两个 MCP 使用下方维护的账号密码；SAP 系统和 Client 沿用上方配置。',
             mcp_credentials: 'MCP 账号密码', mcpUsername: 'MCP 的 SAP 账号', mcpPassword: 'MCP 的 SAP 密码',
@@ -49,6 +51,7 @@
             config_conflict: '配置已被更新，请刷新后重新编辑。', config_forbidden: '没有配置管理权限。',
             invalid_url: '地址必须是完整 HTTP(S) URL，且不能含账号、密码或令牌。',
             sap_parameter_conflict: 'URL 中的 SAP Client / 语言与表单不一致。', invalid_config: '配置格式不正确。',
+            invalid_rfc: 'RFC 主机须为主机名（不含端口），系统号为两位数字。',
             invalid_flags: '请先启用上一级功能。', sap_credentials_required: 'MCP 必须跟随当前 SAP 登录。',
             unsaved: '连接配置尚未保存，是否放弃修改？',
             viewStart: '打开 SAP 页面', viewStop: '关闭页面', viewStarting: '正在启动专属浏览器…',
@@ -76,6 +79,8 @@
             saved: 'Configuration saved. Runtime features still require integration verification.', save: 'Save configuration', saving: 'Saving…',
             system: 'SAP system ID', sapUrl: 'Full SAP Web GUI URL', client: 'SAP Client', language: 'SAP language',
             origins: 'Allowed SAP / SSO origins (one per line)', loginMode: 'Sign-in method', password: 'Unified SAP password sign-in',
+            rfcHost: 'SAP RFC host (optional)', rfcSysnr: 'SAP system number (optional)',
+            rfcHint: 'Leave the RFC host and system number empty to stay on ADT reads. With them set, BAPI calls (call_rfc) reach SAP over the RFC backend. Changing either requires re-entering the MCP password.',
             manual: 'Sign in on the SAP page', sso: 'Enterprise SSO',
             accountRule: 'Both MCP gateways use the account below and the SAP system and Client configured above.',
             mcp_credentials: 'MCP credentials', mcpUsername: 'MCP SAP username', mcpPassword: 'MCP SAP password',
@@ -101,6 +106,7 @@
             config_conflict: 'Configuration changed. Refresh before editing again.', config_forbidden: 'Configuration management is not permitted.',
             invalid_url: 'Use a full HTTP(S) URL without a username, password or token.', sap_parameter_conflict: 'SAP Client / language in the URL conflicts with the form.',
             invalid_config: 'Invalid configuration.', invalid_flags: 'Enable the preceding feature first.',
+            invalid_rfc: 'The RFC host must be a host name (no port) and the system number two digits.',
             sap_credentials_required: 'MCP must follow the current SAP sign-in.', unsaved: 'Discard unsaved connection changes?',
             viewStart: 'Open SAP page', viewStop: 'Close page', viewStarting: 'Starting the dedicated browser…',
             viewLive: 'Connected: clicks and typing are sent to SAP', viewEnded: 'The page connection ended. You can reopen it.',
@@ -126,6 +132,8 @@
             saved: '設定已儲存。執行功能仍須通過整合驗證後開放。', save: '儲存設定', saving: '正在儲存…',
             system: 'SAP 系統識別碼', sapUrl: 'SAP Web GUI 完整 URL', client: 'SAP Client', language: 'SAP 語言',
             origins: '允許的 SAP / SSO 來源（每行一項）', loginMode: '登入方式', password: '統一 SAP 帳號密碼登入',
+            rfcHost: 'SAP RFC 主機（可留空）', rfcSysnr: 'SAP 系統號（可留空）',
+            rfcHint: 'RFC 主機與系統號留空即只走 ADT 取數；填寫後，BAPI 呼叫（call_rfc）才會經 RFC 後端到達 SAP。更改這兩項需重新填寫 MCP 密碼。',
             manual: '在 SAP 頁面登入', sso: '企業 SSO', accountRule: '兩個 MCP 使用下方維護的帳號密碼；SAP 系統和 Client 沿用上方設定。',
             mcp_credentials: 'MCP 帳號密碼', mcpUsername: 'MCP 的 SAP 帳號', mcpPassword: 'MCP 的 SAP 密碼',
             mcpPasswordSaved: '密碼已設定；留空保留，輸入新值替換。', mcpPasswordMissing: '密碼尚未設定。',
@@ -150,6 +158,7 @@
             config_conflict: '設定已更新，請重新整理後再編輯。', config_forbidden: '沒有設定管理權限。',
             invalid_url: '請使用完整 HTTP(S) URL，且不能包含帳號、密碼或權杖。',
             sap_parameter_conflict: 'URL 中的 SAP Client / 語言與表單不一致。', invalid_config: '設定格式不正確。',
+            invalid_rfc: 'RFC 主機須為主機名稱（不含連接埠），系統號為兩位數字。',
             invalid_flags: '請先啟用上一級功能。', sap_credentials_required: 'MCP 必須跟隨目前 SAP 登入。',
             unsaved: '連線設定尚未儲存，是否放棄修改？',
             viewStart: '開啟 SAP 頁面', viewStop: '關閉頁面', viewStarting: '正在啟動專屬瀏覽器…',
@@ -236,6 +245,8 @@
         navigation_limited: '画面导航：有限可用。只确认导航指令送达，不代表已完成登录或拿到业务结果。',
         mcp_business_available: 'SAP 业务数据：可用。对话按会话经服务端已登记的连接读写业务数据；SAP 凭据与连接标识不下发给模型。',
         mcp_credentials_missing: 'SAP 业务数据：未就绪。尚未保存 MCP 账号口令，服务端无法建立连接，数据调用会以 mcp_login_failed 失败。',
+        mcp_bapi_available: 'BAPI 调用（call_rfc）：可用。配置了 SAP RFC 主机，写类 BAPI 可经 RFC 后端到达 SAP。',
+        mcp_bapi_unavailable: 'BAPI 调用（call_rfc）：不可用。未配置 SAP RFC 主机，连接只走 ADT，call_rfc 会以 PyRFC 后端不可用失败。',
         page_readwrite_unavailable: '页面读写与业务提交：不可用。阅读、填写左侧 SAP 页面字段和提交业务单据均不开放。',
         desktop_page_read_conditional: '页面读取：需使用新版 macOS / Windows 桌面并打开自己的 SAP 工作台。仅读取已渲染内容；填写与业务提交不可用。',
         setupHint: '新建会话会自动结束当前账号旧会话。SAP Web GUI 直接嵌入；点击右下角 AI 对话展开高级智能体。对话可使用已配置的 MCP，原生 SAP 页面由你直接操作。',
@@ -309,6 +320,8 @@
         navigation_limited: 'Screen navigation: partially available. Delivery of a navigation command is confirmed, not a completed login or business result.',
         mcp_business_available: 'SAP business data: available. Chat reads and writes business data through the registered server-side connection, per session; SAP credentials and connection ids are never handed to the model.',
         mcp_credentials_missing: 'SAP business data: not ready. No MCP account password is saved, so the server cannot connect and every data call fails with mcp_login_failed.',
+        mcp_bapi_available: 'BAPI calls (call_rfc): available. A SAP RFC host is configured, so write-capable BAPIs reach SAP over the RFC backend.',
+        mcp_bapi_unavailable: 'BAPI calls (call_rfc): unavailable. No SAP RFC host is configured, so the connection stays on ADT and call_rfc fails with no PyRFC backend.',
         page_readwrite_unavailable: 'Page read/write and business submission: not available. Reading or filling SAP page fields and submitting documents are not offered.',
         desktop_page_read_conditional: 'Page reading requires an updated macOS or Windows desktop and your active SAP workbench. Rendered content only; filling and submission remain unavailable.',
         setupHint: 'A new session ends your previous workbench sessions. SAP Web GUI is embedded directly; open AI chat at the bottom right. Chat uses configured MCP tools; operate the SAP page directly.',
@@ -339,6 +352,8 @@
         navigation_limited: '畫面導覽：有限可用。只確認導覽指令送達，不代表已完成登入或取得業務結果。',
         mcp_business_available: 'SAP 業務資料：可用。對話按工作階段經伺服器已登記的連線讀寫業務資料；SAP 憑證與連線識別不下發給模型。',
         mcp_credentials_missing: 'SAP 業務資料：未就緒。尚未儲存 MCP 帳號密碼，伺服器無法建立連線，資料呼叫會以 mcp_login_failed 失敗。',
+        mcp_bapi_available: 'BAPI 呼叫（call_rfc）：可用。已設定 SAP RFC 主機，寫入類 BAPI 可經 RFC 後端到達 SAP。',
+        mcp_bapi_unavailable: 'BAPI 呼叫（call_rfc）：不可用。未設定 SAP RFC 主機，連線只走 ADT，call_rfc 會因無 PyRFC 後端而失敗。',
         page_readwrite_unavailable: '頁面讀寫與業務提交：不可用。讀取、填寫左側 SAP 頁面欄位與提交業務單據均不開放。',
         desktop_page_read_conditional: '頁面讀取：需使用新版 macOS / Windows 桌面並開啟自己的 SAP 工作台。僅讀取已呈現內容；填寫與業務提交不可用。',
         setupHint: '新增工作階段會自動結束目前帳號的舊工作階段。SAP Web GUI 直接嵌入；右下角 AI 對話展開高級智能體。對話使用已設定的 MCP，SAP 頁面由你直接操作。',
@@ -466,15 +481,19 @@
         dressCodeFrame();
     }
     // The scene owns this pane's chrome. Inside the frame the platform's compact
-    // session/changes tabs and Advanced Agent's own (now empty) title strip form a
-    // second header above the one this dialog already renders, so both are
-    // trimmed in the frame's own document. The frame is same-origin with this
-    // page, which is what lets the *shared* Web build stay untouched -- the same
-    // rule the retired engine used to inject while serving its own assets. A
-    // cross-origin embed cannot be dressed this way and simply keeps OpenCode's
-    // defaults rather than failing.
+    // session/changes tabs, Advanced Agent's own (now empty) title strip and the
+    // conversation's sticky session-title bar each form a second header above the
+    // one this dialog already renders, so all three are trimmed in the frame's
+    // own document. With the title bar gone, tool accordions must stick to the
+    // true top of the scroll view instead of the 48px it used to reserve. The
+    // frame is same-origin with this page, which is what lets the *shared* Web
+    // build stay untouched -- the same rule the retired engine used to inject
+    // while serving its own assets. A cross-origin embed cannot be dressed this
+    // way and simply keeps OpenCode's defaults rather than failing.
     const CODE_FRAME_TRIM = 'header:has(#opencode-titlebar-right),' +
-        '[data-slot="tabs-list"]:has([data-value="session"]):has([data-value="changes"]){display:none!important}';
+        '[data-session-title],' +
+        '[data-slot="tabs-list"]:has([data-value="session"]):has([data-value="changes"]){display:none!important}' +
+        '.scroll-view{--sticky-accordion-top:0px!important}';
     function dressCodeFrame() {
         let doc = null;
         try { doc = (codeFrame && codeFrame.contentDocument) || null; } catch (error) { doc = null; }
@@ -1455,6 +1474,8 @@
         field(grid, 'web_gui_url', 'sapUrl', config.sap.web_gui_url).type = 'url';
         field(grid, 'client', 'client', config.sap.client).maxLength = 3;
         field(grid, 'language', 'language', config.sap.language);
+        field(grid, 'rfc_host', 'rfcHost', config.sap.rfc_host);
+        field(grid, 'rfc_sysnr', 'rfcSysnr', config.sap.rfc_sysnr).maxLength = 2;
         field(grid, 'origins', 'origins', config.sap.allowed_origins.join('\n'));
         field(grid, 'login_mode', 'loginMode', 'manual', [['manual',t('manual')]]);
         const choices = [['', t('select')], ...data.coding_options.map(v => [v.id,v.name])];
@@ -1471,7 +1492,7 @@
             const input = field(grid, name, label, config[name]); input.type = 'number';
             input.min = name === 'max_sessions' ? '1' : '60'; input.max = name === 'max_sessions' ? '100' : '86400';
         }
-        form.append(el('p', t('projectHint'), 'sap-help'), el('p', t('accountRule'), 'sap-account-rule'), el('p', t('loginHint'), 'sap-help'));
+        form.append(el('p', t('projectHint'), 'sap-help'), el('p', t('accountRule'), 'sap-account-rule'), el('p', t('loginHint'), 'sap-help'), el('p', t('rfcHint'), 'sap-help'));
         form.append(el('p', t('fixedMcp'), 'sap-help'));
         const connections = el('div'); connections.dataset.sap = 'mcp-rows'; form.append(connections);
         config.mcp.connections.forEach(item => mcpRow(connections, item));
@@ -1507,7 +1528,7 @@
             event.preventDefault(); if (save.disabled) return;
             const current = generation, value = name => form.elements.namedItem(name).value;
             const next = JSON.parse(JSON.stringify(config));
-            for (const key of ['system_id','web_gui_url','client','language','login_mode']) next.sap[key] = value(key);
+            for (const key of ['system_id','web_gui_url','client','language','login_mode','rfc_host','rfc_sysnr']) next.sap[key] = value(key);
             next.sap.allowed_origins = value('origins').split('\n').map(v=>v.trim()).filter(Boolean);
             next.coding_agent_id = value('coding_agent_id'); next.browser_service_ref = value('browser_service_ref');
             for (const key of ['max_sessions','idle_seconds']) next[key] = Number(value(key));

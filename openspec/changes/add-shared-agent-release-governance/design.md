@@ -2,6 +2,8 @@
 
 范围和动机见 proposal.md。当前 `agent/admin.py` 已有修订与并发提交机制，`auth/service.py` 已区分私有 owner 和共享资源资格，运行时已有授权、审批、配额及 Linux/macOS 沙箱。需要补齐的是：管理草稿不影响线上、运行固定定义，以及现有可写根不能覆盖核心与控制数据。
 
+合并基线已包含较早的共享发布切片（`auth/agent_release.py`、`agent_releases` 与 `agent_bindings` 发布列、`shared_agent_release_governance` 开关及相关服务/路由测试）。该切片的范围、审批、回滚和开关语义与本文不同；代码保持原样，后续按本文适配并复验，不将旧任务完成状态直接套用到当前任务。旧方案与差异说明保留在 [历史方案说明](evidence/legacy-shared-release/README.md)，旧测试证据不能替代本文的完整验收。
+
 当前 `CORE_FILES` 把规则、用户信息和 MEMORY.md 放在同一列表，不能整体复制成发布包；现有沙箱会授权部分工作区父目录且保留网络，也不能直接视为核心不可改。系统供应对象当前有来源与删除限制，没有通用模板字段锁定/升级合并机制。现有首次引导要求聊天修改 AGENT.md/USER.md 并删除 BOOTSTRAP.md，提示构建器也有更新人设/称呼的写文件引导；受治理对象须同时调整这些入口，避免只读包下重复引导或写入失败。
 
 个人目录统一 change 已归档到 `archive/2026-10-10-unify-private-agent-personal-workspace/`，现行 specs 是实现依据。本 change 不移动既有用户子树、记忆、会话或历史附件，也不修改工作区中其他任务的代码。

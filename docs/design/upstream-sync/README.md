@@ -45,6 +45,26 @@ behavior and production acceptance. Even a complete local run does not prove
 remote CI branch protection, an installed Desktop/SAP integration, or a deployed
 source updater's recovery. Reports list unaccepted capabilities separately.
 
+## Brand decoupling
+
+The same gate carries a `brand-decoupling` layer, so a sync that reintroduces
+upstream branding fails like any other capability regression. It has two parts:
+
+- The published Web bundle (`rsmCode/opencode/packages/app/dist`) must contain no
+  user-visible upstream brand word or upstream site. The check scans text assets
+  (`.html`, `.js`, `.css`, `.json`, `.webmanifest`, `.svg`, `.txt`) and skips
+  silently when no bundle is present, so the production Web build must run before
+  the gate to be meaningful.
+- The model identity path must stay clean. The layer runs
+  `rsmCode/branding/check-identity.mjs` through `bun`; it fails when the script is
+  missing or when any upstream session prompt still reaches a model unbranded.
+
+Branding lives out of the upstream tree in `rsmCode/branding/` (`brand.json` as
+the single source of truth, `web-overlay.ts` for the Vite overlay, and
+`opencode-plugin/rsm-identity.js` for the runtime prompt transform). Upstream
+overwrite sync must not touch that directory; if a sync changes `brand.json` or
+the overlay, treat it as a reviewed change, not a merge artifact.
+
 ## Current implementation boundary
 
 The gate is connected to `scripts/check-production.sh`, the existing Gitea

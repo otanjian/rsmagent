@@ -10,10 +10,14 @@
 |---|---|---|
 | 左侧画面打开事务码 | 有限可用 | 只保留一条服务端导航通道，只确认导航送达，不代表登录或业务结果 |
 | 读取 SAP 业务数据 | 可用（凭据就绪时） | 场景中介通道 `sap_data_call` 的 `read_table` / `run_query`（仅单条只读 SELECT） |
-| 经 BAPI 变更 SAP 业务数据 | 可用（凭据就绪时） | 同一通道的 `call_rfc`；可调用 BAPI，**可能改变业务数据**，需人工确认 |
+| 经 BAPI 变更 SAP 业务数据 | 可用（凭据 + RFC 端点就绪时） | 同一通道的 `call_rfc`，经 MCP 网关的 RFC（PyRFC）后端；可调用 BAPI，**可能改变业务数据**，需人工确认 |
 | 读左侧页面 DOM / 填写页面字段 | 不可用 | 跨域 iframe，插件与 MCP 均读不到左侧画面 |
 
-上表前两行与第三行的可用性都以配置中的 MCP 凭据就绪为前提：凭据缺失时界面与能力说明下发 `mcp_credentials_missing`，该行不标为可用。skill 已安装或工具已注册**不**构成页面读写可用的证据；左侧画面的读取与填写仍未通过真实工具路径验收，保持「不可用」。
+上表读取行以配置中的 MCP 凭据就绪为前提：凭据缺失时界面与能力说明下发 `mcp_credentials_missing`，该行不标为可用。BAPI 行在此之上还需要配置 RFC 端点（下文），只填凭据而没有 RFC 端点时该行标为 `mcp_bapi_unavailable`。skill 已安装或工具已注册**不**构成页面读写可用的证据；左侧画面的读取与填写仍未通过真实工具路径验收，保持「不可用」。
+
+配置 `sap.rfc_host` / `sap.rfc_sysnr` 后，中介连接以 `auto` 建立，后端由网关按方法解析：`call_rfc` 走 RFC（PyRFC）后端，`read_table` / `run_query` 仍走 ADT，因此 `read_table` 的返回形状（`backend`、`column_meta`）不因连接是否配置 RFC 而改变。两条路径本不相同：PyRFC 侧不含 `column_meta`，行由 `RFC_READ_TABLE` 的 `|` 拼接串拆分重建；ADT 侧不支持 `row_skip`（需收窄 `WHERE`）。未配置 RFC 端点时连接保持 ADT-only，`call_rfc` 因无 PyRFC 后端而**明确失败**，不静默退化。
+
+2026-10-10 现场只读验证：`sap.goodsap.cn` 经 PyRFC 完成 `RFC_PING` 与 `RFC_READ_TABLE`（T001），且在 RFC 与 ADT 目标同时存在、后端 `auto` 时 `read_table` 仍解析到 ADT 并返回 `column_meta`。见 [RFC 现场证据](../../openspec/changes/enable-sap-rfc-bapi-channel/evidence/sap-rfc-live.md)。
 
 中介通道只把 MCP 传输结果交回模型，**不等于**业务已完成：读到记录不代表单据已审批、已过账或未关闭，`call_rfc` 的传输成功也不代表 SAP 已完成该业务动作，模型不得据此声称已创建、已过账或已审批。连接、SAP 账号与口令始终留在服务端，参数面不接受 `connection_id`/`user`/`password`/`client`/`host`/`url`；系统变更类 ADT 工具（改源码、激活、传输放行）不在该通道的工具面内。工具可见性权限规则只减少误调用，**不是**授权依据——真实授权由服务端逐次校验归属实现。
 
@@ -80,12 +84,23 @@ SAP 字段输入和点击由用户在原生页面操作。场景新增的 `sap_t
 | 租户容量与空闲回收 | 场景配置，默认 4 会话、900 秒 |
 | 执行进程浏览器总上限 | 环境项 `SAP_WORKBENCH_NODE_MAX_SESSIONS`，默认 4、允许 1..32；所有租户合计，启动和关闭中继续占额度；Web 与桌面分别计数 |
 | 远程显示 | 环境项 `SAP_WORKBENCH_PUBLIC_BASE`，一个 https origin（无 path/query/fragment），形如 `https://rd.rsmxm.com.cn`；未设置即仅本机，为默认。所有会话共享该 origin 下的一个固定路径前缀 `SAP_WORKBENCH_BASE_PATH`（默认 `/sapcode`），完整入口为 `<origin>/sapcode`，不新增域名、不新增 DNS 或证书。公网入口以 `SAP_WORKBENCH_PROXY_PORT`（默认 9911）接入同一回环端口 |
+| 左侧 iframe 的浏览器侧 origin | 环境项 `SAP_WORKBENCH_DISPLAY_ORIGIN`，一个 https origin（无 path/query/fragment），形如 `https://rd.rsmxm.com.cn`；未设置即直连配置里的 SAP 地址，为默认。目标 SAP 主机证书不受信/已过期时（详见下节），设为本域 origin 并把 nginx `/sap/` 反代到该 SAP 主机，浏览器即改成加载受信证书；只影响可见 iframe 及其交易导航，MCP 通道、凭据绑定与后端连接仍用配置里的真实 SAP 地址 |
 
 MCP 桥注入系统、Client、凭据和连接 ID，模型工具不接受这些身份参数。Web GUI 单独登录，不从页面提取密码。密码留空保留、输入替换、勾选清除则撤销；需已有 `COW_CREDENTIAL_MASTER_KEY`，不降级明文。OpenCode 服务密码与 SAP 密码用途不同。
 
-远程显示默认关闭，需要显式配置才开启，且必须是 https origin（无 query/fragment/path）；路径前缀由 `SAP_WORKBENCH_BASE_PATH` 单独提供、绝不出现在 origin 中。配置不可用时在监听建立前失败，不启动半开的入口。开启后会话 runtime 仍只绑定 `127.0.0.1` 临时端口，由同一事件循环内的入口代理（回环 `SAP_WORKBENCH_PROXY_PORT`，默认 9911）解析到唯一**在会话**：引导阶段用显式 `?binding=` 查询，之后用会话 Cookie `sap_scene_<binding>`（路径固定为 base_path）；代理把带前缀的路径原样中转、不剥前缀，会话 runtime 自行剥掉 base_path 后路由。nginx 把 `location ^~ /sapcode/` 指向 `127.0.0.1:9911` 并透传 `Upgrade`/`Connection`、关闭 buffering/cache。HTTP、SSE 事件流和 WebSocket 升级都按字节中转。代理只监听回环、不额外鉴权、不做目录列举，未知或已关闭的 binding 返回 `unknown_session`；runtime 的会话 Cookie、Origin 校验、平台鉴权和 `frame-ancestors` 策略原样透传。所有会话共享同一 origin + 同一前缀、靠会话 Cookie（及引导的显式 binding）区分，与控制台同源（不新增域名/DNS/证书）。静态资源以 base=`/sapcode` 构建，入口 `<origin>/sapcode/` 返回 index.html，`/sapcode/assets/*` 与根级 favicon/manifest/主题预载脚本由 runtime 直接提供。左侧 SAP 画面由浏览器直接加载公网 SAP 地址，不经过该代理；托管画面（`screen`）模式当前被会话创建固定为 `iframe`，不在远程显示范围内。本机 `http://127.0.0.1:<port>` 路径不受影响。
+远程显示默认关闭，需要显式配置才开启，且必须是 https origin（无 query/fragment/path）；路径前缀由 `SAP_WORKBENCH_BASE_PATH` 单独提供、绝不出现在 origin 中。配置不可用时在监听建立前失败，不启动半开的入口。开启后会话 runtime 仍只绑定 `127.0.0.1` 临时端口，由同一事件循环内的入口代理（回环 `SAP_WORKBENCH_PROXY_PORT`，默认 9911）解析到唯一**在会话**：引导阶段用显式 `?binding=` 查询，之后用会话 Cookie `sap_scene_<binding>`（路径固定为 base_path）；代理把带前缀的路径原样中转、不剥前缀，会话 runtime 自行剥掉 base_path 后路由。nginx 把 `location ^~ /sapcode/` 指向 `127.0.0.1:9911` 并透传 `Upgrade`/`Connection`、关闭 buffering/cache。HTTP、SSE 事件流和 WebSocket 升级都按字节中转。代理只监听回环、不额外鉴权、不做目录列举，未知或已关闭的 binding 返回 `unknown_session`；runtime 的会话 Cookie、Origin 校验、平台鉴权和 `frame-ancestors` 策略原样透传。所有会话共享同一 origin + 同一前缀、靠会话 Cookie（及引导的显式 binding）区分，与控制台同源（不新增域名/DNS/证书）。静态资源以 base=`/sapcode` 构建，入口 `<origin>/sapcode/` 返回 index.html，`/sapcode/assets/*` 与根级 favicon/manifest/主题预载脚本由 runtime 直接提供。左侧 SAP 画面**默认**由浏览器直接加载公网 SAP 地址，不经过这个 `/sapcode` 代理；当目标主机证书不可接受、配置了 `SAP_WORKBENCH_DISPLAY_ORIGIN` 时，改由本域 `location ^~ /sap/` 这个**另一个**反代提供（与 `/sapcode` 无关，详见下文「左侧画面打不开」）。托管画面（`screen`）模式当前被会话创建固定为 `iframe`，不在远程显示范围内。本机 `http://127.0.0.1:<port>` 路径不受影响。
 
 仅用户指定的测试源 `https://sap.goodsap.cn:44300` 在 **MCP → SAP** 后台连接中跳过 TLS 校验；不更改 Chrome、系统证书或全局 HTTP 校验。无秘密载荷示例见 `config.example.json`，通过 UI 保存，不手改 SQLite。
+
+### 左侧画面打不开：SAP 证书不受信/已过期时的反代
+
+默认情况下左侧 iframe 由浏览器**直连**配置里的 SAP 地址，使用浏览器正常的证书校验。2026-10-10 现场诊断：测试机 `sap.goodsap.cn:44300` 仍返回 SAP 登录页（HTTP 200、TLS 1.2），但其证书 `CN=vhcals4hci.dummy.nodomain`（签发者 `cal.dummy.nodomain`，SAP 默认自签）**既不受信、域名不匹配，且已于 2025-12-02 过期**。浏览器对这类证书一律拒绝，而 iframe 内又弹不出"继续前往"，于是左侧只显示"网页可能暂时无法连接"。这属于**服务器证书问题**，不是工作台/控制台代码问题；规范也明确 iframe 走浏览器正常校验、不得从应用侧绕过。根治办法是在 SAP 服务器（STRUST）更换有效证书。
+
+在没有 SAP 服务器权限、又必须让用户可用时，采用受信 origin 反代：`SAP_WORKBENCH_DISPLAY_ORIGIN=https://rd.rsmxm.com.cn` 使后端只把**可见 iframe 及其交易导航**改写到该 origin（路径/查询保持不变），nginx 用 `location ~ ^/sap(?:\([^)]*\))?/` 反代到 `https://sap.goodsap.cn:44300` 并对上游 `proxy_ssl_verify off`、`Host` 设为 SAP 主机。浏览器仍对本域证书做**正常** TLS 校验，跳过校验的只有 nginx→SAP 这一段。SAP GUI for HTML 的资源都是根相对 `/sap/...`，原样转发即可；绝对地址重定向由 `proxy_redirect` 改回本域。
+
+**location 必须同时覆盖会话编码路径。** 登录后 SAP ITS 会把会话令牌编进路径（URL session encoding），形如 `/sap(<base64>)/bc/gui/sap/its/webgui/state/ur`，这类请求**不带** `/sap/` 前缀。若只写 `location ^~ /sap/`（少了这一条会导致 2026-10-10 的现场故障），`/sap(<令牌>)/...` 会落到其它 location，最终返回 nginx 自己的 9 字节纯文本 `not found`，用户看到的现象就是**一提交用户名密码、左侧立刻变成 not found**；登录页本身（`/sap/bc/gui/sap/its/webgui/`）当时是正常的，所以容易误判成凭据问题。修复后同类请求按真实令牌返回 200 与约 407 KB 的 ITS 框架内容。同一 location 还需透传 WebSocket（`map $http_upgrade $connection_upgrade`，非升级请求传 `close`），否则 APC 通道 `/sap/bc/apc/sap/webgui_services` 无法升级。MCP 通道、凭据绑定和 `verify_sap_tls` 的例外逻辑都**不受该变量影响**，仍按配置里的真实 SAP 地址工作。
+
+注意取舍：反代后左侧 iframe 与控制台**同源**（同 `https://rd.rsmxm.com.cn`），此前"跨域 iframe，插件/MCP 读不到左侧画面"的隔离不再成立；如需保留跨域，应改用一个带独立证书的**子域**（另需 DNS 与证书）或独立端口的 origin，而不是本域路径。
 
 ## 运行依赖
 
@@ -181,7 +196,7 @@ node --test tests/test_sap_workbench_field_validation.cjs tests/test_sap_workben
 SAP_OPENCODE_ROOT=/path/to/rsmcode/opencode bun test Scene/sap_workbench/opencode_adapter/host.test.ts Scene/sap_workbench/opencode_adapter/deployment.test.ts Scene/sap_workbench/opencode_adapter/purchase_order.test.ts
 ```
 
-host 测试运行真实 Session V2 和未修改的 Web reducer，供应商和 SAP 桥使用替身。真实联调见 [验收记录](../../openspec/changes/archive/2026-10-04-add-sap-workbench-scene/evidence/live-workbench.md)。原生 RFC SDK 未安装，sap-pyrfc 当前使用 ADT 回退，不能宣称 RFC 直连通过。
+host 测试运行真实 Session V2 和未修改的 Web reducer，供应商和 SAP 桥使用替身。真实联调见 [验收记录](../../openspec/changes/archive/2026-10-04-add-sap-workbench-scene/evidence/live-workbench.md)。原生 RFC SDK 未安装，sap-pyrfc 当前使用 ADT 回退，不能宣称 RFC 直连通过。（2026-10-10 更正：该轮结论已过期——原生 RFC SDK 与 `pyrfc 3.3.1` 已就位，PyRFC 直连已完成现场只读验证，见 [RFC 现场证据](../../openspec/changes/enable-sap-rfc-bapi-channel/evidence/sap-rfc-live.md)。本段其余内容保留为当轮历史，不作当前状态依据。）
 
 实际操作检查仍按用户安排暂缓。本轮完整 SAP Python **1182 pass / 2 skip**、Node **170 pass**，修复 MCP 响应/管道与 DOM/F4 回读，详见 [MCP 与 DOM 收尾](../../openspec/changes/archive/2026-10-04-add-sap-workbench-scene/evidence/mcp-dom-closeout.md)。两个 skip 是暂停的真实 Chrome fixture 和默认不启用的固定上游下载 fixture；实际安装 SDK 的离线合同本轮没有跳过。Bun **4 pass / 81 assertions**是上一轮记录，隔离测试不替代现场验收。
 

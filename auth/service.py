@@ -999,6 +999,8 @@ class IdentityService:
 
         bindings = self.agents_for_tenant(tenant_id)
         usable = [b for b in bindings if self._agent_is_usable(b["agent_id"])]
+        if self._release_governance_enabled():
+            usable = [b for b in usable if self._release_binding_visible(b)]
 
         if user_id:
             personal = self.member_default_agent_id(tenant_id, user_id)
@@ -1124,11 +1126,24 @@ class IdentityService:
         shared_ids = sorted(
             b["agent_id"] for b in bindings
             if b.get("private_owner_user_id") is None
+            and self._release_binding_visible(b)
             and self._agent_is_usable(b["agent_id"]))
         configured = self.tenant_default_agent_id(tenant_id)
         if configured and configured in shared_ids:
             return configured
         return shared_ids[0] if shared_ids else None
+
+    def _release_binding_visible(self, binding: Dict[str, Any]) -> bool:
+        """Whether a binding is member-visible under release governance.
+
+        A no-op when the deployment switch is off, so every caller can apply it
+        unconditionally. Private bindings are owner-scoped and always visible; a
+        shared binding is visible only while released.
+        """
+        if not self._release_governance_enabled():
+            return True
+        from auth.agent_release import binding_member_visible
+        return binding_member_visible(binding, enabled=True)
 
     @staticmethod
     def _agent_is_usable(agent_id: str) -> bool:
@@ -1571,9 +1586,19 @@ class IdentityService:
         if actor_user_id is not None:
             self._require_tenant_admin(actor_user_id, binding["tenant_id"])
         with self._tx() as con:
-            con.execute(
-                "UPDATE agent_bindings SET private_owner_user_id=NULL WHERE agent_id=?",
-                (agent_id,))
+            if self._release_governance_enabled():
+                # Sharing under governance forms a *draft*: members see nothing
+                # until an approved release (task 5.4). A previously released row
+                # that was made private and is now re-shared starts over as a
+                # draft rather than silently reappearing.
+                con.execute(
+                    "UPDATE agent_bindings SET private_owner_user_id=NULL,"
+                    " release_state='draft' WHERE agent_id=?",
+                    (agent_id,))
+            else:
+                con.execute(
+                    "UPDATE agent_bindings SET private_owner_user_id=NULL WHERE agent_id=?",
+                    (agent_id,))
             self._audit_in_tx(
                 con,
                 actor_username=None, actor_user_id=actor_user_id,
@@ -1725,10 +1750,17 @@ class IdentityService:
             # audit action stays the same, so an Agent shared from the console and
             # one shared by an operator read identically in the audit trail.
             with self._tx() as con:
-                con.execute(
-                    "UPDATE agent_bindings SET private_owner_user_id=NULL"
-                    " WHERE agent_id=?",
-                    (agent_id,))
+                if self._release_governance_enabled():
+                    # See ``make_agent_tenant_shared``: sharing forms a draft.
+                    con.execute(
+                        "UPDATE agent_bindings SET private_owner_user_id=NULL,"
+                        " release_state='draft' WHERE agent_id=?",
+                        (agent_id,))
+                else:
+                    con.execute(
+                        "UPDATE agent_bindings SET private_owner_user_id=NULL"
+                        " WHERE agent_id=?",
+                        (agent_id,))
                 self._audit_in_tx(
                     con,
                     actor_username=None, actor_user_id=actor_user_id,
@@ -1751,10 +1783,467 @@ class IdentityService:
             actor_user_id=actor_user_id, reason="console set_visibility")
         return {**restored, "visibility": "private"}
 
+    # --- shared-agent release governance (add-shared-agent-release-governance) --
+    #
+    # A tenant-shared Agent is visible to and runnable by members only after an
+    # explicit, approved, audited *release*. The flow reuses the delivered
+    # approval engine (consume), audit log (same-transaction), resource quota and
+    # enterprise enablement; it adds only the release state, the immutable
+    # version history and the runtime snapshot. Everything here is inert while
+    # ``shared_agent_release_governance`` is off (the default).
+
+    @staticmethod
+    def _release_governance_enabled() -> bool:
+        from auth.agent_release import release_governance_enabled
+        return release_governance_enabled()
+
+    def _require_release_governance(self) -> None:
+        if not self._release_governance_enabled():
+            raise IdentityServiceError(
+                "shared-Agent release governance is not enabled in this deployment",
+                code="release_governance_disabled", status=409)
+
+    def _require_release_control(self, actor_user_id: Optional[str],
+                                 tenant_id: str) -> None:
+        if actor_user_id and self._is_control(actor_user_id, tenant_id):
+            return
+        raise IdentityServiceError("release denied", code="forbidden", status=403)
+
+    def _release_shared_binding(self, agent_id: str,
+                                tenant_id: str) -> Dict[str, Any]:
+        """The shared binding to govern, or a 404/409 refusal."""
+        binding = self.get_agent_binding(agent_id)
+        if not binding or binding.get("tenant_id") != tenant_id:
+            raise IdentityServiceError("agent not bound to this tenant",
+                                       code="not_found", status=404)
+        if binding.get("private_owner_user_id") is not None:
+            raise IdentityServiceError(
+                "a private Agent is not release-governed",
+                code="private_agent_not_releasable", status=409)
+        return binding
+
+    def _release_candidate(self, agent_id: str,
+                           tenant_id: str) -> tuple:
+        """Build ``(snapshot, content_hash)`` from the Agent's *current* config.
+
+        Uses the roster profile plus the Agent's current external-connection and
+        channel references. ``ignore_release=True`` is essential: a re-publish
+        must capture the current *draft*, not the previous release that the
+        unfrozen resolver would otherwise hand back.
+        """
+        from auth.agent_release import (
+            build_snapshot, snapshot_hash, EFFECTIVE_FIELDS,
+        )
+        profile = None
+        profile_dict: Dict[str, Any] = {}
+        try:
+            from agent.registry import get_agent_registry
+            profile = get_agent_registry().get(agent_id, require_enabled=False)
+        except Exception:  # noqa: BLE001 - a missing roster entry is not fatal here
+            profile = None
+        if profile is not None:
+            try:
+                profile_dict = dict(profile.to_dict())
+            except Exception:  # noqa: BLE001
+                profile_dict = {}
+        effective = None
+        if profile is not None:
+            scene = None
+            try:
+                if getattr(profile, "scene_id", None):
+                    from scenes.service import find_scene
+                    scene, _ = find_scene(profile.scene_id)
+            except Exception:  # noqa: BLE001
+                scene = None
+            try:
+                from agent.effective_capabilities import resolve_effective_capabilities
+                caps = resolve_effective_capabilities(
+                    profile, scene=scene, ignore_release=True)
+                effective = {key: getattr(caps, key) for key in EFFECTIVE_FIELDS}
+            except Exception:  # noqa: BLE001 - snapshot still records the profile
+                effective = None
+        # A roster that omits the Agent still yields a frozen surface: "no
+        # explicit policy" (every field None). Storing an absent ``effective``
+        # section would read as a corrupt snapshot at run time and fail closed,
+        # which is the opposite of what publishing the current (empty) config
+        # means.
+        if not effective:
+            effective = {key: None for key in EFFECTIVE_FIELDS}
+        snapshot = build_snapshot(
+            profile_dict, effective=effective,
+            connections=self._release_connection_ids(agent_id),
+            channels=self._release_channel_ids(agent_id, tenant_id))
+        return snapshot, snapshot_hash(snapshot)
+
+    def _release_connection_ids(self, agent_id: str) -> List[str]:
+        """External-connection ids assigned to the Agent at release time."""
+        try:
+            rows = self._store.execute(
+                "SELECT DISTINCT logical_connection_id FROM"
+                " external_connection_agent_assignments WHERE agent_id=?",
+                (agent_id,))
+            return [str(r["logical_connection_id"]) for r in rows]
+        except Exception:  # noqa: BLE001 - old/partial store: treat as none
+            return []
+
+    def _release_channel_ids(self, agent_id: str, tenant_id: str) -> List[str]:
+        """Active channel-instance ids referencing the Agent at release time."""
+        try:
+            rows = self._store.execute(
+                "SELECT id FROM tenant_channel_instances"
+                " WHERE agent_id=? AND tenant_id=? AND active=1",
+                (agent_id, tenant_id))
+            return [str(r["id"]) for r in rows]
+        except Exception:  # noqa: BLE001 - old/partial store: treat as none
+            return []
+
+    def _release_enterprise_ready(self, tenant_id: str) -> bool:
+        """Whether the tenant's enterprise access is enabled.
+
+        Identity is database-only (legacy is refused at boot), so the operable
+        criterion is an existing, active tenant. An unresolvable tenant is a
+        refusal, not a pass.
+        """
+        tenant = self.get_tenant(tenant_id)
+        if not tenant:
+            return False
+        return bool(tenant.get("active", 1))
+
+    def _release_quota_ok(self, con: Any, tenant_id: str) -> bool:
+        """Admission check against the tenant's own hard caps (fail-closed).
+
+        Reuses the existing ``quota_limits``/``quota_usage`` reader semantics.
+        Returns False when a tenant-level cap is already exhausted, and False
+        when the meter cannot be read at all — a release opens a member-visible
+        surface, so "cannot tell" must refuse rather than pass.
+        """
+        import calendar
+        import time as _time
+        try:
+            now = calendar.timegm(_time.gmtime())
+            limits = con.execute(
+                "SELECT metric, hard_limit FROM quota_limits"
+                " WHERE tenant_id=? AND user_id='' AND hard_limit>0",
+                (tenant_id,)).fetchall()
+            for limit in limits:
+                usage = con.execute(
+                    "SELECT COALESCE(SUM(used),0) AS used FROM quota_usage"
+                    " WHERE tenant_id=? AND user_id='' AND metric=?"
+                    " AND window_start<=?",
+                    (tenant_id, limit["metric"], now)).fetchone()
+                if int(usage["used"]) >= int(limit["hard_limit"]):
+                    return False
+            return True
+        except Exception:  # noqa: BLE001 - an unreadable meter must not pass
+            return False
+
+    def agent_release_status(self, agent_id: str) -> Dict[str, Any]:
+        """Read-only release state of one binding (no auth; callers gate)."""
+        binding = self.get_agent_binding(agent_id)
+        if not binding:
+            return {"agent_id": agent_id, "bound": False, "release_state": ""}
+        release_state = str(binding.get("release_state") or "")
+        latest = 0
+        try:
+            row = self._store.execute(
+                "SELECT COALESCE(MAX(version),0) AS v FROM agent_releases"
+                " WHERE agent_id=?", (agent_id,)).fetchone()
+            latest = int(row["v"]) if row else 0
+        except Exception:  # noqa: BLE001
+            latest = int(binding.get("released_version") or 0)
+        return {
+            "agent_id": agent_id,
+            "bound": True,
+            "tenant_id": binding.get("tenant_id"),
+            "private_owner_user_id": binding.get("private_owner_user_id"),
+            "release_state": release_state,
+            "released_version": binding.get("released_version"),
+            "released_at": binding.get("released_at"),
+            "released_by_user_id": binding.get("released_by_user_id"),
+            "released_approval_id": binding.get("released_approval_id"),
+            "released_snapshot_hash": binding.get("released_snapshot_hash"),
+            "latest_version": latest,
+            "governance_enabled": self._release_governance_enabled(),
+        }
+
+    def released_snapshot(self, agent_id: str) -> Optional[Dict[str, Any]]:
+        """The snapshot currently released to members, or None."""
+        binding = self.get_agent_binding(agent_id)
+        if not binding:
+            return None
+        version = binding.get("released_version")
+        if not version:
+            return None
+        try:
+            rows = self._store.execute(
+                "SELECT snapshot_json FROM agent_releases"
+                " WHERE agent_id=? AND version=?", (agent_id, int(version)))
+        except Exception:  # noqa: BLE001
+            return None
+        if not rows:
+            return None
+        import json
+        try:
+            return json.loads(rows[0]["snapshot_json"])
+        except Exception:  # noqa: BLE001
+            return None
+
+    def list_agent_releases(self, *, actor_user_id: str, tenant_id: str,
+                            agent_id: str) -> List[Dict[str, Any]]:
+        """The release history of one Agent (control-qualified users only)."""
+        self._require_release_control(actor_user_id, tenant_id)
+        self._release_shared_binding(agent_id, tenant_id)
+        try:
+            rows = self._store.execute(
+                "SELECT version, content_hash, released_by_user_id, approval_id,"
+                " created_at FROM agent_releases WHERE agent_id=?"
+                " ORDER BY version DESC", (agent_id,))
+        except Exception:  # noqa: BLE001
+            return []
+        return [dict(r) for r in rows]
+
+    def request_agent_release(self, *, actor_user_id: str, tenant_id: str,
+                              agent_id: str, kind: str = "publish",
+                              version: Optional[int] = None) -> Dict[str, Any]:
+        """Register a pending approval for a release action.
+
+        The candidate's content hash is computed here, server-side, and bound
+        into the approval digest: whoever approves is approving *this* content,
+        and a later edit is a digest mismatch rather than a silent extension.
+        """
+        from auth.agent_release import (
+            ACTION_RELEASE, ACTION_ROLLBACK, ACTION_SUSPEND,
+            release_target, release_digest,
+        )
+        self._require_release_governance()
+        self._release_shared_binding(agent_id, tenant_id)
+        self._require_release_control(actor_user_id, tenant_id)
+        kind = (kind or "publish").strip().lower()
+        if kind == "publish":
+            action = ACTION_RELEASE
+            _snapshot, content_hash = self._release_candidate(agent_id, tenant_id)
+        elif kind == "rollback":
+            if not version:
+                raise IdentityServiceError("rollback needs a version",
+                                           code="bad_request", status=400)
+            action = ACTION_ROLLBACK
+            rows = self._store.execute(
+                "SELECT content_hash FROM agent_releases"
+                " WHERE agent_id=? AND version=?", (agent_id, int(version)))
+            if not rows:
+                raise IdentityServiceError("release version not found",
+                                           code="not_found", status=404)
+            content_hash = rows[0]["content_hash"]
+        elif kind == "suspend":
+            action = ACTION_SUSPEND
+            binding = self.get_agent_binding(agent_id) or {}
+            content_hash = str(binding.get("released_snapshot_hash") or "")
+        else:
+            raise IdentityServiceError(
+                "unknown release kind", code="bad_request", status=400)
+        digest = release_digest(action, agent_id, content_hash)
+        result = self.request_approval(
+            actor_user_id=actor_user_id, tenant_id=tenant_id, agent_id=agent_id,
+            action=action, target=release_target(agent_id), digest=digest,
+            payload={"kind": kind, "content_hash": content_hash,
+                     **({"version": int(version)} if version else {})})
+        return {**result, "kind": kind, "action": action,
+                "content_hash": content_hash}
+
+    def release_agent(self, *, actor_user_id: str, tenant_id: str,
+                      agent_id: str, approval_id: str) -> Dict[str, Any]:
+        """Publish the Agent's current configuration as an immutable version."""
+        from auth.agent_release import (
+            ACTION_RELEASE, STATE_RELEASED, release_target, release_digest,
+        )
+        self._require_release_governance()
+        self._release_shared_binding(agent_id, tenant_id)
+        self._require_release_control(actor_user_id, tenant_id)
+        snapshot, content_hash = self._release_candidate(agent_id, tenant_id)
+        self.consume_action_approval(
+            actor_user_id=actor_user_id, tenant_id=tenant_id,
+            approval_id=approval_id, action=ACTION_RELEASE, agent_id=agent_id,
+            target=release_target(agent_id),
+            digest=release_digest(ACTION_RELEASE, agent_id, content_hash))
+        if not self._release_enterprise_ready(tenant_id):
+            raise IdentityServiceError(
+                "tenant enterprise access is not enabled",
+                code="enterprise_disabled", status=409)
+        return self._write_release(
+            agent_id=agent_id, tenant_id=tenant_id, snapshot=snapshot,
+            content_hash=content_hash, actor_user_id=actor_user_id,
+            approval_id=approval_id,
+            action="agent.release", state=STATE_RELEASED)
+
+    def rollback_agent_release(self, *, actor_user_id: str, tenant_id: str,
+                               agent_id: str, version: int,
+                               approval_id: str) -> Dict[str, Any]:
+        """Re-release a historical version as a *new* current release."""
+        import json
+        from auth.agent_release import (
+            ACTION_ROLLBACK, STATE_RELEASED, release_target, release_digest,
+        )
+        self._require_release_governance()
+        self._release_shared_binding(agent_id, tenant_id)
+        self._require_release_control(actor_user_id, tenant_id)
+        rows = self._store.execute(
+            "SELECT snapshot_json, content_hash FROM agent_releases"
+            " WHERE agent_id=? AND version=?", (agent_id, int(version)))
+        if not rows:
+            raise IdentityServiceError("release version not found",
+                                       code="not_found", status=404)
+        snapshot = json.loads(rows[0]["snapshot_json"])
+        content_hash = rows[0]["content_hash"]
+        self.consume_action_approval(
+            actor_user_id=actor_user_id, tenant_id=tenant_id,
+            approval_id=approval_id, action=ACTION_ROLLBACK, agent_id=agent_id,
+            target=release_target(agent_id),
+            digest=release_digest(ACTION_ROLLBACK, agent_id, content_hash))
+        if not self._release_enterprise_ready(tenant_id):
+            raise IdentityServiceError(
+                "tenant enterprise access is not enabled",
+                code="enterprise_disabled", status=409)
+        return self._write_release(
+            agent_id=agent_id, tenant_id=tenant_id, snapshot=snapshot,
+            content_hash=content_hash, actor_user_id=actor_user_id,
+            approval_id=approval_id,
+            action="agent.release.rollback", state=STATE_RELEASED)
+
+    def suspend_agent_release(self, *, actor_user_id: str, tenant_id: str,
+                              agent_id: str, approval_id: str) -> Dict[str, Any]:
+        """Suspend the member-visible release; history and data are preserved."""
+        from auth.agent_release import (
+            ACTION_SUSPEND, STATE_SUSPENDED, release_target, release_digest,
+        )
+        self._require_release_governance()
+        binding = self._release_shared_binding(agent_id, tenant_id)
+        self._require_release_control(actor_user_id, tenant_id)
+        content_hash = str(binding.get("released_snapshot_hash") or "")
+        self.consume_action_approval(
+            actor_user_id=actor_user_id, tenant_id=tenant_id,
+            approval_id=approval_id, action=ACTION_SUSPEND, agent_id=agent_id,
+            target=release_target(agent_id),
+            digest=release_digest(ACTION_SUSPEND, agent_id, content_hash))
+        with self._tx() as con:
+            con.execute(
+                "UPDATE agent_bindings SET release_state=?, released_by_user_id=?,"
+                " released_approval_id=? WHERE agent_id=?",
+                (STATE_SUSPENDED, actor_user_id, approval_id, agent_id))
+            self._audit_in_tx(
+                con, actor_username=None, actor_user_id=actor_user_id,
+                tenant_id=None, target_tenant_id=tenant_id,
+                action="agent.release.suspend", target=release_target(agent_id),
+                redacted_changes={"released_version": binding.get("released_version"),
+                                  "approval_id": approval_id},
+                result="success")
+            con.commit()
+        return {"agent_id": agent_id, "tenant_id": tenant_id,
+                "release_state": STATE_SUSPENDED,
+                "released_version": binding.get("released_version")}
+
+    def _write_release(self, *, agent_id: str, tenant_id: str, snapshot: Dict[str, Any],
+                       content_hash: str, actor_user_id: str, approval_id: str,
+                       action: str, state: str) -> Dict[str, Any]:
+        """Append one immutable version and point the binding at it.
+
+        Version number, version row, binding pointer and audit event commit in a
+        single transaction, so a release is never half-recorded.
+        """
+        from auth.agent_release import canonical_snapshot
+        with self._tx() as con:
+            if not self._release_quota_ok(con, tenant_id):
+                raise IdentityServiceError(
+                    "resource quota exhausted for this tenant",
+                    code="quota_exceeded", status=409)
+            row = con.execute(
+                "SELECT COALESCE(MAX(version),0) AS v FROM agent_releases"
+                " WHERE agent_id=?", (agent_id,)).fetchone()
+            version = int(row["v"]) + 1
+            con.execute(
+                "INSERT INTO agent_releases(id, agent_id, tenant_id, version,"
+                " snapshot_json, content_hash, released_by_user_id, approval_id)"
+                " VALUES (?,?,?,?,?,?,?,?)",
+                (self._new_id("rel"), agent_id, tenant_id, version,
+                 canonical_snapshot(snapshot), content_hash, actor_user_id,
+                 approval_id))
+            con.execute(
+                "UPDATE agent_bindings SET release_state=?, released_version=?,"
+                " released_at=unixepoch(), released_by_user_id=?,"
+                " released_approval_id=?, released_snapshot_hash=?"
+                " WHERE agent_id=?",
+                (state, version, actor_user_id, approval_id, content_hash, agent_id))
+            self._audit_in_tx(
+                con, actor_username=None, actor_user_id=actor_user_id,
+                tenant_id=None, target_tenant_id=tenant_id,
+                action=action, target="agent:%s" % agent_id,
+                redacted_changes={"version": version, "content_hash": content_hash,
+                                  "approval_id": approval_id},
+                result="success")
+            con.commit()
+        return {"agent_id": agent_id, "tenant_id": tenant_id, "version": version,
+                "content_hash": content_hash, "release_state": state}
+
+    def backfill_agent_releases(self) -> Dict[str, Any]:
+        """Idempotently register existing shared bindings as released version 1.
+
+        Enabling governance must not change the member-visible surface, so an
+        existing shared binding is registered at its *current* content hash and
+        marked released. Private bindings and already-registered bindings are
+        skipped. Runs without a live approval because it is a migration of the
+        status quo, not a new publication.
+        """
+        from auth.agent_release import (
+            normalize_state, STATE_RELEASED, canonical_snapshot,
+        )
+        if not self._release_governance_enabled():
+            return {"enabled": False, "released": 0, "skipped": 0}
+        released = 0
+        skipped = 0
+        for binding in self.list_agent_bindings():
+            if binding.get("private_owner_user_id") is not None:
+                continue
+            if normalize_state(binding.get("release_state")) == STATE_RELEASED:
+                skipped += 1
+                continue
+            agent_id = binding["agent_id"]
+            tenant_id = binding["tenant_id"]
+            try:
+                snapshot, content_hash = self._release_candidate(agent_id, tenant_id)
+                with self._tx() as con:
+                    row = con.execute(
+                        "SELECT COALESCE(MAX(version),0) AS v FROM agent_releases"
+                        " WHERE agent_id=?", (agent_id,)).fetchone()
+                    version = int(row["v"]) + 1
+                    con.execute(
+                        "INSERT INTO agent_releases(id, agent_id, tenant_id, version,"
+                        " snapshot_json, content_hash, released_by_user_id, approval_id)"
+                        " VALUES (?,?,?,?,?,?,?,?)",
+                        (self._new_id("rel"), agent_id, tenant_id, version,
+                         canonical_snapshot(snapshot), content_hash, None, None))
+                    con.execute(
+                        "UPDATE agent_bindings SET release_state=?, released_version=?,"
+                        " released_at=unixepoch(), released_by_user_id=NULL,"
+                        " released_approval_id=NULL, released_snapshot_hash=?"
+                        " WHERE agent_id=?",
+                        (STATE_RELEASED, version, content_hash, agent_id))
+                    self._audit_in_tx(
+                        con, actor_username=None, actor_user_id=None,
+                        tenant_id=None, target_tenant_id=tenant_id,
+                        action="agent.release.backfill", target="agent:%s" % agent_id,
+                        redacted_changes={"version": version,
+                                          "content_hash": content_hash},
+                        result="success")
+                    con.commit()
+                released += 1
+            except Exception as error:  # noqa: BLE001 - one bad binding must not abort
+                from common.log import logger
+                logger.warning(
+                    "[Identity] release backfill skipped agent %s: %s",
+                    agent_id, error)
+        return {"enabled": True, "released": released, "skipped": skipped}
+
     def release_illegal_tenant_defaults(self) -> Dict[str, Any]:
         """Release tenant defaults that could never have resolved, keeping owners.
-
-        Older writes inferred a private owner from whoever acted
         (``register_default_tenancy`` stamped the initial admin; the console
         adoption stamped the creating user), and the appointment path used to
         clear that owner outright to keep a private Agent usable as the tenant
