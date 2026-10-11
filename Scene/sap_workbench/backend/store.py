@@ -104,8 +104,19 @@ class WorkbenchStore:
                 "mcp_password_configured": bool(credential and credential["binding"] == self._binding(clean))}
 
     def reserve_session(self, tenant_id, user_id, agent_id, request_id, saved, project, *,
-                        display_mode='screen', coding=None):
+                        display_mode='screen', coding=None, runtime_dir=None):
         """Reserve one workbench binding.
+
+        ``project`` is the coding Agent's configured project root ``P``: the
+        trusted configuration and tool install location. ``runtime_dir`` is the
+        directory the platform coding conversation actually runs in -- ``P``
+        normally, or the caller's account directory ``U = P/user/<account>`` when
+        the personal workspace capability is enabled. The two are recorded
+        separately because every ownership check (``attach_coding_session``) has
+        to compare against the *runtime* directory the platform link carries,
+        while the project toolkit keeps addressing ``P``. A row created without
+        an explicit ``runtime_dir`` falls back to ``project``, so bindings made
+        before this field existed keep their original behaviour.
 
         ``coding`` carries a platform coding session resolved elsewhere:
         ``session_id``/``external_session_id`` and the ``service_id`` that derived
@@ -139,7 +150,8 @@ class WorkbenchStore:
             coding_id = str(coding['session_id'])
             remote_id = str(coding['external_session_id'])
         now = int(time.time())
-        snapshot = {"config": saved["config"], "project": project}
+        snapshot = {"config": saved["config"], "project": project,
+                    "runtime_dir": runtime_dir or project}
         with self._connection() as db:
             db.execute('INSERT OR IGNORE INTO "cj-sap_workbench-session_links" '
                        '(id,tenant_id,user_id,agent_id,request_id,config_version,snapshot_json,'
@@ -212,9 +224,13 @@ class WorkbenchStore:
                              (binding, tenant_id, user_id)).fetchone()
             if not row or row['state'] == 'closed':
                 raise WorkbenchError('session_not_found', 404)
+            recorded = json.loads(row['snapshot_json'])
+            # The runtime directory the platform link carries is what the
+            # binding was reserved against. Old rows have no ``runtime_dir`` and
+            # fall back to their ``project``, which is the pre-personal layout.
             if (row['display_mode'] != 'iframe' or row['service_id'] != link['service_id']
                     or row['agent_id'] != link['agent_id']
-                    or json.loads(row['snapshot_json'])['project'] != link['project_dir']):
+                    or (recorded.get('runtime_dir') or recorded['project']) != link['project_dir']):
                 raise WorkbenchError('session_forbidden', 403)
             if row['coding_session_id'] == link['session_id'] and row['remote_session_id'] == link['external_session_id']:
                 return self.session(tenant_id, user_id, binding)

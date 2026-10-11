@@ -98,6 +98,42 @@ def _coding(ctx, agent_id):
             "project_dir": profile.coding_project_dir or ""}
 
 
+def _runtime_directory(ctx, coding):
+    """The directory the platform coding conversation actually runs in.
+
+    ``coding['project_dir']`` is the Agent's configured project root ``P`` -- the
+    trusted configuration and tool install location. When the personal workspace
+    capability is enabled, the conversation itself runs in the caller's account
+    directory ``U = P/user/<account>``, and the SAP binding has to record *that*
+    directory: the platform coding link stores ``U`` as its ``project_dir``, and
+    every ownership check compares against it. Recording ``P`` here would make a
+    correct attach report ``session_forbidden`` (design section 9).
+
+    Disabled, the two directories are the same and this is just ``P``. A
+    preparation failure is reported, never silently downgraded to ``P``: running
+    the scene against the project root would be the fallback the workspace
+    requirement forbids. The account directory is resolved through the same
+    ``CodingWorkspaceService`` the coding entry uses, so both sides name one
+    binding.
+    """
+    from agent.coding import CodingError, resolve_settings
+
+    settings = resolve_settings()
+    if not settings.personal_workspace_enabled:
+        return coding["project_dir"]
+    from agent.coding.workspace import CodingWorkspaceService
+    from auth.service import get_identity_service
+
+    service = CodingWorkspaceService(get_identity_service(), settings=settings)
+    try:
+        resolved = service.open(
+            agent_id=coding["id"], base_project_dir=coding["project_dir"],
+            user_id=ctx.user_id, tenant_id=ctx.tenant_id)
+    except CodingError:
+        raise WorkbenchError("coding_workspace_unavailable", 503) from None
+    return resolved["effective_directory"]
+
+
 def _install_project_toolkit(ctx, agent_id):
     """Install the skill and plugin into the coding project; never fatal.
 
@@ -430,7 +466,8 @@ class SapWorkbenchSessionsHandler:
                     # bindings to finish closing, not for a cold start.
                     result = browser_gateway.submit(open_workbench_runtime(browser_gateway, store,
                         ctx.tenant_id, ctx.user_id, coding, saved, _session_token(), _request_origin(),
-                        request_id=body.get('request_id'), row=row), timeout=25)
+                        request_id=body.get('request_id'), row=row,
+                        runtime_dir=None if row else _runtime_directory(ctx, coding)), timeout=25)
                 except WorkbenchError:
                     raise
                 except Exception:

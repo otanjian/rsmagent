@@ -436,6 +436,22 @@ textarea.doc-editor {
     opacity: 0.9;
 }
 
+/* An old coding session's panel opens the account directory U, but the session
+   itself still runs in the project root P, so this line says so (design
+   section 6). It is informational -- nothing here is interactive. */
+.ws-source-notice {
+    flex-shrink: 0;
+    margin: 0 12px 8px;
+    padding: 6px 9px;
+    border-radius: 6px;
+    background: rgba(234, 179, 8, 0.12);
+    color: #92400e;
+    font-size: 11.5px;
+    line-height: 1.45;
+}
+.dark .ws-source-notice { background: rgba(234, 179, 8, 0.16); color: #fde68a; }
+.ws-source-notice.hidden { display: none; }
+
 .workspace-file-list {
     flex: 1;
     min-height: 0;

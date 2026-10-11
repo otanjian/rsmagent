@@ -43,6 +43,95 @@ def test_bindings_idempotent_and_owner_scoped(tmp_path):
     assert store.session('tenant', 'alice', row['id'])['remote_session_id'] == row['remote_session_id']
 
 
+def test_attach_matches_the_runtime_directory_not_the_base_project(tmp_path):
+    """With the personal workspace on, the binding records the account directory
+    (U) for ownership while the toolkit keeps the project root (P), and attach
+    has to compare against the runtime directory the platform link carries."""
+    store = WorkbenchStore(tmp_path / 'scene.db')
+    config = deepcopy(DEFAULT_CONFIG)
+    config.update(enabled=True)
+    saved = {'version': 1, 'config': config}
+    row = store.reserve_session('tenant', 'alice', 'sap', 'request-personal',
+                                saved, '/project', display_mode='iframe',
+                                runtime_dir='/project/user/alice')
+    assert row['snapshot']['project'] == '/project'
+    assert row['snapshot']['runtime_dir'] == '/project/user/alice'
+
+    source = row['coding_session_id']
+    link = {'session_id': 'coding-1', 'external_session_id': 'remote-1',
+            'service_id': row['service_id'], 'agent_id': 'sap',
+            'project_dir': '/project/user/alice'}
+    updated = store.attach_coding_session('tenant', 'alice', row['id'], source, link)
+    assert updated['coding_session_id'] == 'coding-1'
+
+    # The base project root is not the runtime directory, so a link that names
+    # it is refused rather than silently accepted.
+    with pytest.raises(WorkbenchError, match='session_forbidden'):
+        store.attach_coding_session(
+            'tenant', 'alice', row['id'], source,
+            {**link, 'session_id': 'coding-2', 'external_session_id': 'remote-2',
+             'project_dir': '/project'})
+
+
+def test_a_binding_without_runtime_dir_keeps_its_project_behaviour(tmp_path):
+    """A row reserved without a runtime directory (the pre-personal layout)
+    still matches its project root, so existing bindings are unaffected."""
+    store = WorkbenchStore(tmp_path / 'scene.db')
+    config = deepcopy(DEFAULT_CONFIG)
+    config.update(enabled=True)
+    row = store.reserve_session('tenant', 'alice', 'sap', 'request-legacy',
+                                {'version': 1, 'config': config}, '/project',
+                                display_mode='iframe')
+    assert row['snapshot']['runtime_dir'] == '/project'
+    link = {'session_id': 'coding-legacy', 'external_session_id': 'remote-legacy',
+            'service_id': row['service_id'], 'agent_id': 'sap',
+            'project_dir': '/project'}
+    updated = store.attach_coding_session('tenant', 'alice', row['id'],
+                                          row['coding_session_id'], link)
+    assert updated['coding_session_id'] == 'coding-legacy'
+
+
+def test_runtime_directory_follows_the_personal_switch(monkeypatch):
+    """The scene records the account directory U when the personal capability is
+    enabled, and the configured root P otherwise; a preparation failure is
+    reported instead of silently falling back to P."""
+    from Scene.sap_workbench.backend import http as sap_http
+    from agent.coding import CODING_WORKSPACE_UNSAFE, CodingError, CodingSettings
+
+    ctx = SimpleNamespace(user_id='u-1', tenant_id='t-1')
+    coding = {'id': 'sap-coder', 'project_dir': '/project'}
+
+    def settings(enabled):
+        return CodingSettings(
+            enabled=True, service_id='default', api_url='http://oc',
+            web_url='http://oc', personal_workspace_enabled=enabled)
+
+    monkeypatch.setattr('agent.coding.resolve_settings', lambda: settings(False))
+    assert sap_http._runtime_directory(ctx, coding) == '/project'
+
+    monkeypatch.setattr('agent.coding.resolve_settings', lambda: settings(True))
+
+    class _Workspace:
+        def __init__(self, identity, settings=None):
+            pass
+
+        def open(self, *, agent_id, base_project_dir, user_id, tenant_id):
+            assert (agent_id, user_id, tenant_id) == ('sap-coder', 'u-1', 't-1')
+            return {'effective_directory': base_project_dir + '/user/tan'}
+
+    monkeypatch.setattr('agent.coding.workspace.CodingWorkspaceService', _Workspace)
+    monkeypatch.setattr('auth.service.get_identity_service', lambda: object())
+    assert sap_http._runtime_directory(ctx, coding) == '/project/user/tan'
+
+    class _Broken(_Workspace):
+        def open(self, **kwargs):
+            raise CodingError(CODING_WORKSPACE_UNSAFE, "no account", 403)
+
+    monkeypatch.setattr('agent.coding.workspace.CodingWorkspaceService', _Broken)
+    with pytest.raises(WorkbenchError, match='coding_workspace_unavailable'):
+        sap_http._runtime_directory(ctx, coding)
+
+
 def test_configuration_edit_and_restart_preserve_existing_session_target(tmp_path):
     store, row = binding(tmp_path)
     original = deepcopy(row['snapshot'])

@@ -30,8 +30,30 @@ let wsTurnArtifacts = [];
 let wsCurrentDir = '';
 let wsCurrentRoot = '';   // absolute path of the workspace/project root
 // Which source the panel is showing: 'backend' (the server's own directory) or
-// 'desktop' (a project on this machine, reached through the local source).
+// 'desktop' (a project on this machine, reached through the local source) or
+// 'remote' (a personal coding session's directory on the OpenCode host).
 let wsCurrentSource = 'backend';
+//: What the current source can actually do, as it reported. `null` means the
+//: source did not advertise capabilities -- the backend and desktop sources keep
+//: their existing, full-local behaviour and every action stays as it was. When
+//: it is an object, an action is offered only when it is `true`, so a personal
+//: coding directory (which has no remote edit / rename / delete / recycle-bin
+//: implementation) simply does not show those controls.
+let wsCapabilities = null;
+//: The conservative default for a personal coding directory if a response ever
+//: omits the capabilities: reads and uploads yes, write-side actions no.
+const WS_REMOTE_CAPS = {
+    read: true, download: true, upload: true,
+    write: false, rename: false, move: false, delete: false, trash: false,
+};
+//: The label the source gave for its root (the account directory's name for a
+//: personal coding session); '' when the current source named no root.
+let wsSourceLabel = '';
+//: True when the panel is serving an *old* coding session: its button opens the
+//: account directory U, but the session itself still runs in the project root P,
+//: so the panel shows a notice (design section 6). Nothing else about the panel
+//: changes -- the bytes come from the same place a personal session's do.
+let wsSourceLegacy = false;
 let wsSearchMode = false;
 let wsSearchTimer = null;
 // Agent whose directory the panel browses. Normally the conversation's own
@@ -67,6 +89,26 @@ function wsNewScopeEpoch() {
 /** Whether a read started under ``epoch`` has been overtaken by a scope change. */
 function wsScopeStale(epoch) {
     return epoch !== wsScopeEpoch;
+}
+
+/** Whether the current source offers one action (upload/delete/trash/...). */
+function wsAllows(action) {
+    if (!wsCapabilities) return true;   // no advertised caps: existing behaviour
+    return wsCapabilities[action] === true;
+}
+
+/** The kind inside a `source` that may be a string or the descriptor object. */
+function wsSourceKind(source) {
+    if (source && typeof source === 'object') return source.kind || '';
+    return source || '';
+}
+
+/** The capabilities inside a `source`, or `null` when none are advertised. */
+function wsSourceCapabilities(source) {
+    if (source && typeof source === 'object' && source.capabilities) {
+        return source.capabilities;
+    }
+    return null;
 }
 
 // Where the folders of each Agent live, relative to the workspace root the file
@@ -199,6 +241,7 @@ function wsSourceChanged(opts) {
     wsCurrentSource = 'backend';
     wsCurrentRoot = '';
     wsCurrentFile = null;
+    wsSourceLegacy = false;
     wsCurrentDir = wsAgentLandingPath();
     // The panel follows the *source*, so the watch does too (task 9.3): a
     // subscription that outlived the project it was about would keep refreshing
@@ -763,9 +806,10 @@ async function wsRenderPreview(meta) {
     if (!body) return;
     const kind = meta.kind || wsKindOf(meta.file_name || meta.name || meta.path);
     const name = meta.file_name || meta.name || (meta.path || '').split('/').pop();
-    const previewUrl = meta.preview_url;
+    const previewUrl = meta.preview_url || meta.download_url;
     const rawUrl = meta.raw_url || previewUrl;
     const local = wsIsLocalFile(meta);
+    const remote = wsIsRemoteFile(meta);
 
     if (kind === 'html') {
         body.innerHTML = '';
@@ -889,6 +933,14 @@ async function wsRenderPreview(meta) {
                 const page = await wsLocalPreviewText(meta);
                 text = page.text;
                 partial = page.truncated;
+            } else if (remote) {
+                // A personal coding file is read through the platform, which
+                // relays it from the OpenCode host; there is no server
+                // `preview_url` to fetch, and minting one would read a
+                // same-named file on the platform instead.
+                const page = await wsRemotePreviewText(meta);
+                text = page.text;
+                partial = page.truncated;
             } else {
                 const res = await fetch(previewUrl);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -945,6 +997,24 @@ async function wsRenderPreview(meta) {
  */
 function wsIsLocalFile(meta) {
     return !!meta && (meta.local === true || meta.source === 'desktop');
+}
+
+/**
+ * Whether a file the panel is showing comes from the OpenCode host.
+ *
+ * A remote entry carries `source: "coding_remote"` and no server `raw_url` /
+ * `preview_url` / `abs_path`; its bytes are reached through the platform's
+ * remote download route (`download_url`), and its text through the workspace
+ * read route, so the panel must not hand a platform path to `/api/file`.
+ */
+function wsIsRemoteFile(meta) {
+    return !!meta && meta.source === 'coding_remote';
+}
+
+/** One bounded page of a remote file's text, through the workspace read route. */
+async function wsRemotePreviewText(meta) {
+    const data = await wsApi(`/api/workspace/read?path=${encodeURIComponent(wsEditTargetPath(meta))}`);
+    return { text: String(data.content || ''), truncated: !!data.truncated };
 }
 
 /** One bounded page of a local file's text, through the local source. */
@@ -1057,7 +1127,8 @@ function openPreviewExternally() {
         });
         return;
     }
-    window.open(wsCurrentFile.preview_url || wsCurrentFile.raw_url, '_blank', 'noopener');
+    window.open(wsCurrentFile.preview_url || wsCurrentFile.raw_url
+        || wsCurrentFile.download_url, '_blank', 'noopener');
 }
 
 /**
@@ -1186,7 +1257,8 @@ function downloadPreviewFile() {
         return;
     }
     const a = document.createElement('a');
-    a.href = wsCurrentFile.raw_url || wsCurrentFile.preview_url;
+    a.href = wsCurrentFile.raw_url || wsCurrentFile.preview_url
+        || wsCurrentFile.download_url;
     a.download = wsCurrentFile.file_name || wsCurrentFile.name || '';
     document.body.appendChild(a);
     a.click();
@@ -1232,6 +1304,11 @@ function copyPreviewPath() {
 // =====================================================================
 function wsIsEditable(meta) {
     if (!meta || meta.is_dir) return false;
+    // A source that does not offer write shows no editor: the personal coding
+    // directory has no remote save route, and sending the file's relative id to
+    // the platform's own write API would edit a different file with the same
+    // name.
+    if (!wsAllows('write')) return false;
     return WS_EDITABLE.has(meta.kind || wsKindOf(meta.file_name || meta.name || meta.path));
 }
 
@@ -1773,6 +1850,51 @@ function refreshWorkspaceTree() {
     loadWorkspaceDir(wsCurrentDir);
 }
 
+//: How long an automatic refresh waits before reading, so the burst a finished
+//: run produces (the completion itself, then the history reload) reads the
+//: directory once instead of twice.
+const WS_AUTO_REFRESH_MS = 400;
+let wsAutoRefreshTimer = null;
+
+/**
+ * Read the current directory again after a run, or after the panel is brought
+ * back into view (task 3.4).
+ *
+ * A personal session's files are written on the OpenCode host, so nothing on
+ * this page can be *told* that one appeared -- and the design forbids standing
+ * up an event or sync service for it. The panel re-reads instead, at the two
+ * moments a new file can be presumed: a run just finished, and the reader came
+ * back to the tab after looking elsewhere. Both go through the ordinary
+ * listing, which re-verifies the caller's scope and discards an answer
+ * overtaken by an Agent/session/account switch, so a late reply cannot paint
+ * here.
+ *
+ * Closed panel: nothing to refresh. Open editor: left alone, because the reader
+ * is typing into a file and their own save/close flow re-lists afterwards.
+ */
+function wsRefreshAfterRun() {
+    if (!wsPanelOpen || wsEditing) return;
+    // A body without timers (a bare test context) still gets the read: this is
+    // a convenience coalescing, never the reason a refresh happens.
+    if (typeof setTimeout !== 'function') {
+        refreshWorkspaceTree();
+        return;
+    }
+    if (wsAutoRefreshTimer !== null) return;
+    wsAutoRefreshTimer = setTimeout(() => {
+        wsAutoRefreshTimer = null;
+        if (wsPanelOpen) refreshWorkspaceTree();
+    }, WS_AUTO_REFRESH_MS);
+}
+
+/** Coming back to the tab is a moment the listing may have gone stale. */
+function wsOnPanelActivated() {
+    if (!wsPanelOpen || wsEditing) return;
+    if (typeof document.visibilityState === 'string'
+        && document.visibilityState === 'hidden') return;
+    refreshWorkspaceTree();
+}
+
 /** Switching the active Agent moves the file panel to that Agent's own folder.
  *  Land there again, but only if the panel is already open — never pop it open
  *  on a switch. */
@@ -2018,15 +2140,51 @@ async function loadWorkspaceDir(relPath) {
     // The source the panel is currently showing (task 9.2). A local project has
     // no absolute root to name: its location is the user's own business and the
     // shell never hands it over, so the crumb shows the label they chose instead.
-    wsCurrentSource = data.source === 'desktop' ? 'desktop' : 'backend';
+    // `source` may be a plain string (the desktop adapter's own answers) or the
+    // descriptor object the server returns; `kind` is the same in both.
+    const sourceKind = wsSourceKind(data.source);
+    wsCurrentSource = sourceKind === 'desktop' ? 'desktop'
+        : (sourceKind === 'coding_remote' ? 'remote' : 'backend');
+    wsCapabilities = wsCurrentSource === 'remote'
+        ? (wsSourceCapabilities(data.source) || WS_REMOTE_CAPS)
+        : null;
+    wsSourceLabel = wsCurrentSource === 'remote'
+        ? ((data.source && data.source.label) || '') : '';
+    // A legacy coding session's button opens U, but the session runs in P: keep
+    // that fact on the panel so the reader is not misled about where its tools
+    // will look for a file (design section 6).
+    wsSourceLegacy = wsCurrentSource === 'remote'
+        && !!(data.source && data.source.legacy);
     wsCurrentDir = data.path || '';
-    wsCurrentRoot = wsCurrentSource === 'desktop' ? '' : (data.root || wsCurrentRoot);
+    wsCurrentRoot = wsCurrentSource === 'backend' ? (data.root || wsCurrentRoot) : '';
     wsSearchMode = false;
     // Browsing leaves search mode; drop the stale query from the box.
     const searchBox = document.getElementById('ws-search-input');
     if (searchBox && searchBox.value) searchBox.value = '';
     renderWorkspaceBreadcrumb(wsCurrentDir);
+    renderWorkspaceSourceNotice();
     renderWorkspaceEntries(data.entries, data.truncated);
+}
+
+/**
+ * Show or hide the "this session still runs in the project directory" notice.
+ *
+ * The file button of an old coding session opens the account directory U so the
+ * personal files are reachable, while the session's own tools keep working in
+ * P. Without this line the panel would look like an ordinary personal session
+ * and invite an upload the running turn could never find; the sentence tells the
+ * reader that a new conversation is what uses the personal directory.
+ */
+function renderWorkspaceSourceNotice() {
+    const box = document.getElementById('ws-source-notice');
+    if (!box) return;
+    if (!wsSourceLegacy) {
+        box.classList.add('hidden');
+        box.textContent = '';
+        return;
+    }
+    box.textContent = t('ws_legacy_session_notice');
+    box.classList.remove('hidden');
 }
 
 function renderWorkspaceBreadcrumb(relPath) {
@@ -2037,7 +2195,9 @@ function renderWorkspaceBreadcrumb(relPath) {
     // knows which directory the panel is anchored to. When navigated inside,
     // the deeper crumbs already convey location, so the house stays icon-only.
     const atRoot = parts.length === 0;
-    const rootText = wsCurrentRoot || (wsCurrentSource === 'desktop' ? wsLocalRootLabel() : '');
+    const rootText = wsCurrentRoot
+        || (wsCurrentSource === 'desktop' ? wsLocalRootLabel()
+            : (wsCurrentSource === 'remote' ? wsSourceLabel : ''));
     const rootLabel = atRoot && rootText
         ? ` <span class="crumb-root">${escapeHtml(rootText)}</span>`
         : '';
@@ -2123,6 +2283,10 @@ function wsRowLockHTML(entry) {
  * says what can be done to it.
  */
 function wsRowDeleteHTML(entry) {
+    // A source that does not offer delete (the personal coding directory) shows
+    // no per-row control at all: an offered button that the backend would refuse
+    // is worse than an absent one.
+    if (!wsAllows('delete')) return '';
     if (entry.deletable === false) return '';
     return `<button type="button" class="ws-row-act ws-row-act-danger"
         data-ws-act="delete" title="${escapeHtml(t('ws_delete'))}">
@@ -2535,6 +2699,10 @@ function wsWritableRootPath() {
 
 /** Whether the folder currently listed is one the caller may write into. */
 function wsCanWriteHere() {
+    // A personal coding directory is writable throughout when the source offers
+    // upload: its paths are relative to U, so the Agent/user-root comparison the
+    // backend source uses does not apply.
+    if (wsCurrentSource === 'remote') return wsAllows('upload');
     const root = wsWritableRootPath();
     if (!root) return false;
     const dir = wsCurrentDir || '';
@@ -3070,7 +3238,7 @@ function wsUpdateToolbarState() {
     };
     // Only controls that act on the panel as a whole live here; anything that
     // acts on one row is on that row.
-    show('ws-btn-trash', !wsTrashMode);
+    show('ws-btn-trash', !wsTrashMode && wsAllows('trash'));
     show('ws-btn-refresh', !wsTrashMode);
     show('ws-btn-trash-back', wsTrashMode);
     show('ws-btn-purge-all', wsTrashMode);
@@ -3319,6 +3487,13 @@ function initWorkspacePanel() {
         e.preventDefault();
         e.returnValue = '';
     });
+
+    // The reader coming back to the tab (or to the window) is the moment a run
+    // that finished while they were away becomes visible: re-read rather than
+    // leave the listing it predates (task 3.4). No subscription and no polling
+    // loop — one listing, on an event the browser already delivers.
+    document.addEventListener('visibilitychange', wsOnPanelActivated);
+    window.addEventListener('focus', wsOnPanelActivated);
 
     // The panel belongs to the chat view only; follow view switches.
     const toggle = document.getElementById('workspace-toggle-btn');

@@ -1,32 +1,50 @@
 ## 1. 实现前核对
 
 - [x] 1.1 确认平台与配套 RSMCode 的接缝、版本和并行改动；核对身份、凭据、审计、配额的适用接口，明确需要最小补齐的缺口。结果见 `evidence/platform-slice.md`（平台侧接缝已确认；远端文件/目录能力属配套 RSMCode，缺口最小化后的接口草案见 `agent/coding/opencode.py::prepare_workspace`）。
-- [ ] 1.2 用临时远端 P/U 验证真实 Location、项目配置及已有工具；有阻断先解决，记录必要结果后进入实现，不预先扩建配置或执行框架。**未执行：本工作区无可达的 OpenCode 主机/凭据。**
+- [x] 1.2 用临时远端 P/U 验证真实 Location、项目配置及已有工具；有阻断先解决，记录必要结果后进入实现，不预先扩建配置或执行框架。
+    **已执行（2026-10-11）**：配套 RSMCode 在本机运行真实 OpenCode 服务（`127.0.0.1:4096`，平台同一凭据）。已用临时 P/U 实测 `/api/location`、`/api/fs/list|find|read`、`POST /api/session` 与工具/技能解析，结果见 `evidence/platform-slice.md` 第 7 节。**当时发现的阻断**：远端没有任何受认证的 prepare/mkdir 路由，`POST /api/coding/workspace/prepare` 返回 403，且 `POST /api/session` 不会创建不存在的目录 —— task 2.2 是硬前置；Location 不是账户边界，平台必须固定 `U`。该前置已在 2.2 落地并通过真实联调关闭（第 8 节）。
 
 ## 2. 目录绑定与会话接入
 
 - [x] 2.1 增量增加个人绑定表及会话可空 workspace_id，集中解析身份、P/U 和历史快照；验证重复迁移、账号规范拼写、路径冲突与旧行兼容。（`coding_user_workspaces` 迁移、`opencode_session_links.workspace_id` 可空列、`agent/coding/workspace.py` 解析；见 `tests/test_coding_personal_workspace.py`、`tests/test_coding_session_store.py`）
-- [ ] 2.2 在现有远端服务实现受认证的 prepare 和最小归属记录，复用同一绑定重试；覆盖并发创建、回包丢失、未知已有目录、链接边界和磁盘失败。
-- [ ] 2.3 将个人会话的创建、恢复、attach、分叉及子任务接入 U，沿用会话幂等及来源验证；不能仅凭同一 Git 项目 ID 认领另一账号会话，多标签选择不依赖首个 cookie。
-- [ ] 2.4 增加单一部署开关，旧会话保留原目录并提示，使用既有新建入口开始个人会话；验证关闭新建开关不改写已有 U，不增加 Agent 三态配置或历史继续流程。
+- [x] 2.2 在现有远端服务实现受认证的 prepare 和最小归属记录，复用同一绑定重试；覆盖并发创建、回包丢失、未知已有目录、链接边界和磁盘失败。
+    **已执行（2026-10-11）**：在 `C:\rdai\rsmCode\opencode` 新增受认证路由 `POST /api/coding/workspace/prepare`（协议 `server.coding-workspace`）与处理器，并重启同机 4096 服务加载。实现：`withLock` 串行化、`<P>/user/<单段账号>` 布局强校验、最小归属记录 `state/coding-workspace-ownership.json`、同绑定同目录幂等重试、冒领他绑定/非空未记录目录 `409`、`realpath` 链接边界校验。真实联调：平台 `OpenCodeClient.prepare_workspace(P,U,wid)` 直连 4096 建目录成功并可列目录，重试 `created:false`。`httpapi-exercise` coverage/auth 均 `pass=221 fail=0`（含首次/重试/冲突/未归属/布局/链接 6 场景）。见 `evidence/platform-slice.md` 第 8 节。**剩余（如实记录）**：并发创建与磁盘失败的故障注入未单独演练（锁内串行与 `UnknownError` 映射已就位）。
+- [x] 2.3 将个人会话的创建、恢复、attach、分叉及子任务接入 U，沿用会话幂等及来源验证；不能仅凭同一 Git 项目 ID 认领另一账号会话，多标签选择不依赖首个 cookie。
+    创建/重试按绑定解析 U（`agent/coding/sessions.py::reserve`，见 `PersonalSessionReserve`）；attach/分叉继承来源会话的个人绑定，个人会话的远端目录必须等于绑定 U 或来源会话自报目录（同一服务的拼写帧），否则拒绝，且不因同一 Git 项目 ID 认领其他账号会话（见 `PersonalSessionAttach`）；内部子任务仍按 `parentID` 拒绝；旧来源会话保持按项目根登记。嵌入页的分叉后文件面板/附件来源跟随同一绑定探测（`_coding_remote_service` / `coding_remote_for_upload` 共用一个入口）。测试：`tests/test_coding_personal_workspace.py`（28 例，含 `CrossTenantIsolation`）。
+- [x] 2.4 增加单一部署开关，旧会话保留原目录并提示，使用既有新建入口开始个人会话；验证关闭新建开关不改写已有 U，不增加 Agent 三态配置或历史继续流程。
+    单一部署开关 `opencode.personal_workspace.enabled`（默认 false，无每 Agent 三态）；关闭后已有个人会话仍按绑定打开原 U 且不改写（`test_turning_the_switch_off_does_not_move_an_existing_session`）。旧会话（无 `workspace_id`）保持原项目位置与用法：其文件面板经 `_legacy_personal_remote` 以 `legacy: true` 打开本人 U，只读（上传被拒），并渲染 `ws_legacy_session_notice` 提示“仍在原项目执行、此处仅供查看/下载”（测试 `test_a_legacy_session_opens_the_account_directory_with_a_notice`、`test_a_legacy_session_offers_no_panel_upload`、`test_a_legacy_session_is_not_remote_when_the_capability_is_off`）。未执行生产开关回退演练（本环境无第二套部署，如实记录）。
 
 ## 3. 文件入口与输入输出
 
-- [ ] 3.1 复用 workspace 协议增加 coding_remote 的元信息、列举、搜索、引用解析、读取/流式下载及上传适配；逐次鉴权限定 U，失败不进入本机路径或 fallback。
-- [ ] 3.2 将顶部按钮、面包屑、上传 XHR、预览下载及 @ 统一到远端来源，复用 scope epoch；未实现的远端编辑/删除/回收站按 capabilities 在前后端禁用，保留普通与桌面能力。
-- [ ] 3.3 将 iframe 选择、拖拽、粘贴和场景附件接入先落盘后发送；服务端验证直接消息附件及引用，复用附件标识重试，失败保留草稿且不发送缺失附件。
-- [ ] 3.4 按会话及已有消息/执行标识传递默认输出位置，接入现有生成、下载与导出；结果指向 U 内真实文件，任务结束或面板激活刷新，不新增索引或同步服务。
-- [ ] 3.5 复用上传限制、原子发布、进度和逐项重试；适用审计及配额按现有接口接入，故障不能绕过；仅回收不完整临时文件，不新增独立账本或清理调度系统。
+- [x] 3.1 复用 workspace 协议增加 coding_remote 的元信息、列举、搜索、引用解析、读取/流式下载及上传适配；逐次鉴权限定 U，失败不进入本机路径或 fallback。
+    **平台侧读切片已实现并真实联调（2026-10-11）**：`agent/coding/opencode.py` 新增 `location/list_files/find_files/read_file`（location 恒钉 `U`），`agent/coding/files.py` 新增 `CodingRemoteFiles`/`RemoteSource`；`channel/web/fork/handlers/workspace.py` 的 meta/tree/search/resolve/read 增加远端分支并新增 `WorkspaceDownloadHandler`（`GET /api/workspace/download`）。来源由会话链接决定（`workspace_id` 非空即个人会话，服务不符 `409`），相对 id 逃逸在平台侧先拒（绝对路径/UNC/盘符/`..`），远端 `500` 映射为 not-found，非远端来源的下载一律 `404`，远端条目不带平台本地 `abs_path`/`raw_url`，`read_text.editable` 恒 `False`。**上传切片（2026-10-11）**：RSMCode 新增受认证 `POST /api/coding/workspace/upload`（位置取自服务端归属记录，base64 请求体、realpath 后包含校验、同名改 `name (n).ext`、临时文件 wx+rename 原子发布、256 MiB 上限、未 prepare `409`），平台 `opencode.py::upload_file` + `files.py::CodingRemoteFiles.upload_file` + `WorkspaceUploadHandler` 的 `_upload_remote` 分派（复用 `WS_UPLOAD_MAX_BYTES`/`too_large`，无子目录落 `uploads/<session>` 或 `uploads/manual`）。远端**写入/删除/移动/回收站**按设计为可选且无兼容实现：`RemoteSource.describe.capabilities` 如实置 false，写/删除/回收站 handler 对远端一律 `400 unsupported_source`，前端按 capabilities 隐藏。真实联调：list/search/read/read_bytes 与 upload/重名/逃逸/未准备全部正确（见 `evidence/platform-slice.md` 第 9–10 节）。测试 `tests/test_coding_remote_files.py`（43 例）、`tests/test_coding_remote_workspace.py`（36 例）。**剩余（如实记录）**：远端 upload 走 JSON+base64（effect httpapi 的类型化 JSON 契约），大文件内存占用约 1.33×，未做真正流式落盘；远端条目 size/mtime 如实置 0（远端 `FileSystemEntity` 只有 `{path,type}`）。
+- [x] 3.2 将顶部按钮、面包屑、上传 XHR、预览下载及 @ 统一到远端来源，复用 scope epoch；未实现的远端编辑/删除/回收站按 capabilities 在前后端禁用，保留普通与桌面能力。
+    **已实现（2026-10-11）**：`workspace.js` 识别 `coding_remote`→`remote` 来源并记录 `source.capabilities`（未知来源保持既有全量行为）；`wsAllows()` 门控删除行控件、回收站按钮、编辑器；`wsCanWriteHere()` 对远端按 upload 能力放行（拖拽/上传 XHR 复用 `wsScopedPath` 的 session/agent）；`wsRenderPreview`/下载按钮对远端走 `/api/workspace/read` 与 `download_url`，绝不下发平台本地路径；面包屑用远端 `label`；scope epoch 沿用既有机制（迟到响应按 epoch 丢弃，含跨 scope 的拖拽结果）。@ 选择器复用 `/api/workspace/search|resolve`（已支持远端）；引用在提示里以相对 id 标注，编码 Agent 在 U 内解析。测试 `tests/test_console_workspace_frontend.cjs`（34 例，含远端启用上传/隐藏编辑删除、后端保留删除）、`tests/test_console_workspace_delete_frontend.cjs` + `tests/test_console_workspace_upload_frontend.cjs`（62 例）。
+- [x] 3.3 将 iframe 选择、拖拽、粘贴和场景附件接入先落盘后发送；服务端验证直接消息附件及引用，复用附件标识重试，失败保留草稿且不发送缺失附件。
+    **已实现（2026-10-11）**：`channel/web/fork/runtime.py::_upload_coding_remote` 让 composer 的单文件与整目录上传（拖拽/选择/粘贴都汇入同一条 multipart 上传）在**发送前**写入 `U` 的 `uploads/<session>/<attachment_id>/`（无会话时 `uploads/manual`，整目录再带 `webdir_<upload_id>`），回包给前端 `remote:true` 与相对 `file_path`，图片 `preview_url` 指向 `/api/workspace/download`（钉住本人 U），从不下发平台本地路径。发送侧 `_personal_attachment_refs` 把每个附件按相对 id 归一化并在远端确认存在：逃逸 → `invalid_reference`、不存在 → `attachment_missing`，整轮不派发（前端保留草稿），图片的 content part 由**已落盘字节**构建（`agent/attachments.py` 新增 `data` 形态，`_encode_one`/`_encode_blob` 共用管线）。`workspace.py::write_remote_attachment` 用稳定 `attachment_id` 使重试落在同名：相同字节复用、不同字节 `attachment_conflict` 拒绝，已有附件不被静默覆盖。真实联调：落盘、同 id 重试不产生第二份、不同字节被拒、面板能列到同一文件（E2E 5.1）。测试 `tests/test_coding_personal_attachments.py`（42 例）。
+- [x] 3.4 按会话及已有消息/执行标识传递默认输出位置，接入现有生成、下载与导出；结果指向 U 内真实文件，任务结束或面板激活刷新，不新增索引或同步服务。
+    **已实现（2026-10-11）**：每轮用会话 id 与本回合既有的 `request_id` 生成 `[个人目录输出位置: outputs/<session>/<turn>]` 并追加到提示（规则唯一来源 `agent/coding/files.py::output_relative_dir/output_line`，不新增任务身份）。位置只**声明**不代写：真实远端没有 mkdir 路由，生成的文件由会话自身工具写在 `U`，随后走既有列举/预览/下载（E2E 已复验 `outputs/<session>/<turn>/report.md`）。`console.js` 把该注记行识别为平台注记并从消息文本剔除（历史回放不污染读者的话）。`workspace.js::wsRefreshAfterRun` 在**运行结束**与**面板重新激活**两个时点重列，未开面板/正在编辑不动，迟到响应按 scope epoch 丢弃——没有新增索引、同步服务或事件订阅。测试 `tests/test_console_workspace_output_marker.cjs`（6 例）+ E2E 输出段。
+- [x] 3.5 复用上传限制、原子发布、进度和逐项重试；适用审计及配额按现有接口接入，故障不能绕过；仅回收不完整临时文件，不新增独立账本或清理调度系统。
+    **已实现（2026-10-11）**：一请求一文件、`WS_UPLOAD_MAX_BYTES`(200 MiB) 上限、1 MiB 分块读取、`too_large`/`incomplete_upload` 等既有错误码、前端既有进度与逐项重试全部沿用；身份与 CSRF 走既有 `require_management_write()`（`test_a_remote_upload_cannot_skip_the_csrf_gate` 钉住不可绕）。远端以 `MAX_UPLOAD_BYTES`(256 MiB) 为服务端后盾、`wx` 临时名 + `rename` 原子发布、realpath 后包含校验；`reclaimTempFiles` 只在本次要写入的目录回收名字可识别的 `.coding-upload-*.tmp`，无账本、无清理调度，用户的 `.tmp` 不受影响。**配额与审计（如实记录）**：平台硬配额口径为 `tool_calls`/`tokens`，不适用于文件上传；既有 workspace 上传路径本身不做按文件的额度记账或审计，因此没有可绕过的既有接口，本次也未新建账本或声称有配额/审计覆盖。真实联调：128 MiB 上传与回读字节逐位一致（E2E 5.2）。
 
 ## 4. 现有能力兼容
 
-- [ ] 4.1 处理 user 路径冲突及公共 Git 排除，验证列举与 @ 搜索仍发现被忽略的本人附件；复用快照逻辑并覆盖无 Git 项目。
-- [ ] 4.2 仅按实测缺口适配 P 的可信配置来源；修正 SAP 的 P/U 校验及现有导出落点，验证工具及权限保持，不为每用户复制安装。
-- [ ] 4.3 验证账号/租户/会话切换、越权引用、撤权、两账号与同账号多会话并发，以及文件/准备失败重试；补接入点的针对性测试。
+- [x] 4.1 处理 user 路径冲突及公共 Git 排除，验证列举与 @ 搜索仍发现被忽略的本人附件；复用快照逻辑并覆盖无 Git 项目。
+    **已实现（2026-10-11）**：RSMCode `prepareWorkspace` 新增 `ensureGitExclude`：`P` 是 git 工作树且 `git ls-files -- user` 有跟踪文件 → `409`（用途冲突，不写任何东西）；否则把 `user/` 追加到仓库本地 `.git/info/exclude`（不改被跟踪的 `.gitignore`）；非 git 项目或 git 不可用直接跳过，不阻塞 prepare。`httpapi-exercise` 新增 `prepare.exclude`（git 项目 prepare 成功且 exclude 含 `user/`）与 `prepare.tracked`（已跟踪 `user/` 文件 → 409）两场景。本人列举/@ 搜索在 U 内由 `list_files`/`find_files` 直接读文件系统，不咨询 git，故不受父仓库忽略影响（`tests/test_coding_remote_files.py` 列举/搜索用例 + E2E 5.1 搜索段覆盖）。
+
+- [x] 4.2 仅按实测缺口适配 P 的可信配置来源；修正 SAP 的 P/U 校验及现有导出落点，验证工具及权限保持，不为每用户复制安装。
+    **已实现并有真实联调（2026-10-11）**：真实远端上从 `U` 看到的 `location` 项目根就是 `P`，`/api/skill`、`/config`、`/experimental/tool/ids`、`/api/agent`（含 build 的权限规则）与从 `P` 看到的**逐字一致**，包括只写在 `P` 的技能——即配置发现按预期从 `U` 上行到 `P`，无需额外适配代码，也未为个人目录复制安装（E2E 4.2 段，见 `evidence/platform-slice.md` 第 11.4 节）。SAP 侧：绑定快照拆分 `project`(P，工具安装/可信配置) 与 `runtime_dir`(会话运行目录)，`store.py::attach_coding_session` 改用 `runtime_dir`(旧行回退 `project`) 判归属；`http.py::_runtime_directory` 在个人开关启用时经**同一个** `CodingWorkspaceService` 解析 U、否则用 P，解析失败明确 503 且不回落 P（`tests/test_sap_workbench_runtime.py`，含 `test_runtime_directory_follows_the_personal_switch`）；工具安装仍只在 P 一份、账号目录不出现第二份 `.opencode`（`tests/test_sap_workbench_project_toolkit.py::test_personal_mode_keeps_one_install_under_the_project_root`）。**导出落点（如实记录）**：本场景后端没有已交付的文件导出/下载动作，因此没有可改动的落点；一旦交付，其落点由会话工作目录（U）决定，无需新增传送通道，未新增场景能力。
+
+- [x] 4.3 验证账号/租户/会话切换、越权引用、撤权、两账号与同账号多会话并发，以及文件/准备失败重试；补接入点的针对性测试。
+    **已补接入点针对性测试（2026-10-11）**：跨租户不复用他人目录（`CrossTenantIsolation::test_another_tenant_cannot_reuse_the_first_tenants_directory`）；越权引用他人会话在到达远端前即拒绝（`test_another_members_personal_session_is_refused_before_the_remote`）；服务实例不符 `409`（`test_a_link_from_another_service_is_refused_not_served`）；逃逸引用平台侧先拒、远端 `safeRelative`+realpath 兜底（单测 + E2E 逐项）；撤权后文件不可达（`test_revoking_the_binding_withdraws_the_personal_directory`）；两账号不共享会话/目录、同账号多会话共用同一 U 与绑定；准备失败保留可重试 `creating` 并复用同一绑定（`test_a_preparation_failure_is_retryable_and_does_not_fall_back`）；删除会话后文件保留、重 prepare 幂等（E2E 5.3）。**如实记录**：本机只有单一真实服务实例与单一租户，跨租户/撤权的**真实**链路无法在此构造，上表为接入点级别测试 + 真实远端单租户联调，未以 mock 冒充上线证据。
 
 ## 5. 集成验收与交付
 
-- [ ] 5.1 前述实现及依赖切片验证后，在真实远端完成面板和 iframe 上传→处理→生成→@ 引用→预览下载，检查文件字节；记录实际构建及适用 SAP 用例，不以 mock 代替上线证据。
-- [ ] 5.2 验证接近部署上限的文件、目录上传及逐项重试，复用既有批量测试；检查普通 Agent、桌面和旧会话未回归，修改遍历/批量算法时才追加对应压力回归。
-- [ ] 5.3 真实链路通过后验证开关、已有个人会话恢复及兼容版本回退，确认删除会话保留文件、旧历史不迁移且提示准确；未执行的生产操作如实记录。
-- [ ] 5.4 更新部署与使用说明及必要验证记录，明确新会话覆盖范围、旧会话例外和外部执行边界，执行 OpenSpec 严格校验；不以规划完成代表实现或发布完成。
+- [x] 5.1 前述实现及依赖切片验证后，在真实远端完成面板和 iframe 上传→处理→生成→@ 引用→预览下载，检查文件字节；记录实际构建及适用 SAP 用例，不以 mock 代替上线证据。
+    **已执行（2026-10-11，真实 127.0.0.1:4096）**：平台自身的 `OpenCodeClient`/`CodingRemoteFiles`/`write_remote_attachment` 直连真实服务，临时 `P/U` 用后删除。prepare（`created:true`，重试 `created:false`）→ `uploads/<session>/<attachment_id>/quote.txt` 落盘 → 同 id 重试不产生第二份、不同字节被拒 → 面板列举（目录在前、无 `abs_path`/`raw_url`）→ 嵌套列举 → `search` 首次即命中 → `read` 文本一致且 `editable:false` → `resolve` 给出相对 id → `download` 字节与 sha256 一致 → 四个逃逸引用逐个被拒；生成段落点与回合注记一致、面板可列、字节回读一致。`python evidence/verify_e2e.py` → `all checks passed`。构建：`C:\rdai\rsmCode\opencode`（RSM 分支）作为远端，平台为 `C:\rdai\rsmagent`；SAP 适用用例见 4.2。详见 `evidence/platform-slice.md` 第 11.6 节。
+- [x] 5.2 验证接近部署上限的文件、目录上传及逐项重试，复用既有批量测试；检查普通 Agent、桌面和旧会话未回归，修改遍历/批量算法时才追加对应压力回归。
+    **已执行（2026-10-11）**：真实远端上 128 MiB 单文件上传（报告 size=134217728）与逐位一致回读，宿主文件确为 128 MiB；平台上限为 200 MiB、远端后盾 256 MiB，超限拒绝发生在平台侧的分片读取（无法从此脚本构造）由 `test_upload_remote_enforces_the_size_ceiling` 钉住。目录上传（含文件夹结构、`webdir_<upload_id>`、同名改 `name (n).ext`）与逐项重试由 `tests/test_coding_personal_attachments.py` 与前端 `test_console_workspace_upload_frontend.cjs`/`delete_frontend.cjs`（62 例）覆盖。回归：普通 Agent/桌面/旧会话相关集合全绿（见 11.7 的回归结果）。未改动遍历/批量算法，故未追加压力回归。
+- [x] 5.3 真实链路通过后验证开关、已有个人会话恢复及兼容版本回退，确认删除会话保留文件、旧历史不迁移且提示准确；未执行的生产操作如实记录。
+    **已执行（2026-10-11）**：真实远端上删除会话后 `U` 仍存在、该会话写入的文件仍在、重 prepare 仍解析到同一 `U` 且文件保留（E2E 5.3）；已有个人会话在开关关闭后仍按绑定打开原 `U` 且不被搬动（单测）；旧会话不迁移、其面板只读并渲染“仍在原项目执行”的提示（单测）。**未执行的生产操作如实记录**：没有第二套部署可做“兼容版本回退”演练，也未在生产实例上翻转开关；个人会话创建/重试的幂等与失败保留已由单测与真实远端联调覆盖（`test_a_preparation_failure_is_retryable_and_does_not_fall_back`、E2E prepare 幂等）。**观察（既有行为，非本次回归）**：项目内含 `opencode.json`/`.opencode` 时 `DELETE /session/:id` 约 28–33s，把会话直接放在 `P`（不使用个人目录）同样如此，本 change 未触碰该路径（第 11.6 节）。
+- [x] 5.4 更新部署与使用说明及必要验证记录，明确新会话覆盖范围、旧会话例外和外部执行边界，执行 OpenSpec 严格校验；不以规划完成代表实现或发布完成。
+    **已执行（2026-10-11）**：`evidence/platform-slice.md` 新增第 11 节（附件/输出/限额/配置发现/越权撤权/端到端验收/命令与结果/仍未实施），第 7–10 节保留真实远端核对、远端 prepare、只读入口、上传与前端来源的原始记录；覆盖范围与边界写明：新 Code 会话（开关启用）在 `U` 执行、旧会话保留原位置只读查看、远端写入/删除/移动/回收站为设计中的可选项且当前无实现（capabilities 如实为 false）。OpenSpec 严格校验：`bun x --bun @fission-ai/openspec validate add-coding-agent-personal-workspace --strict` → `Change 'add-coding-agent-personal-workspace' is valid`（2026-10-11；新增 `evidence/verify_e2e.py` 后复校仍通过）。不为规划或文档完成声称实现/发布完成：跨租户真实链路与生产回退演练记为未执行。

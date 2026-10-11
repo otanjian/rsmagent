@@ -24,6 +24,7 @@ import unittest
 from unittest.mock import patch
 
 from agent.coding import (
+    CODING_PROJECT_MISMATCH,
     CODING_WORKSPACE_CONFLICT,
     CODING_WORKSPACE_UNSAFE,
     CodingError,
@@ -45,9 +46,10 @@ def _client(*, fail=False, calls=None):
     """A scripted remote client: it only has to acknowledge a preparation."""
 
     class _Client:
-        def prepare_workspace(self, base_project_dir, effective_directory):
+        def prepare_workspace(self, base_project_dir, effective_directory,
+                              workspace_id):
             if calls is not None:
-                calls.append((base_project_dir, effective_directory))
+                calls.append((base_project_dir, effective_directory, workspace_id))
             if fail:
                 raise CodingError("coding_upstream_unavailable", "disk full", 502)
             return {"effective_directory": effective_directory}
@@ -173,7 +175,10 @@ class Preparation(_Fixture):
         self.assertEqual(ctx["state"], "ready")
         self.assertEqual(ctx["source"], "coding_remote")
         self.assertEqual(ctx["base_project_dir"], PROJECT)
-        self.assertEqual(calls, [(PROJECT, f"{PROJECT}/user/tanjian")])
+        self.assertEqual(
+            calls,
+            [(PROJECT, f"{PROJECT}/user/tanjian", ctx["workspace_id"])])
+        self.assertTrue(ctx["workspace_id"].startswith("ocws_"))
 
     def test_a_second_open_reuses_the_same_binding_without_a_new_directory(self):
         svc = self.service()
@@ -270,16 +275,36 @@ class _SessionClient:
 
     def __init__(self):
         self.calls = []
+        self.remote = {}
+
+    def prepare_workspace(self, base_project_dir, effective_directory,
+                          workspace_id=""):
+        self.calls.append({"op": "prepare", "dir": effective_directory,
+                           "workspace_id": workspace_id})
+        return {"directory": effective_directory, "created": True}
 
     def create_session(self, session_id, project_dir, permission=None):
         from agent.coding.opencode import RemoteSession
 
         self.calls.append({"op": "create", "dir": project_dir})
-        return RemoteSession(id=session_id, title="New session",
-                             directory=project_dir, created_ms=1, updated_ms=1)
+        session = RemoteSession(id=session_id, title="New session",
+                                directory=project_dir, created_ms=1, updated_ms=1)
+        return self.remote.setdefault(session_id, session)
+
+    def get_session(self, session_id, project_dir=""):
+        return self.remote.get(session_id)
 
     def set_permission(self, session_id, project_dir, permission):
         self.calls.append({"op": "set_permission", "dir": project_dir})
+
+    def active_sessions(self):
+        return set()
+
+    def delete_session(self, session_id, project_dir):
+        # The only remote operation a delete may issue: the session, never the
+        # directory (the fake has no file-removal surface at all).
+        self.calls.append({"op": "delete", "dir": project_dir})
+        self.remote.pop(session_id, None)
 
 
 class PersonalSessionReserve(_Fixture):
@@ -346,6 +371,280 @@ class PersonalSessionReserve(_Fixture):
         assert result["project_dir"] == PROJECT
         assert client.calls[0]["dir"] == PROJECT
         assert store.get_coding_link(result["session_id"])["workspace_id"] == ""
+
+    def test_two_sessions_of_one_account_share_one_directory_and_binding(self):
+        from common.runtime_identity import identity_scope
+
+        service, client, store = self._session_service(self.service())
+        with identity_scope(agent_id="coder", user_id=self.user_id,
+                            tenant_id=self.tenant):
+            first = service.reserve(agent_id="coder", project_dir=PROJECT,
+                                    request_id="req-1")
+            second = service.reserve(agent_id="coder", project_dir=PROJECT,
+                                     request_id="req-2")
+        expected = f"{PROJECT}/user/tanjian"
+        assert first["session_id"] != second["session_id"]
+        assert first["project_dir"] == second["project_dir"] == expected
+        assert first["workspace_id"] == second["workspace_id"]
+        rows = self.svc._store.execute(
+            f"SELECT COUNT(*) AS c FROM {CODING_USER_WORKSPACES}")
+        assert rows[0]["c"] == 1
+
+    def test_two_accounts_never_share_a_session_or_a_directory(self):
+        from common.runtime_identity import identity_scope
+
+        other_id = self._member("other")
+        service, client, store = self._session_service(self.service())
+        with identity_scope(agent_id="coder", user_id=self.user_id,
+                            tenant_id=self.tenant):
+            mine = service.reserve(agent_id="coder", project_dir=PROJECT,
+                                   request_id="req-1")
+        with identity_scope(agent_id="coder", user_id=other_id,
+                            tenant_id=self.tenant):
+            theirs = service.reserve(agent_id="coder", project_dir=PROJECT,
+                                     request_id="req-1")
+        assert mine["session_id"] != theirs["session_id"]
+        assert mine["project_dir"].endswith("/user/tanjian")
+        assert theirs["project_dir"].endswith("/user/other")
+        assert mine["workspace_id"] != theirs["workspace_id"]
+
+    def test_turning_the_switch_off_does_not_move_an_existing_session(self):
+        from common.runtime_identity import identity_scope
+
+        personal = self.service()
+        service, client, store = self._session_service(personal)
+        with identity_scope(agent_id="coder", user_id=self.user_id,
+                            tenant_id=self.tenant):
+            created = service.reserve(agent_id="coder", project_dir=PROJECT,
+                                      request_id="req-1")
+
+        # A second process with the switch off reads the same binding: the
+        # existing personal session keeps its account directory untouched.
+        plain = CodingSettings(
+            enabled=True, service_id="default",
+            api_url="http://oc:4096", web_url="http://oc:3000",
+            personal_workspace_enabled=False)
+        from agent.coding.sessions import CodingSessionService
+        reopened = CodingSessionService(
+            store, settings=plain, client=client,
+            workspace=self.service(settings=plain))
+        opened = reopened.open(session_id=created["session_id"],
+                               agent_id="coder")
+        assert opened["project_dir"] == f"{PROJECT}/user/tanjian"
+        assert opened["workspace_id"] == created["workspace_id"]
+        rows = self.svc._store.execute(
+            f"SELECT COUNT(*) AS c FROM {CODING_USER_WORKSPACES}")
+        assert rows[0]["c"] == 1
+
+    def test_deleting_a_personal_session_keeps_the_account_directory(self):
+        """Removing the conversation never removes the files the agent wrote.
+
+        The account directory is the operator's own checkout under ``P``. The
+        delete talks to the service about the *session* only -- no file
+        operation is part of its surface -- so stored attachments and generated
+        outputs survive for the next session bound to the same ``U``.
+        """
+        from common.runtime_identity import identity_scope
+
+        service, client, store = self._session_service(self.service())
+        with identity_scope(agent_id="coder", user_id=self.user_id,
+                            tenant_id=self.tenant):
+            created = service.reserve(agent_id="coder", project_dir=PROJECT,
+                                      request_id="req-1")
+            directory = created["project_dir"]
+            client.calls.clear()
+            service.delete(session_id=created["session_id"])
+
+        # The session delete is the *only* thing the service was asked to do.
+        assert [call["op"] for call in client.calls] == ["delete"]
+        assert client.calls[0]["dir"] == directory
+        # The platform half is gone; the directory binding and its files are not.
+        assert store.get_coding_link(created["session_id"]) is None
+        rows = self.svc._store.execute(
+            f"SELECT COUNT(*) AS c FROM {CODING_USER_WORKSPACES}")
+        assert rows[0]["c"] == 1
+
+
+class PersonalSessionAttach(_Fixture):
+    """A session first seen inside OpenCode inherits the source's account bind.
+
+    A fork or an in-app navigation produces a remote session the platform never
+    created. Registering it must not let one account claim another account's
+    conversation just because both work the same Git project, so the target is
+    matched against the personal binding's directory and the new link keeps that
+    binding.
+    """
+
+    def _session_service(self, workspace):
+        from pathlib import Path
+
+        from agent.coding.sessions import CodingSessionService
+        from agent.memory.conversation_store import ConversationStore
+
+        store = ConversationStore(Path(self.db) / "conversations.db")
+        client = _SessionClient()
+        service = CodingSessionService(
+            store, settings=self.settings, client=client, workspace=workspace)
+        return service, client, store
+
+    def _personal_source(self):
+        from common.runtime_identity import identity_scope
+
+        service, client, store = self._session_service(self.service())
+        with identity_scope(agent_id="coder", user_id=self.user_id,
+                            tenant_id=self.tenant):
+            created = service.reserve(agent_id="coder", project_dir=PROJECT,
+                                      request_id="req-src")
+        return service, client, store, created
+
+    @staticmethod
+    def _remote(client, external_id, directory, project_id="", parent_id=None):
+        from agent.coding.opencode import RemoteSession
+
+        client.remote[external_id] = RemoteSession(
+            id=external_id, title="Forked", directory=directory,
+            created_ms=1, updated_ms=1, project_id=project_id,
+            parent_id=parent_id)
+        return external_id
+
+    def _attach(self, service, created, external_id):
+        from common.runtime_identity import identity_scope
+
+        with identity_scope(agent_id="coder", user_id=self.user_id,
+                            tenant_id=self.tenant):
+            return service.attach(
+                source_session_id=created["session_id"],
+                external_session_id=external_id,
+                agent_id="coder", tenant_id=self.tenant, user_id=self.user_id)
+
+    def test_a_fork_in_the_account_directory_inherits_the_binding(self):
+        service, client, store, created = self._personal_source()
+        account_dir = created["project_dir"]
+        self._remote(client, "ses_fork", account_dir, project_id="prj_same")
+
+        attached = self._attach(service, created, "ses_fork")
+
+        assert attached["project_dir"] == account_dir
+        assert attached["workspace_id"] == created["workspace_id"]
+        link = store.get_coding_link(attached["session_id"])
+        assert link["project_dir"] == account_dir
+        assert link["workspace_id"] == created["workspace_id"]
+
+    def test_a_fork_at_the_project_root_is_refused_despite_the_same_project(self):
+        """The Git project id is shared, but the directory is not the account's."""
+        service, client, store, created = self._personal_source()
+        # Give the source a project id too, so the *legacy* project comparison
+        # would have accepted the target. The personal binding must override it.
+        from agent.coding.opencode import RemoteSession
+        source_remote = client.remote[created["external_session_id"]]
+        client.remote[created["external_session_id"]] = RemoteSession(
+            id=source_remote.id, title=source_remote.title,
+            directory=source_remote.directory, created_ms=1, updated_ms=1,
+            project_id="prj_same")
+        self._remote(client, "ses_root", PROJECT, project_id="prj_same")
+
+        with self.assertRaises(CodingError) as raised:
+            self._attach(service, created, "ses_root")
+        self.assertEqual(raised.exception.code, CODING_PROJECT_MISMATCH)
+
+    def test_a_fork_in_another_account_directory_is_refused(self):
+        service, client, store, created = self._personal_source()
+        self._remote(client, "ses_other", f"{PROJECT}/user/other")
+
+        with self.assertRaises(CodingError) as raised:
+            self._attach(service, created, "ses_other")
+        self.assertEqual(raised.exception.code, CODING_PROJECT_MISMATCH)
+
+    def test_a_fork_whose_directory_is_unreported_is_refused(self):
+        """Without a reported directory there is no proof of the binding."""
+        service, client, store, created = self._personal_source()
+        self._remote(client, "ses_blind", "")
+
+        with self.assertRaises(CodingError) as raised:
+            self._attach(service, created, "ses_blind")
+        self.assertEqual(raised.exception.code, CODING_PROJECT_MISMATCH)
+
+    def test_a_fork_under_the_services_own_spelling_is_accepted(self):
+        """A symlink the service resolves for both sessions is not a mismatch."""
+        service, client, store, created = self._personal_source()
+        resolved = "/private" + created["project_dir"]
+        from agent.coding.opencode import RemoteSession
+        source_remote = client.remote[created["external_session_id"]]
+        client.remote[created["external_session_id"]] = RemoteSession(
+            id=source_remote.id, title=source_remote.title, directory=resolved,
+            created_ms=1, updated_ms=1)
+        self._remote(client, "ses_link", resolved)
+
+        attached = self._attach(service, created, "ses_link")
+        assert attached["workspace_id"] == created["workspace_id"]
+
+    def test_a_legacy_source_still_registers_against_the_project_root(self):
+        from common.runtime_identity import identity_scope
+
+        plain = CodingSettings(
+            enabled=True, service_id="default",
+            api_url="http://oc:4096", web_url="http://oc:3000",
+            personal_workspace_enabled=False)
+        service, client, store = self._session_service(
+            self.service(settings=plain))
+        service.settings = plain
+        with identity_scope(agent_id="coder", user_id=self.user_id,
+                            tenant_id=self.tenant):
+            created = service.reserve(agent_id="coder", project_dir=PROJECT,
+                                      request_id="req-legacy")
+        self._remote(client, "ses_legacy_fork", PROJECT)
+
+        attached = self._attach(service, created, "ses_legacy_fork")
+
+        assert attached["project_dir"] == PROJECT
+        assert attached["workspace_id"] == ""
+
+
+class CrossTenantIsolation(_Fixture):
+    """The same account name in two tenants must not name one directory.
+
+    ``<project>/user/<account>`` is keyed on the *account name*, which is only
+    unique inside a tenant. If the binding were keyed on the name alone, two
+    tenants that happen to share a spelling would collide on one ``U`` -- either
+    adopting each other's directory or refusing an unrelated user. The binding's
+    tenant column is what keeps them apart, and it is asserted here rather than
+    left to the unique index to be believed.
+    """
+
+    def _second_tenant_member(self, username):
+        created = self.svc.create_tenant(
+            actor_user_id=self._admin, code="globex", name="Globex",
+            recent_password="Str0ngAdminPass",
+            shared_root=tempfile.mkdtemp(prefix="shared-globex-"))
+        tenant_id = created["id"]
+        user_id = self.svc.create_member(
+            actor_user_id=self._admin, tenant_id=tenant_id,
+            operation="create-new", username=username,
+            display_name=username.title(), temporary_password="TmpPass123!",
+            roles=[])["user_id"]
+        return tenant_id, user_id
+
+    def test_another_tenant_cannot_reuse_the_first_tenants_directory(self):
+        calls = []
+        service = self.service(client=_client(calls=calls))
+        tenant_b, user_b = self._second_tenant_member("globex-user")
+
+        first = service.open(agent_id="coder", base_project_dir=PROJECT,
+                             user_id=self.user_id, tenant_id=self.tenant)
+        second = service.open(agent_id="coder", base_project_dir=PROJECT,
+                              user_id=user_b, tenant_id=tenant_b)
+
+        self.assertEqual(first["effective_directory"], f"{PROJECT}/user/tanjian")
+        # The shared project root is the same, but the account directory and the
+        # binding are resolved per identity -- another tenant of the same
+        # service lands on its own U and can neither see nor adopt the first's.
+        self.assertEqual(second["effective_directory"], f"{PROJECT}/user/globex-user")
+        self.assertNotEqual(first["effective_directory"], second["effective_directory"])
+        self.assertNotEqual(first["workspace_id"], second["workspace_id"])
+        self.assertEqual(
+            calls,
+            [(PROJECT, f"{PROJECT}/user/tanjian", first["workspace_id"]),
+             (PROJECT, f"{PROJECT}/user/globex-user", second["workspace_id"])])
 
 
 if __name__ == "__main__":

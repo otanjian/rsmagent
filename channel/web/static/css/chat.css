@@ -466,6 +466,22 @@
 .att-thumb:hover .att-remove,
 .att-chip:hover .att-remove { opacity: 1; }
 
+/* A failed upload stays visible and blocks sending until it is resolved. */
+.att-failed {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: #ef4444;
+    color: #b91c1c;
+}
+.dark .att-failed { background: rgba(239, 68, 68, 0.12); color: #fca5a5; }
+.att-retry {
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 12px;
+}
+
 /* Drag-over highlight */
 .drag-over {
     background: rgba(74, 190, 110, 0.08) !important;

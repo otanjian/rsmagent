@@ -489,7 +489,37 @@ class CodingSessionService:
                 "an internal subtask cannot become a history entry",
                 400,
             )
-        if remote.directory or remote.project_id:
+        # Non-empty exactly when the source is a personal session. It is the
+        # evidence that decides the target's directory below, and it is carried
+        # onto the new link so an attached fork keeps using the same account
+        # directory rather than silently falling back to the project root.
+        source_workspace_id = source.get("workspace_id", "") or ""
+
+        if source_workspace_id:
+            # A personal session: the account binding, not the Git project id,
+            # is what the target has to match. Two accounts can work the *same*
+            # checkout (same project id) yet own different directories, so the
+            # project id alone MUST NOT let one account's page claim another
+            # account's remote session -- the design's explicit rule. The
+            # directory is the binding's fingerprint, taken in the service's own
+            # spelling frame: the account directory the platform reserved (U),
+            # or the directory the source session itself reports (a symlink or
+            # resolution difference the service applies consistently to both).
+            # A target that reports anything else -- another account's U, the
+            # project root P, or an unknown directory -- is refused, and the
+            # old project-id comparison is deliberately skipped here.
+            parent = self.client.get_session(source["external_session_id"],
+                                             source["project_dir"])
+            allowed = {source["project_dir"]}
+            if parent and parent.directory:
+                allowed.add(parent.directory)
+            if not remote.directory or remote.directory not in allowed:
+                raise CodingError(
+                    CODING_PROJECT_MISMATCH,
+                    "the coding session is not in this account's personal directory",
+                    400,
+                )
+        elif remote.directory or remote.project_id:
             # "The target lives in the same project as the source" is a question
             # only the service can answer, and it answers most precisely with its
             # own project id. The directory is a weaker substitute: it is the path
@@ -547,6 +577,7 @@ class CodingSessionService:
                 request_id="",
                 state="ready",
                 title=remote.title,
+                workspace_id=source_workspace_id,
             )
         except sqlite3.IntegrityError:
             # Two notifications for one session raced. The winner's row is the

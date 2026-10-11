@@ -164,6 +164,16 @@ class Source:
         return self.kind == DESKTOP
 
     @property
+    def is_remote(self) -> bool:
+        """A remote source is never one of *these*; it is held by the caller.
+
+        Kept so a shared caller can ask the question uniformly: the desktop
+        resolver only ever produces ``server``/``desktop``, and the coding
+        remote source (``agent.coding.files.RemoteSource``) answers ``True``.
+        """
+        return False
+
+    @property
     def available(self) -> bool:
         return self.root is not None and self.refusal is None
 

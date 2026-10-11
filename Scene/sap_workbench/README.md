@@ -100,6 +100,8 @@ MCP 桥注入系统、Client、凭据和连接 ID，模型工具不接受这些�
 
 **location 必须同时覆盖会话编码路径。** 登录后 SAP ITS 会把会话令牌编进路径（URL session encoding），形如 `/sap(<base64>)/bc/gui/sap/its/webgui/state/ur`，这类请求**不带** `/sap/` 前缀。若只写 `location ^~ /sap/`（少了这一条会导致 2026-10-10 的现场故障），`/sap(<令牌>)/...` 会落到其它 location，最终返回 nginx 自己的 9 字节纯文本 `not found`，用户看到的现象就是**一提交用户名密码、左侧立刻变成 not found**；登录页本身（`/sap/bc/gui/sap/its/webgui/`）当时是正常的，所以容易误判成凭据问题。修复后同类请求按真实令牌返回 200 与约 407 KB 的 ITS 框架内容。同一 location 还需透传 WebSocket（`map $http_upgrade $connection_upgrade`，非升级请求传 `close`），否则 APC 通道 `/sap/bc/apc/sap/webgui_services` 无法升级。MCP 通道、凭据绑定和 `verify_sap_tls` 的例外逻辑都**不受该变量影响**，仍按配置里的真实 SAP 地址工作。
 
+**上游是动态 DDNS：必须用 resolver 让它可重解析。** `sap.goodsap.cn` 是指向 `1160230291.uttcare.com` 的 CNAME（动态 DDNS），IP 会变。静态 `proxy_pass https://sap.goodsap.cn:44300` 只在 nginx 加载/重载配置时解析一次并缓存 IP，上游换 IP 后 nginx 会一直连旧地址，表现为 `/sap/...` 全部约 20 秒超时 502、左侧画面空白（2026-10-11 现场：缓存 IP `14.216.200.141` 失效，实际已换成 `14.216.197.91`；直连新 IP 200，经 nginx 却 502）。修复：在该 location 内加 `resolver 183.60.83.19 183.60.82.98 valid=30s ipv6=off;` 并用变量 `set $sap_upstream sap.goodsap.cn:44300; proxy_pass https://$sap_upstream;`，nginx 会按 TTL 重新解析，上游换 IP 后无需重载即自愈（`proxy_ssl_name` 仍显式设为 `sap.goodsap.cn`）。变量形式的 `proxy_pass` 不带 URI，仍原样转发原始请求 URI，与旧写法行为一致。改动后须 `nginx -t` 校验并按 `RDAI-NginxReload` 任务重载。
+
 注意取舍：反代后左侧 iframe 与控制台**同源**（同 `https://rd.rsmxm.com.cn`），此前"跨域 iframe，插件/MCP 读不到左侧画面"的隔离不再成立；如需保留跨域，应改用一个带独立证书的**子域**（另需 DNS 与证书）或独立端口的 origin，而不是本域路径。
 
 ## 运行依赖

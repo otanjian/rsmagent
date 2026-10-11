@@ -1736,6 +1736,22 @@ class WebChannel(ChatChannel):
             # Every file of a folder upload repeats `files` and `relative_paths`;
             # read them as lists, since newer web.py keeps only the last value.
             params = _multipart_lists(self.MAX_UPLOAD_PARTS)
+            # A personal coding session's attachments land in its account
+            # directory on the OpenCode host, not the platform's upload dir:
+            # the panel must show the same file the turn names, and the message
+            # must reference a file that already exists in `U` before it is sent
+            # (change add-coding-agent-personal-workspace). The session is read
+            # from the multipart body, never treated as an owner.
+            session_id = _first_value(params, "session_id", "") or ""
+            try:
+                remote = self._coding_remote_for_session(session_id, agent_id)
+            except web.HTTPError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - a probe must not break uploads
+                logger.warning("[WebChannel] coding remote probe failed: %s", exc)
+                remote = None
+            if remote is not None:
+                return self._upload_coding_remote(remote, params, agent_id, session_id)
             file_obj = _first_value(params, "file")
             relative_path = _first_value(params, "relative_path", "")
             upload_id = _first_value(params, "upload_id", "")
@@ -1852,6 +1868,221 @@ class WebChannel(ChatChannel):
         except Exception as e:
             logger.error(f"[WebChannel] File upload error: {e}", exc_info=True)
             return json.dumps({"status": "error", "message": str(e)})
+
+    @staticmethod
+    def _attachment_error(code, message):
+        """A refusal that keeps the console's draft: nothing is dispatched."""
+        logger.info("[WebChannel] attachment refused: %s (%s)", code, message)
+        return json.dumps({"status": "error", "code": code, "message": message},
+                          ensure_ascii=False)
+
+    def _personal_attachment_refs(self, remote, attachments):
+        """Validate a personal turn's attachments against the account directory.
+
+        Every attachment must already be a stored file inside ``U`` (the upload
+        lands it first). A reference is normalized as a relative id, checked for
+        existence on the remote, and turned into a marker naming that relative
+        id -- the working directory of the session's own tools. A reference that
+        escapes ``U`` or is not there is refused, and the turn is *not*
+        dispatched: the console keeps the draft and the message is never sent
+        with a missing attachment. Nothing is copied or uploaded from here.
+
+        Returns ``(error_json_or_None, file_refs, context_attachments)``. An
+        image's bytes are read back from the stored file so the content part is
+        built from the persisted copy, never from the request body.
+        """
+        from agent.coding.files import normalize_relative
+
+        files, _source = remote
+        file_refs: List[str] = []
+        context_attachments: List[Dict[str, Any]] = []
+        for att in attachments or []:
+            fpath = str((att or {}).get("file_path") or "").strip()
+            if not fpath:
+                continue
+            rel = normalize_relative(fpath)
+            if rel is None:
+                return (self._attachment_error(
+                    "invalid_reference",
+                    "the attachment is not inside the personal directory"), [], [])
+            try:
+                reference = files.reference(rel)
+            except FileNotFoundError:
+                return (self._attachment_error(
+                    "attachment_missing",
+                    "the attachment was not found in the personal directory"), [], [])
+            except ValueError:
+                return (self._attachment_error(
+                    "invalid_reference",
+                    "the attachment is not inside the personal directory"), [], [])
+            file_refs.append(reference["line"])
+            if str((att or {}).get("file_type") or "") == "image" and not reference["is_dir"]:
+                name = rel.rsplit("/", 1)[-1]
+                try:
+                    data, _content_type = files.read_bytes(rel)
+                except FileNotFoundError:
+                    data = None
+                if data is not None:
+                    context_attachments.append({
+                        "path": rel,
+                        "file_type": "image",
+                        "name": name,
+                        "data": data,
+                    })
+        return (None, file_refs, context_attachments)
+
+    def _coding_remote_for_session(self, session_id, agent_id):
+        """``(files, source)`` for a personal coding session, or ``None``.
+
+        A thin adapter so the upload/post-message paths ask the *same* binding
+        probe the file panel uses (``_coding_remote_service``): identity comes
+        from the stored coding link, never from the request, and a link from a
+        different service instance is refused rather than served by the wrong
+        backend.
+        """
+        if not session_id:
+            return None
+        from channel.web.fork.handlers.workspace import coding_remote_for_upload
+
+        return coding_remote_for_upload(session_id, agent_id)
+
+    def _upload_coding_remote(self, remote, params, agent_id, session_id):
+        """Land a composer attachment in the personal directory ``U``.
+
+        The account directory is the only destination: the file is written to
+        ``uploads/<session>/<attachment_id>/`` on the OpenCode host *before* it
+        is ever referenced by a message, which is what makes the panel show the
+        same file the turn names. The stable ``attachment_id`` makes a retry
+        after a lost response land on the same name (identical bytes are reused,
+        different bytes are refused), so an existing attachment is never
+        silently replaced. Returns the same response shape as a local upload,
+        plus the source descriptor and ``remote: true`` so the console knows the
+        ``file_path`` is a relative id inside ``U``.
+        """
+        from channel.web.fork.handlers.workspace import (
+            WS_UPLOAD_MAX_BYTES as REMOTE_MAX_BYTES,
+        )
+        from channel.web.fork.handlers.workspace import (
+            WorkspaceUploadError,
+            coding_remote_upload_dir,
+            write_remote_attachment,
+        )
+
+        files, source = remote
+
+        def _reject(message, code="upload_failed"):
+            logger.warning("[WebChannel] Coding remote upload rejected: %s", message)
+            return json.dumps({"status": "error", "code": code, "message": message},
+                              ensure_ascii=False)
+
+        file_obj = _first_value(params, "file")
+        relative_path = _first_value(params, "relative_path", "") or ""
+        upload_id = _first_value(params, "upload_id", "") or ""
+        attachment_id = _first_value(params, "attachment_id", "") or ""
+
+        directory_files = [p for p in (params.get("files") or [])
+                           if getattr(p, "filename", None)]
+        directory_rel_paths = list(params.get("relative_paths") or [])
+        if not directory_files and file_obj is not None and relative_path:
+            directory_files = [file_obj]
+        if not directory_rel_paths and relative_path:
+            directory_rel_paths = [relative_path]
+        is_directory = bool(directory_files) or bool(directory_rel_paths) or bool(upload_id)
+
+        base = coding_remote_upload_dir(session_id, attachment_id)
+        try:
+            if is_directory:
+                if not upload_id:
+                    return _reject("Missing upload_id for directory upload")
+                if not directory_files:
+                    return _reject("No files uploaded")
+                if len(directory_files) != len(directory_rel_paths):
+                    return _reject("Directory upload payload mismatch")
+                safe_id = _sanitize_upload_id(upload_id)
+                dir_base = f"{base}/webdir_{safe_id}"
+                root_name = None
+                saved = 0
+                for part, rel in zip(directory_files, directory_rel_paths):
+                    if part is None:
+                        raise ValueError("Invalid uploaded file")
+                    rel_norm = _sanitize_upload_relative_path(rel)
+                    root = rel_norm.split("/", 1)[0]
+                    if root_name is None:
+                        root_name = root
+                    elif root_name != root:
+                        raise ValueError("Directory upload must use a single root folder")
+                    data = _read_uploaded_file_bytes_limited(part, REMOTE_MAX_BYTES)
+                    write_remote_attachment(files, f"{dir_base}/{rel_norm}", data)
+                    saved += 1
+                logger.info("[WebChannel] Coding remote directory upload: %s (%s files)",
+                            dir_base, saved)
+                return json.dumps({
+                    "status": "success",
+                    "file_path": dir_base,
+                    "file_name": root_name or dir_base.rsplit("/", 1)[-1],
+                    "file_type": "directory",
+                    "file_count": saved,
+                    "root_path": dir_base,
+                    "root_name": root_name,
+                    "upload_type": "directory",
+                    "remote": True,
+                    "source": source.describe(),
+                }, ensure_ascii=False)
+
+            if file_obj is None or not getattr(file_obj, "filename", None):
+                return _reject("No file uploaded")
+
+            original_name = file_obj.filename
+            ext = os.path.splitext(original_name)[1].lower()
+            try:
+                name = _sanitize_upload_relative_path(
+                    os.path.basename(original_name.replace("\\", "/")))
+            except ValueError:
+                name = "upload.bin"
+            data = _read_uploaded_file_bytes_limited(file_obj, REMOTE_MAX_BYTES)
+            written = write_remote_attachment(files, f"{base}/{name}", data)
+
+            if ext in IMAGE_EXTENSIONS:
+                file_type = "image"
+            elif ext in VIDEO_EXTENSIONS:
+                file_type = "video"
+            else:
+                file_type = "file"
+
+            payload = {
+                "status": "success",
+                "file_path": written["path"],
+                "file_name": original_name,
+                "file_type": file_type,
+                "size": written["size"],
+                "remote": True,
+                "source": source.describe(),
+            }
+            if file_type == "image":
+                # The composer renders a thumbnail straight from this URL. It
+                # must read the *remote* file, so it is the relaying download
+                # route (pinned to the caller's own U), never a local path.
+                from urllib.parse import urlencode
+
+                payload["preview_url"] = "/api/workspace/download?" + urlencode({
+                    "session": session_id or "",
+                    "agent": agent_id or "",
+                    "path": written["path"],
+                })
+            logger.info("[WebChannel] Coding remote upload: %s (%s bytes)",
+                        written["path"], written["size"])
+            return json.dumps(payload, ensure_ascii=False)
+        except ValueError as e:
+            # ``_read_uploaded_file_bytes_limited`` reports the ceiling with this
+            # wording; map it to the panel's stable code so one message is shown.
+            if "too large" in str(e):
+                return _reject("file is larger than %d bytes" % REMOTE_MAX_BYTES,
+                               code="too_large")
+            return _reject(str(e), code="invalid_request")
+        except WorkspaceUploadError as e:
+            return _reject(str(e), code=e.code)
+        except FileNotFoundError as e:
+            return _reject(str(e), code="not_found")
 
     def post_message(self):
         """
@@ -1993,61 +2224,102 @@ class WebChannel(ChatChannel):
                         "message": str(exc),
                     }, ensure_ascii=False)
 
+            # The turn's own identifier, minted before the prompt is assembled
+            # because a personal turn names it as its default output folder
+            # (task 3.4). It is the same id the SSE stream and the request
+            # bookkeeping use, so the console can re-derive the folder from a
+            # reply it already received -- no new task identity, no index.
+            request_id = self._generate_request_id()
+
             # Append file references to the prompt (same format as QQ channel)
             context_attachments = []
+            # One probe serves both the attachment check below and the
+            # output-location marker after it, and is asked of *every* turn:
+            # a personal turn with no attachment still has to be told where its
+            # generated files belong. It answers from the session's stored
+            # coding link (never from the request), and is a no-op on an
+            # instance with the coding service switched off.
+            personal_remote = self._coding_remote_for_session(
+                session_id, resolved_agent_id)
+            if personal_remote is not None:
+                from agent.coding.files import output_line, output_relative_dir
+
+                # The location is stated, never created: the platform has no
+                # remote mkdir route and must not write into `U` behind the
+                # session's back, so the session's own tools create it when they
+                # write. Nothing here touches a shared process cwd or env.
+                prompt = prompt + "\n" + output_line(session_id, request_id)
+                logger.info(
+                    "[WebChannel] personal output location for %s: %s",
+                    session_id, output_relative_dir(session_id, request_id))
             if attachments:
-                file_refs = []
-                for att in attachments:
-                    ftype = att.get("file_type", "file")
-                    fpath = att.get("file_path", "")
-                    if not fpath:
-                        continue
-                    if ftype == "workspace_ref":
-                        # Already lives in the session's project (dragged from the
-                        # file panel or picked with @); reference it in place so the
-                        # agent opens the original instead of an uploaded copy.
-                        # Naming the kind tells the agent whether to `read` it or
-                        # `ls` into it.
-                        #
-                        # The reference is resolved through the same source the file
-                        # panel uses (task 3.6). For a local project that is the
-                        # local one: the marker says so, so the model reads it with
-                        # the local tools rather than asking the server for a
-                        # same-named file -- and a reference that cannot be resolved
-                        # is reported instead of silently dropped. Nothing is ever
-                        # uploaded from here.
-                        from agent.desktop_local.source_resolver import (
-                            reference_line, source_for_session,
-                        )
-                        from common.runtime_identity import current_identity
+                if personal_remote is not None:
+                    # A personal coding turn: every attachment must already be a
+                    # stored file inside the account directory `U`. Validating
+                    # here (rather than trusting the request) is what keeps an
+                    # arbitrary path or another workspace's reference from
+                    # slipping in, and a missing attachment refuses the whole
+                    # turn so the console keeps its draft.
+                    error, file_refs, context_attachments = self._personal_attachment_refs(
+                        personal_remote, attachments)
+                    if error is not None:
+                        return error
+                    if file_refs:
+                        prompt = prompt + "\n" + "\n".join(file_refs)
+                        logger.info(
+                            f"[WebChannel] Attached {len(file_refs)} personal file(s) to message")
+                else:
+                    file_refs = []
+                    for att in attachments:
+                        ftype = att.get("file_type", "file")
+                        fpath = att.get("file_path", "")
+                        if not fpath:
+                            continue
+                        if ftype == "workspace_ref":
+                            # Already lives in the session's project (dragged from the
+                            # file panel or picked with @); reference it in place so the
+                            # agent opens the original instead of an uploaded copy.
+                            # Naming the kind tells the agent whether to `read` it or
+                            # `ls` into it.
+                            #
+                            # The reference is resolved through the same source the file
+                            # panel uses (task 3.6). For a local project that is the
+                            # local one: the marker says so, so the model reads it with
+                            # the local tools rather than asking the server for a
+                            # same-named file -- and a reference that cannot be resolved
+                            # is reported instead of silently dropped. Nothing is ever
+                            # uploaded from here.
+                            from agent.desktop_local.source_resolver import (
+                                reference_line, source_for_session,
+                            )
+                            from common.runtime_identity import current_identity
 
-                        source = source_for_session(
-                            session_id, resolved_agent_id,
-                            server_root=_get_workspace_root(
-                                session_id, resolved_agent_id),
-                            identity=current_identity())
-                        file_refs.append(reference_line(source, fpath))
-                    elif ftype == "image":
-                        file_refs.append(f"[{i18n.t('图片', 'Image')}: {fpath}]")
-                        # The path marker above stays (it is what history shows
-                        # and what a text-only model can still reason about),
-                        # but the image itself is delivered as a content part
-                        # when this turn's model accepts one.
-                        context_attachments.append({
-                            "path": fpath,
-                            "file_type": "image",
-                        })
-                    elif ftype == "video":
-                        file_refs.append(f"[{i18n.t('视频', 'Video')}: {fpath}]")
-                    elif ftype == "directory":
-                        file_refs.append(f"[{i18n.t('目录', 'Directory')}: {fpath}]")
-                    else:
-                        file_refs.append(f"[{i18n.t('文件', 'File')}: {fpath}]")
-                if file_refs:
-                    prompt = prompt + "\n" + "\n".join(file_refs)
-                    logger.info(f"[WebChannel] Attached {len(file_refs)} file(s) to message")
+                            source = source_for_session(
+                                session_id, resolved_agent_id,
+                                server_root=_get_workspace_root(
+                                    session_id, resolved_agent_id),
+                                identity=current_identity())
+                            file_refs.append(reference_line(source, fpath))
+                        elif ftype == "image":
+                            file_refs.append(f"[{i18n.t('图片', 'Image')}: {fpath}]")
+                            # The path marker above stays (it is what history shows
+                            # and what a text-only model can still reason about),
+                            # but the image itself is delivered as a content part
+                            # when this turn's model accepts one.
+                            context_attachments.append({
+                                "path": fpath,
+                                "file_type": "image",
+                            })
+                        elif ftype == "video":
+                            file_refs.append(f"[{i18n.t('视频', 'Video')}: {fpath}]")
+                        elif ftype == "directory":
+                            file_refs.append(f"[{i18n.t('目录', 'Directory')}: {fpath}]")
+                        else:
+                            file_refs.append(f"[{i18n.t('文件', 'File')}: {fpath}]")
+                    if file_refs:
+                        prompt = prompt + "\n" + "\n".join(file_refs)
+                        logger.info(f"[WebChannel] Attached {len(file_refs)} file(s) to message")
 
-            request_id = self._generate_request_id()
             with self._sse_streams_lock:
                 self.request_to_session[request_id] = session_id
                 self.request_to_agent[request_id] = resolved_agent_id

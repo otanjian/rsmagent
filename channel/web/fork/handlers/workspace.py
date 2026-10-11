@@ -141,6 +141,123 @@ def _panel_source(ctx, session_id, agent_id, *, server_root=None):
                               identity=current_identity())
 
 
+def _coding_remote(ctx, session_id, agent_id):
+    """The personal coding binding for this session, or ``None`` (change
+    add-coding-agent-personal-workspace, task 3.1).
+
+    A session is *personal* when its coding link carries a non-empty
+    ``workspace_id``; the link's ``project_dir`` is then the account directory
+    ``U`` on the OpenCode host. Identity is never taken from the request: the
+    link was written by the coding session service from the verified account.
+
+    ``None`` means "not a personal coding session" and the panel keeps its
+    server/desktop source. A link from a *different* service instance is
+    refused (409) rather than silently served by the wrong backend, mirroring
+    :meth:`agent.coding.sessions.CodingSessionService._link_or_service_error`.
+    """
+    if not session_id:
+        return None
+    from agent.coding import CODING_SERVICE_CHANGED, resolve_settings
+    try:
+        settings = resolve_settings()
+    except Exception:  # noqa: BLE001 - an unreadable config is not a personal link
+        return None
+    if not (settings.enabled and settings.configured):
+        return None
+    from channel.web.fork.handlers.coding import _conversation_store
+    try:
+        store = _conversation_store(agent_id)
+        link = store.get_coding_link(session_id)
+    except Exception:  # noqa: BLE001 - a probe must not fail the request
+        return None
+    if not link or not link.get("workspace_id"):
+        return None
+    if link.get("service_id") and link["service_id"] != settings.service_id:
+        raise web.HTTPError(
+            "409 Conflict",
+            {"Content-Type": "application/json"},
+            json.dumps({
+                "status": "error",
+                "code": CODING_SERVICE_CHANGED,
+                "message": "the configured coding service is a different data instance",
+            }, ensure_ascii=False),
+        )
+    return settings, link
+
+
+def _coding_remote_service(ctx, session_id, agent_id):
+    """``(files, source)`` for a personal coding session, or ``None``."""
+    resolved = _coding_remote(ctx, session_id, agent_id)
+    if resolved is None:
+        return None
+    settings, link = resolved
+    from agent.coding.files import CodingRemoteFiles, RemoteSource
+    from agent.coding.opencode import OpenCodeClient
+    directory = link["project_dir"]
+    files = CodingRemoteFiles(
+        OpenCodeClient(settings), directory, workspace_id=link["workspace_id"])
+    return files, RemoteSource(directory, link["workspace_id"])
+
+
+def _legacy_personal_remote(ctx, session_id, agent_id):
+    """``(files, source)`` for an *old* coding session's personal file button.
+
+    change ``add-coding-agent-personal-workspace`` (design section 6). A coding
+    conversation created before the personal capability -- or while the switch was
+    off -- has no ``workspace_id`` and keeps running in the project root ``P``.
+    Its file button must still open the caller's account directory ``U``, resolved
+    from the session's *own project snapshot* and the verified account, so the
+    user can reach their personal files.
+
+    The session's execution directory is unchanged: the returned source is marked
+    ``legacy`` (read/download only) and the panel shows the notice that this
+    conversation still runs in ``P`` and a new one is needed for the personal
+    directory. ``None`` when this is not such a session, or when the capability is
+    off -- in which case the panel keeps whatever source it had.
+    """
+    if not session_id:
+        return None
+    from agent.coding import resolve_settings
+    try:
+        settings = resolve_settings()
+    except Exception:  # noqa: BLE001 - an unreadable config is not a personal link
+        return None
+    if not (settings.enabled and settings.configured
+            and settings.personal_workspace_enabled):
+        return None
+    from channel.web.fork.handlers.coding import _conversation_store
+    try:
+        store = _conversation_store(agent_id)
+        link = store.get_coding_link(session_id)
+    except Exception:  # noqa: BLE001 - a probe must not fail the request
+        return None
+    # No link -> not a coding session; a non-empty workspace_id -> already
+    # personal, and handled (with its service check) by ``_coding_remote``.
+    if not link or link.get("workspace_id") or not link.get("project_dir"):
+        return None
+    from agent.coding.workspace import CodingWorkspaceService
+    from auth.service import get_identity_service
+    try:
+        binding = CodingWorkspaceService(
+            get_identity_service(), settings=settings).open(
+                agent_id=agent_id, base_project_dir=link["project_dir"],
+                user_id=str(getattr(ctx, "user_id", "") or ""),
+                tenant_id=str(getattr(ctx, "tenant_id", "") or ""),
+                session_id=session_id)
+    except Exception:  # noqa: BLE001 - an unresolved directory is not a source
+        logger.warning("[WebChannel] legacy personal panel refused for %s", session_id)
+        return None
+    directory = str(binding.get("effective_directory") or "")
+    if not directory:
+        return None
+    from agent.coding.files import CodingRemoteFiles, RemoteSource
+    from agent.coding.opencode import OpenCodeClient
+    workspace_id = str(binding.get("workspace_id") or "")
+    files = CodingRemoteFiles(OpenCodeClient(settings), directory,
+                              workspace_id=workspace_id)
+    return files, RemoteSource(directory, workspace_id, legacy=True)
+
+
 def _panel_service(ctx, session_id, agent_id):
     """``(service, source)`` for the panel, or a refusal the caller must report.
 
@@ -148,9 +265,23 @@ def _panel_service(ctx, session_id, agent_id):
     project is not available here. That is the point of the shared resolver: the
     panel says "the local project is unavailable" instead of silently listing
     the server directory, which is the "回落默认目录" the requirement forbids.
+
+    A personal coding session is served by its *remote* ``U`` (task 3.1): the
+    panel must show the files the session's tools touch on the OpenCode host,
+    not the platform's own workspace.
     """
     from agent.workspace.service import WorkspaceService
     from channel.web.fork.runtime import _workspace_service
+
+    remote = _coding_remote_service(ctx, session_id, agent_id)
+    if remote is not None:
+        return remote
+
+    # An old coding session's button opens the caller's U from its project
+    # snapshot, without changing where the session itself runs (design section 6).
+    legacy = _legacy_personal_remote(ctx, session_id, agent_id)
+    if legacy is not None:
+        return legacy
 
     source = _panel_source(ctx, session_id, agent_id)
     if source.is_desktop:
@@ -202,11 +333,45 @@ def _panel_entry(source, entry: dict) -> dict:
     ``preview_url`` (the server cannot serve a device file, and minting one would
     invite the client to fetch a copy) and carries ``source: "desktop"`` so the
     client resolves it through the local project instead of ``@``-uploading it.
+
+    A remote entry is the same idea for the OpenCode host: it carries
+    ``source: "coding_remote"`` and no local ``abs_path``/``raw_url``, so the
+    client fetches it through the remote download route rather than reading a
+    path on the platform.
     """
     entry["source"] = source.kind
     if source.is_desktop:
         entry["local"] = True
     return entry
+
+
+def _remote_relative(raw, *, allow_root: bool = False):
+    """``(relative, refusal)`` for a path addressed inside the remote ``U``.
+
+    The rule is the local service's own: one relative id, normalized, with the
+    location root spelled ``""``. An absolute path, a drive prefix and a ``..``
+    segment are refused here rather than forwarded to the host's path rules.
+    """
+    from agent.coding.files import normalize_relative
+
+    rel = normalize_relative(raw)
+    if rel is None:
+        return None, "the path is not relative to the personal directory"
+    if rel == "" and not allow_root:
+        return None, "path is required"
+    return rel, None
+
+
+def _remote_download_url(session, agent, path: str) -> str:
+    """The console's stream link for one remote file (never a local path)."""
+    from urllib.parse import urlencode
+
+    query = {"path": path}
+    if session:
+        query["session"] = session
+    if agent:
+        query["agent"] = agent
+    return "/api/workspace/download?" + urlencode(query)
 
 
 def _visible_entries(ctx, svc, entries: list) -> list:
@@ -245,6 +410,24 @@ class WorkspaceTreeHandler:
                 # listing the server directory.
                 svc, source = _panel_service(
                     ctx, params.session or None, agent_id)
+                if source.is_remote:
+                    relative, refusal = _remote_relative(
+                        params.path, allow_root=True)
+                    if refusal:
+                        return json.dumps({"status": "error", "code": "invalid_reference",
+                                           "message": refusal}, ensure_ascii=False)
+                    try:
+                        result = svc.list_dir(
+                            relative, show_hidden=params.show_hidden == '1')
+                    except FileNotFoundError as e:
+                        return json.dumps({"status": "error", "code": "not_found",
+                                           "message": str(e)}, ensure_ascii=False)
+                    result["entries"] = [
+                        _panel_entry(source, e) for e in result["entries"]
+                    ]
+                    result["source"] = source.describe()
+                    return json.dumps({"status": "success", **result},
+                                      ensure_ascii=False)
                 if source.is_desktop:
                     relative, refusal = _panel_relative(
                         source, params.path, allow_root=True)
@@ -306,6 +489,14 @@ class WorkspaceSearchHandler:
                     ctx, params.session or None, params.agent or None)
                 svc, source = _panel_service(
                     ctx, params.session or None, agent_id)
+                if source.is_remote:
+                    result = svc.search(params.q, limit=limit)
+                    result["results"] = [
+                        _panel_entry(source, e) for e in result["results"]
+                    ]
+                    result["source"] = source.describe()
+                    return json.dumps({"status": "success", **result},
+                                      ensure_ascii=False)
                 if source.is_desktop:
                     result = svc.search(params.q, limit=limit)
                     result["results"] = [
@@ -360,6 +551,22 @@ class WorkspaceResolveHandler:
                     ctx, params.session or None, params.agent or None)
                 svc, source = _panel_service(
                     ctx, params.session or None, agent_id)
+                if source.is_remote:
+                    relative, refusal = _remote_relative(raw_path)
+                    if refusal:
+                        return json.dumps({"status": "error", "code": "invalid_reference",
+                                           "message": refusal}, ensure_ascii=False)
+                    try:
+                        entry = svc.stat_file(relative)
+                    except FileNotFoundError as e:
+                        return json.dumps({"status": "error", "message": str(e)})
+                    entry = _panel_entry(source, entry)
+                    if not entry["is_dir"]:
+                        entry["download_url"] = _remote_download_url(
+                            params.session, params.agent, entry["path"])
+                    return json.dumps({"status": "success", "file": entry,
+                                       "source": source.describe()},
+                                      ensure_ascii=False)
                 if source.is_desktop:
                     # A local project is addressed by relative id only: an
                     # absolute path here is refused instead of being authorized
@@ -478,6 +685,18 @@ class WorkspaceReadHandler:
                     ctx, params.session or None, params.agent or None)
                 svc, source = _panel_service(
                     ctx, params.session or None, agent_id)
+                if source.is_remote:
+                    relative, refusal = _remote_relative(raw_path)
+                    if refusal:
+                        return json.dumps({"status": "error", "code": "invalid_reference",
+                                           "message": refusal}, ensure_ascii=False)
+                    try:
+                        payload = svc.read_text(relative)
+                    except FileNotFoundError as e:
+                        return json.dumps({"status": "error", "message": str(e)})
+                    return json.dumps({"status": "success", **payload,
+                                       "source": source.describe()},
+                                      ensure_ascii=False)
                 if source.is_desktop and not _is_system_asset_rel(raw_path):
                     # The editor must read the file the panel showed, on the same
                     # source: `_editable_target` resolves against server roots and
@@ -501,6 +720,51 @@ class WorkspaceReadHandler:
             except Exception as e:
                 logger.error(f"[WebChannel] Workspace read error: {e}")
                 return json.dumps({"status": "error", "message": str(e)})
+
+
+class WorkspaceDownloadHandler:
+    """Relay one remote personal-workspace file to the browser.
+
+    change ``add-coding-agent-personal-workspace`` (task 3.1). The console opens
+    a file through an ``<a download>`` / ``<img>`` navigation, which cannot send
+    an XHR body or an ``X-Tenant-ID`` header, so the bytes have to come from the
+    platform. The file itself lives on the OpenCode host, so this route relays
+    it, pinned to the caller's verified personal directory.
+
+    Every non-remote source is refused: a server or desktop file has its own
+    route (``/api/file``), and this one must never become a second way to read
+    the platform's own disk.
+    """
+
+    def GET(self):
+        from channel.web.web_channel import _db_scope
+
+        with _db_scope() as ctx:
+            params = web.input(path='', session='', agent='')
+            agent_id = _workspace_request_scope(
+                ctx, params.session or None, params.agent or None)
+            svc, source = _panel_service(
+                ctx, params.session or None, agent_id)
+            if not source.is_remote:
+                raise web.notfound()
+            relative, refusal = _remote_relative(params.path)
+            if refusal:
+                raise web.badrequest()
+            try:
+                data, content_type = svc.read_bytes(relative)
+            except FileNotFoundError:
+                raise web.notfound()
+            name = relative.rsplit('/', 1)[-1] or "download"
+            web.header('Content-Type', content_type or 'application/octet-stream')
+            # filename* carries non-ASCII names safely; the ASCII fallback is
+            # for clients that ignore it.
+            web.header('Content-Disposition',
+                       "attachment; filename=\"%s\"; filename*=UTF-8''%s"
+                       % (name.encode('ascii', 'replace').decode('ascii'),
+                          quote(name)))
+            web.header('Content-Length', str(len(data)))
+            web.header('Cache-Control', 'no-store')
+            return data
 
 
 class WorkspaceWriteHandler:
@@ -548,6 +812,8 @@ class WorkspaceWriteHandler:
                 # its original server-side home and permissions.
                 svc, source = _panel_service(
                     ctx, body.get("session") or None, agent_id)
+                if source.is_remote:
+                    return _remote_unsupported("editing")
                 if source.is_desktop and not _is_system_asset_rel(raw_path):
                     resolved = _panel_reference(source, raw_path)
                     if resolved.refusal:
@@ -625,6 +891,11 @@ WS_DELETE_MAX_TARGETS = 2000
 #: whichever layer stopped them (design D9, task 7.5).
 WS_UPLOAD_TOO_LARGE = "too_large"
 WS_UPLOAD_INCOMPLETE = "incomplete_upload"
+
+#: Refusal for a retry that would silently replace an already-stored attachment
+#: with different bytes under the same stable identifier. The client keeps its
+#: draft and the original file is left untouched.
+WS_ATTACHMENT_CONFLICT = "attachment_conflict"
 
 
 class WorkspaceScopeError(Exception):
@@ -927,6 +1198,103 @@ def _scope_for_request(ctx, agent_param, session_param):
     return svc, _write_scope(ctx, svc, agent_id)
 
 
+def coding_remote_for_upload(session_id, agent_id):
+    """``(files, source)`` for a personal session's composer attachment, or ``None``.
+
+    The same binding probe the file panel uses: a session whose coding link has a
+    non-empty ``workspace_id`` is personal, and its account directory ``U`` is
+    the only destination. Identity is never taken from the request -- the link
+    was written by the coding session service from the verified account -- and a
+    link from a different service instance is refused (409) rather than served
+    by the wrong backend.
+    """
+    return _coding_remote_service(None, session_id, agent_id)
+
+
+def coding_remote_upload_dir(session_id, attachment_id=None) -> str:
+    """The relative directory an attachment lands in, inside ``U``.
+
+    ``uploads/<session>`` keeps one conversation's attachments apart from
+    another's, so two sessions never overwrite a same-named file; the manual
+    area is used when the console has no session. A stable ``attachment_id``
+    adds a segment, which is what makes a retry land on the *same* stored name
+    instead of producing a second copy.
+    """
+    from agent.coding.files import safe_segment
+
+    sid = safe_segment(session_id, limit=80)
+    base = f"uploads/{sid}" if sid else "uploads/manual"
+    att = safe_segment(attachment_id)
+    if att:
+        base = f"{base}/{att}"
+    return base
+
+
+def coding_remote_output_dir(session_id, message_id=None) -> str:
+    """The relative directory this turn's generated files belong in, inside ``U``.
+
+    The write-side twin of :func:`coding_remote_upload_dir`: one location per
+    session, plus the turn's own existing identifier, so two sessions generating
+    the same-named report -- or two turns of one session -- never overwrite each
+    other. The rule itself lives with the source
+    (:func:`agent.coding.files.output_relative_dir`) so the panel's listing, the
+    turn's marker and any future writer cannot drift apart.
+    """
+    from agent.coding.files import output_relative_dir
+
+    return output_relative_dir(session_id, message_id)
+
+
+def write_remote_attachment(files, target: str, data: bytes) -> Dict[str, Any]:
+    """Store one attachment inside ``U``, idempotent on its stable target.
+
+    A retry after a lost response finds the identical bytes already stored and
+    reuses them instead of writing a second copy; *different* bytes under the
+    same stable identifier are refused (:data:`WS_ATTACHMENT_CONFLICT`) so an
+    existing attachment is never silently replaced. Returns the same shape
+    :meth:`agent.coding.files.CodingRemoteFiles.upload_file` does.
+    """
+    from agent.coding.files import normalize_relative
+
+    rel = normalize_relative(target)
+    if rel is None:
+        raise WorkspaceUploadError("invalid_reference",
+                                   "the destination is not relative to the personal directory")
+
+    if files.exists(rel):
+        try:
+            current, _ = files.read_bytes(rel)
+        except FileNotFoundError:
+            current = None
+        if current is not None:
+            if bytes(current) == bytes(data):
+                name = rel.rsplit("/", 1)[-1]
+                return {"path": rel, "name": name,
+                        "size": len(current), "renamed": False}
+            raise WorkspaceUploadError(
+                WS_ATTACHMENT_CONFLICT,
+                "an attachment with this identifier already exists with different content")
+
+    return files.upload_file(rel, data)
+
+
+def _remote_unsupported(action: str) -> str:
+    """A refusal for a write-side action the personal directory has no route for.
+
+    The design lists remote edit/rename/delete/move/recycle-bin as optional: they
+    are advertised as absent in the source's capabilities, hidden in the panel,
+    and *also* refused here, so a hand-made request cannot reach the platform's
+    own file API with a same-named relative path. A remote refusal is a
+    ``400`` (``unsupported_source``), not a 500 -- it is a stable answer the
+    client can name.
+    """
+    return json.dumps({
+        "status": "error",
+        "code": "unsupported_source",
+        "message": "%s is not available in the personal coding directory" % action,
+    }, ensure_ascii=False)
+
+
 class WorkspaceUploadHandler:
     """Receive one file from the panel's drag-and-drop into a folder.
 
@@ -961,6 +1329,9 @@ class WorkspaceUploadHandler:
                 params = _raw_web_input()
                 agent, session = _panel_scope_params({
                     "agent": params.get("agent"), "session": params.get("session")})
+                svc, source = _panel_service(ctx, session, agent)
+                if source.is_remote:
+                    return self._upload_remote(svc, source, params, session)
                 svc, scope = _scope_for_request(ctx, agent, session)
 
                 parts = [p for p in _ensure_list(params.get("file"))
@@ -997,6 +1368,87 @@ class WorkspaceUploadHandler:
             except Exception as e:
                 logger.error(f"[WebChannel] Workspace upload error: {e}")
                 return json.dumps({"status": "error", "message": str(e)})
+
+    @staticmethod
+    def _upload_remote(svc, source, params, session) -> str:
+        """Send one part to the personal coding directory, pinned to ``U``.
+
+        The remote has no local writable range to consult, so the destination is
+        a relative id inside ``U`` and the server's own binding record is the
+        authority. The size ceiling and the collision rename are the same
+        contract as a local upload -- only the transport differs -- and the
+        part's bytes are read here under that ceiling before they are handed to
+        the remote, so neither side ever materialises an unbounded buffer.
+        """
+        from channel.web.web_channel import _ensure_list
+        from agent.coding.files import normalize_relative
+
+        # A legacy session's panel is read/download only (design section 6): the
+        # running tools work in ``P``, so a file uploaded into ``U`` from here
+        # could never be found by them. Refuse rather than store a file the turn
+        # cannot use.
+        if getattr(source, "legacy", False):
+            return _remote_unsupported("uploading to this session")
+
+        parts = [p for p in _ensure_list(params.get("file"))
+                 if getattr(p, "filename", None)]
+        if not parts:
+            return json.dumps({"status": "error", "code": "no_file",
+                               "message": "no file in the request"})
+        part = parts[0]
+
+        dest_dir = normalize_relative(params.get("dir") or "")
+        if dest_dir is None:
+            return json.dumps({"status": "error", "code": "invalid_reference",
+                               "message": "the destination is not relative to the personal directory"},
+                              ensure_ascii=False)
+        relative = (params.get("relative_path") or "").strip().replace("\\", "/")
+        name = relative.rsplit("/", 1)[-1] if relative else ""
+        if not name:
+            name = os.path.basename((part.filename or "").replace("\\", "/")) or "upload.bin"
+        if normalize_relative(name) in (None, ""):
+            return json.dumps({"status": "error", "code": "invalid_reference",
+                               "message": "the file name is not usable"}, ensure_ascii=False)
+        # No subdirectory chosen: the panel is showing the account root, so a
+        # drop lands in the session's uploads area, or the manual area when the
+        # console has no session (design §4).
+        base = dest_dir or ("uploads" if session else "uploads/manual")
+        target = f"{base}/{name}"
+
+        data = WorkspaceUploadHandler._read_part(part)
+        written = svc.upload_file(target, data)
+        logger.info("[WebChannel] Coding remote upload: %s (%s bytes)%s",
+                    written["path"], written["size"],
+                    "" if not written["renamed"] else " (renamed)")
+        return json.dumps({"status": "success", **written,
+                           "source": source.describe()}, ensure_ascii=False)
+
+    @staticmethod
+    def _read_part(part) -> bytes:
+        """The part's bytes, bounded by the upload ceiling.
+
+        The multipart parser has already spooled the body; this holds one
+        bounded copy so it can be handed to the remote in one request. A part
+        larger than the ceiling is refused with the same stable code a local
+        upload uses, so the panel says one thing whichever source stopped it.
+        """
+        source = getattr(part, "file", None)
+        if source is None:
+            data = part.value if isinstance(part.value, (bytes, bytearray)) else b""
+            return bytes(data)
+        chunks: List[bytes] = []
+        total = 0
+        while True:
+            block = source.read(WS_UPLOAD_CHUNK_BYTES)
+            if not block:
+                break
+            total += len(block)
+            if total > WS_UPLOAD_MAX_BYTES:
+                raise WorkspaceUploadError(
+                    WS_UPLOAD_TOO_LARGE,
+                    "file is larger than %d bytes" % WS_UPLOAD_MAX_BYTES)
+            chunks.append(block)
+        return b"".join(chunks)
 
     @staticmethod
     def _stream_to(svc, target: str, part) -> Dict:
@@ -1089,6 +1541,9 @@ class WorkspaceDeleteHandler:
             try:
                 body = json.loads(web.data() or b'{}')
                 agent, session = _panel_scope_params(body)
+                svc, source = _panel_service(ctx, session, agent)
+                if source.is_remote:
+                    return _remote_unsupported("deleting")
                 svc, scope = _scope_for_request(ctx, agent, session)
 
                 raw = body.get("targets")
@@ -1171,6 +1626,9 @@ class WorkspaceTrashHandler:
                 params = web.input(agent='', session='')
                 agent, session = _panel_scope_params({
                     "agent": params.agent, "session": params.session})
+                svc, source = _panel_service(ctx, session, agent)
+                if source.is_remote:
+                    return _remote_unsupported("the recycle bin")
                 svc, scope = _scope_for_request(ctx, agent, session)
                 try:
                     svc.cleanup_trash(scope.user_id, agent_rel=scope.agent_rel)
@@ -1211,6 +1669,9 @@ class WorkspaceTrashRestoreHandler:
             try:
                 body = json.loads(web.data() or b'{}')
                 agent, session = _panel_scope_params(body)
+                svc, source = _panel_service(ctx, session, agent)
+                if source.is_remote:
+                    return _remote_unsupported("the recycle bin")
                 svc, scope = _scope_for_request(ctx, agent, session)
                 batch_id = (body.get("batch_id") or "").strip()
                 if not batch_id:
@@ -1252,6 +1713,9 @@ class WorkspaceTrashPurgeHandler:
             try:
                 body = json.loads(web.data() or b'{}')
                 agent, session = _panel_scope_params(body)
+                svc, source = _panel_service(ctx, session, agent)
+                if source.is_remote:
+                    return _remote_unsupported("the recycle bin")
                 svc, scope = _scope_for_request(ctx, agent, session)
                 batch_id = (body.get("batch_id") or "").strip()
                 indices = _indices_or_none(body.get("indices"))

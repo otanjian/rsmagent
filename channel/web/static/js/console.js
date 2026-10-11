@@ -7604,6 +7604,20 @@ function renderAttachmentPreview() {
                 <span class="att-name">${escapeHtml(att.file_name)}${suffix}</span>
             </div>`;
         }
+        if (att._failed) {
+            // A failed upload stays on screen: dropping it silently would let
+            // the next send go out without the file the user chose. It blocks
+            // sending until it is retried (same stable attachment id) or
+            // removed.
+            return `<div class="att-chip att-failed" data-idx="${idx}" title="${escapeHtml(att._error || '')}">
+                <i class="fas fa-triangle-exclamation"></i>
+                <span class="att-name">${escapeHtml(att.file_name)}</span>
+                <button class="att-retry" onclick="retryAttachment(${idx})" title="${escapeHtml(t('attachment_retry'))}">
+                    <i class="fas fa-rotate-right"></i>
+                </button>
+                <button class="att-remove" onclick="removeAttachment(${idx})">&times;</button>
+            </div>`;
+        }
         if (att.file_type === 'image') {
             return `<div class="att-thumb" data-idx="${idx}">
                 <img src="${att.preview_url}" alt="${escapeHtml(att.file_name)}">
@@ -7660,40 +7674,94 @@ function triggerFolderUpload() {
     folderInput?.click();
 }
 
+function _makeAttachmentId() {
+    return `att_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// Uploads one attachment using its own stable identifier. A retry reuses the
+// same id, so the account directory ends up with one file (identical bytes are
+// reused, different bytes are refused) instead of a second copy under a new
+// name -- the "同一附件采用原标识恢复" contract.
+async function _sendSingleAttachment(placeholder) {
+    const formData = new FormData();
+    formData.append('file', placeholder._file);
+    formData.append('session_id', sessionId);
+    formData.append('attachment_id', placeholder._attachment_id);
+    const resp = await fetch('/upload', { method: 'POST', body: formData });
+    const data = await resp.json();
+    if (!data || data.status !== 'success') {
+        throw new Error((data && data.message) || 'Upload failed');
+    }
+    placeholder.file_path = data.file_path;
+    if (data.file_name) placeholder.file_name = data.file_name;
+    if (data.file_type) placeholder.file_type = data.file_type;
+    if (data.preview_url) placeholder.preview_url = data.preview_url;
+    if (data.remote) placeholder.remote = true;
+}
+
+async function _sendDirectoryAttachment(placeholder) {
+    const formData = new FormData();
+    formData.append('session_id', sessionId);
+    formData.append('upload_id', placeholder._attachment_id);
+    formData.append('attachment_id', placeholder._attachment_id);
+    for (const { file, relPath } of placeholder._files) {
+        formData.append('files', file);
+        formData.append('relative_paths', relPath);
+    }
+    const resp = await fetch('/upload', { method: 'POST', body: formData });
+    const data = await resp.json();
+    if (!data || data.status !== 'success') {
+        throw new Error((data && data.message) || 'Upload failed');
+    }
+    if (!data.root_path) throw new Error('Directory root path missing');
+    placeholder.file_path = data.root_path;
+    placeholder.file_name = data.root_name || placeholder.file_name;
+    if (data.remote) placeholder.remote = true;
+}
+
+async function _runAttachmentUpload(placeholder) {
+    uploadingCount++;
+    renderAttachmentPreview();
+    try {
+        if (placeholder._files) await _sendDirectoryAttachment(placeholder);
+        else await _sendSingleAttachment(placeholder);
+        delete placeholder._failed;
+        delete placeholder._error;
+    } catch (e) {
+        // The draft is kept: the chip stays with a retry affordance and
+        // sendMessage refuses to submit while it is unresolved.
+        console.error('Upload failed:', e);
+        placeholder._failed = true;
+        placeholder._error = (e && e.message) || 'Upload failed';
+    } finally {
+        delete placeholder._uploading;
+        uploadingCount--;
+        renderAttachmentPreview();
+    }
+}
+
+function retryAttachment(idx) {
+    const att = pendingAttachments[idx];
+    if (!att || !att._failed || att._uploading) return;
+    delete att._failed;
+    delete att._error;
+    att._uploading = true;
+    _runAttachmentUpload(att);
+}
+
 async function handleFileSelect(files) {
     if (!files || files.length === 0) return;
     const tasks = [];
     for (const file of files) {
-        const placeholder = { file_name: file.name, file_type: 'file', _uploading: true };
+        const placeholder = {
+            file_name: file.name,
+            file_type: 'file',
+            _file: file,
+            _attachment_id: _makeAttachmentId(),
+            _uploading: true,
+        };
         pendingAttachments.push(placeholder);
-        uploadingCount++;
-        renderAttachmentPreview();
-
-        tasks.push((async () => {
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('session_id', sessionId);
-            try {
-                const resp = await fetch('/upload', { method: 'POST', body: formData });
-                const data = await resp.json();
-                if (data.status === 'success') {
-                    placeholder.file_path = data.file_path;
-                    placeholder.file_name = data.file_name;
-                    placeholder.file_type = data.file_type;
-                    placeholder.preview_url = data.preview_url;
-                    delete placeholder._uploading;
-                } else {
-                    const i = pendingAttachments.indexOf(placeholder);
-                    if (i !== -1) pendingAttachments.splice(i, 1);
-                }
-            } catch (e) {
-                console.error('Upload failed:', e);
-                const i = pendingAttachments.indexOf(placeholder);
-                if (i !== -1) pendingAttachments.splice(i, 1);
-            }
-            uploadingCount--;
-            renderAttachmentPreview();
-        })());
+        tasks.push(_runAttachmentUpload(placeholder));
     }
     await Promise.all(tasks);
 }
@@ -7724,43 +7792,12 @@ async function handleFolderSelect(files) {
             file_name: rootName,
             file_type: 'directory',
             file_count: entries.length,
+            _files: entries,
+            _attachment_id: _makeAttachmentId(),
             _uploading: true,
         };
         pendingAttachments.push(placeholder);
-        uploadingCount++;
-        renderAttachmentPreview();
-
-        const uploadId = _makeUploadId();
-        groupTasks.push((async () => {
-            try {
-                const formData = new FormData();
-                formData.append('session_id', sessionId);
-                formData.append('upload_id', uploadId);
-                for (const { file, relPath } of entries) {
-                    formData.append('files', file);
-                    formData.append('relative_paths', relPath);
-                }
-
-                const resp = await fetch('/upload', { method: 'POST', body: formData });
-                const data = await resp.json();
-                if (data.status !== 'success') {
-                    throw new Error(data.message || 'Upload failed');
-                }
-                if (!data.root_path) {
-                    throw new Error('Directory root path missing');
-                }
-                placeholder.file_path = data.root_path;
-                placeholder.file_name = data.root_name || rootName;
-                delete placeholder._uploading;
-            } catch (e) {
-                console.error('Directory upload failed:', e);
-                const i = pendingAttachments.indexOf(placeholder);
-                if (i !== -1) pendingAttachments.splice(i, 1);
-            } finally {
-                uploadingCount--;
-            }
-            renderAttachmentPreview();
-        })());
+        groupTasks.push(_runAttachmentUpload(placeholder));
     }
 
     await Promise.all(groupTasks);
@@ -9279,6 +9316,10 @@ function messageFailureText(data) {
     if (data?.http_status === 403 || code === 'forbidden' || normalized === 'forbidden') {
         return t('error_chat_forbidden');
     }
+    if (code === 'attachment_upload_failed' || code === 'attachment_missing'
+            || code === 'invalid_reference') {
+        return t('attachment_upload_failed');
+    }
     return detail ? `${t('error_send')} ${detail.slice(0, 500)}` : t('error_send');
 }
 
@@ -9306,6 +9347,14 @@ function sendMessage() {
 
     const text = chatInput.value.trim();
     if (!text && pendingAttachments.length === 0) return;
+
+    // A message is never sent while an attachment is unresolved: the file must
+    // be stored first. The chip on screen carries a retry for exactly this
+    // (change add-coding-agent-personal-workspace, "上传失败保留草稿").
+    if (pendingAttachments.some(a => a._failed || a._uploading)) {
+        addMessageError({ code: 'attachment_upload_failed', message: t('attachment_upload_failed') });
+        return;
+    }
 
     // Continue the original SAP workbench query context through its host adapter.
     if (text.startsWith('/sap ') && typeof window.continueSceneSapAnalysis === 'function') {
@@ -9341,7 +9390,7 @@ function sendMessage() {
 
     const timestamp = new Date();
     const attachments = [...pendingAttachments];
-    addUserMessage(text, timestamp, attachments);
+    const userEl = addUserMessage(text, timestamp, attachments);
 
     const loadingEl = addLoadingIndicator();
 
@@ -9351,6 +9400,31 @@ function sendMessage() {
     renderAttachmentPreview();
     sendBtn.disabled = true;
     if (typeof resetTurnArtifacts === 'function') resetTurnArtifacts();
+
+    // A send that is refused -- most importantly an attachment that never
+    // landed in the personal directory -- must cost a retry, not a retype: the
+    // optimistic bubble and the spinner are withdrawn and the exact draft
+    // (text plus pending attachments) is put back. The server is the authority
+    // on whether an attachment exists; the console never sends a message whose
+    // attachment it cannot confirm (change add-coding-agent-personal-workspace).
+    let draftRestored = false;
+    function restoreDraft(data) {
+        if (draftRestored) return;
+        draftRestored = true;
+        if (userEl && userEl.parentNode) userEl.parentNode.removeChild(userEl);
+        if (loadingEl && loadingEl.parentNode) loadingEl.remove();
+        if (!chatInput.value.trim()) {
+            chatInput.value = text;
+            resetComposerHeight();
+        }
+        if (pendingAttachments.length === 0 && attachments.length > 0) {
+            pendingAttachments = [...attachments];
+            renderAttachmentPreview();
+        }
+        if (data) addMessageError(data);
+        else addBotMessage(t('error_send'), new Date());
+        resetSendBtnSendMode();
+    }
 
     const body = { session_id: sessionId, agent_id: ownerContext.agentId, message: text, stream: true, timestamp: timestamp.toISOString(), lang: currentLang };
     // Naming somebody hands them the turn. Sent explicitly because the composer
@@ -9406,9 +9480,7 @@ function sendMessage() {
                     loadingContainers[data.request_id] = loadingEl;
                 }
             } else {
-                loadingEl.remove();
-                addMessageError(data);
-                resetSendBtnSendMode();
+                restoreDraft(data);
             }
         })
         .catch(err => {
@@ -10034,6 +10106,12 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, owner
                 if (currentEs) { currentEs.close(); }
                 delete activeStreams[requestId];
                 clearOwnerRequest();
+                // The run is over, so whatever it wrote into the session's file
+                // source is there now: re-read the panel instead of leaving a
+                // listing that predates it (task 3.4). A closed panel is not
+                // refreshed, and a personal session's files are re-read from the
+                // OpenCode host through the ordinary listing.
+                if (typeof wsRefreshAfterRun === 'function') wsRefreshAfterRun();
 
             } else if (item.type === 'resync_required') {
                 done = true;
@@ -10310,6 +10388,16 @@ const ATTACHMENT_MARKER_TYPES = {
     '文件': 'file', '檔案': 'file', 'File': 'file',
 };
 
+// The other kind of line the backend appends to a prompt: a note about the
+// *turn* rather than a file the reader picked. A personal coding turn names the
+// relative folder its generated files belong in (see output_line in
+// agent/coding/files.py), and there is no chip that could stand for a folder the
+// reader never chose — so the line is recognised and dropped, like the
+// attachment markers, instead of being left in the reader's own words.
+const PLATFORM_NOTE_LABELS = new Set([
+    '个人目录输出位置', '個人目錄輸出位置', 'Personal directory output location',
+]);
+
 /**
  * Split trailing `[label: path]` lines off a persisted user message.
  * Returns the remaining text plus the attachments they describe.
@@ -10317,16 +10405,23 @@ const ATTACHMENT_MARKER_TYPES = {
 function parseAttachmentMarkers(content) {
     const lines = (content || '').split('\n');
     const found = [];
+    let dropped = false;
     while (lines.length) {
         const line = lines[lines.length - 1].trim();
         if (!line) { lines.pop(); continue; }
         const m = line.match(/^\[([^\]:]+):\s*(.+)\]$/);
-        const type = m && ATTACHMENT_MARKER_TYPES[m[1].trim()];
+        const label = m ? m[1].trim() : '';
+        if (m && PLATFORM_NOTE_LABELS.has(label)) {
+            dropped = true;
+            lines.pop();
+            continue;
+        }
+        const type = m && ATTACHMENT_MARKER_TYPES[label];
         if (!type) break;
         found.unshift({ type, path: m[2].trim() });
         lines.pop();
     }
-    if (!found.length) return { text: content, attachments: null };
+    if (!found.length && !dropped) return { text: content, attachments: null };
     return {
         text: lines.join('\n').trimEnd(),
         attachments: found.map(f => ({
@@ -10345,10 +10440,10 @@ function createUserMessageEl(content, timestamp, attachments) {
     // Replaying history: recover the chips from the markers left in the text.
     if (!attachments) {
         const parsed = parseAttachmentMarkers(content);
-        if (parsed.attachments) {
-            attachments = parsed.attachments;
-            content = parsed.text;
-        }
+        if (parsed.attachments) attachments = parsed.attachments;
+        // The text is taken either way: a turn note (no chip of its own) is
+        // dropped from the reader's own words just like a chip is lifted out.
+        content = parsed.text;
     }
 
     let attachHtml = '';
@@ -10879,6 +10974,10 @@ function addUserMessage(content, timestamp, attachments) {
     messagesDiv.appendChild(el);
     _autoScrollEnabled = true;
     scrollChatToBottom(true);
+    // Returned so a failed send can take its optimistic bubble back: the
+    // composer restores the draft instead of leaving a message on screen that
+    // was never accepted (see sendMessage).
+    return el;
 }
 
 function addBotMessage(content, timestamp, requestId) {

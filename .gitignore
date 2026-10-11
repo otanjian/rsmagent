@@ -200,6 +200,8 @@ README*.md
 # Timestamped snapshot of the assets tree taken before an editor rewrite; a
 # local rollback copy, not source (same class as the *.bak-tags-* copies below).
 /scenes/sap_workbench_assets_backup*/
+# Same rollback-copy convention with the `assets.bak-<stamp>` naming variant.
+/scenes/sap_workbench_assets.bak-*/
 
 # Timestamped pre-edit copies of preset/agent configs written next to the live
 # file (same convention as config.json.bak-* above, but named `*.bak-tags-<stamp>`).

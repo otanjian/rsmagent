@@ -24,12 +24,19 @@ code and stops.
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Set
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
+from urllib.parse import quote
 
 import requests
 
-from agent.coding import CODING_UPSTREAM_UNAVAILABLE, CodingError, CodingSettings
+from agent.coding import (
+    CODING_UPSTREAM_UNAVAILABLE,
+    CODING_WORKSPACE_CONFLICT,
+    CodingError,
+    CodingSettings,
+)
 
 # Connect and read timeouts for every call, from the design's polling section:
 # a stalled service costs one refresh round, not a hung request.
@@ -219,6 +226,7 @@ class OpenCodeClient:
         self,
         base_project_dir: str,
         effective_directory: str,
+        workspace_id: str,
     ) -> Mapping[str, Any]:
         """Ask the service to prepare the caller's personal directory under ``P``.
 
@@ -228,17 +236,75 @@ class OpenCodeClient:
         resolves the remote path itself. Idempotent on the service side, so a
         retry for the same binding resumes rather than producing a second tree.
 
-        The field names are the change's provisional contract with RSMCode
-        (design: the remote protocol is fixed with the companion repository);
-        they are isolated here so a realignment touches only this method.
+        The body carries the platform's opaque ``workspace_id`` so the service
+        can keep its minimal ``binding -> U`` ownership record and refuse a
+        directory already claimed by a different binding. This shape was
+        confirmed against the running RSMCode service (evidence section 7):
+        ``POST /api/coding/workspace/prepare`` answers
+        ``{directory, workspace_id, created, state}``.
         """
         body: Dict[str, Any] = {
             "base_project_dir": base_project_dir,
             "effective_directory": effective_directory,
+            "workspace_id": workspace_id,
         }
         response = self._request(
             "POST", "/api/coding/workspace/prepare", json=body)
+        if response.status_code == 409:
+            # A remote-side conflict the platform cannot see on its own: the
+            # directory is claimed by another binding, or the project already
+            # tracks source under the personal container. Surfacing it as an
+            # outage would hide a condition the operator can fix.
+            raise CodingError(
+                CODING_WORKSPACE_CONFLICT,
+                "the personal directory cannot be prepared on this host",
+                409,
+            )
         payload = self._json(response, "prepare the personal workspace")
+        return payload if isinstance(payload, Mapping) else {}
+
+    def upload_file(
+        self,
+        workspace_id: str,
+        relative_path: str,
+        content: bytes,
+    ) -> Mapping[str, Any]:
+        """Write one file into the prepared personal directory for a binding.
+
+        The location is the server's own binding record, so the platform sends
+        the opaque ``workspace_id`` and a path *relative to U* and never a
+        directory. ``content`` is base64-encoded because the server's typed JSON
+        contract carries a JSON body; the server decodes it and enforces its own
+        ceiling, and refuses a path that would escape ``U``.
+
+        A ``400`` (a malformed relative path) is the caller's own refusal and is
+        surfaced as a ``ValueError``; a ``409`` (the directory does not exist, or
+        belongs to another binding) is a stable conflict; anything else is an
+        outage, because the panel must not read "the service is down" as "your
+        file was bad".
+        """
+        body: Dict[str, Any] = {
+            "workspace_id": workspace_id,
+            "relative_path": relative_path,
+            "content_base64": base64.b64encode(content).decode("ascii"),
+        }
+        response = self._request(
+            "POST", "/api/coding/workspace/upload", json=body)
+        if response.status_code >= 400:
+            if response.status_code == 400:
+                raise ValueError(
+                    "the coding service rejected the upload path")
+            if response.status_code == 409:
+                raise CodingError(
+                    CODING_WORKSPACE_CONFLICT,
+                    "the personal directory is not available for this upload",
+                    409,
+                )
+            raise _upstream_unavailable(
+                "the coding service refused to accept the upload"
+                f" (HTTP {response.status_code})"
+            )
+        payload = self._json(response, "upload the file")
         return payload if isinstance(payload, Mapping) else {}
 
     def set_permission(
@@ -328,3 +394,115 @@ class OpenCodeClient:
         if response.status_code == 404:
             return
         self._no_content(response, "delete the session")
+
+    # -- filesystem --------------------------------------------------------
+
+    def location(self, directory: str) -> Mapping[str, Any]:
+        """Resolve one directory on the service's host.
+
+        The answer confirms which directory the location points at (and which
+        project owns it). The platform reads it to *verify* a personal
+        directory, never to address a file: every file call still names the
+        location explicitly.
+        """
+        response = self._request(
+            "GET", "/api/location", params={"location[directory]": directory})
+        payload = self._json(response, "resolve the location")
+        return payload if isinstance(payload, Mapping) else {}
+
+    def list_files(self, directory: str, path: str = "") -> List[Mapping[str, Any]]:
+        """Direct children of ``path`` (relative to ``directory``).
+
+        Measured shape (evidence section 7): ``data`` holds ``{path, type}``
+        rows, each ``path`` relative to the location using the *host*
+        separator, and a directory carries a trailing separator. A missing
+        directory answers ``500`` on this service, where to the caller it is
+        simply not there -- so an unreachable path becomes a not-found rather
+        than an outage (see :meth:`_fs_payload`).
+        """
+        params: Dict[str, Any] = {"location[directory]": directory}
+        if path:
+            params["path"] = path
+        response = self._request("GET", "/api/fs/list", params=params)
+        return self._entries(
+            self._fs_payload(response, path, "list the directory"))
+
+    def find_files(
+        self,
+        directory: str,
+        query: str,
+        *,
+        kind: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[Mapping[str, Any]]:
+        """Search below ``directory`` by name, one flat result list.
+
+        The same ``{path, type}`` rows as :meth:`list_files`, though here the
+        measured ``path`` uses ``/`` rather than the host separator; the DTO
+        layer normalizes both (evidence section 7, note 3).
+        """
+        params: Dict[str, Any] = {"location[directory]": directory, "query": query}
+        if kind:
+            params["type"] = kind
+        if limit:
+            params["limit"] = str(limit)
+        response = self._request("GET", "/api/fs/find", params=params)
+        return self._entries(
+            self._fs_payload(response, query, "search the directory"))
+
+    def read_file(self, directory: str, path: str) -> Tuple[bytes, str]:
+        """Raw bytes of one file, plus its content type.
+
+        ``path`` is encoded whole (separators included) because the route takes
+        it as a single path segment. A missing file, a directory and an
+        escaping path are all a ``500`` here -- the caller maps them to
+        not-found (see :meth:`_fs_payload`).
+        """
+        response = self._request(
+            "GET",
+            f"/api/fs/read/{quote(path, safe='')}",
+            params={"location[directory]": directory},
+        )
+        if response.status_code >= 400:
+            self._fs_fail(path, response.status_code, "read the file")
+        content = getattr(response, "content", b"") or b""
+        if not isinstance(content, (bytes, bytearray)):
+            content = bytes(content)
+        headers = getattr(response, "headers", None) or {}
+        content_type = str(headers.get("Content-Type") or "application/octet-stream")
+        return bytes(content), content_type
+
+    @staticmethod
+    def _entries(payload: Any) -> List[Mapping[str, Any]]:
+        data = payload.get("data") if isinstance(payload, Mapping) else None
+        if not isinstance(data, list):
+            return []
+        return [entry for entry in data if isinstance(entry, Mapping)]
+
+    def _fs_payload(self, response, path: str, action: str) -> Any:
+        """Decode a filesystem route's JSON body, translating its refusals.
+
+        This service answers a path it cannot serve -- missing, a directory
+        where a file was asked for, or one that escapes the location -- with
+        an internal ``500``. To a caller that is *this path is not there*, not
+        *the service is broken*, and reporting it as an outage would dress a
+        panel typo up as an infrastructure failure. A real outage never gets
+        this far: it fails at the transport, as a 502/504.
+        """
+        if response.status_code >= 400:
+            self._fs_fail(path, response.status_code, action)
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise _upstream_unavailable(
+                f"the coding service did not return JSON when asked to {action}"
+            ) from exc
+
+    def _fs_fail(self, path: str, status: int, action: str) -> None:
+        if status == 400:
+            raise ValueError(f"the coding service rejected the path: {path}")
+        if status >= 500:
+            raise FileNotFoundError(f"File not found: {path}")
+        raise _upstream_unavailable(
+            f"the coding service refused to {action} (HTTP {status})")
+

@@ -20,6 +20,7 @@ import requests
 
 from agent.coding import (
     CODING_UPSTREAM_UNAVAILABLE,
+    CODING_WORKSPACE_CONFLICT,
     CodingError,
     CodingSettings,
 )
@@ -339,17 +340,19 @@ def test_create_does_not_swallow_an_upstream_refusal():
 # --- prepare a personal workspace -----------------------------------------
 
 
-def test_prepare_workspace_hands_the_remote_both_paths():
-    """The remote creates ``U`` under the verified ``P``; the platform neither
-    creates nor resolves the remote path locally."""
+def test_prepare_workspace_hands_the_remote_the_paths_and_the_binding():
+    """The remote creates ``U`` under the verified ``P`` and records the binding;
+    the platform neither creates nor resolves the remote path locally."""
     transport = _Transport(_Response(200, {
-        "effective_directory": "/srv/checkouts/erp/user/tanjian",
+        "directory": "/srv/checkouts/erp/user/tanjian",
+        "workspace_id": "ocws_deadbeef",
         "created": True,
+        "state": "ready",
     }))
     client = _client(transport)
 
     result = client.prepare_workspace(
-        "/srv/checkouts/erp", "/srv/checkouts/erp/user/tanjian")
+        "/srv/checkouts/erp", "/srv/checkouts/erp/user/tanjian", "ocws_deadbeef")
 
     call = transport.calls[0]
     assert call["method"] == "POST"
@@ -357,9 +360,10 @@ def test_prepare_workspace_hands_the_remote_both_paths():
     assert call["json"] == {
         "base_project_dir": "/srv/checkouts/erp",
         "effective_directory": "/srv/checkouts/erp/user/tanjian",
+        "workspace_id": "ocws_deadbeef",
     }
     assert call["headers"]["Authorization"].startswith("Basic ")
-    assert result["effective_directory"] == "/srv/checkouts/erp/user/tanjian"
+    assert result["directory"] == "/srv/checkouts/erp/user/tanjian"
     assert result["created"] is True
 
 
@@ -368,9 +372,28 @@ def test_prepare_workspace_maps_a_remote_failure_to_a_stable_code():
     client = _client(transport)
 
     with pytest.raises(CodingError) as caught:
-        client.prepare_workspace("/srv/checkouts/erp", "/srv/checkouts/erp/user/tanjian")
+        client.prepare_workspace(
+            "/srv/checkouts/erp", "/srv/checkouts/erp/user/tanjian", "ocws_deadbeef")
 
     assert caught.value.code == CODING_UPSTREAM_UNAVAILABLE
+
+
+def test_prepare_workspace_surfaces_a_remote_conflict():
+    """A 409 is a conflict the operator can act on, not an outage.
+
+    The remote refuses a directory claimed by another binding, or a git project
+    that already tracks source under ``user/`` -- conditions the platform cannot
+    see on its own and must not hide behind a 502.
+    """
+    transport = _Transport(_Response(409, {"message": "already claimed"}, text="already claimed"))
+    client = _client(transport)
+
+    with pytest.raises(CodingError) as caught:
+        client.prepare_workspace(
+            "/srv/checkouts/erp", "/srv/checkouts/erp/user/tanjian", "ocws_deadbeef")
+
+    assert caught.value.code == CODING_WORKSPACE_CONFLICT
+    assert caught.value.status == 409
 
 
 def test_remote_session_is_a_plain_value():

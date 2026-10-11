@@ -161,6 +161,28 @@ def test_nested_directories_are_created(tmp_path):
     assert (tmp_path / ".opencode/skills/sap-workbench/references").is_dir()
 
 
+def test_personal_mode_keeps_one_install_under_the_project_root(tmp_path):
+    """One install at ``P``, none copied into an account directory ``U``.
+
+    A personal coding session runs in ``P/user/<account>`` and discovers config
+    by walking up to ``P`` (verified against the live service, evidence section
+    11). The process of turning that into a per-account install is exactly what
+    the spec forbids, so this pins the layout: the toolkit is written once, under
+    the project root, and the account directory that already exists is left
+    without a second copy of it.
+    """
+    project = tmp_path / "P"
+    account = project / "user" / "alice"
+    account.mkdir(parents=True)
+
+    report = project_toolkit.install(project)
+
+    assert results(report)[PLUGIN] == "installed"
+    assert (project / PLUGIN).is_file()
+    assert (project / project_toolkit.CONFIG_FILE).is_file()
+    assert not (account / ".opencode").exists()
+
+
 def test_every_declared_artifact_has_a_shipped_source():
     """A declared artifact with no shipped source must be reported, never skipped
     as success -- the scene tree is the single source of what gets installed."""

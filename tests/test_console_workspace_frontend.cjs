@@ -480,3 +480,200 @@ test('closing the panel invalidates a listing still in flight', async () => {
     assert.ok(!nodes.get('ws-file-list').innerHTML.includes('a.txt'),
         'a listing from the closed visit painted the panel');
 });
+
+// The panel follows the *source's* advertised capabilities (tasks 3.1/3.2): a
+// personal coding directory can read and upload but has no remote edit / delete
+// / recycle-bin route, so those controls must not be offered -- the backend
+// refuses them too, and a button that only ever declines is worse than an absent
+// one.
+
+test('a remote tree enables upload and hides edit and delete', async () => {
+    const { ctx, nodes } = makeCtx({
+        status: 'success', path: '',
+        entries: [{ name: 'a.txt', path: 'a.txt', is_dir: false, size: 3, kind: 'text',
+                    source: 'coding_remote' }],
+        source: { kind: 'coding_remote', label: 'alice',
+                  capabilities: { read: true, download: true, upload: true,
+                                  write: false, rename: false, move: false,
+                                  delete: false, trash: false } },
+    });
+    nodes.set('ws-file-list', element());
+    await ctx.loadWorkspaceDir('');
+
+    assert.ok(ctx.wsCanWriteHere(), 'upload into the personal directory is allowed');
+    assert.equal(ctx.wsRowDeleteHTML({ name: 'a.txt', path: 'a.txt' }), '',
+        'a remote row offers no delete control');
+    assert.equal(ctx.wsIsEditable({ name: 'a.txt', path: 'a.txt', kind: 'code' }), false,
+        'a remote file does not open in the editor');
+});
+
+test('a backend tree keeps the delete control', async () => {
+    const { ctx, nodes } = makeCtx({
+        status: 'success', path: '', root: '/ws/t1',
+        entries: [{ name: 'a.txt', path: 'a.txt', is_dir: false, size: 3, kind: 'text' }],
+        source: 'backend',
+    });
+    nodes.set('ws-file-list', element());
+    await ctx.loadWorkspaceDir('');
+
+    assert.match(ctx.wsRowDeleteHTML({ name: 'a.txt', path: 'a.txt' }),
+        /data-ws-act="delete"/, 'the backend source keeps its delete control');
+});
+
+test('wsIsRemoteFile recognises a personal coding entry only', () => {
+    const { ctx } = makeCtx({ status: 'success' });
+    assert.equal(ctx.wsIsRemoteFile({ source: 'coding_remote' }), true);
+    assert.equal(ctx.wsIsRemoteFile({ source: 'desktop', local: true }), false);
+    assert.equal(ctx.wsIsRemoteFile(null), false);
+});
+
+// An *old* coding session (design section 6): its file button opens the account
+// directory U, but the session itself still runs in the project root P. The panel
+// must say so, and must not offer an upload the running turn could never find.
+
+function noticeNode() {
+    const node = { textContent: '', _hidden: true };
+    node.classList = {
+        add(name) { if (name === 'hidden') node._hidden = true; },
+        remove(name) { if (name === 'hidden') node._hidden = false; },
+        toggle() {},
+        contains: () => node._hidden,
+    };
+    return node;
+}
+
+function remoteTree(extra) {
+    return {
+        status: 'success', path: '',
+        entries: [{ name: 'a.txt', path: 'a.txt', is_dir: false, size: 3, kind: 'text',
+                    source: 'coding_remote' }],
+        source: Object.assign({
+            kind: 'coding_remote', label: 'alice',
+            capabilities: { read: true, download: true, upload: true,
+                            write: false, rename: false, move: false,
+                            delete: false, trash: false },
+        }, extra || {}),
+    };
+}
+
+test('an old coding session says it still runs in the project directory', async () => {
+    const { ctx, nodes } = makeCtx(remoteTree({
+        legacy: true,
+        capabilities: { read: true, download: true, upload: false,
+                        write: false, rename: false, move: false,
+                        delete: false, trash: false },
+    }));
+    nodes.set('ws-file-list', element());
+    const notice = noticeNode();
+    nodes.set('ws-source-notice', notice);
+
+    await ctx.loadWorkspaceDir('');
+
+    assert.equal(notice._hidden, false, 'the legacy notice is shown');
+    assert.equal(notice.textContent, 'ws_legacy_session_notice',
+        'the notice is a translatable key, not a raw sentence');
+    assert.equal(ctx.wsCanWriteHere(), false,
+        'a legacy session offers no upload: its tools work in the project root');
+});
+
+test('a personal session hides the legacy notice', async () => {
+    const { ctx, nodes } = makeCtx(remoteTree());
+    nodes.set('ws-file-list', element());
+    const notice = noticeNode();
+    nodes.set('ws-source-notice', notice);
+
+    await ctx.loadWorkspaceDir('');
+
+    assert.equal(notice._hidden, true, 'no notice for a personal session');
+    assert.equal(notice.textContent, '');
+    assert.equal(ctx.wsCanWriteHere(), true, 'a personal session keeps upload');
+});
+
+// ---------------------------------------------------------------------------
+// A finished run re-reads the panel (task 3.4). A personal session's files are
+// written on the OpenCode host, so nothing on this page can be told that one
+// appeared -- the panel re-reads at the two moments a new file can be presumed:
+// a run just finished, and the reader came back to the tab. The read is the
+// ordinary listing, so it re-verifies the reader's scope and cannot paint an
+// answer overtaken by a switch.
+// ---------------------------------------------------------------------------
+
+const RESULT_TREE = {
+    status: 'success', path: '', root: '/ws/t1',
+    entries: [{ name: 'report.xlsx', path: 'report.xlsx', is_dir: false, size: 9,
+                kind: 'office' }],
+};
+
+test('a finished run re-reads an open panel', async () => {
+    const { ctx, nodes, requests } = makeCtx(RESULT_TREE);
+    nodes.set('ws-file-list', element());
+    poke(ctx, 'wsPanelOpen = true; wsCurrentDir = "outputs/sess-1/req-9";');
+
+    ctx.wsRefreshAfterRun();
+    await flush();
+
+    assert.equal(requests.length, 1, requests.join('\n'));
+    // The directory that is *on screen* is the one re-read, not the root.
+    assert.match(requests[0], /path=outputs%2Fsess-1%2Freq-9/);
+    assert.match(nodes.get('ws-file-list').innerHTML, /report\.xlsx/);
+});
+
+test('a finished run leaves a closed panel alone', () => {
+    const { ctx, requests } = makeCtx(RESULT_TREE);
+    poke(ctx, 'wsPanelOpen = false;');
+
+    ctx.wsRefreshAfterRun();
+
+    assert.equal(requests.length, 0, 'a closed panel was read for');
+});
+
+test('an open editor is not re-listed out from under the reader', () => {
+    const { ctx, requests } = makeCtx(RESULT_TREE);
+    poke(ctx, 'wsPanelOpen = true; wsEditing = true;');
+
+    ctx.wsRefreshAfterRun();
+
+    assert.equal(requests.length, 0, 'the file being edited was re-listed');
+});
+
+test('a burst of completions reads the directory once', async () => {
+    const { ctx, nodes, requests } = makeCtx(RESULT_TREE);
+    nodes.set('ws-file-list', element());
+    // A browser-shaped host: the coalescing timer exists, so the completion and
+    // the history reload that follows it produce one read, not two.
+    const timers = [];
+    ctx.setTimeout = (fn) => { timers.push(fn); return timers.length; };
+    poke(ctx, 'wsPanelOpen = true;');
+
+    ctx.wsRefreshAfterRun();
+    ctx.wsRefreshAfterRun();
+    ctx.wsRefreshAfterRun();
+
+    assert.equal(timers.length, 1, `${timers.length} reads were scheduled`);
+    assert.equal(requests.length, 0, 'a read happened before the timer ran');
+    timers[0]();
+    await flush();
+    assert.equal(requests.length, 1, requests.join('\n'));
+});
+
+test('coming back to the tab re-reads the panel', async () => {
+    const { ctx, nodes, requests } = makeCtx(RESULT_TREE);
+    nodes.set('ws-file-list', element());
+    poke(ctx, 'wsPanelOpen = true;');
+
+    ctx.wsOnPanelActivated();
+    await flush();
+
+    assert.equal(requests.length, 1, requests.join('\n'));
+    assert.match(nodes.get('ws-file-list').innerHTML, /report\.xlsx/);
+});
+
+test('coming back to a hidden document reads nothing', () => {
+    const { ctx, requests } = makeCtx(RESULT_TREE);
+    ctx.document.visibilityState = 'hidden';
+    poke(ctx, 'wsPanelOpen = true;');
+
+    ctx.wsOnPanelActivated();
+
+    assert.equal(requests.length, 0, 'the panel read while the tab was hidden');
+});

@@ -102,7 +102,12 @@ def build_image_parts(
     """Encode inbound image attachments into deliverable parts.
 
     *attachments* is the minimal channel-facing contract: mappings carrying
-    ``path`` (required), plus an optional ``media_type`` and ``name``.
+    either ``path`` (a readable local file) or ``data`` (already-read bytes),
+    plus an optional ``media_type`` and ``name``. The bytes form exists for a
+    persisted remote file: the personal-workspace slice lands an attachment in
+    the account directory first and hands its bytes here so the image part is
+    built from the *stored* file, never from the request body (change
+    ``add-coding-agent-personal-workspace``).
 
     Returns ``(parts, notices)``. Every image that could not be delivered
     contributes exactly one entry to *notices*; those strings are meant to be
@@ -114,9 +119,11 @@ def build_image_parts(
     omitted_for_count = 0
 
     for attachment in attachments or ():
-        path = str((attachment or {}).get("path") or "").strip()
-        name = str((attachment or {}).get("name") or "") or os.path.basename(path)
-        if not path:
+        entry = attachment or {}
+        path = str(entry.get("path") or "").strip()
+        blob = entry.get("data")
+        name = str(entry.get("name") or "") or os.path.basename(path)
+        if blob is None and not path:
             notices.append("有一张图片未能解析：附件缺少本地路径")
             continue
         if len(parts) >= policy.max_count:
@@ -124,9 +131,14 @@ def build_image_parts(
             continue
 
         try:
-            part = _encode_one(path, name, policy)
+            if blob is not None:
+                if not isinstance(blob, (bytes, bytearray)):
+                    raise ValueError("附件字节不可读")
+                part = _encode_blob(bytes(blob), name, policy)
+            else:
+                part = _encode_one(path, name, policy)
         except Exception as error:  # defensive: never fail the turn over an image
-            logger.warning(f"[Attachments] could not prepare image '{path}': {error}")
+            logger.warning(f"[Attachments] could not prepare image '{path or name}': {error}")
             notices.append(f"{name} 未能解析：{error}")
             continue
 
@@ -208,6 +220,11 @@ def attachments_from_context(context: Any) -> List[Dict[str, Any]]:
         name = str(entry.get("name") or entry.get("file_name") or "").strip()
         if name:
             item["name"] = name
+        blob = entry.get("data")
+        if isinstance(blob, (bytes, bytearray)):
+            # A persisted remote file: the bytes were read from the account
+            # directory, so the image part is built from that stored copy.
+            item["data"] = bytes(blob)
         collected.append(item)
     return collected
 
@@ -304,18 +321,35 @@ def _unsupported_notice(attachments: Sequence[Dict[str, Any]]) -> str:
 
 
 def _encode_one(path: str, name: str, policy: AttachmentPolicy) -> ImagePart | None:
-    """Encode a single image, or return ``None`` when the ceiling is unreachable.
+    """Encode a single image file, or return ``None`` when the ceiling is unreachable.
 
     Raises for everything the caller should report verbatim (missing file,
     undecodable bytes, unsupported format).
     """
-    from PIL import Image
-
     if not os.path.isfile(path):
         raise ValueError("图片文件不存在或不可读")
 
     try:
-        with Image.open(path) as probe:
+        with open(path, "rb") as handle:
+            blob = handle.read()
+    except OSError as error:
+        raise ValueError("图片文件不存在或不可读") from error
+
+    return _encode_blob(blob, name, policy)
+
+
+def _encode_blob(blob: bytes, name: str, policy: AttachmentPolicy) -> ImagePart | None:
+    """Encode image bytes, or return ``None`` when the ceiling is unreachable.
+
+    The shared pipeline behind both :func:`_encode_one` and the persisted-file
+    form: a personal-workspace attachment is landed remotely first, then its
+    bytes are handed in here, so an image part is always built from the stored
+    file rather than from the request body.
+    """
+    from PIL import Image
+
+    try:
+        with Image.open(io.BytesIO(blob)) as probe:
             source_format = (probe.format or "").upper()
             probe.load()
             image = probe.convert("RGBA") if probe.mode in ("P", "LA") else probe.copy()

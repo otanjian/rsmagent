@@ -1306,7 +1306,7 @@ async def close_runtime(gateway, store, row, *, terminal=False):
 
 
 async def open_workbench_runtime(gateway, store, tenant, user, coding, saved, token, origin,
-                                 *, request_id=None, row=None):
+                                 *, request_id=None, row=None, runtime_dir=None):
     """Replace only this owner's old hosts before reserving runtime capacity.
 
     The owner lock serializes distinct creations/resumes. Shield the whole
@@ -1332,7 +1332,8 @@ async def open_workbench_runtime(gateway, store, tenant, user, coding, saved, to
             async with lock:
                 current = store.session(tenant, user, row['id']) if row else store.reserve_session(
                     tenant, user, coding['id'], request_id, saved, coding['project_dir'],
-                    display_mode='screen' if legacy_engine else 'iframe')
+                    display_mode='screen' if legacy_engine else 'iframe',
+                    runtime_dir=runtime_dir)
                 if current['state'] == 'closed':
                     raise WorkbenchError('session_closed', 410)
                 others = [old for old in store.active_sessions(tenant, user) if old['id'] != current['id']]

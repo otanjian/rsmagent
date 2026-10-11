@@ -346,7 +346,8 @@ class CodingWorkspaceService:
             # Remote first, then ready: a failure leaves ``creating`` so a retry
             # resumes the same reservation instead of creating a second tree.
             self.client.prepare_workspace(
-                binding["base_project_dir"], binding["effective_directory"])
+                binding["base_project_dir"], binding["effective_directory"],
+                binding["workspace_id"])
             self._mark_ready(binding["workspace_id"])
             binding["state"] = "ready"
 
