@@ -128,10 +128,23 @@ def _enforce_context_gate(handler, policy: str, entry: dict):
     Mandate (design D2/D3, task 3.5): context existence, identity domain and the
     route's declared permission. Object-level ownership/resource checks stay in
     the handler -- the context they need is guaranteed to exist here.
+
+    ``scoped`` differs from ``tenant`` in exactly one way: the tenant selection
+    is not *required* here, because the request's scope is part of its payload
+    and only the handler can see it. The request's own selection still decides
+    the domain: a request that carries a tenant header is resolved (and must
+    hold) as a tenant request -- ignoring the header would leave a tenant
+    manager with no tenant at all and deny the very drafts the route exists for
+    -- while a request without one is resolved as the personal/platform domain,
+    which only a platform admin can then use to reach the declared permission.
+    The declared permission still applies either way.
     """
     from auth.runtime import IdentityContextError, gate_context_scope
 
     require_tenant = policy == "tenant" and not entry.get("tenant_from_resource")
+    if policy == "scoped":
+        from channel.web.auth_handlers import _tenant_header
+        require_tenant = bool(_tenant_header())
     try:
         from channel.web.auth_handlers import _require_context
         ctx = _require_context(require_tenant=require_tenant)
@@ -206,6 +219,6 @@ def enforce_http_policy(handler):
         # must never reach a downstream handler, regardless of admin status.
         return _json_error("unavailable in database identity mode", 503,
                            "database_unavailable")
-    if policy in ("tenant", "platform") and _is_database_mode():
+    if policy in ("tenant", "platform", "scoped") and _is_database_mode():
         return _enforce_context_gate(handler, policy, entry)
     return handler()

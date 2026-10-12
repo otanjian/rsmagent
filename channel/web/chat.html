@@ -2728,6 +2728,13 @@
 
 <!--#include templates/modals/skill-add.html-->
 
+<!-- MCP editor (change align-mcp-editor-with-master). The centered editor of
+     the fixed master baseline, wired to the System Access page by
+     assets/js/mcp-editor.js. Loaded here rather than by the upstream
+     capabilities view so the System Access page is the one assembly that
+     actually mounts it. -->
+<!--#include templates/modals/mcp-editor.html-->
+
     <!-- Todo Edit Modal -->
     <div id="todo-edit-overlay" class="fixed inset-0 bg-black/50 z-[200] hidden flex items-center justify-center">
         <div class="bg-white dark:bg-[#1A1A1A] rounded-2xl border border-slate-200 dark:border-white/10 shadow-xl
@@ -3088,6 +3095,9 @@
     <script defer src="/assets/js/i18n/branding.js"></script>
     <script defer src="/assets/js/i18n/core.js"></script>
     <script defer src="/assets/js/i18n/memory-account.js"></script>
+    <!-- The master editor's own labels (change align-mcp-editor-with-master),
+         including the batch-save states, come from `i18n/master-sync.js`, which
+         this page already loads below with the other fork namespaces. -->
     <script defer src="/assets/js/i18n/external-connections.js"></script>
     <script defer src="/assets/js/i18n/external-identity.js"></script>
     <script defer src="/assets/js/i18n/home-scenes.js"></script>
@@ -3117,6 +3127,10 @@
          no DOM at load time, which is what makes the defer order safe. -->
     <script defer src="/assets/js/functional-capabilities.js"></script>
     <script defer src="/assets/js/functional-models.js"></script>
+    <!-- MCP editor (change align-mcp-editor-with-master): the extracted master
+         editor. Attaches exactly one window namespace (EcMcpEditor), mounts
+         nothing at load time, and is the only MCP editor the page assembles. -->
+    <script defer src="/assets/js/mcp-editor.js"></script>
     <script defer src="/assets/js/functional-context.js"></script>
     <!-- Upstream scheduled-task page (templates/views/tasks.html,
          templates/modals/task-edit.html, templates/modals/run-detail.html),

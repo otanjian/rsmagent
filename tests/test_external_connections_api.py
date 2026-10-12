@@ -611,6 +611,68 @@ def test_a_test_route_never_leaks_the_secret_or_the_target_address(web, monkeypa
     assert "addresses" not in network and "resolved" not in network
 
 
+def test_the_draft_test_route_serves_a_zero_tenant_admin_and_refuses_a_foreign_row(web):
+    """The route the editor probes through, over the real route table.
+
+    Three promises live in this handler and can only be checked here:
+    * scope ``platform`` must not demand a tenant membership — the zero-tenant
+      platform admin is exactly the caller who fills in a platform template;
+    * the *declared* scope is authorized: platform scope is the independent
+      platform permission, so naming it does not borrow a tenant manager's
+      rights;
+    * a draft naming a connection the caller cannot read is refused by the same
+      check a read would fail, *before* the deployment's test gate, so the route
+      cannot be used to ask a question about someone else's row.
+    """
+    draft = {"kind": "mcp", "scope": "platform", "config": MCP_HEADER}
+    # No tenant selected and no adapter in this build: the answer has to be the
+    # deployment's own reason, not a missing-tenant refusal.
+    answer = web.post("/api/external-connections/draft-test", draft,
+                      token=web.admin_token, tenant=False)
+    assert answer.status.startswith("403"), answer.data
+    assert _json(answer)["code"] == "test_not_available"
+
+    # The same request from a tenant manager is refused on the platform
+    # permission: the scope a payload names does not widen the caller.
+    borrowed = web.post("/api/external-connections/draft-test", draft,
+                        token=web.manager_token)
+    assert borrowed.status.startswith("403"), borrowed.data
+    assert _json(borrowed)["code"] == "forbidden"
+
+    # A tenant manager testing *their own* draft is not denied by the route
+    # gate: the request's tenant selection is honoured, so the answer is the
+    # deployment's own reason and not a missing-tenant refusal.
+    mine = {"kind": "mcp", "scope": "tenant", "config": MCP_HEADER}
+    own = web.post("/api/external-connections/draft-test", mine,
+                   token=web.manager_token)
+    assert own.status.startswith("403"), own.data
+    assert _json(own)["code"] == "test_not_available"
+
+    platform_id = _json(web.post("/api/external-connections/platform", {
+        "kind": "mcp", "name": "tpl-draft", "config": MCP_HEADER,
+    }, token=web.admin_token, tenant=False))["id"]
+    foreign = dict(draft, scope="tenant", connection_id=platform_id)
+    refused = web.post("/api/external-connections/draft-test", foreign,
+                       token=web.manager_token)
+    # Refused by the same object check a read fails, *not* by the deployment's
+    # test gate: the route cannot be turned into a question about a row the
+    # caller cannot see.
+    assert refused.status.startswith(("403", "404")), refused.data
+    assert _json(refused)["code"] in ("forbidden", "not_found"), refused.data
+
+    platform_id = _json(web.post("/api/external-connections/platform", {
+        "kind": "mcp", "name": "tpl-draft", "config": MCP_HEADER,
+    }, token=web.admin_token, tenant=False))["id"]
+    foreign = dict(draft, scope="tenant", connection_id=platform_id)
+    refused = web.post("/api/external-connections/draft-test", foreign,
+                       token=web.manager_token)
+    # Refused by the same object check a read fails, *not* by the deployment's
+    # test gate: the route cannot be turned into a question about a row the
+    # caller cannot see.
+    assert refused.status.startswith(("403", "404")), refused.data
+    assert _json(refused)["code"] in ("forbidden", "not_found"), refused.data
+
+
 def test_the_service_and_the_http_layer_share_one_database(web):
     """A connection created over HTTP is visible to the service directly."""
     from integrations.external.service import get_external_connection_service

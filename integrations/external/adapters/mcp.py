@@ -313,6 +313,15 @@ def build_client(ctx: ExecutionContext, *, name: str = ""):
             timeout = int(float(ctx.limits.get("test_timeout") or 30))
         except (TypeError, ValueError):
             timeout = 30
+    # The effective attempt deadline is the strictest of the deployment limit
+    # and the user's own configured timeout; a short user value must be obeyed,
+    # and a long one must not be allowed to outlast the deployment budget.
+    configured = config.get("timeout")
+    if configured not in (None, ""):
+        try:
+            timeout = min(timeout, int(float(configured)))
+        except (TypeError, ValueError):
+            pass
     client_config["timeout"] = max(1, timeout)
 
     if transport == TRANSPORT_STDIO:
@@ -326,18 +335,52 @@ def build_client(ctx: ExecutionContext, *, name: str = ""):
 
     client_config["url"] = str(config.get("url") or "")
     auth = _auth(config)
-    if auth == "header":
-        header_name = str(config.get("header_name") or "").strip()
-        secret = ctx.secret("header")
-        if secret:
-            client_config.setdefault("headers", {})[header_name] = secret
-    elif auth == "oauth":
+    headers = _request_headers(ctx, config)
+    if headers:
+        client_config["headers"] = headers
+    if auth == "oauth":
         # The token record is keyed per connection, so a token minted for one
         # connection can never be presented to another. No token means no
         # Authorization header, and the server's 401 becomes an explicit
         # re-authorization requirement rather than a silent interactive flow.
-        client_config["scope"] = str(config.get("oauth_provider") or "")
+        client_config["scope"] = str(
+            config.get("oauth_scope") or config.get("oauth_provider") or "")
     return McpClient(client_config)
+
+
+def _request_headers(ctx: ExecutionContext, config: Mapping[str, Any]) -> Dict[str, str]:
+    """The request headers to present, preferring the master-style map slot.
+
+    The ``headers`` slot (one JSON map of name -> value) is the current
+    representation. The legacy single ``header`` slot is read only when the map
+    is absent, so an explicit replacement or clear of the map cannot fall back
+    to a leftover legacy value. A malformed map is treated as absent rather than
+    crashing a bounded attempt.
+    """
+    raw = ""
+    try:
+        raw = ctx.optional_secret("headers")
+    except Exception:  # noqa: BLE001 - a missing slot is simply "no map"
+        raw = ""
+    if raw:
+        try:
+            parsed = json.loads(raw)
+        except (TypeError, ValueError):
+            parsed = None
+        if isinstance(parsed, dict):
+            headers = {}
+            for key, value in parsed.items():
+                name = str(key or "").strip()
+                if name:
+                    headers[name] = "" if value is None else str(value)
+            if headers:
+                return headers
+    header_name = str(config.get("header_name") or "").strip()
+    if header_name:
+        secret = ctx.optional_secret("header")
+        if secret:
+            return {header_name: secret}
+    return {}
 
 
 def _error_stage(exc: BaseException) -> Tuple[str, str]:
@@ -451,6 +494,19 @@ class McpAdapter(ConnectionAdapter):
                 raise invalid("header_name is managed by the transport",
                               code="field_invalid",
                               fields={"header_name": "reserved"})
+        # The master-style declaration names the request headers; the values
+        # live in the ``headers`` secret slot. Each name is checked here so a
+        # name the client cannot present is refused at save time.
+        for raw_name in config.get("header_names") or []:
+            name = str(raw_name).strip()
+            if not name or len(name) > MAX_KEY_LENGTH or not _HEADER_NAME.match(name):
+                raise invalid("header_names contains an invalid HTTP header name",
+                              code="field_invalid",
+                              fields={"header_names": "invalid"})
+            if name.lower() in _RESERVED_HEADERS:
+                raise invalid("header_names includes a transport-managed header",
+                              code="field_invalid",
+                              fields={"header_names": "reserved"})
         return dict(config)
 
     # -- probe --------------------------------------------------------------
@@ -711,8 +767,13 @@ class McpAdapter(ConnectionAdapter):
                                     reasons=reasons, metadata=metadata)
 
         if auth == "header":
+            # Either representation counts: the master-style ``headers`` map
+            # (the current one) or the legacy single ``header`` slot. Reporting
+            # ``secret_missing`` for a connection that owns the map would make
+            # the console call a working connection incomplete.
             try:
-                has_header = bool(ctx.has_secret("header"))
+                has_header = bool(ctx.has_secret("headers")) \
+                    or bool(ctx.has_secret("header"))
             except Exception:  # noqa: BLE001 - unreadable secret is "missing"
                 has_header = False
             if not has_header:

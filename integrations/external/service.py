@@ -191,9 +191,11 @@ class ExternalConnectionService:
         return {row["slot"]: True for row in rows}
 
     def _detail(self, row: Mapping[str, Any], *, source: str,
-                actions: Sequence[str]) -> Dict[str, Any]:
+                actions: Sequence[str],
+                presence: Optional[Mapping[str, bool]] = None) -> Dict[str, Any]:
         config = json.loads(row["config_json"] or "{}")
-        presence = self._secret_presence(row["id"])
+        if presence is None:
+            presence = self._secret_presence(row["id"])
         spec = registry.TYPE_SPECS.get(row["kind"])
         slots = {
             slot: {"configured": bool(presence.get(slot))}
@@ -921,6 +923,7 @@ class ExternalConnectionService:
                           secrets: Optional[Mapping[str, Any]] = None,
                           idempotency_key: Optional[str] = None,
                           base_connection_id: Optional[str] = None,
+                          enabled: Optional[bool] = None,
                           connection_id: Optional[str] = None) -> Dict[str, Any]:
         """Create one connection in the given scope; ownership is enforced.
 
@@ -941,19 +944,18 @@ class ExternalConnectionService:
         normalized = registry.validate_config(kind, config)
         endpoint = "POST /api/external-connections:%s:%s" % (scope, kind)
         scope_key = _scope_key(scope, tenant_id)
+        # Omitted keeps the historical default (enabled). A connection created
+        # disabled must never be inserted enabled and then flipped, so the flag
+        # is part of the same insert below.
+        initial_enabled = True if enabled is None else bool(enabled)
         request_payload = {"scope": scope, "kind": kind, "name": name,
                            "config": normalized, "secrets": dict(secrets or {}),
                            "base_connection_id": base_connection_id,
+                           "enabled": initial_enabled,
                            # Part of the fingerprint so a replay of the same
                            # import cannot be answered with a row created under
                            # a different id.
                            "reuse_id": str(connection_id or "")}
-        if idempotency_key:
-            replay = self._idempotent_replay(
-                actor_user_id=actor_user_id, scope_key=scope_key,
-                endpoint=endpoint, key=idempotency_key, payload=request_payload)
-            if replay is not None:
-                return replay
         if scope == registry.SCOPE_PLATFORM:
             self.require_platform_admin(actor_user_id)
         elif scope == registry.SCOPE_TENANT:
@@ -964,12 +966,31 @@ class ExternalConnectionService:
             if not tenant_id:
                 raise invalid("tenant is required", code="missing_tenant")
             self.require_personal(actor_user_id, tenant_id)
+        # A replay is answered only *after* the caller's current permission has
+        # been checked: a stored result must not outlive the right to ask for it
+        # (e.g. after the caller loses management of the tenant).
+        if idempotency_key:
+            replay = self._idempotent_replay(
+                actor_user_id=actor_user_id, scope_key=scope_key,
+                endpoint=endpoint, key=idempotency_key, payload=request_payload)
+            if replay is not None:
+                return replay
         self._refuse_if_paused(scope=scope, tenant_id=tenant_id, owner_user_id=actor_user_id,
                                what="connection changes")
         owner_user_id = actor_user_id if scope == registry.SCOPE_PERSONAL else None
         connection_id = _validated_connection_id(connection_id) \
             or "conn_%s" % _random_token()
         with self._tx() as con:
+            # Re-check under the write lock: a concurrent request with the same
+            # key may have committed its connection between the check above and
+            # our acquiring the lock. Without this, two racing retries both
+            # insert, and the "remember" below would overwrite the first result.
+            if idempotency_key:
+                replay = self._idempotent_replay_in_tx(
+                    con, actor_user_id=actor_user_id, scope_key=scope_key,
+                    endpoint=endpoint, key=idempotency_key, payload=request_payload)
+                if replay is not None:
+                    return replay
             if connection_id:
                 # An explicitly reused id must not collide. Checked rather than
                 # left to the PRIMARY KEY so the refusal is a stable code the
@@ -998,9 +1019,10 @@ class ExternalConnectionService:
                 " (id, kind, scope, tenant_id, owner_user_id, name, config_json,"
                 "  enabled, version, base_connection_id, source, created_by,"
                 "  created_at, updated_at)"
-                " VALUES (?,?,?,?,?,?,?,1,1,?,?,?,?,?)",
+                " VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?,?)",
                 (connection_id, kind, scope, tenant_id, owner_user_id, name,
-                 json.dumps(normalized, ensure_ascii=False), base_connection_id,
+                 json.dumps(normalized, ensure_ascii=False),
+                 1 if initial_enabled else 0, base_connection_id,
                  "override" if base_connection_id else "created",
                  actor_user_id, now, now),
             )
@@ -1027,15 +1049,45 @@ class ExternalConnectionService:
                                   "slots": sorted(self._secret_presence_in_tx(
                                       con, connection_id))},
                 result="success")
+            # Build the response *and* the idempotency record from the same
+            # transaction. The create and the "remember" used to be two commits,
+            # and a crash between them let a retry of the same key create a
+            # second connection -- which the batch import would then show twice.
+            result = self._detail_in_tx(
+                con, connection_id, scope=scope, tenant_id=tenant_id,
+                actor_user_id=actor_user_id,
+                base_connection_id=base_connection_id)
+            if idempotency_key:
+                self._remember_idempotent_in_tx(
+                    con, actor_user_id=actor_user_id, scope_key=scope_key,
+                    endpoint=endpoint, key=idempotency_key,
+                    payload=request_payload, result=result)
             con.commit()
-        result = self.get_connection(
-            actor_user_id=actor_user_id, scope=scope, connection_id=connection_id,
-            tenant_id=tenant_id)
-        if idempotency_key:
-            self._remember_idempotent(
-                actor_user_id=actor_user_id, scope_key=scope_key, endpoint=endpoint,
-                key=idempotency_key, payload=request_payload, result=result)
         return result
+
+    def _detail_in_tx(self, con, connection_id: str, *, scope: str,
+                      tenant_id: Optional[str], actor_user_id: str,
+                      base_connection_id: Optional[str]) -> Dict[str, Any]:
+        """The freshly created connection's detail, read inside its transaction.
+
+        Mirrors what :meth:`get_connection` would return, but uses the in-tx
+        secret presence (the references are not committed yet) so the response
+        stored for a replay is the same one the first caller saw.
+        """
+        row = con.execute(
+            "SELECT * FROM external_connections WHERE id=?",
+            (connection_id,)).fetchone()
+        if row is None:
+            raise not_found()
+        presence = self._secret_presence_in_tx(con, connection_id)
+        if scope == registry.SCOPE_PLATFORM:
+            source, actions = "platform", ["read", "manage"]
+        elif scope == registry.SCOPE_PERSONAL:
+            source, actions = "personal", ["read", "manage"]
+        else:
+            source = "override" if base_connection_id else "created"
+            actions = self._card_actions(actor_user_id, row, tenant_id)
+        return self._detail(row, source=source, actions=actions, presence=presence)
 
     def get_connection(self, *, actor_user_id: str, scope: str,
                        connection_id: str,
@@ -1866,19 +1918,13 @@ class ExternalConnectionService:
         return fingerprint(json.dumps(payload, sort_keys=True, default=str,
                                       ensure_ascii=False))
 
-    def _idempotent_replay(self, *, actor_user_id: str, scope_key: str,
-                           endpoint: str, key: str,
-                           payload: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
-        key_id = self._idempotency_key_id(key)
-        rows = self._store.execute(
-            "SELECT payload_fingerprint, result_json, created_at FROM"
-            " external_connection_idempotency WHERE actor_user_id=? AND"
-            " scope_key=? AND endpoint=? AND key_id=?",
-            (actor_user_id, scope_key, endpoint, key_id),
-        )
-        if not rows:
-            return None
-        row = rows[0]
+    def _replay_query(self) -> str:
+        return ("SELECT payload_fingerprint, result_json, created_at FROM"
+                " external_connection_idempotency WHERE actor_user_id=? AND"
+                " scope_key=? AND endpoint=? AND key_id=?")
+
+    def _replay_from_row(self, row, *,
+                         payload: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
         if _now() - int(row["created_at"]) > IDEMPOTENCY_TTL_SECONDS:
             return None
         if row["payload_fingerprint"] != self._payload_fingerprint(payload):
@@ -1886,27 +1932,65 @@ class ExternalConnectionService:
                            code="idempotency_conflict")
         return json.loads(row["result_json"])
 
+    def _idempotent_replay(self, *, actor_user_id: str, scope_key: str,
+                           endpoint: str, key: str,
+                           payload: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+        key_id = self._idempotency_key_id(key)
+        rows = self._store.execute(
+            self._replay_query(),
+            (actor_user_id, scope_key, endpoint, key_id),
+        )
+        if not rows:
+            return None
+        return self._replay_from_row(rows[0], payload=payload)
+
+    def _idempotent_replay_in_tx(self, con, *, actor_user_id: str,
+                                 scope_key: str, endpoint: str, key: str,
+                                 payload: Mapping[str, Any]
+                                 ) -> Optional[Dict[str, Any]]:
+        """The same replay check, under the writer's lock.
+
+        ``create_connection`` calls this after ``BEGIN IMMEDIATE`` so two
+        concurrent retries of one key cannot both decide they are the first.
+        """
+        key_id = self._idempotency_key_id(key)
+        row = con.execute(
+            self._replay_query(),
+            (actor_user_id, scope_key, endpoint, key_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._replay_from_row(row, payload=payload)
+
+    def _remember_idempotent_in_tx(self, con, *, actor_user_id: str,
+                                   scope_key: str, endpoint: str, key: str,
+                                   payload: Mapping[str, Any],
+                                   result: Mapping[str, Any]) -> None:
+        con.execute(
+            "DELETE FROM external_connection_idempotency WHERE actor_user_id=?"
+            " AND scope_key=? AND endpoint=? AND created_at<?",
+            (actor_user_id, scope_key, endpoint,
+             _now() - IDEMPOTENCY_TTL_SECONDS),
+        )
+        con.execute(
+            "INSERT OR REPLACE INTO external_connection_idempotency"
+            " (key_id, actor_user_id, scope_key, endpoint,"
+            "  payload_fingerprint, result_json, created_at)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (self._idempotency_key_id(key), actor_user_id, scope_key,
+             endpoint, self._payload_fingerprint(payload),
+             json.dumps(dict(result), ensure_ascii=False, default=str),
+             _now()),
+        )
+
     def _remember_idempotent(self, *, actor_user_id: str, scope_key: str,
                              endpoint: str, key: str,
                              payload: Mapping[str, Any],
                              result: Mapping[str, Any]) -> None:
         with self._tx() as con:
-            con.execute(
-                "DELETE FROM external_connection_idempotency WHERE actor_user_id=?"
-                " AND scope_key=? AND endpoint=? AND created_at<?",
-                (actor_user_id, scope_key, endpoint,
-                 _now() - IDEMPOTENCY_TTL_SECONDS),
-            )
-            con.execute(
-                "INSERT OR REPLACE INTO external_connection_idempotency"
-                " (key_id, actor_user_id, scope_key, endpoint,"
-                "  payload_fingerprint, result_json, created_at)"
-                " VALUES (?,?,?,?,?,?,?)",
-                (self._idempotency_key_id(key), actor_user_id, scope_key,
-                 endpoint, self._payload_fingerprint(payload),
-                 json.dumps(dict(result), ensure_ascii=False, default=str),
-                 _now()),
-            )
+            self._remember_idempotent_in_tx(
+                con, actor_user_id=actor_user_id, scope_key=scope_key,
+                endpoint=endpoint, key=key, payload=payload, result=result)
             con.commit()
 
     # -- runtime access ------------------------------------------------------
@@ -1943,16 +2027,34 @@ class ExternalConnectionService:
                     secrets: Optional[Mapping[str, Any]] = None,
                     actor_user_id: str, tenant_id: Optional[str] = None,
                     scope: str = registry.SCOPE_TENANT,
-                    owner_user_id: Optional[str] = None) -> Dict[str, Any]:
+                    owner_user_id: Optional[str] = None,
+                    connection_id: Optional[str] = None,
+                    expected_version: Optional[int] = None) -> Dict[str, Any]:
         """Test an unsaved form without persisting the config or the secret.
 
         The secret values are supplied by the caller and used for this one
         attempt: they are never written to the credential store, and no test
         summary is recorded. See :meth:`ConnectionRuntime.probe_draft`.
+
+        ``connection_id`` turns this into the *editing* draft: the caller has
+        already been authorized for that row by the handler, and the runtime
+        then probes the new configuration while any slot the caller did not
+        replace is resolved from the store. ``expected_version`` binds the
+        attempt to the version the caller was editing, so a concurrent change
+        invalidates it instead of testing a mix of old and new.
         """
+        base_snapshot = None
+        if connection_id:
+            base_snapshot = self.runtime().snapshot(
+                connection_id, tenant_id=tenant_id)
+            if expected_version is not None \
+                    and int(expected_version) != base_snapshot.version:
+                raise conflict("the connection changed while you were editing it",
+                               code="version_conflict")
         return self.runtime().probe_draft(
             kind, config, secrets=secrets, actor_user_id=actor_user_id,
-            tenant_id=tenant_id, scope=scope, owner_user_id=owner_user_id)
+            tenant_id=tenant_id, scope=scope, owner_user_id=owner_user_id,
+            base_snapshot=base_snapshot)
 
     def describe_connection(self, connection_id: str, *,
                             tenant_id: Optional[str] = None) -> Dict[str, Any]:

@@ -32,7 +32,7 @@ const staticRoot = path.join(repo, 'channel/web/static');
 const output = process.env.COW_EXTERNAL_BROWSER_OUTPUT
     || fs.mkdtempSync(path.join(os.tmpdir(), 'cow-external-browser-'));
 const report = { artifact: output, scenarios: [], pageErrors: [], unexpectedRoutes: [],
-    requests: [], writes: [] };
+    requests: [], writes: [], draftTests: [] };
 fs.mkdirSync(output, { recursive: true });
 
 const TENANT = { id: 'fixture-tenant', name: '测试租户', code: 'fixture' };
@@ -57,11 +57,32 @@ const MCP_TYPE = {
 
 const MCP_CARD = {
     id: 'mcp-1', effective_id: 'mcp-1', kind: 'mcp', scope: 'tenant', name: 'OneAgent HTTP MCP',
-    enabled: true, source: 'tenant', version: 1, test_status: 'untested', tested_at: null,
+    enabled: true, source: 'tenant', version: 6, test_status: 'untested', tested_at: null,
     actions: ['read', 'manage'], base_connection_id: null,
-    config: { transport: 'streamable_http', url: 'http://127.0.0.1:8080/mcp', auth: 'none' },
+    // The stored shape of an already-saved connection: the credential itself is
+    // never sent to the browser, only the fact that a header group exists.
+    config: { transport: 'streamable_http', url: 'http://127.0.0.1:8080/mcp',
+        header_names: ['Authorization'], tool_name_prefix: 'kb_', timeout: 30 },
     agent_assignment: { configured: true, revision: 3, visible_count: 2, can_assign: true },
 };
+
+// -- The MCP editor's own fixtures (change align-mcp-editor-with-master) ------
+//
+// Three things the editor cannot be checked without:
+// * `draftOutcome` — the draft-test route's verdict, so a probe failure can be
+//   followed by a save ("仍然保存");
+// * `createRefusals` — which names the create route refuses, so a batch stops
+//   part-way and the retry has a real "already confirmed" prefix to leave alone;
+// * the recorded `Idempotency-Key` per create, so key retention across a retry
+//   is asserted from the wire rather than from the module's own state.
+let draftOutcome = 'ok';
+let createRefusals = {};
+
+function resetEditorFixtures() {
+    draftOutcome = 'ok';
+    createRefusals = {};
+}
+
 
 // -- Agent assignment fixture ------------------------------------------------
 //
@@ -137,21 +158,30 @@ function agentPage(rows, url) {
 
 // The console shell is assembled on the server: `<!--#include path-->` pulls in
 // the view and modal fragments, then the `{{COW_*}}` placeholders are injected.
-const WEB_DIR = path.join(repo, 'channel/web');
-const INCLUDE_RE = /<!--#include\s+([^\s>]+?)\s*-->/g;
+// The route table is one of them, and it is not optional: `console.js` asks
+// `window.ConsoleRoutes` for the view it was opened on before it falls back to
+// its own hash handling, so a placeholder left in the page throws in `router.js`
+// and strands the console on whatever the view loader guessed.
+//
+// Rendering through the real template keeps the fixture on the same bytes the
+// server sends, exactly as `test_knowledge_console_browser.cjs` does. The entry
+// paths come from the same registry: once `ConsoleRoutes` is live, entering a
+// view rewrites the address to the view's own path, and the next reload asks for
+// that path instead of `/admin#view-...`.
+let shellHtml = '';
+const shellPaths = new Set(['/']);
 function assembleShell() {
-    const expand = (relPath, depth) => {
-        if (depth > 8) throw new Error('include cycle at ' + relPath);
-        const text = fs.readFileSync(path.join(WEB_DIR, relPath), 'utf8');
-        return text.replace(INCLUDE_RE, (_, fragment) => {
-            const expanded = expand(fragment, depth + 1);
-            return expanded.endsWith('\n') ? expanded.slice(0, -1) : expanded;
-        });
-    };
-    return expand('chat.html', 0)
+    const python = process.env.PYTHON_BIN || path.join(repo, '.venv/bin/python');
+    const raw = require('node:child_process').execFileSync(python, ['-B', '-c',
+        'import json; from channel.web.core import template; from channel.web.route_registry import console_page_metadata, shell_entry_paths; '
+        + 'print(json.dumps({"html": template.render("chat.html").replace("{{COW_CONSOLE_ROUTES}}", json.dumps(console_page_metadata())), "paths": shell_entry_paths()}))'],
+        { cwd: repo, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+    const shell = JSON.parse(raw);
+    shellHtml = shell.html
         .replaceAll('{{COW_DEFAULT_LANG}}', 'zh')
         .replaceAll('{{COW_NAVIGATION_MODE}}', 'classic')
         .replaceAll('{{COW_WORKBENCH_SIDEBAR_LAUNCH_V2}}', '0');
+    shell.paths.forEach(entry => shellPaths.add(entry));
 }
 
 function readBody(req) {
@@ -178,9 +208,9 @@ const server = http.createServer((req, res) => {
             roles: ['admin'], is_admin: true, is_platform_admin: false } };
 
     const handle = async () => {
-        if (pathname === '/chat' || pathname === '/' || pathname === '/admin') {
+        if (shellPaths.has(pathname)) {
             res.writeHead(200, { 'Content-Type': mime['.html'], 'Cache-Control': 'no-store' });
-            res.end(assembleShell());
+            res.end(shellHtml);
         } else if (pathname.startsWith('/assets/')) {
             const file = path.resolve(staticRoot, '.' + pathname.slice('/assets'.length));
             if (!file.startsWith(staticRoot + path.sep) || !fs.existsSync(file)
@@ -283,12 +313,44 @@ const server = http.createServer((req, res) => {
                     || agent.name.toLowerCase().indexOf(needle) >= 0)
                 .map(agent => agentRow(agent.id, assignment.assigned.indexOf(agent.id) >= 0));
             json(agentPage(rows, url));
+        } else if (pathname === '/api/external-connections/draft-test') {
+            const raw = await readBody(req);
+            let body = null;
+            try { body = JSON.parse(raw); } catch (_) { body = null; }
+            report.draftTests.push({ body });
+            if (draftOutcome === 'ok') {
+                json({ status: 'success', outcome: 'ok', stage: 'connect',
+                    metadata: { tools: ['echo'] } });
+            } else {
+                json({ status: 'success', outcome: 'fail', stage: 'connect',
+                    code: 'connection_refused' });
+            }
+        } else if (/^\/api\/external-connections\/tenant\/[^/]+\/update$/.test(pathname)) {
+            const raw = await readBody(req);
+            let body = null;
+            try { body = JSON.parse(raw); } catch (_) { body = null; }
+            report.writes.push({ pathname, body,
+                idempotencyKey: req.headers['idempotency-key'] || '' });
+            json({ status: 'success', id: pathname.split('/')[4] });
         } else if (pathname === '/api/external-connections/tenant' && req.method === 'POST') {
             const raw = await readBody(req);
             let body = null;
             try { body = JSON.parse(raw); } catch (_) { body = null; }
-            report.writes.push({ pathname, body });
-            json({ status: 'success', item: { ...MCP_CARD, id: 'mcp-new' } });
+            report.writes.push({ pathname, body,
+                idempotencyKey: req.headers['idempotency-key'] || '' });
+            // A definite refusal: the editor has to stop the run here, keep the
+            // confirmed items out of the retry, and re-key only after the input
+            // changes.
+            if (body && createRefusals[body.name]) {
+                json({ status: 'error', code: createRefusals[body.name],
+                    message: body.name + ' refused by the fixture' }, 409);
+                return;
+            }
+            json({ status: 'success', item: { ...MCP_CARD, id: 'mcp-' + (body && body.name) } });
+        } else if (/^\/api\/external-connections\/tenant\/[^/]+$/.test(pathname)) {
+            // The detail the editor opens an editing draft from. It carries the
+            // version the draft is bound to and never the stored credential.
+            json({ status: 'success', ...MCP_CARD });
         } else if (['/api/sessions', '/api/history', '/api/projects', '/api/models', '/api/tools',
                    '/api/skills'].includes(pathname)) {
             json({ status: 'success', sessions: [], has_more: false, total: 0, messages: [],
@@ -318,19 +380,22 @@ async function launchBrowser() {
 
 async function open(options) {
     const size = options || {};
+    const theme = size.theme || 'light';
     const context = await browser.newContext({
         viewport: { width: size.width || 1440, height: size.height || 900 },
-        locale: 'zh-CN', colorScheme: 'light',
+        locale: 'zh-CN', colorScheme: theme,
     });
     context.on('page', page => page.on('pageerror', error => {
         report.pageErrors.push({ scenario: report.currentScenario, message: error.message,
             stack: error.stack });
     }));
-    await context.addInitScript(() => {
+    await context.addInitScript(theme => {
         if (!location.href.startsWith('http:')) return;
         sessionStorage.setItem('cow_tenant_id', 'fixture-tenant');
         localStorage.setItem('cow_lang', 'zh');
-    });
+        // The appearance module reads its own keys before first paint.
+        localStorage.setItem('cow_theme', theme);
+    }, theme);
     const page = await context.newPage();
     page.setDefaultTimeout(15000);
     // 系统接入 is a console-shell page (`admin.external_connections`), so it is
@@ -408,89 +473,350 @@ async function imeType(page, selector, pinyin, committed, observe) {
 
 async function main() {
     browser = await launchBrowser();
+    // The shell the server would send, rendered before the fixture answers.
+    assembleShell();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     origin = 'http://127.0.0.1:' + server.address().port;
 
-    await scenario('选择「请求头认证」后要出现填写令牌的字段', async page => {
-        await openMcpDrawer(page);
+    // -- The master MCP editor (change align-mcp-editor-with-master) ----------
+    //
+    // 新增/编辑 an MCP connection happens in the centred editor extracted from
+    // master, not in the drawer: these scenarios hold that down from the real
+    // page — the transport groups, the form/JSON round trip, a batch that stops
+    // part-way and retries with the keys it already used, an editing draft
+    // bound to its row version, and the page's own unsaved-changes question
+    // raised above the editor.
 
-        // Without authentication the credential field is not offered at all.
-        assert.equal(await page.locator('#ec-f-header_name').isVisible(), false,
-            '无需认证时不应出现请求头名称');
-        assert.equal(await page.locator('#ec-f-secret-header').isVisible(), false,
-            '无需认证时不应出现可以填令牌的输入框');
+    /** Type picker → MCP, leaving the centred editor open on the create form. */
+    async function openMcpEditor(page) {
+        await page.locator('[data-ec-action="add"]').click();
+        await page.locator('#ec-modal').waitFor({ state: 'visible' });
+        await page.locator('[data-ec-action="pick-type"][data-kind="mcp"]').click();
+        await page.locator('#mcp-editor-overlay').waitFor({ state: 'visible' });
+    }
 
-        await page.selectOption('#ec-f-auth', 'header');
+    /** The editor's transport control is the console's own dropdown. */
+    async function chooseTransport(page, value) {
+        await page.locator('#mcp-field-type .cfg-dropdown-selected').click();
+        await page.locator('#mcp-field-type .cfg-dropdown-item[data-value="' + value + '"]').click();
+    }
 
-        // The regression: the change has to reach the drawer's own listener, or
-        // these two groups stay hidden and the token has nowhere to go.
-        assert.equal(await page.locator('#ec-f-header_name').isVisible(), true,
-            '选择「请求头认证」后必须出现请求头名称');
-        assert.equal(await page.locator('#ec-f-secret-header').isVisible(), true,
-            '选择「请求头认证」后必须出现认证请求头值（令牌填这里）');
+    function createWrites() {
+        return report.writes.filter(entry => entry.pathname === '/api/external-connections/tenant');
+    }
 
-        // Typing has to register too: the save state reporting unsaved input is
-        // the same wiring that marks the draft dirty.
-        await page.fill('#ec-f-name', '税法知识库');
-        await page.fill('#ec-f-url', 'http://127.0.0.1:8080/mcp');
-        await page.fill('#ec-f-header_name', 'Authorization');
-        await page.fill('#ec-f-secret-header', 'Bearer TOKEN-123');
-        assert.match(await page.locator('.ec-save-state').innerText(), /未保存/,
-            '输入后底部必须提示有未保存的修改');
-        await page.screenshot({ path: path.join(output, 'header-auth-fields.png') }).catch(() => {});
+    await scenario('新增 MCP 打开居中编辑器：默认 stdio，改远程传输才出现地址与请求头', async page => {
+        await openMcpEditor(page);
 
-        await page.locator('[data-ec-action="drawer-save"]').click();
-        await page.locator('#ec-drawer').waitFor({ state: 'hidden' });
+        // The drawer is the *other* editor's home: MCP must not fall back to it.
+        assert.equal(await page.locator('#ec-drawer').isVisible(), false,
+            'MCP 新增不得再走旧抽屉');
+        assert.equal(await page.locator('#mcp-stdio-fields').isVisible(), true,
+            '默认传输是 stdio，启动命令与参数就在首屏');
+        assert.equal(await page.locator('#mcp-url-fields').isVisible(), false,
+            'stdio 不显示服务地址');
+        assert.equal(await page.locator('#mcp-advanced-fields').isVisible(), false,
+            '高级设置默认收起');
+        await page.screenshot({ path: path.join(output, 'mcp-editor-create-stdio.png') });
 
+        await chooseTransport(page, 'streamable-http');
+        assert.equal(await page.locator('#mcp-url-fields').isVisible(), true,
+            '改到远程传输后必须出现地址与请求头');
+        assert.equal(await page.locator('#mcp-stdio-fields').isVisible(), false,
+            '远程传输不再要求启动命令');
+        // The OAuth scope is a remote-only field: it lives in 高级设置, and the
+        // transport switch is what makes it appear there.
+        await page.locator('#mcp-advanced-toggle').click();
+        assert.equal(await page.locator('#mcp-scope-field').isVisible(), true,
+            '远程传输才有 OAuth scope');
+        await page.screenshot({ path: path.join(output, 'mcp-editor-create-http.png') });
+
+        await chooseTransport(page, 'stdio');
+        // Back to stdio: the remote-only groups are gone again, so the two
+        // transports really are two different forms rather than a growing one.
+        assert.equal(await page.locator('#mcp-url-fields').isVisible(), false);
+        assert.equal(await page.locator('#mcp-stdio-fields').isVisible(), true);
+        assert.equal(await page.locator('#mcp-scope-field').isVisible(), false,
+            'stdio 不提供 OAuth scope');
+    });
+
+    await scenario('表单与 JSON 双向同步，未知字段在提交前被点名', async page => {
+        await openMcpEditor(page);
+        await page.fill('#mcp-field-name', '知识库 MCP');
+        await page.fill('#mcp-field-command', 'npx');
+        await page.fill('#mcp-field-args', '-y\n@modelcontextprotocol/server-github');
+        await page.fill('#mcp-field-env', 'API_KEY=fixture-key');
+
+        await page.locator('[data-mcp-tab="json"]').click();
+        const json = await page.locator('#mcp-field-json').inputValue();
+        assert.match(json, /"mcpServers"/, 'JSON 面板给出 mcpServers 形状');
+        assert.match(json, /"知识库 MCP"/, '表单里的名字进入 JSON');
+        assert.match(json, /"@modelcontextprotocol\/server-github"/, '参数按行进入 JSON');
+        assert.match(json, /API_KEY=fixture-key|"API_KEY": ?"fixture-key"/, '环境变量进入 JSON');
+
+        // Back to the form: what the JSON box holds repaints the fields, so the
+        // user can paste a config and keep editing it by hand.
+        await page.fill('#mcp-field-json',
+            JSON.stringify({ mcpServers: { 对话助手: { url: 'http://127.0.0.1:9100/mcp',
+                type: 'streamable_http', timeout: 25 } } }, null, 2));
+        await page.locator('[data-mcp-tab="form"]').click();
+        assert.equal(await page.locator('#mcp-field-name').inputValue(), '对话助手',
+            'JSON 里的名字回填到表单');
+        assert.equal(await page.locator('#mcp-field-url').inputValue(), 'http://127.0.0.1:9100/mcp',
+            'serverUrl/url 回填到地址');
+        assert.equal(await page.locator('#mcp-field-timeout').inputValue(), '25',
+            '高级字段也回填，并自动展开高级设置');
+
+        // A field this editor cannot carry is named *before* anything is sent:
+        // silently dropping it would submit a config the user did not write.
+        await page.locator('[data-mcp-tab="json"]').click();
+        await page.fill('#mcp-field-json',
+            JSON.stringify({ mcpServers: { 坏配置: { url: 'http://127.0.0.1:9100/mcp', 工具: 1 } } }));
+        const before = createWrites().length;
+        await page.locator('#mcp-editor-save').click();
+        await page.locator('#mcp-test-result.fail').waitFor({ state: 'visible' });
+        assert.match(await page.locator('#mcp-test-result').innerText(), /工具/,
+            '未知字段要被点名，而不是被丢掉或静默提交');
+        assert.equal(createWrites().length, before, '校验失败不得发出创建请求');
+        await page.screenshot({ path: path.join(output, 'mcp-editor-unknown-field.png') });
+
+        await page.locator('#mcp-editor-cancel').click();
+        await page.locator('[data-ec-action="modal-confirm"]').click();
+        await page.locator('#mcp-editor-overlay').waitFor({ state: 'hidden' });
+    });
+
+    await scenario('Escape 关闭编辑器：先问未保存的输入，再按一次收回问题', async page => {
+        resetEditorFixtures();
+        await openMcpEditor(page);
+        await page.fill('#mcp-field-name', '键盘关闭的 MCP');
+
+        // 已输入内容，所以 Escape 必须先问，而不是直接丢弃。
+        await page.keyboard.press('Escape');
+        await page.locator('#ec-modal').waitFor({ state: 'visible' });
+        assert.match(await page.locator('#ec-modal-panel').innerText(), /不会保存|未保存/,
+            'Escape 不得直接丢弃草稿');
+        assert.equal(await page.locator('#mcp-editor-overlay').isVisible(), true,
+            '提问期间编辑器还在，输入也还在');
+
+        // 第二下 Escape 关上的是问题本身（离焦点最近的那层），不是编辑器。
+        await page.keyboard.press('Escape');
+        await page.locator('#ec-modal').waitFor({ state: 'hidden' });
+        assert.equal(await page.locator('#mcp-editor-overlay').isVisible(), true,
+            '收回问题后编辑器仍然打开');
+        assert.equal(await page.locator('#mcp-field-name').inputValue(), '键盘关闭的 MCP',
+            '收回问题不得动已经写下的内容');
+        await page.screenshot({ path: path.join(output, 'mcp-editor-escape.png') });
+
+        // 确认丢弃才是真的关掉它，并且连带清掉草稿。
+        await page.keyboard.press('Escape');
+        await page.locator('[data-ec-action="modal-confirm"]').click();
+        await page.locator('#mcp-editor-overlay').waitFor({ state: 'hidden' });
+        assert.equal(await page.locator('#mcp-field-name').inputValue(), '',
+            '关闭要清掉未保存的输入');
+
+        // 空编辑器上的 Escape 就是 master 的行为：直接关，不提问。
+        await openMcpEditor(page);
+        await page.keyboard.press('Escape');
+        await page.locator('#mcp-editor-overlay').waitFor({ state: 'hidden' });
+        assert.equal(await page.locator('#ec-modal').isVisible(), false,
+            '没有输入就不该提问');
+    });
+
+    await scenario('批量 JSON 逐项创建：失败即停，重试只补未完成项并复用原幂等键', async page => {
+        resetEditorFixtures();
+        const baseline = createWrites().length;
+        createRefusals.beta = 'name_conflict';
+        await openMcpEditor(page);
+        await page.locator('[data-mcp-tab="json"]').click();
+        await page.fill('#mcp-field-json', JSON.stringify({ mcpServers: {
+            alpha: { command: 'uvx', args: ['alpha-server'] },
+            beta: { command: 'uvx', args: ['beta-server'] },
+            gamma: { command: 'uvx', args: ['gamma-server'] },
+        } }, null, 2));
+
+        await page.locator('#mcp-editor-save').click();
+        // 逐项提交：alpha 提交，beta 被拒，gamma 从未提交 —— 只有两条创建请求。
+        await page.locator('#mcp-test-result .fa-circle-xmark').waitFor({ state: 'visible' });
+
+        const first = createWrites().slice(baseline);
+        assert.deepEqual(first.map(entry => entry.body.name), ['alpha', 'beta'],
+            '失败即停：被拒项之后的内容不得继续提交');
+        assert.equal(first.every(entry => entry.idempotencyKey), true,
+            '每条创建都必须带自己的幂等键');
+        assert.equal(new Set(first.map(entry => entry.idempotencyKey)).size, 2,
+            '两个条目不得共用一个幂等键');
+        assert.deepEqual(Object.keys(first[0].body.config).sort(),
+            ['args', 'command', 'transport'], 'stdio 只提交命令、参数与传输方式');
+        assert.equal(first[0].body.secrets, undefined,
+            '没有输入凭据就不提交任何秘密组');
+        assert.equal(await page.locator('#mcp-editor-overlay').isVisible(), true,
+            '部分成功不得关闭编辑器，未完成项还在里面');
+        assert.match(await page.locator('#mcp-test-result').innerText(), /beta/,
+            '逐项结果要指出哪一项没成功');
+        await page.screenshot({ path: path.join(output, 'mcp-editor-batch-partial.png') });
+
+        // 部分保存刷新了目录；编辑器必须仍是同一个会话，否则重试会被静默拒绝。
+        assert.ok(report.requests.filter(entry =>
+            entry.pathname === '/api/external-connections/catalog').length >= 2,
+        '部分保存后目录要重新读取');
+
+        // 重试：已确认的 alpha 不再提交；被拒项与后续项各自带键重发。
+        delete createRefusals.beta;
+        await page.locator('#mcp-editor-save').click();
+        await page.locator('#mcp-editor-overlay').waitFor({ state: 'hidden' });
+
+        const all = createWrites().slice(baseline);
+        assert.deepEqual(all.map(entry => entry.body.name),
+            ['alpha', 'beta', 'beta', 'gamma'],
+            '重试只补未完成项，不重发已确认的 alpha');
+        // 输入未变：被拒项沿用原键，服务端才能把重试对上同一次提交。
+        assert.equal(all[2].idempotencyKey, all[1].idempotencyKey,
+            '未修改的被拒项要沿用原幂等键');
+        assert.equal(new Set(all.map(entry => entry.idempotencyKey)).size, 3,
+            '三个条目各自一个键，且 gamma 不是借来的');
+    });
+
+    await scenario('编辑草稿测试引用连接 ID 与版本，没重填的请求头不外发', async page => {
+        resetEditorFixtures();
+        const drafts = report.draftTests.length;
+        await page.locator('[data-ec-action="open"][data-mode="edit"]').first().click();
+        await page.locator('#mcp-editor-overlay').waitFor({ state: 'visible' });
+
+        // The name is the row's identity: an edit does not rename it.
+        assert.equal(await page.locator('#mcp-field-name').isDisabled(), true,
+            '编辑草稿的稳定 ID 来自行本身，名称不可改');
+        assert.equal(await page.locator('#mcp-field-name').inputValue(), 'OneAgent HTTP MCP');
+        assert.equal(await page.locator('#mcp-advanced-fields').isVisible(), true,
+            '已保存的超时与前缀要展开可见');
+
+        // 只改超时，认证请求头不重新输入。
+        await page.fill('#mcp-field-timeout', '45');
+        await page.locator('#mcp-editor-test').click();
+        await page.locator('#mcp-test-result.ok').waitFor({ state: 'visible' });
+
+        const probe = report.draftTests[drafts];
+        assert.ok(probe, '测试必须走草稿测试路由');
+        assert.equal(probe.body.connection_id, 'mcp-1', '编辑草稿要引用稳定连接 ID');
+        assert.equal(probe.body.expected_version, 6, '并且绑定到读取时的版本');
+        assert.equal(probe.body.config.timeout, 45, '测试用的是本次改动的配置');
+        assert.equal(probe.body.secrets, undefined,
+            '没有重新输入凭据就不得发送 secrets：服务端按整组保留解析');
+        assert.match(await page.locator('#mcp-test-result').innerText(), /连接正常|工具/,
+            '测试结果来自服务端的探测结论');
+
+        await page.locator('#mcp-editor-save').click();
+        await page.locator('#mcp-editor-overlay').waitFor({ state: 'hidden' });
         const write = report.writes[report.writes.length - 1];
-        assert.ok(write, '保存必须发出创建请求');
-        assert.equal(write.body.name, '税法知识库');
-        assert.equal(write.body.config.auth, 'header');
-        assert.equal(write.body.config.header_name, 'Authorization',
-            '头名进入 config，不是秘密');
-        assert.deepEqual(write.body.secrets, { header: 'Bearer TOKEN-123' },
-            '令牌只进入 secrets，且正是认证请求头值里的内容');
+        assert.match(write.pathname, /\/api\/external-connections\/tenant\/mcp-1\/update$/);
+        assert.equal(write.body.config.timeout, 45, '保存提交新的超时');
+        assert.equal(write.body.expected_version, 6, '保存也带版本，避免覆盖并发改动');
+        assert.equal(write.body.secrets, undefined, '未触碰的凭据组不得被空组覆盖');
+        assert.deepEqual(write.body.config.header_names, ['Authorization'],
+            '未重填的请求头声明要随配置保留，否则保留下来的凭据就再也用不上');
+        await page.screenshot({ path: path.join(output, 'mcp-editor-edit-save.png') });
     });
 
-    await scenario('切到 stdio 后要出现启动命令', async page => {
-        await openMcpDrawer(page);
-        assert.equal(await page.locator('#ec-f-command').isVisible(), false,
-            '远程传输时不出现启动命令');
-        await page.selectOption('#ec-f-transport', 'stdio');
-        assert.equal(await page.locator('#ec-f-command').isVisible(), true,
-            '切到 stdio 后必须出现启动命令');
-        assert.equal(await page.locator('#ec-f-url').isVisible(), false,
-            'stdio 不再要求服务地址');
+    await scenario('测试失败后仍可保存：仍然保存只跳过探测，不绕过校验', async page => {
+        resetEditorFixtures();
+        draftOutcome = 'fail';
+        const baseline = createWrites().length;
+        await openMcpEditor(page);
+        await page.fill('#mcp-field-name', '探测失败的 MCP');
+        await chooseTransport(page, 'streamable-http');
+        await page.fill('#mcp-field-url', 'http://127.0.0.1:9100/mcp');
+
+        await page.locator('#mcp-editor-save').click();
+        await page.locator('#mcp-test-result .fa-circle-xmark').waitFor({ state: 'visible' });
+        assert.equal(createWrites().length, baseline, '探测失败不得提交创建');
+        assert.match(await page.locator('#mcp-test-result').innerText(), /连接正常|失败|连接被拒绝|connection_refused/,
+            '失败原因要照实呈现');
+        assert.equal(await page.locator('#mcp-editor-save').innerText(), '仍然保存',
+            '失败后保存按钮要变成明确的“仍然保存”');
+        await page.screenshot({ path: path.join(output, 'mcp-editor-save-anyway.png') });
+
+        draftOutcome = 'ok';
+        await page.locator('#mcp-editor-save').click();
+        await page.locator('#mcp-editor-overlay').waitFor({ state: 'hidden' });
+        const write = createWrites().slice(baseline).pop();
+        assert.equal(write.body.name, '探测失败的 MCP', '仍然保存把合法配置照常提交');
+        assert.equal(write.body.config.url, 'http://127.0.0.1:9100/mcp');
+        assert.equal(write.body.secrets, undefined, '没有输入凭据就不提交任何秘密组');
+
+        // 字段错误仍然被拒：跳过探测不等于绕过校验。
+        await openMcpEditor(page);
+        await page.locator('#mcp-editor-save').click();
+        await page.locator('#mcp-test-result.fail').waitFor({ state: 'visible' });
+        assert.equal(createWrites().length, baseline + 1, '没有名字的草稿不得提交');
+        await page.locator('#mcp-editor-cancel').click();
+        await page.locator('#mcp-editor-overlay').waitFor({ state: 'hidden' });
     });
 
-    // -- Published tools, no per-tool declaration (change add-external-mcp-readonly-tool-execution)
+    await scenario('脏编辑器取消时先问，问题要盖在编辑器之上', async page => {
+        resetEditorFixtures();
+        await openMcpEditor(page);
+        await page.fill('#mcp-field-name', '还没保存的名字');
 
-    await scenario('MCP 表单不再出现逐条工具声明，只提交连接级配置', async page => {
-        await openMcpDrawer(page);
-        assert.equal(await page.locator('#ec-f-read_only_tools').count(), 0,
-            '表单不得再提供逐条工具声明');
-        assert.equal(await page.locator('[data-ec-field-wrap="read_only_tools"]').count(), 0,
-            '也不得留下该字段的外壳或错误位');
+        await page.locator('#mcp-editor-cancel').click();
+        await page.locator('#ec-modal').waitFor({ state: 'visible' });
+        assert.match(await page.locator('#ec-modal-panel').innerText(), /不会保存|未保存/,
+            '取消要先问，不能直接丢弃输入');
+        // The master overlay sits at z-index 200: a question asked over it has
+        // to be lifted, or the user is asked something they cannot see.
+        const raised = await page.evaluate(() => {
+            const modal = document.getElementById('ec-modal');
+            const overlay = document.getElementById('mcp-editor-overlay');
+            return { cls: modal.className,
+                modalZ: getComputedStyle(modal.closest('.ec-modal') || modal).zIndex,
+                overlayZ: getComputedStyle(overlay).zIndex };
+        });
+        assert.match(raised.cls, /ec-modal-raised/, '未保存提示要抬到编辑器之上');
+        assert.ok(Number(raised.modalZ) > Number(raised.overlayZ),
+            '提示的层要高于编辑器：' + JSON.stringify(raised));
 
-        // 可调用性来自服务器的发布，与传输方式无关：切到 stdio 也不该冒出声明字段。
-        await page.selectOption('#ec-f-transport', 'stdio');
-        assert.equal(await page.locator('#ec-f-read_only_tools').count(), 0,
-            '切到 stdio 后同样没有声明字段');
-        await page.selectOption('#ec-f-transport', 'streamable_http');
+        await page.locator('[data-ec-action="modal-close"]').click();
+        assert.equal(await page.locator('#mcp-editor-overlay').isVisible(), true,
+            '选择继续编辑时编辑器必须还在');
+        assert.equal(await page.locator('#mcp-field-name').inputValue(), '还没保存的名字',
+            '输入不得被丢弃');
 
-        await page.fill('#ec-f-name', '知识库 MCP');
-        await page.fill('#ec-f-url', 'http://127.0.0.1:8080/mcp');
-        await page.screenshot({ path: path.join(output, 'mcp-connection-level-only.png') });
-
-        await page.locator('[data-ec-action="drawer-save"]').click();
-        await page.locator('#ec-drawer').waitFor({ state: 'hidden' });
-
-        const write = report.writes[report.writes.length - 1];
-        assert.ok(write, '保存必须发出创建请求');
-        assert.deepEqual(Object.keys(write.body.config).sort(), ['auth', 'transport', 'url'],
-            '只提交连接级配置，不枚举远端工具');
-        assert.deepEqual(write.body.secrets, undefined, '没有工具名冒充凭据');
+        await page.locator('#mcp-editor-cancel').click();
+        await page.locator('[data-ec-action="modal-confirm"]').click();
+        await page.locator('#mcp-editor-overlay').waitFor({ state: 'hidden' });
     });
+
+    await scenario('窄屏（360px）新增 MCP 仍完整可用', async page => {
+        resetEditorFixtures();
+        await openMcpEditor(page);
+        const panel = await page.locator('#mcp-editor-overlay > div').boundingBox();
+        assert.ok(panel.width <= 360, '编辑器不得溢出 360px 视口：' + panel.width);
+        const save = await page.locator('#mcp-editor-save').boundingBox();
+        assert.ok(save.x >= 0 && save.x + save.width <= 361, '保存按钮必须在视口内');
+        await page.fill('#mcp-field-name', '窄屏 MCP');
+        await page.fill('#mcp-field-command', 'uvx');
+        await page.screenshot({ path: path.join(output, 'mcp-editor-narrow-360.png') });
+        await page.locator('#mcp-editor-cancel').click();
+        await page.locator('[data-ec-action="modal-confirm"]').click();
+        await page.locator('#mcp-editor-overlay').waitFor({ state: 'hidden' });
+    }, { width: 360, height: 780 });
+
+    await scenario('深色主题下新增 MCP 仍完整可用', async page => {
+        resetEditorFixtures();
+        assert.equal(await page.evaluate(
+            () => document.documentElement.classList.contains('dark')), true,
+            '深色偏好要在首次绘制前落到根元素上');
+        await openMcpEditor(page);
+        await page.fill('#mcp-field-name', '深色 MCP');
+        await chooseTransport(page, 'streamable-http');
+        await page.fill('#mcp-field-url', 'http://127.0.0.1:9100/mcp');
+        // The credentials field is the one group whose visibility depends on the
+        // transport, so it is the useful thing to check under the other theme.
+        assert.equal(await page.locator('#mcp-url-fields').isVisible(), true);
+        assert.equal(await page.locator('#mcp-stdio-fields').isVisible(), false);
+        await page.screenshot({ path: path.join(output, 'mcp-editor-dark.png') });
+        await page.locator('#mcp-editor-cancel').click();
+        await page.locator('[data-ec-action="modal-confirm"]').click();
+        await page.locator('#mcp-editor-overlay').waitFor({ state: 'hidden' });
+    }, { theme: 'dark' });
 
     // -- Agent assignment (change add-external-connection-agent-assignment) ---
 

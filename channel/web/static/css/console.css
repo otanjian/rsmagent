@@ -6578,6 +6578,10 @@ button.composer-menu-item.joined:hover .joined-remove { display: inline; color: 
 /* ---- modal ---- */
 .ec-modal { position: fixed; inset: 0; z-index: 80; }
 .ec-modal[hidden] { display: none; }
+/* Lifted over the master MCP editor (change align-mcp-editor-with-master): its
+   overlay sits at z-index 200, so the page's "discard changes?" dialog has to
+   be raised or it would open behind the editor it is asking about. */
+.ec-modal.ec-modal-raised { z-index: 220; }
 .ec-modal-backdrop { position: absolute; inset: 0; background: rgba(15,23,42,.45); backdrop-filter: blur(2px); }
 .ec-modal-panel {
     position: relative; margin: 8vh auto 0; width: min(32rem, calc(100% - 2rem));

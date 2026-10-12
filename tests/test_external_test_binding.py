@@ -95,7 +95,7 @@ def probe_kind(monkeypatch):
     two calls. The registry is restored afterwards, so no other module sees the
     scripted adapter.
     """
-    state = {"result": ProbeResult(stages=(stage_ok("handshake"),))}
+    state = {"result": ProbeResult(stages=(stage_ok("handshake"),)), "ctx": None}
 
     real_classes = dict(base_mod._ADAPTER_CLASSES)  # noqa: SLF001
     real_instances = dict(base_mod._ADAPTERS)  # noqa: SLF001
@@ -106,6 +106,10 @@ def probe_kind(monkeypatch):
         write_actions = frozenset()
 
         def probe(self, ctx):
+            # Recorded so an *editing* draft can be asked which credential it
+            # actually resolved: "the store was consulted" is invisible in the
+            # returned verdict once the result is scrubbed.
+            state["ctx"] = ctx
             return state["result"]
 
     register_adapter(_BindingAdapter)
@@ -489,3 +493,108 @@ def test_a_recorded_summary_never_contains_the_secret(svc, stack, probe_kind):
     assert len(rows) == 1
     stored = json.dumps([dict(row) for row in rows], ensure_ascii=False)
     assert SECRET not in stored
+
+# -- the editing draft (change align-mcp-editor-with-master, task 3.3) ------
+#
+# The master editor tests an *existing* connection before saving it. That draft
+# carries the connection id and the version the caller was editing, which makes
+# it a different thing from the unsaved-form draft above: a slot the caller did
+# not replace has to come from the store, and a version that moved underneath
+# the form has to invalidate the attempt instead of testing a mix of old and
+# new. The keep/replace/clear vocabulary is the save's, so the browser is never
+# handed the stored value back.
+
+def test_an_editing_draft_resolves_an_untouched_slot_from_the_store(
+        svc, stack, probe_kind):
+    connection = _create(svc, stack)
+
+    payload = svc.probe_draft(
+        KIND, dict(CONFIG, url="https://other.example.com/mcp"),
+        secrets={}, actor_user_id=stack.root, tenant_id=stack.tenant_id,
+        connection_id=connection["id"],
+        expected_version=int(connection["version"]))
+
+    assert payload["ok"] is True
+    # The blank field meant "keep": the stored credential is what was probed.
+    assert probe_kind["ctx"].optional_secret(SLOT) == SECRET
+    # And the address the caller typed is the one that was used.
+    assert probe_kind["ctx"].config["url"] == "https://other.example.com/mcp"
+
+
+def test_an_editing_draft_uses_a_replacement_for_this_attempt_only(
+        svc, stack, probe_kind):
+    connection = _create(svc, stack)
+
+    svc.probe_draft(
+        KIND, dict(CONFIG), secrets={SLOT: "a-one-shot-replacement"},
+        actor_user_id=stack.root, tenant_id=stack.tenant_id,
+        connection_id=connection["id"],
+        expected_version=int(connection["version"]))
+
+    assert probe_kind["ctx"].optional_secret(SLOT) == "a-one-shot-replacement"
+    # A draft is not a rotation: the saved verdict is untouched and a later
+    # saved test still probes the stored value.
+    assert svc.runtime().last_test(
+        connection["id"], tenant_id=stack.tenant_id) is None
+    svc.runtime().probe(connection["id"], actor_user_id=stack.root,
+                        tenant_id=stack.tenant_id)
+    assert probe_kind["ctx"].optional_secret(SLOT) == SECRET
+
+
+def test_an_editing_draft_can_clear_a_slot_for_this_attempt(
+        svc, stack, probe_kind):
+    """`null` is the explicit clear -- the probe must not fall back to the store."""
+    connection = _create(svc, stack)
+
+    svc.probe_draft(
+        KIND, dict(CONFIG), secrets={SLOT: None},
+        actor_user_id=stack.root, tenant_id=stack.tenant_id,
+        connection_id=connection["id"],
+        expected_version=int(connection["version"]))
+
+    from integrations.external.adapters.base import AdapterError
+    with pytest.raises(AdapterError):
+        probe_kind["ctx"].secret(SLOT)
+
+
+def test_an_editing_draft_is_refused_when_the_connection_moved(
+        svc, stack, probe_kind):
+    connection = _create(svc, stack)
+    stale = int(connection["version"])
+    svc.update_connection(
+        actor_user_id=stack.root, scope=registry.SCOPE_TENANT,
+        connection_id=connection["id"], expected_version=stale,
+        tenant_id=stack.tenant_id, name="Renamed")
+
+    with pytest.raises(ExternalConnectionError) as caught:
+        svc.probe_draft(
+            KIND, dict(CONFIG), secrets={},
+            actor_user_id=stack.root, tenant_id=stack.tenant_id,
+            connection_id=connection["id"], expected_version=stale)
+
+    assert caught.value.code == "version_conflict"
+    # Nothing was probed from the stale form.
+    assert probe_kind["ctx"] is None
+
+
+def test_an_editing_draft_reports_the_version_it_was_based_on(
+        svc, stack, probe_kind):
+    connection = _create(svc, stack)
+    payload = svc.probe_draft(
+        KIND, dict(CONFIG), secrets={}, actor_user_id=stack.root,
+        tenant_id=stack.tenant_id, connection_id=connection["id"],
+        expected_version=int(connection["version"]))
+
+    assert payload["connection_id"] == connection["id"]
+    assert payload["config_version"] == int(connection["version"])
+
+
+def test_an_unsaved_draft_still_resolves_nothing_from_the_store(
+        svc, stack, probe_kind):
+    """The other direction: without an id the draft has no store to fall back to."""
+    from integrations.external.adapters.base import AdapterError
+    svc.probe_draft(KIND, dict(CONFIG), secrets={},
+                    actor_user_id=stack.root, tenant_id=stack.tenant_id)
+
+    with pytest.raises(AdapterError):
+        probe_kind["ctx"].secret(SLOT)

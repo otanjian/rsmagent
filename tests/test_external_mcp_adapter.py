@@ -25,9 +25,10 @@ What the specs make non-negotiable, and where each is checked below:
   refused on the service path, the tool-entry-point path and the agent path, and
   the call still consumes the ordinary tool-call quota.
 
-No test needs a real MCP server or the network: the client seam
-(``build_client``) is replaced with a scripted client, and the classification of
-real transport errors is asserted directly.
+No test needs the network: the client seam (``build_client``) is replaced with
+a scripted client, and one probe drives a **real** MCP server on loopback
+(:class:`ControlledMcpServer`) to prove the handshake and discovery happen on
+the wire. The classification of real transport errors is asserted directly.
 """
 
 from __future__ import annotations
@@ -36,6 +37,8 @@ import json
 import re
 import socket
 import ssl
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
@@ -58,7 +61,10 @@ from integrations.external.adapters.base import (
     AdapterError,
     ExecutionContext,
 )
-from integrations.external.adapters.netpolicy import NetworkPolicy
+from integrations.external.adapters.netpolicy import (
+    NetworkPolicy,
+    policy_from_mapping,
+)
 from tests._helpers import build_identity, legacy_connection_rule
 
 MASTER_KEY = "unit-test-master-key"
@@ -368,6 +374,152 @@ def test_probe_sse_connects_and_handshakes(client_seam):
     assert result.outcome == "ok"
     assert fake.initialized == 1
     assert result.metadata["transport"] == "sse"
+
+
+class ControlledMcpServer:
+    """A real Streamable HTTP MCP server on loopback, under the test's control.
+
+    "探测 = 真实握手 + ``tools/list``，不调用业务工具" is a claim about the wire,
+    so one probe drives a real socket instead of the scripted client seam. The
+    server answers the protocol in its own shape and records what arrived: the
+    methods in order, the session id the client echoed back, and the credential
+    it presented. It binds loopback only and reaches nothing else.
+    """
+
+    def __init__(self, *, tools: Sequence[Mapping[str, Any]] = (TOOL_SCHEMA,),
+                 session_id: str = "controlled-mcp-session"):
+        self.tools = [dict(tool) for tool in tools]
+        self.session_id = session_id
+        self.methods: List[str] = []
+        self.bodies: List[Mapping[str, Any]] = []
+        self.credentials: List[str] = []
+        self.sessions: List[str] = []
+        self._httpd: Optional[ThreadingHTTPServer] = None
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self) -> "ControlledMcpServer":
+        server = self
+
+        class Handler(BaseHTTPRequestHandler):
+            # ``urllib`` speaks HTTP/1.1, so answers carry a length and stay
+            # framed; the default 1.0 handler would close after every body.
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *_args):  # keep pytest's output clean
+                return
+
+            def do_POST(self):  # noqa: N802 - http.server's spelling
+                length = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(length) if length else b""
+                try:
+                    message = json.loads(raw.decode("utf-8"))
+                except ValueError:
+                    message = {}
+                method = str(message.get("method") or "")
+                server.methods.append(method)
+                server.bodies.append(message)
+                server.credentials.append(self.headers.get("X-Api-Key") or "")
+                server.sessions.append(self.headers.get("Mcp-Session-Id") or "")
+
+                status, payload = server._answer(message)
+                body = json.dumps(payload).encode("utf-8") if payload is not None else b""
+                self.send_response(status)
+                if method == "initialize" and server.session_id:
+                    self.send_header("Mcp-Session-Id", server.session_id)
+                if body:
+                    self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                if body:
+                    self.wfile.write(body)
+
+        self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self._thread = threading.Thread(target=self._httpd.serve_forever,
+                                        daemon=True)
+        self._thread.start()
+        return self
+
+    def stop(self) -> None:
+        if self._httpd is not None:
+            self._httpd.shutdown()
+            self._httpd.server_close()
+            self._httpd = None
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+            self._thread = None
+
+    @property
+    def url(self) -> str:
+        return "http://127.0.0.1:%d/mcp" % self._httpd.server_address[1]
+
+    @property
+    def policy(self) -> NetworkPolicy:
+        """Loopback granted by name and by address, ``http`` explicitly allowed."""
+        return policy_from_mapping({
+            "allow_hosts": ["127.0.0.1"],
+            "allow_networks": ["127.0.0.1/32"],
+            "allow_insecure_http": True,
+        })
+
+    def _answer(self, message: Mapping[str, Any]):
+        method = str(message.get("method") or "")
+        if method == "initialize":
+            return 200, {
+                "jsonrpc": "2.0", "id": message.get("id"),
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "controlled-mcp", "version": "1.0"},
+                },
+            }
+        if method.startswith("notifications/"):
+            # The spec's "no response" answer, which the client must accept
+            # without waiting for a body.
+            return 202, None
+        if method == "tools/list":
+            return 200, {"jsonrpc": "2.0", "id": message.get("id"),
+                         "result": {"tools": self.tools}}
+        # Any business call reaching this server is a probe defect, and it is
+        # answered as one rather than silently accepted.
+        return 200, {"jsonrpc": "2.0", "id": message.get("id"),
+                     "error": {"code": -32601, "message": "method not found"}}
+
+
+@pytest.fixture
+def controlled_mcp():
+    server = ControlledMcpServer().start()
+    try:
+        yield server
+    finally:
+        server.stop()
+
+
+def test_probe_closes_the_loop_against_a_real_mcp_server(controlled_mcp):
+    """一次真实的远程连接闭环：握手、发现、凭据上线，且不触碰业务工具。"""
+    config = {
+        "transport": "streamable_http",
+        "url": controlled_mcp.url,
+        "auth": "header",
+        "header_name": "X-Api-Key",
+    }
+    result = mcp_adapter.McpAdapter().probe(
+        _ctx(config, policy=controlled_mcp.policy))
+
+    assert result.outcome == "ok"
+    assert [stage.name for stage in result.stages] == ["target", "handshake", "discovery"]
+    # 仅握手与发现：一次 initialize、一次 initialized 通知、一次 tools/list。
+    assert controlled_mcp.methods == [
+        "initialize", "notifications/initialized", "tools/list"]
+    assert controlled_mcp.bodies[0]["params"]["protocolVersion"] == "2024-11-05"
+    # 声明的请求头真的到达服务端，值来自秘密槽而不是配置。
+    assert controlled_mcp.credentials == [HEADER_SECRET] * 3
+    # 会话由服务端分配，客户端在随后的请求里带回来。
+    assert controlled_mcp.sessions == ["", controlled_mcp.session_id,
+                                       controlled_mcp.session_id]
+    assert result.metadata["tools"] == ["echo"]
+    assert result.metadata["tool_count"] == 1
+    assert result.metadata["transport"] == "streamable_http"
+    assert result.metadata["auth"] == "header"
 
 
 @pytest.mark.parametrize("code,stage,expected_stage", [
@@ -1718,3 +1870,255 @@ def test_a_long_connection_id_cannot_push_a_name_over_the_limit(
     from agent.tools.external.external_tool import _external_tool_name
     assert WIRE_NAME_RE.match(_external_tool_name(worst)), len(
         _external_tool_name(worst))
+
+
+# =========================================================================== #
+# 7. The master-editor field set (change align-mcp-editor-with-master)
+#
+# The centered master editor writes three things this adapter did not have
+# before: one encrypted ``headers`` map instead of a single header value, a
+# per-connection ``timeout``, and an independent OAuth scope. What each case
+# below pins is that the *client* receives them -- a field the registry accepts
+# and the client never presents would be a configuration the operator can set
+# and the probe silently ignores.
+# =========================================================================== #
+
+MAP_CONFIG: Mapping[str, Any] = {
+    "transport": "streamable_http",
+    "url": "https://%s/mcp" % ALLOWED_HOST,
+    "header_names": ["X-Api-Key", "X-Tenant"],
+}
+HEADERS_MAP = json.dumps({"X-Api-Key": "map-secret-1", "X-Tenant": "tenant-a"})
+
+
+class _RecordingMcpClient:
+    """A ``McpClient`` stand-in that records the config it was built from.
+
+    ``build_client`` imports ``McpClient`` *inside* the function, so replacing
+    the module attribute is what the adapter actually sees. The config is kept
+    rather than the client: the question is what was handed to the transport.
+    """
+
+    instances: List["_RecordingMcpClient"] = []
+
+    def __init__(self, config: Mapping[str, Any]):
+        self.config = dict(config)
+        type(self).instances.append(self)
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.instances = []
+
+
+@pytest.fixture
+def built_config(monkeypatch):
+    from agent.tools.mcp import mcp_client as mcp_client_module
+
+    _RecordingMcpClient.reset()
+    monkeypatch.setattr(mcp_client_module, "McpClient", _RecordingMcpClient)
+
+    def _build(ctx: ExecutionContext) -> Dict[str, Any]:
+        mcp_adapter.build_client(ctx)
+        assert _RecordingMcpClient.instances, "no client was built"
+        return _RecordingMcpClient.instances[-1].config
+
+    return _build
+
+
+def test_the_headers_map_slot_is_presented_as_request_headers(built_config):
+    """One encrypted map becomes the request headers, name for name."""
+    config = built_config(_ctx(MAP_CONFIG, secrets={"headers": HEADERS_MAP}))
+
+    assert config["headers"] == {"X-Api-Key": "map-secret-1",
+                                 "X-Tenant": "tenant-a"}
+
+
+def test_the_headers_map_wins_over_a_leftover_legacy_header_secret(built_config):
+    """A replaced map must not fall back to the value it replaced.
+
+    The legacy single slot is read only when the map is absent. If a connection
+    that has both (map written, old secret not yet pruned) presented the old
+    value too, "replace the credential" would be unenforceable on the wire.
+    """
+    config = built_config(_ctx(
+        dict(MAP_CONFIG, header_name="X-Legacy"),
+        secrets={"headers": HEADERS_MAP, "header": "legacy-secret-zz"}))
+
+    assert config["headers"] == {"X-Api-Key": "map-secret-1",
+                                 "X-Tenant": "tenant-a"}
+    assert "legacy-secret-zz" not in list(config["headers"].values())
+
+
+def test_a_legacy_single_header_connection_still_works(built_config):
+    """The old representation keeps working, unchanged."""
+    config = built_config(_ctx(STREAMABLE_CONFIG,
+                               secrets={"header": HEADER_SECRET,
+                                        "headers": ""}))
+
+    assert config["headers"] == {"X-Api-Key": HEADER_SECRET}
+
+
+def test_a_cleared_headers_map_is_absent_rather_than_empty(built_config):
+    """Clearing the map = no headers, not `{"X-Api-Key": ""}`."""
+    config = built_config(_ctx(
+        dict(MAP_CONFIG, header_name="X-Legacy"),
+        secrets={"headers": "", "header": ""}))
+
+    assert "headers" not in config
+
+
+def test_a_malformed_headers_map_never_crashes_a_bounded_attempt(built_config):
+    config = built_config(_ctx(MAP_CONFIG, secrets={"headers": "{not json"}))
+
+    assert "headers" not in config
+
+
+def test_oauth_scope_is_carried_to_the_client(built_config):
+    """The scope is a separate field: it is not the provider name."""
+    config = built_config(_ctx(
+        {"transport": "streamable_http", "url": "https://%s/mcp" % ALLOWED_HOST,
+         "auth": "oauth", "oauth_scope": "mcp.read mcp.write"},
+        secrets={"oauth": "token"}))
+
+    assert config["scope"] == "mcp.read mcp.write"
+
+
+def test_a_configured_timeout_is_the_stricter_of_the_two(built_config):
+    """A short user value is obeyed; a long one never outlasts the budget."""
+    short = built_config(_ctx(dict(STREAMABLE_CONFIG, timeout=5),
+                              limits={"test_timeout": 30}))
+    long = built_config(_ctx(dict(STREAMABLE_CONFIG, timeout=600),
+                             limits={"test_timeout": 30}))
+
+    assert short["timeout"] == 5
+    assert long["timeout"] == 30
+
+
+def test_the_deployment_timeout_still_applies_without_a_configured_one(built_config):
+    config = built_config(_ctx(dict(STREAMABLE_CONFIG),
+                               limits={"test_timeout": 12}))
+    assert config["timeout"] == 12
+
+
+def test_capabilities_accept_the_headers_map_as_the_credential():
+    """`auth=header` is satisfied by the map slot, not only by the legacy one.
+
+    Reporting `secret_missing` here would make the console call a working master
+    connection incomplete, and an operator would re-enter a credential that is
+    already stored.
+
+    The config goes through the registry first, because that is the hop that
+    turns a declared `header_names` into `auth=header`; the stored row is always
+    the normalized dict, so the capability projection only ever sees that shape.
+    """
+    normalized = registry.validate_config(registry.KIND_MCP, MAP_CONFIG)
+    assert normalized["auth"] == "header"
+    report = mcp_adapter.McpAdapter().describe_capabilities(
+        _ctx(normalized, secrets={"headers": HEADERS_MAP}))
+
+    assert report.reasons.get("header") is None
+
+
+def test_capabilities_still_report_a_missing_credential():
+    """The other direction: with neither slot the gap is still named."""
+    normalized = registry.validate_config(registry.KIND_MCP, MAP_CONFIG)
+    report = mcp_adapter.McpAdapter().describe_capabilities(
+        _ctx(normalized, secrets={"headers": "", "header": ""}))
+
+    assert report.reasons.get("header") == "secret_missing"
+
+
+# -- what the *type* accepts from the master editor --------------------------
+
+def test_registry_infers_the_auth_mode_from_the_declaration():
+    """The master editor has no auth selector; the declaration selects it.
+
+    Sending an explicit `auth` would work too, but the editor's own payload
+    never has one, so the inference is the path production takes.
+    """
+    header_only = registry.validate_config(registry.KIND_MCP, MAP_CONFIG)
+    assert header_only["auth"] == "header"
+    assert header_only["header_names"] == ["X-Api-Key", "X-Tenant"]
+
+    oauth = registry.validate_config(registry.KIND_MCP, {
+        "transport": "streamable_http",
+        "url": "https://%s/mcp" % ALLOWED_HOST,
+        "oauth_scope": "mcp.read",
+    })
+    assert oauth["auth"] == "oauth"
+    assert oauth["oauth_scope"] == "mcp.read"
+
+    bare = registry.validate_config(registry.KIND_MCP, {
+        "transport": "streamable_http",
+        "url": "https://%s/mcp" % ALLOWED_HOST,
+    })
+    assert bare["auth"] == "none"
+
+
+def test_registry_refuses_a_duplicate_header_name():
+    from integrations.external.errors import ExternalConnectionError
+    with pytest.raises(ExternalConnectionError) as caught:
+        registry.validate_config(registry.KIND_MCP, dict(
+            MAP_CONFIG, header_names=["X-Api-Key", "x-api-key"]))
+
+    assert caught.value.code == "field_invalid"
+    assert caught.value.fields.get("header_names") == "duplicate"
+
+
+def test_registry_refuses_a_hand_written_authorization_header_with_oauth():
+    """The one combination the client cannot serve: the token would be
+    overwritten by (or would shadow) the header the operator wrote."""
+    from integrations.external.errors import ExternalConnectionError
+    with pytest.raises(ExternalConnectionError) as caught:
+        registry.validate_config(registry.KIND_MCP, {
+            "transport": "streamable_http",
+            "url": "https://%s/mcp" % ALLOWED_HOST,
+            "auth": "oauth",
+            "oauth_scope": "mcp.read",
+            "header_names": ["Authorization"],
+        })
+
+    assert caught.value.code == "field_invalid"
+    assert caught.value.fields.get("header_names") == "not_allowed"
+
+
+def test_registry_bounds_the_timeout_and_drops_an_empty_one():
+    from integrations.external.errors import ExternalConnectionError
+    base = {"transport": "streamable_http",
+            "url": "https://%s/mcp" % ALLOWED_HOST}
+
+    assert registry.validate_config(
+        registry.KIND_MCP, dict(base, timeout=45))["timeout"] == 45
+    # An untouched field arrives as "" from the form; it means "use the
+    # deployment default", not "timeout 0".
+    assert "timeout" not in registry.validate_config(
+        registry.KIND_MCP, dict(base, timeout=""))
+    for bad in (0, 301):
+        with pytest.raises(ExternalConnectionError):
+            registry.validate_config(registry.KIND_MCP, dict(base, timeout=bad))
+
+
+def test_registry_refuses_remote_fields_on_a_stdio_connection():
+    from integrations.external.errors import ExternalConnectionError
+    with pytest.raises(ExternalConnectionError) as caught:
+        registry.validate_config(registry.KIND_MCP, {
+            "transport": "stdio", "command": "npx",
+            "header_names": ["X-Api-Key"],
+        })
+
+    assert caught.value.code == "field_invalid"
+    assert caught.value.fields.get("header_names") == "not_allowed"
+
+
+def test_registry_refuses_a_tool_name_prefix_that_would_be_ambiguous():
+    """The prefix is identity, so a character that separates ids is refused."""
+    from integrations.external.errors import ExternalConnectionError
+    base = {"transport": "streamable_http",
+            "url": "https://%s/mcp" % ALLOWED_HOST}
+    for bad in ("has space", "a:b", "a/b"):
+        with pytest.raises(ExternalConnectionError):
+            registry.validate_config(registry.KIND_MCP,
+                                     dict(base, tool_name_prefix=bad))
+    assert registry.validate_config(
+        registry.KIND_MCP, dict(base, tool_name_prefix="my_server-1."))[
+            "tool_name_prefix"] == "my_server-1."

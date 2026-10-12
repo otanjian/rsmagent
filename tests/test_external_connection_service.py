@@ -798,3 +798,105 @@ def test_the_catalogue_only_counts_visible_rows(stack, svc):
     assert personal_catalogue["total"] == 1
     # The member's page cannot see the tenant rows at all.
     assert len(personal_catalogue["items"]) == 1
+
+
+# -- the initial state and the idempotency ledger (change
+#    align-mcp-editor-with-master, task 2.4)
+#
+# The master editor can create a connection that starts disabled, and it submits
+# a batch one item at a time. Both properties are about the *insert*, not about
+# a follow-up call:
+#
+#   * a connection created disabled must never be inserted enabled and flipped,
+#     because the flip is a second transaction during which anything reading the
+#     table sees a connection the operator did not ask to be on;
+#   * the create and its idempotency record must commit or fail together, or a
+#     retry of the same key after a crash would create a second connection --
+#     which the batch import would then show twice.
+
+def test_a_connection_can_be_created_disabled(stack, svc):
+    connection = svc.create_connection(
+        actor_user_id=stack.root, scope="tenant", tenant_id=stack.tenant_id,
+        kind="mcp", name="Off", config=MCP_HEADER, enabled=False)
+
+    assert connection["enabled"] is False
+    stored = stack.service._store.execute(
+        "SELECT enabled FROM external_connections WHERE id=?",
+        (connection["id"],))[0]
+    assert stored["enabled"] == 0
+    # Read back through the normal path too: the projection must agree.
+    assert svc.get_connection(
+        actor_user_id=stack.root, scope="tenant", tenant_id=stack.tenant_id,
+        connection_id=connection["id"])["enabled"] is False
+
+
+def test_omitting_enabled_keeps_the_historical_default(stack, svc):
+    connection = svc.create_connection(
+        actor_user_id=stack.root, scope="tenant", tenant_id=stack.tenant_id,
+        kind="mcp", name="On", config=MCP_HEADER)
+
+    assert connection["enabled"] is True
+
+
+def test_the_disabled_flag_is_part_of_the_idempotency_fingerprint(stack, svc):
+    """A replay with a different initial state is not the same request."""
+    from integrations.external.errors import ExternalConnectionError
+    svc.create_connection(
+        actor_user_id=stack.root, scope="tenant", tenant_id=stack.tenant_id,
+        kind="mcp", name="Off", config=MCP_HEADER, enabled=False,
+        idempotency_key="key-off")
+
+    with pytest.raises(ExternalConnectionError) as caught:
+        svc.create_connection(
+            actor_user_id=stack.root, scope="tenant", tenant_id=stack.tenant_id,
+            kind="mcp", name="Off", config=MCP_HEADER, enabled=True,
+            idempotency_key="key-off")
+    assert caught.value.code == "idempotency_conflict"
+
+
+def test_a_failed_create_leaves_no_connection_and_no_ledger_row(
+        stack, svc, monkeypatch):
+    """The create and the "remember" are one transaction, not two.
+
+    A failure while writing the idempotency record is injected *after* the row
+    and its secret have been written, which is exactly the window a two-commit
+    implementation would lose: the row would survive, the ledger would not, and
+    a retry of the same key would insert a second connection.
+    """
+    from integrations.external import service as service_module
+
+    def _boom(self, con, **kwargs):
+        raise RuntimeError("injected failure while recording the key")
+
+    monkeypatch.setattr(
+        service_module.ExternalConnectionService,
+        "_remember_idempotent_in_tx", _boom, raising=True)
+
+    with pytest.raises(RuntimeError):
+        svc.create_connection(
+            actor_user_id=stack.root, scope="tenant", tenant_id=stack.tenant_id,
+            kind="mcp", name="Half", config=MCP_HEADER,
+            secrets={"header": SECRET}, idempotency_key="key-atomic")
+
+    assert stack.service._store.execute(
+        "SELECT COUNT(*) c FROM external_connections WHERE name='Half'"
+    )[0]["c"] == 0
+    assert stack.service._store.execute(
+        "SELECT COUNT(*) c FROM credentials"
+    )[0]["c"] == 0
+
+    # And the key is free again: the retry is a first attempt, not a conflict.
+    monkeypatch.undo()
+    retry = svc.create_connection(
+        actor_user_id=stack.root, scope="tenant", tenant_id=stack.tenant_id,
+        kind="mcp", name="Half", config=MCP_HEADER,
+        secrets={"header": SECRET}, idempotency_key="key-atomic")
+    assert retry["id"]
+    assert stack.service._store.execute(
+        "SELECT COUNT(*) c FROM external_connections WHERE name='Half'"
+    )[0]["c"] == 1
+    replay = svc.create_connection(
+        actor_user_id=stack.root, scope="tenant", tenant_id=stack.tenant_id,
+        kind="mcp", name="Half", config=MCP_HEADER,
+        secrets={"header": SECRET}, idempotency_key="key-atomic")
+    assert replay["id"] == retry["id"]

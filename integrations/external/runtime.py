@@ -575,7 +575,9 @@ class ConnectionRuntime:
                     secrets: Optional[Mapping[str, Any]] = None,
                     actor_user_id: str, tenant_id: Optional[str] = None,
                     scope: str = "tenant",
-                    owner_user_id: Optional[str] = None) -> Dict[str, Any]:
+                    owner_user_id: Optional[str] = None,
+                    base_snapshot: Optional[ConnectionSnapshot] = None
+                    ) -> Dict[str, Any]:
         """Test an *unsaved* form. Persists nothing, by construction.
 
         Why this is a separate entry point rather than ``probe`` on a
@@ -585,13 +587,19 @@ class ConnectionRuntime:
         sometimes be meaningless, the draft path builds a throwaway snapshot
         and always runs with ``record=False``.
 
+        ``base_snapshot`` is how *editing* an existing connection is tested: the
+        handler authorized the row and read it, and this path then probes the
+        caller's new configuration while resolving an untouched slot from the
+        store. The keep/replace/clear contract is the same one the save uses, so
+        the browser never has to be handed the stored value back.
+
         What it therefore cannot do, and does not:
 
         * create, update or delete a connection row;
-        * resolve a secret from the credential store (the values are supplied
-          by the caller for this one attempt and are never stored);
+        * persist a caller-supplied secret, or write an
+          ``external_connection_tests`` row the saved path would show;
         * overwrite a saved connection's tested version, or be found by
-          :meth:`last_test` — it writes no ``external_connection_tests`` row.
+          :meth:`last_test`.
 
         The gates are the same three the saved path applies — the deployment's
         ``test`` class, an installed adapter, and the type's own config
@@ -619,12 +627,6 @@ class ConnectionRuntime:
             raise invalid("no adapter is installed for %r" % kind,
                           code="adapter_not_installed")
 
-        snapshot = ConnectionSnapshot(
-            id="", kind=kind, scope=str(scope or "tenant"),
-            tenant_id=tenant_id, owner_user_id=owner_user_id,
-            name="", config=normalized, version=0, enabled=True,
-            base_connection_id=None)
-
         spec = registry_module.TYPE_SPECS.get(kind)
         allowed_slots = spec.secret_slots if spec else frozenset()
         supplied = {str(k): v for k, v in dict(secrets or {}).items()}
@@ -634,21 +636,56 @@ class ConnectionRuntime:
                     "connection type %r has no secret slot %r" % (kind, slot),
                     code="unknown_secret_slot", fields={"secrets": "unknown"})
 
-        def _resolver(slot: str) -> str:
-            if slot not in supplied:
-                raise AdapterError(
-                    "secret slot %r is not configured" % slot,
-                    code="secret_unavailable", stage=STAGE_CONFIG)
-            value = supplied[slot]
-            return "" if value is None else str(value)
+        resolved_secrets: List[str] = []
+        if base_snapshot is not None:
+            if base_snapshot.kind != kind:
+                raise invalid("the draft kind does not match the connection",
+                              code="field_invalid", fields={"kind": "invalid"})
+            snapshot = replace(base_snapshot, config=normalized, enabled=True)
+            store_ctx = self.build_context(
+                snapshot, actor_user_id=actor_user_id, draft=True, extra={},
+                secret_sink=resolved_secrets)
+            store_resolver = store_ctx.secret_resolver
 
-        ctx = self.build_context(
-            snapshot, actor_user_id=actor_user_id, draft=True,
-            extra={})
-        # ``build_context`` resolves secrets through the store; the draft must
-        # not, so the resolver is replaced with the caller's values after the
-        # rest of the context (policy, limits, deadline) has been assembled.
-        ctx = replace(ctx, secret_resolver=_resolver)
+            def _resolver(slot: str) -> str:
+                # keep / replace / clear, the same vocabulary as the save: an
+                # omitted or blank entry keeps the stored value, a null clears
+                # it, and any non-empty value replaces it for this one attempt.
+                if slot in supplied:
+                    value = supplied[slot]
+                    if value is None:
+                        raise AdapterError(
+                            "secret slot %r is not configured" % slot,
+                            code="secret_unavailable", stage=STAGE_CONFIG)
+                    text = str(value)
+                    if text == "":
+                        return store_resolver(slot)
+                    return text
+                return store_resolver(slot)
+
+            ctx = replace(store_ctx, secret_resolver=_resolver)
+        else:
+            snapshot = ConnectionSnapshot(
+                id="", kind=kind, scope=str(scope or "tenant"),
+                tenant_id=tenant_id, owner_user_id=owner_user_id,
+                name="", config=normalized, version=0, enabled=True,
+                base_connection_id=None)
+
+            def _resolver(slot: str) -> str:
+                if slot not in supplied:
+                    raise AdapterError(
+                        "secret slot %r is not configured" % slot,
+                        code="secret_unavailable", stage=STAGE_CONFIG)
+                value = supplied[slot]
+                return "" if value is None else str(value)
+
+            ctx = self.build_context(
+                snapshot, actor_user_id=actor_user_id, draft=True,
+                extra={})
+            # ``build_context`` resolves secrets through the store; the draft must
+            # not, so the resolver is replaced with the caller's values after the
+            # rest of the context (policy, limits, deadline) has been assembled.
+            ctx = replace(ctx, secret_resolver=_resolver)
 
         adapter = adapter_for(kind)
         started = time.monotonic()
@@ -656,12 +693,16 @@ class ConnectionRuntime:
                            uninterruptible=self._uninterruptible(kind))
         duration_ms = int((time.monotonic() - started) * 1000)
 
-        payload = _scrub_payload(
-            result.as_dict(),
-            [v for v in (str(s) for s in supplied.values()) if v])
+        scrub = resolved_secrets + [
+            str(v) for v in supplied.values() if v]
+        payload = _scrub_payload(result.as_dict(), scrub)
         payload["duration_ms"] = duration_ms
-        payload["connection_id"] = ""
-        payload["config_version"] = None
+        # A draft against a real connection reports the id and the version it
+        # was based on, so the console can tell that a later change invalidated
+        # the result. A brand-new draft has neither.
+        payload["connection_id"] = snapshot.id
+        payload["config_version"] = (
+            snapshot.version if base_snapshot is not None else None)
         # Stated rather than omitted: a caller must be able to tell a draft
         # result from a recorded one without knowing which endpoint it called.
         payload["draft"] = True

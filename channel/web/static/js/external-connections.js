@@ -301,7 +301,30 @@
 
     function ecIsDirty() {
         return !!((ecDrawer && ecDrawer.open && ecDrawer.dirty)
-            || (ecModal && ecModal.dirty));
+            || (ecModal && ecModal.dirty)
+            || ecMcpEditorDirty());
+    }
+
+    /** Whether the master MCP editor holds input that is not saved yet. */
+    function ecMcpEditorDirty() {
+        var editor = window.EcMcpEditor;
+        return !!(editor && typeof editor.isDirty === 'function' && editor.isDirty());
+    }
+
+    /** Destroy an open editor and the secrets typed into it. */
+    function ecCloseMcpEditor() {
+        var editor = window.EcMcpEditor;
+        if (!editor || typeof editor.close !== 'function') return;
+        if (typeof editor.isOpen === 'function' && !editor.isOpen()) return;
+        editor.close(true);
+    }
+
+    /** Close the editor the way a user asked, so unsaved input is asked about first. */
+    function ecRequestCloseMcpEditor() {
+        var editor = window.EcMcpEditor;
+        if (!editor || typeof editor.close !== 'function') return;
+        if (typeof editor.isOpen === 'function' && !editor.isOpen()) return;
+        editor.close();
     }
 
     function ecStillCurrent(epoch, identity) {
@@ -1223,8 +1246,25 @@
                 return;
             }
             var detail = ecPayloadOf(res);
+            var resolved = mode || (detail.actions && detail.actions.indexOf('manage') >= 0
+                ? 'edit' : 'view');
+            // An MCP connection is created and edited in the master editor, not
+            // the drawer. A read-only visitor has nothing to edit there, so that
+            // one case keeps the drawer's view mode -- it is what explains the
+            // row while changing nothing.
+            if (detail.kind === 'mcp' && resolved !== 'view') {
+                ecOpenMcpEditor({
+                    mode: resolved,
+                    scope: detail.scope,
+                    id: detail.id,
+                    version: detail.version,
+                    original: detail,
+                    focus: card && card.node,
+                });
+                return;
+            }
             ecOpenDrawer({
-                mode: mode || (detail.actions && detail.actions.indexOf('manage') >= 0 ? 'edit' : 'view'),
+                mode: resolved,
                 kind: detail.kind,
                 scope: detail.scope,
                 id: detail.id,
@@ -1519,6 +1559,312 @@
             cancel.textContent = ecT('ec_keep_editing');
             cancel.addEventListener('click', function () { if (onKeep) onKeep(); });
         }
+        // The master editor's overlay sits at z-index 200, so a question asked
+        // while it is open has to be lifted over it or the user would be asked
+        // something they cannot see.
+        if (ecMcpEditorDirty() || (window.EcMcpEditor
+                && typeof window.EcMcpEditor.isOpen === 'function'
+                && window.EcMcpEditor.isOpen())) {
+            var modal = document.getElementById('ec-modal');
+            if (modal) modal.classList.add('ec-modal-raised');
+        }
+    }
+
+    // =================================================================
+    // MCP editor (change align-mcp-editor-with-master)
+    //
+    // An MCP connection is created and edited in the master editor
+    // (templates/modals/mcp-editor.html, driven by static/js/mcp-editor.js)
+    // instead of the drawer. The split is deliberate: the editor owns the
+    // markup, the form/JSON switch and the batch submission order; this page
+    // keeps owning everything that is *this* deployment's -- the request
+    // vocabulary, the credential slots, the identity guard and the directory.
+    //
+    // The drawer still renders an MCP row for a caller who may only read it,
+    // and still serves every other kind.
+    // =================================================================
+    var MCP_TRANSPORT_IN = {
+        'streamable-http': 'streamable-http', streamable_http: 'streamable-http',
+        sse: 'sse', stdio: 'stdio',
+    };
+
+    function ecMcpTransportIn(value) {
+        var key = String(value || '').trim();
+        if (MCP_TRANSPORT_IN[key]) return MCP_TRANSPORT_IN[key];
+        // A config that names no transport is stdio unless it carries an
+        // address -- the same inference the editor's JSON pane makes.
+        return key ? 'streamable-http' : 'stdio';
+    }
+
+    function ecMcpTransportOut(value) {
+        var key = String(value || '').trim();
+        if (key === 'stdio' || key === 'sse') return key;
+        return 'streamable_http';
+    }
+
+    /**
+     * A stored connection -> the editor's server object.
+     *
+     * The stored credential is never returned by the API, so both groups start
+     * empty and stay "keep" until the user types in them. The declaration is
+     * what the payload builder carries forward for an untouched group; it is
+     * deliberately not shown as a value the client does not have.
+     */
+    function ecMcpServerForEditor(detail) {
+        var config = (detail && detail.config) || {};
+        var server = {
+            name: (detail && detail.name) || '',
+            type: ecMcpTransportIn(config.transport),
+            url: config.url || '',
+            command: config.command || '',
+            args: (config.args || []).slice(),
+            env: {},
+            headers: {},
+            disabled: detail ? detail.enabled === false : false,
+        };
+        if (config.oauth_scope) server.scope = config.oauth_scope;
+        if (config.tool_name_prefix) server.tool_name_prefix = config.tool_name_prefix;
+        if (config.timeout) server.timeout = config.timeout;
+        return server;
+    }
+
+    /**
+     * The editor's server object -> `{config, secrets}` for the connection API.
+     *
+     * `ctx.touched` is what carries keep/replace/clear: an untouched group is
+     * omitted from `secrets` so the stored value survives, and a group the user
+     * emptied after typing in it is sent as `null`, which is this deployment's
+     * explicit clear. That is why a blank textarea can mean two different
+     * things and why the editor has to tell us which one happened.
+     *
+     * The *declaration* has to travel with the value: `header_names` (or the
+     * legacy `header_name`, or `env_keys`) is what tells the client which names
+     * to present, and the update replaces the config wholesale. The stored
+     * credential is never returned to the browser, so an untouched group has no
+     * names to repaint -- without carrying the original declaration forward,
+     * changing only a timeout would drop the declaration and leave the
+     * preserved secret unreachable, and (because `auth` is derived from the
+     * declaration when it is absent) would also rewrite the connection as
+     * unauthenticated. An explicit edit of the group replaces it; that is the
+     * only path that changes it.
+     */
+    function ecMcpPayloadFromServer(server, ctx, original) {
+        var transport = ecMcpTransportOut(server && server.type);
+        var config = { transport: transport };
+        var secrets = {};
+        var touched = (ctx && ctx.touched) || {};
+        var stored = (original && original.config) || {};
+        if (server && server.tool_name_prefix) {
+            config.tool_name_prefix = String(server.tool_name_prefix).trim();
+        }
+        if (server && server.timeout) config.timeout = Number(server.timeout);
+        if (transport === 'stdio') {
+            config.command = String((server && server.command) || '').trim();
+            var args = (server && server.args) || [];
+            if (args.length) config.args = args.slice();
+            var env = (server && server.env) || {};
+            var envNames = Object.keys(env);
+            if (envNames.length) {
+                config.env_keys = envNames;
+                secrets.env = JSON.stringify(env);
+            } else if (touched.env) {
+                secrets.env = null;
+            } else if ((stored.env_keys || []).length) {
+                config.env_keys = stored.env_keys.slice();
+            }
+        } else {
+            config.url = String((server && server.url) || '').trim();
+            var headers = (server && server.headers) || {};
+            var names = Object.keys(headers);
+            if (names.length) {
+                config.header_names = names;
+                secrets.headers = JSON.stringify(headers);
+            } else if (touched.headers) {
+                secrets.headers = null;
+            } else if ((stored.header_names || []).length) {
+                config.header_names = stored.header_names.slice();
+            } else if (stored.header_name) {
+                // A legacy single-header row keeps the representation it was
+                // saved with: converting it here would rewrite a row the user
+                // did not touch.
+                config.auth = 'header';
+                config.header_name = stored.header_name;
+            }
+            if (server && server.scope) config.oauth_scope = String(server.scope).trim();
+        }
+        return { config: config, secrets: secrets };
+    }
+
+    /**
+     * The page's own unsaved-changes prompt, as a promise.
+     *
+     * The editor asks before discarding input; answering with the page's
+     * dialog keeps one dialog vocabulary instead of two, and the promise lets
+     * the editor close itself only when the user actually chose to discard.
+     */
+    function ecMcpConfirmClose() {
+        return new Promise(function (resolve) {
+            ecConfirmDiscard(
+                function () { resolve(true); },
+                function () { resolve(false); });
+        });
+    }
+
+    /**
+     * One draft probe. The editor submits its servers one at a time, so the
+     * results stay in the order the user wrote them.
+     *
+     * An editing draft names the stable connection id and the version it was
+     * read at: the server resolves every credential group the user did not
+     * replace from the store and refuses a probe of a row that moved.
+     */
+    function ecMcpDraftTest(options, scope, payload) {
+        var body = { kind: 'mcp', scope: scope, config: payload.config };
+        if (Object.keys(payload.secrets).length) body.secrets = payload.secrets;
+        if (options.id) {
+            body.connection_id = options.id;
+            if (options.version !== undefined && options.version !== null) {
+                body.expected_version = options.version;
+            }
+        }
+        return ecRequest('/api/external-connections/draft-test', { method: 'POST', body: body })
+            .then(function (res) {
+                if (!ecOk(res)) {
+                    var error = ecErrorOf(res);
+                    return {
+                        ok: false,
+                        needs_auth: error.code === 'oauth_authorization_required',
+                        error: error.message || error.code || ecT('ec_toast_save_failed'),
+                    };
+                }
+                var data = ecPayloadOf(res);
+                var metadata = data.metadata || {};
+                var tools = (metadata.tools || []).map(function (name) {
+                    return typeof name === 'string' ? { name: name } : name;
+                });
+                var code = data.code || '';
+                return {
+                    ok: data.outcome === 'ok' || data.ok === true,
+                    needs_auth: code === 'oauth_authorization_required'
+                        || (data.stage === 'auth' && !!code),
+                    error: data.outcome === 'ok' ? '' : (code || ''),
+                    tools: tools,
+                };
+            }, function (err) {
+                return { ok: false, error: (err && err.message) || '' };
+            });
+    }
+
+    /**
+     * One save: create (with the caller's idempotency key) or update.
+     *
+     * A request that never produced an answer is reported as *unknown*, not as
+     * a failure: the editor keeps the key and the payload so a retry is
+     * answered with the row the first attempt may have committed instead of
+     * creating a second one.
+     */
+    function ecMcpSave(options, mode, scope, server, ctx, payload, idempotencyKey) {
+        var body = { config: payload.config };
+        if (Object.keys(payload.secrets).length) body.secrets = payload.secrets;
+        var path;
+        var headers = {};
+        if (mode === 'edit') {
+            body.name = String((ctx && ctx.name) || server.name || '').trim();
+            body.enabled = !server.disabled;
+            if (options.version !== undefined && options.version !== null) {
+                body.expected_version = options.version;
+            }
+            path = ecPathFor(options.scope || scope, options.id) + '/update';
+        } else {
+            body.kind = 'mcp';
+            body.name = String(server.name || '').trim();
+            body.enabled = !server.disabled;
+            if (mode === 'override' && options.baseConnectionId) {
+                body.base_connection_id = options.baseConnectionId;
+            }
+            path = ecPathFor(scope);
+            headers['Idempotency-Key'] = idempotencyKey;
+        }
+        return ecRequest(path, { method: 'POST', headers: headers, body: body })
+            .then(function (res) {
+                if (res && res.transport) {
+                    return { ok: false, unknown: true, error: ecT('ec_error_unknown_title') };
+                }
+                if (!ecOk(res)) {
+                    var error = ecErrorOf(res);
+                    return { ok: false, error: error.message || error.code || ecT('ec_toast_save_failed') };
+                }
+                var data = ecPayloadOf(res);
+                return { ok: true, id: data.id };
+            }, function (err) {
+                return { ok: false, unknown: true, error: (err && err.message) || '' };
+            });
+    }
+
+    /**
+     * Open the master MCP editor.
+     *
+     * `mode` is one of the drawer's three: create, edit, override. Every async
+     * result is bound to the identity that opened the editor, so a late reply
+     * can never repaint a page that has since changed tenant or account.
+     */
+    function ecOpenMcpEditor(options) {
+        var opts = options || {};
+        var editor = window.EcMcpEditor;
+        if (!editor || typeof editor.open !== 'function') {
+            ecToast(ecT('ec_toast_save_failed'), 'error');
+            return;
+        }
+        var mode = opts.mode || 'create';
+        var scope = opts.scope || 'tenant';
+        var identity = ecIdentityToken();
+        var original = ecMcpServerForEditor(opts.original);
+        if (opts.focus) ecFocusReturn = opts.focus;
+
+        // The guard is the identity, not the directory's read epoch. Saving a
+        // batch refreshes the list, and that refresh must not invalidate the
+        // editor the user is still working in (a retry after a partial batch
+        // would be silently refused). A tenant or account change is caught by
+        // `ecCheckIdentity`, which force-closes the editor and wipes what was
+        // typed in it.
+        function current() { return identity === ecIdentityToken(); }
+
+        editor.open({
+            mode: mode,
+            scope: scope,
+            connectionId: opts.id || null,
+            version: opts.version === undefined ? null : opts.version,
+            baseConnectionId: opts.baseConnectionId || null,
+            name: original.name || '',
+            lockName: mode !== 'create',
+            initial: mode === 'create' ? [] : [original],
+            focus: opts.focus || null,
+            isCurrent: current,
+            callbacks: {
+                test: function (server, ctx) {
+                    return ecMcpDraftTest(opts, scope,
+                        ecMcpPayloadFromServer(server, ctx, opts.original));
+                },
+                save: function (server, ctx, info) {
+                    var payload = ecMcpPayloadFromServer(server, ctx, opts.original);
+                    return ecMcpSave(opts, mode, scope, server, ctx, payload,
+                        (info && info.idempotencyKey) || ecNewIdempotencyKey());
+                },
+                confirmClose: ecMcpConfirmClose,
+                onSaved: function (result) {
+                    if (!current()) return;
+                    var saved = (result && result.saved) || 0;
+                    var total = (result && result.total) || 0;
+                    if (result && result.allOk) {
+                        ecToast(ecT(mode === 'create' ? 'ec_toast_created' : 'ec_toast_saved'));
+                    } else {
+                        ecToast(ecT('ec_mcp_batch_partial', { saved: saved, total: total }), 'error');
+                    }
+                    loadExternalConnectionsView();
+                },
+                onClose: function () { ecFocusReturn = null; },
+            },
+        });
     }
 
     // =================================================================
@@ -2183,6 +2529,19 @@
                 return;
             }
             var detail = ecPayloadOf(res);
+            // MCP overrides are edited in the master editor like every other
+            // MCP row; the override is still a create that names its template.
+            if ((detail.kind || card.kind) === 'mcp') {
+                ecOpenMcpEditor({
+                    mode: 'override',
+                    scope: 'tenant',
+                    baseConnectionId: card.id,
+                    version: null,
+                    original: detail,
+                    focus: card.node,
+                });
+                return;
+            }
             ecOpenDrawer({
                 mode: 'override',
                 kind: 'mcp',
@@ -2845,6 +3204,14 @@
                 break;
             case 'pick-type':
                 ecCloseModal(true);
+                if (actionNode.getAttribute('data-kind') === 'mcp') {
+                    ecOpenMcpEditor({
+                        mode: 'create',
+                        scope: actionNode.getAttribute('data-scope'),
+                        focus: actionNode,
+                    });
+                    break;
+                }
                 ecOpenDrawer({
                     mode: 'create',
                     kind: actionNode.getAttribute('data-kind'),
@@ -2978,6 +3345,15 @@
         if (event.key === 'Escape') {
             if (ecModal) { ecCloseModal(false); return; }
             if (ecDrawer && ecDrawer.open) { ecRequestCloseDrawer(); return; }
+            // The master editor's own Escape: master closes it outright, and
+            // here the same key goes through the editor's guard so a draft is
+            // asked about instead of silently dropped. The dialog branch above
+            // wins, so Escape on the question closes the question only.
+            if (window.EcMcpEditor && typeof window.EcMcpEditor.isOpen === 'function'
+                    && window.EcMcpEditor.isOpen()) {
+                ecRequestCloseMcpEditor();
+                return;
+            }
         }
         if (ecModal && ecModal.node && !ecModal.node.hidden) {
             ecTrapFocus(event, document.getElementById('ec-modal-panel'));
@@ -3045,6 +3421,10 @@
             ecCloseDrawer(true);
         }
         if (ecModal) ecCloseModal(true);
+        // The editor's draft belongs to the identity that opened it too: it is
+        // destroyed outright, never offered back. Its own guard is bypassed
+        // (`close(true)`) because asking would be asking the wrong person.
+        ecCloseMcpEditor();
     }
 
     function ecConfirmLeave(targetViewId) {
@@ -3064,6 +3444,7 @@
             ecCloseDrawer(true);
         }
         if (ecModal) ecCloseModal(true);
+        ecCloseMcpEditor();
         if (ecPeriodic) { window.clearInterval(ecPeriodic); ecPeriodic = null; }
     }
 
@@ -3133,6 +3514,13 @@
         },
         collectDraftFromDom: ecCollectDraftFromDom,
         save: ecSaveDrawer,
+        // The master MCP editor is driven through the same seam: open it the way
+        // a card does, then assert on the request bodies its callbacks build.
+        openMcpEditor: ecOpenMcpEditor,
+        mcpServerForEditor: ecMcpServerForEditor,
+        mcpPayloadFromServer: ecMcpPayloadFromServer,
+        openOverrideDrawer: ecOpenOverrideDrawer,
+        openDrawerFromCard: ecOpenDrawerFromCard,
         runTest: ecRunTest,
         reloadDetail: ecReloadDrawerDetail,
         closeDrawer: ecCloseDrawer,

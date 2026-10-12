@@ -20,6 +20,12 @@ const consoleJs = read('channel/web/static/js/console.js');
 const pageJs = read('channel/web/static/js/external-connections.js');
 const i18nJs = read('channel/web/static/js/i18n/external-connections.js');
 const css = read('channel/web/static/css/console.css');
+// The master editor's own module and its namespace (change
+// align-mcp-editor-with-master). The page no longer renders an MCP form of its
+// own, so the MCP assertions below load both.
+const mcpEditorJs = read('channel/web/static/js/mcp-editor.js');
+const mcpEditorHtml = read('channel/web/templates/modals/mcp-editor.html');
+const masterSyncJs = read('channel/web/static/js/i18n/master-sync.js');
 
 // -- the namespace, loaded the way console.js merges it -------------------
 function loadNamespaces() {
@@ -30,6 +36,15 @@ function loadNamespaces() {
 }
 const ns = loadNamespaces();
 const zh = ns.zh;
+
+function loadMasterSync() {
+    const ctx = { window: {} };
+    vm.createContext(ctx);
+    vm.runInContext(masterSyncJs, ctx, { filename: 'master-sync.js' });
+    return ctx.window.__cowI18N__.masterSync;
+}
+const masterNs = loadMasterSync();
+const masterZh = masterNs.zh;
 
 // -- minimal DOM -----------------------------------------------------------
 // -- the tiny bit of markup reading the stub needs -------------------------
@@ -84,15 +99,55 @@ function valueFromMarkup(html, tag) {
 // while the test can inject values and fire those listeners. `querySelectorAll`
 // stays empty on purpose: DOM-wide collection re-renders are not what these
 // assertions are about, and an empty list keeps the draft the test set intact.
+// The attributes of a rendered tag that were written as `name="value"`. A
+// lookup copies them onto the stub it returns, so `getAttribute` and
+// `closest` answer from the markup the page wrote instead of from whatever the
+// test remembered to inject.
+function attrsOfTag(tag) {
+    const out = Object.create(null);
+    (String(tag || '').match(/[A-Za-z0-9_-]+\s*=\s*"[^"]*"/g) || []).forEach(pair => {
+        const cut = pair.indexOf('=');
+        out[pair.slice(0, cut).trim()] = pair.slice(cut + 1).trim().slice(1, -1);
+    });
+    return out;
+}
+
+// A node standing in for one control the page wrote into `html`. The page's
+// delegated handlers read the clicked node's attributes, so the attributes come
+// from the markup itself — a test that invented them would be asserting against
+// a control the page never rendered.
+function controlIn(html, pairs) {
+    const tags = String(html || '').match(/<[a-zA-Z][^>]*>/g) || [];
+    const tag = tags.find(candidate => pairs.every(pair => {
+        const cut = pair.indexOf('=');
+        const name = pair.slice(0, cut);
+        const value = pair.slice(cut + 1).trim().replace(/^"|"$/g, '');
+        return attrOf(candidate, name) === value;
+    })) || '';
+    const node = element('button');
+    const attrs = attrsOfTag(tag);
+    Object.keys(attrs).forEach(name => node.setAttribute(name, attrs[name]));
+    node.value = valueFromMarkup(html, tag);
+    return node;
+}
+
 function element(tag) {
     const el = {
         tagName: String(tag || 'div').toUpperCase(),
-        id: '', className: '', hidden: false, value: '', type: 'text',
-        textContent: '', style: {}, children: [],
+        id: '', className: '', hidden: false, type: 'text',
+        textContent: '', style: {}, children: [], dataset: {},
         parentNode: null, _key: null, _q: Object.create(null),
         _attrs: Object.create(null),
         classList: {
-            add() {}, remove() {}, toggle() {}, contains() { return false; },
+            _set: new Set(),
+            add(...names) { names.forEach(n => el.classList._set.add(n)); },
+            remove(...names) { names.forEach(n => el.classList._set.delete(n)); },
+            toggle(name, force) {
+                const on = force === undefined ? !el.classList._set.has(name) : !!force;
+                if (on) el.classList._set.add(name); else el.classList._set.delete(name);
+                return on;
+            },
+            contains(name) { return el.classList._set.has(name); },
         },
         setAttribute(name, value) { el._attrs[name] = String(value); },
         getAttribute(name) {
@@ -114,14 +169,36 @@ function element(tag) {
                 child.parentNode = el;
                 child._ctx = { html: source, tag };
                 child.value = valueFromMarkup(source, tag);
+                const attrs = attrsOfTag(tag);
+                Object.keys(attrs).forEach(name => child.setAttribute(name, attrs[name]));
                 el._q[sel] = child;
             }
             return el._q[sel];
         },
         querySelectorAll() { return []; },
-        closest() { return null; },
+        // The page reaches an action through `closest('[data-ec-action]')` and
+        // the card that owns it through `closest('[data-ec-card]')`. A stub node
+        // stands in for exactly one element, so it matches only the attribute
+        // selectors its own markup carries; an ancestor or class selector is
+        // genuinely absent and answers null, exactly as the real DOM would for
+        // an element that has no such ancestor.
+        closest(sel) {
+            const m = /^\[([A-Za-z0-9_-]+)(?:="([^"]*)")?\]$/.exec(String(sel || '').trim());
+            if (!m) return null;
+            const own = el.getAttribute(m[1]);
+            if (own === null) return null;
+            return m[2] === undefined || own === m[2] ? el : null;
+        },
         focus() { harness.focus(el); }, setSelectionRange() {},
     };
+    // `input.value` is always a string in the DOM, and the page relies on that
+    // (`el.value.trim()`); a stub that stored a number would fail a path the
+    // browser never takes.
+    let rawValue = '';
+    Object.defineProperty(el, 'value', {
+        get() { return rawValue; },
+        set(next) { rawValue = (next === null || next === undefined) ? '' : String(next); },
+    });
     // Replacing the markup of a container is what the page does between modals;
     // the stub drops its old lookup elements and their listeners with it, so a
     // confirmation cannot fire a handler registered by an earlier modal.
@@ -224,6 +301,7 @@ function boot(options) {
     // the moment before it fires.
     const timers = [];
     let timerSeq = 0;
+    let uuidSeq = 0;
     let responder = opts.responder || (() => ({ ok: true, status: 200, json: { status: 'success' } }));
 
     const ctx = {
@@ -259,8 +337,33 @@ function boot(options) {
                 json: () => Promise.resolve(out.json === undefined ? { status: 'success' } : out.json),
             });
         },
-        t(key) { return Object.prototype.hasOwnProperty.call(zh, key) ? zh[key] : key; },
-        crypto: { randomUUID: () => 'uuid-' + fetchCalls.length },
+        t(key) {
+            if (Object.prototype.hasOwnProperty.call(zh, key)) return zh[key];
+            // The master editor's labels live in their own namespace; console.js
+            // merges both into one lookup, which is what this stands in for.
+            if (Object.prototype.hasOwnProperty.call(masterZh, key)) return masterZh[key];
+            return key;
+        },
+        // The master-editor helpers console.js exports as globals. Only
+        // installed when the editor is loaded, so a test that does not exercise
+        // MCP keeps the page's own undefined-helper behaviour.
+        ...(opts.mcpEditor ? {
+            escapeHtml: value => String(value === null || value === undefined ? '' : value)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;'),
+            initDropdown(el, options, selected, onChange) {
+                el._ddOptions = options;
+                el._ddValue = selected || '';
+                el._ddOnChange = onChange;
+            },
+            getDropdownValue: el => el._ddValue || '',
+            setButtonBusy(btn, busy) { if (btn) btn.disabled = !!busy; },
+        } : {}),
+        // A monotonic source, not a function of `fetchCalls.length`: two keys
+        // minted before either request is sent (a batch's item keys) would
+        // otherwise be identical, and a test asserting distinct keys could
+        // never fail for the right reason.
+        crypto: { randomUUID: () => 'uuid-' + (uuidSeq += 1) },
         navigateTo() {},
         // Recorded rather than discarded: what the console tells the user after a
         // test is part of the promise, and a stub that swallows it would let the
@@ -273,9 +376,15 @@ function boot(options) {
     ctx.window = ctx;
     vm.createContext(ctx);
     vm.runInContext(pageJs, ctx, { filename: 'external-connections.js' });
+    if (opts.mcpEditor) {
+        // Loaded after the page, the same order chat.html defers them in.
+        vm.runInContext(mcpEditorJs, ctx, { filename: 'mcp-editor.js' });
+    }
     return {
         ctx, document, fetchCalls, toasts, localStorageWrites, sessionWrites,
         page: ctx.ExternalConnectionsPage,
+        // The master MCP editor, when it was loaded.
+        editor() { return ctx.EcMcpEditor; },
         specs: ctx.__specs,
         nodes, harness,
         setResponder(fn) { responder = fn; },
@@ -782,6 +891,11 @@ const ALL_TYPES = [
 
 const envelope = payload => ({ json: { data: payload, request_id: 'req-1' } });
 const flush = () => new Promise(resolve => setImmediate(resolve));
+
+// A value that crossed the vm boundary carries the other realm's prototypes, so
+// structural comparisons go through JSON: `assert` is the strict variant here,
+// and prototype inequality is not what any of these assertions is about.
+const plain = value => JSON.parse(JSON.stringify(value));
 
 test('each kind builds its full field set, and the picker routes to what exists', async () => {
     const app = boot({
@@ -2017,3 +2131,664 @@ test('the assignment UI keeps the page\'s layout and i18n conventions', () => { 
     });
 });
 
+
+// =====================================================================
+// The master MCP editor (change align-mcp-editor-with-master)
+//
+// The page no longer renders an MCP form: MCP create/edit/override open the
+// centered master editor, and the page supplies only the three callbacks that
+// know this deployment's contract. What is asserted below is that boundary --
+// the editor is the *only* one loaded, the form/JSON round trip is lossless,
+// and the payload the callbacks build carries the master field set with the
+// page's own keep/replace/clear vocabulary.
+// =====================================================================
+
+const MCP_CARD_TENANT = {
+    id: 'mcp-t1', effective_id: 'mcp-t1', kind: 'mcp', scope: 'tenant', name: '内部工具',
+    enabled: true, source: 'tenant', version: 6, test_status: 'untested', tested_at: null,
+    actions: ['read', 'manage'], base_connection_id: null,
+    config: {
+        transport: 'streamable_http', url: 'https://mcp.example.com/mcp',
+        auth: 'header', header_name: 'X-Api-Key', tool_name_prefix: 'srv_',
+        timeout: 45, oauth_scope: '',
+    },
+    secrets: { header: { configured: true } },
+};const MCP_CARD_READONLY = {
+    id: 'mcp-t2', effective_id: 'mcp-t2', kind: 'mcp', scope: 'tenant', name: '只读工具',
+    enabled: true, source: 'platform', version: 2, test_status: 'untested', tested_at: null,
+    actions: ['read'], base_connection_id: null, config: { transport: 'sse', url: 'https://x/sse' },
+    secrets: {},
+};
+
+test('the page loads exactly one MCP editor, and it is the master one', () => {
+    assert.equal(
+        (chatHtml.match(/<script defer src="\/assets\/js\/mcp-editor\.js">/g) || []).length, 1,
+        'one editor module is deferred, not two');
+    // The upstream view that also owns an MCP editor is not loaded at all:
+    // two sets of `mcp-field-*` ids would bind one modal twice.
+    assert.equal(chatHtml.indexOf('/assets/js/views/skills.js'), -1);
+    assert.ok(chatHtml.indexOf('<!--#include templates/modals/mcp-editor.html-->') >= 0,
+        'the modal markup is included');
+    assert.ok(chatHtml.indexOf('/assets/js/i18n/master-sync.js') >= 0,
+        'its labels are registered');
+    // Registered in the i18n block, i.e. before console.js snapshots the
+    // lookup table; the same ordering trap the other namespaces document.
+    assert.ok(chatHtml.indexOf('/assets/js/i18n/master-sync.js')
+        < chatHtml.indexOf('/assets/js/console.js'));
+    assert.ok(mcpEditorHtml.indexOf('id="mcp-editor-overlay"') >= 0);
+    // The page itself owns no MCP form any more.
+    assert.equal(pageJs.indexOf('mcp-field-'), -1);
+    // And it announces exactly one namespace.
+    assert.equal((mcpEditorJs.match(/window\.EcMcpEditor\s*=/g) || []).length, 1);
+});
+
+test('every label the master editor renders exists in all three languages', () => {
+    const keys = new Set();
+    const pattern = /\bt\(\s*'([a-z0-9_]+)'/g;
+    let match;
+    while ((match = pattern.exec(mcpEditorJs)) !== null) keys.add(match[1]);
+    // The keys it swaps at runtime through dataset/titleKey are plain strings,
+    // so they are collected too rather than missed.
+    ['mcp_add_title', 'mcp_edit', 'mcp_save', 'mcp_save_anyway',
+        'mcp_batch_pending', 'mcp_batch_unknown'].forEach(key => keys.add(key));
+    assert.ok(keys.size > 15, 'the scan found the editor labels');
+    ['zh', 'zh-Hant', 'en'].forEach(locale => {
+        keys.forEach(key => assert.ok(
+            Object.prototype.hasOwnProperty.call(masterNs[locale], key),
+            locale + ' is missing ' + key));
+    });
+});
+
+test('the master editor round-trips the mcpServers format', () => {
+    const app = boot({ mcpEditor: true });
+    const editor = app.editor();
+    const servers = editor._parseJson(JSON.stringify({
+        mcpServers: {
+            fetch: { command: 'uvx', args: ['mcp-server-fetch'] },
+            remote: { url: 'https://x.example.com/mcp', type: 'streamable-http',
+                tool_name_prefix: 'r_', timeout: 20 },
+        },
+    }));
+
+    assert.deepEqual(plain(servers.map(s => s.name)), ['fetch', 'remote']);
+    const back = JSON.parse(editor._serversToJson(servers));
+    // The name is the map key, never a second copy inside the config.
+    assert.deepEqual(Object.keys(back.mcpServers), ['fetch', 'remote']);
+    assert.equal(back.mcpServers.fetch.name, undefined);
+    assert.equal(back.mcpServers.remote.type, 'streamable-http');
+    assert.equal(back.mcpServers.remote.timeout, 20);
+    // A stdio entry does not carry its default transport back.
+    assert.equal(back.mcpServers.fetch.type, undefined);
+});
+
+test('the editor refuses a JSON body it cannot honour instead of guessing', () => {
+    const app = boot({ mcpEditor: true });
+    const editor = app.editor();
+
+    // A bare config with no name has no key to file it under.
+    assert.throws(() => editor._parseJson('{"command":"uvx"}'), /mcp_json_need_name|缺少名称/);
+    assert.throws(() => editor._parseJson('not json'), /mcp_json_invalid|JSON 格式有误/);
+    assert.throws(() => editor._parseJson(''), /mcp_json_empty|请填写 MCP 配置/);
+    // The bare-map form and `serverUrl` are accepted: both are real published
+    // shapes, and rejecting them would be a regression on the master page.
+    const servers = editor._parseJson('{"a":{"serverUrl":"https://x/mcp"}}');
+    assert.equal(servers[0].url, 'https://x/mcp');
+    assert.equal(servers[0].serverUrl, undefined);
+});
+
+test('the KEY=value panes are parsed and rebuilt without losing a line', () => {
+    const app = boot({ mcpEditor: true });
+    const editor = app.editor();
+    const env = plain(editor._kvToObject('A=1\n\nB=two=three\nbroken\n'));
+    assert.deepEqual(env, { A: '1', B: 'two=three' });
+    const text = editor._objectToKv(env);
+    assert.equal(text, 'A=1\nB=two=three');
+    assert.deepEqual(plain(editor._kvToObject(text)), env);
+});
+
+// -- the payload the page builds for the editor's callbacks --------------
+
+test('the headers map becomes one declared list plus one encrypted slot', () => {
+    const app = boot();
+    let payload = app.page.mcpPayloadFromServer(
+        { name: 'x', type: 'sse', url: 'https://h/mcp', headers: { 'X-A': '1', 'X-B': '2' } },
+        { touched: { env: false, headers: true } });
+    payload = plain(payload);
+
+    assert.deepEqual(payload.config.header_names, ['X-A', 'X-B']);
+    // One encrypted slot holding the whole map, never one slot per header.
+    assert.deepEqual(Object.keys(payload.secrets), ['headers']);
+    assert.deepEqual(JSON.parse(payload.secrets.headers), { 'X-A': '1', 'X-B': '2' });
+    assert.equal(payload.config.headers, undefined);
+});
+
+test('an untouched credential group is left alone, an emptied one is cleared', () => {
+    const app = boot();
+    const server = { name: 'x', type: 'streamable-http', url: 'https://h/mcp', headers: {} };
+
+    // Blank and untouched is "keep": the stored value is not resent, and no
+    // empty replacement is submitted for it.
+    const kept = plain(app.page.mcpPayloadFromServer(server, { touched: { headers: false } }));
+    assert.deepEqual(kept.secrets, {});
+    assert.equal(kept.config.header_names, undefined);
+
+    // Blank *after the user typed in the group* is the explicit clear.
+    const cleared = plain(app.page.mcpPayloadFromServer(server, { touched: { headers: true } }));
+    assert.strictEqual(cleared.secrets.headers, null);
+});
+
+test('a stdio connection sends env names separately from env values', () => {
+    const app = boot();
+    const payload = plain(app.page.mcpPayloadFromServer({
+        name: 'local', type: 'stdio', command: 'uvx', args: ['mcp-server-fetch'],
+        env: { DEMO_TOKEN: 's3cret' },
+    }, { touched: { env: true } }));
+
+    assert.equal(payload.config.transport, 'stdio');
+    // The name is non-secret configuration; the value goes to the slot.
+    assert.deepEqual(payload.config.env_keys, ['DEMO_TOKEN']);
+    assert.deepEqual(JSON.parse(payload.secrets.env), { DEMO_TOKEN: 's3cret' });
+    // And nothing remote leaks into a stdio payload.
+    ['url', 'header_names', 'auth', 'oauth_scope'].forEach(key =>
+        assert.equal(payload.config[key], undefined, key + ' belongs to a remote connection'));
+});
+
+test('the master advanced fields reach the config that is submitted', () => {
+    const app = boot();
+    const payload = plain(app.page.mcpPayloadFromServer({
+        name: 'x', type: 'streamable-http', url: 'https://h/mcp',
+        tool_name_prefix: 'srv_', timeout: 45, scope: 'mcp.read', headers: {},
+    }, {}));
+
+    assert.equal(payload.config.tool_name_prefix, 'srv_');
+    assert.equal(payload.config.timeout, 45);
+    // The OAuth scope is its own field: it is what the registry turns into
+    // auth=oauth, so dropping it would silently downgrade the connection.
+    assert.equal(payload.config.oauth_scope, 'mcp.read');
+});
+
+test('a stored connection opens in the editor without inventing a credential', () => {
+    const app = boot();
+    const server = plain(app.page.mcpServerForEditor(MCP_CARD_TENANT));
+
+    assert.equal(server.name, '内部工具');
+    assert.equal(server.type, 'streamable-http');
+    assert.equal(server.tool_name_prefix, 'srv_');
+    assert.equal(server.timeout, 45);
+    // The stored header is declared as a name, and its *value* is not returned
+    // by the API, so the group starts empty and stays "keep" on save.
+    assert.deepEqual(server.headers, {});
+    assert.deepEqual(server.env, {});
+    assert.equal(server.disabled, false);
+    assert.deepEqual(
+        plain(app.page.mcpPayloadFromServer(server, { touched: {} })).secrets, {});
+});
+
+test('an untouched credential group keeps its declaration on the wire', () => {
+    const app = boot();
+    const originalOf = config => ({ kind: 'mcp', config: config, n: 1 });
+    const untouched = config => plain(app.page.mcpPayloadFromServer(
+        plain(app.page.mcpServerForEditor(originalOf(config))), { touched: {} },
+        originalOf(config)));
+
+    // The config is replaced wholesale on update, so the declaration that
+    // tells the client which header to present has to travel with the value
+    // the user never retyped — otherwise the preserved secret is unreachable
+    // and `auth` (derived from the declaration when absent) flips to none.
+    const mapped = untouched({
+        transport: 'streamable_http', url: 'https://mcp.example.com/mcp',
+        header_names: ['X-Api-Key', 'X-Tenant'], timeout: 30,
+    });
+    assert.deepEqual(mapped.config.header_names, ['X-Api-Key', 'X-Tenant']);
+    assert.deepEqual(mapped.secrets, {});
+
+    // A legacy single-header row keeps the representation it was saved with.
+    const legacy = untouched({
+        transport: 'streamable_http', url: 'https://mcp.example.com/mcp',
+        auth: 'header', header_name: 'X-Api-Key',
+    });
+    assert.equal(legacy.config.auth, 'header');
+    assert.equal(legacy.config.header_name, 'X-Api-Key');
+    assert.equal(legacy.config.header_names, undefined, 'no silent conversion');
+    assert.deepEqual(legacy.secrets, {});
+
+    // stdio carries its environment declaration the same way.
+    const stdio = untouched({
+        transport: 'stdio', command: 'uvx', args: ['a'], env_keys: ['API_KEY'],
+    });
+    assert.deepEqual(stdio.config.env_keys, ['API_KEY']);
+    assert.deepEqual(stdio.secrets, {});
+
+    // An explicit edit of the group *is* the replacement: the typed map wins
+    // and the stored declaration does not come back.
+    const server = plain(app.page.mcpServerForEditor(originalOf({
+        transport: 'streamable_http', url: 'https://mcp.example.com/mcp',
+        header_names: ['X-Api-Key'],
+    })));
+    server.headers = { Authorization: 'Bearer new' };
+    const replaced = plain(app.page.mcpPayloadFromServer(server,
+        { touched: { headers: true } },
+        originalOf({ transport: 'streamable_http', url: 'https://mcp.example.com/mcp',
+            header_names: ['X-Api-Key'] })));
+    assert.deepEqual(replaced.config.header_names, ['Authorization']);
+    assert.deepEqual(replaced.secrets, { headers: '{"Authorization":"Bearer new"}' });
+});
+
+test('a disabled connection opens disabled and a save keeps it disabled', async () => {
+    const app = boot({ mcpEditor: true, responder(url) {
+        if (/\/update$/.test(url)) return envelope({ id: 'mcp-t1' });
+        return envelope({});
+    } });
+    const server = plain(app.page.mcpServerForEditor(
+        Object.assign({}, MCP_CARD_TENANT, { enabled: false })));
+    assert.equal(server.disabled, true);
+
+    app.page.openMcpEditor({ mode: 'edit', scope: 'tenant', id: 'mcp-t1', version: 6,
+        original: Object.assign({}, MCP_CARD_TENANT, { enabled: false }) });
+    await flush();
+    app.editor().save();
+    for (let i = 0; i < 4; i += 1) await flush();
+
+    const write = lastWrite(app);
+    assert.ok(write, 'the update was sent');    assert.match(write.url, /\/api\/external-connections\/tenant\/mcp-t1\/update$/);
+    assert.equal(write.init.body.indexOf('"enabled":false') >= 0, true,
+        'a disabled connection is not silently re-enabled by opening it');
+    assert.equal(JSON.parse(write.init.body).expected_version, 6);
+});
+
+// -- routing: which surface an MCP connection opens ----------------------
+
+test('an MCP card opens the master editor, and a read-only one opens the drawer', async () => {
+    const app = boot({ mcpEditor: true, responder(url) {
+        if (url.indexOf('/types') >= 0) return { json: typesResponse(ALL_TYPES) };
+        if (url.indexOf('/catalog') >= 0) return { json: okCatalog([MCP_CARD_TENANT, MCP_CARD_READONLY]) };
+        if (/\/api\/external-connections\/tenant\/mcp-t1$/.test(url)) return envelope(MCP_CARD_TENANT);
+        if (/\/api\/external-connections\/tenant\/mcp-t2$/.test(url)) return envelope(MCP_CARD_READONLY);
+        return envelope({});
+    } });
+    await app.page.load();
+
+    app.page.openDrawerFromCard(MCP_CARD_TENANT, null);
+    await flush();
+    assert.equal(app.editor().isOpen(), true, 'the master editor is what a manager gets');
+    assert.equal(app.page.drawerState(), null, 'and the drawer did not open');
+    app.editor().close(true);
+
+    // A caller without `manage` has nothing to edit in the master editor, so
+    // the drawer's read-only view stays the surface that explains the row.
+    app.page.openDrawerFromCard(MCP_CARD_READONLY, null);
+    await flush();
+    assert.equal(app.editor().isOpen(), false);
+    const drawer = app.page.drawerState();
+    assert.ok(drawer && drawer.open && drawer.mode === 'view');
+    app.page.closeDrawer(true);
+});
+
+test('the type picker routes MCP to the editor and everything else to the drawer', async () => {
+    const app = boot({ mcpEditor: true, responder(url) {
+        if (url.indexOf('/types') >= 0) return { json: typesResponse(ALL_TYPES) };
+        if (url.indexOf('/catalog') >= 0) return { json: okCatalog([]) };
+        return envelope({});
+    } });
+    await app.page.load();
+    // The picker's buttons are rendered into the modal, which is a child of
+    // `document.body`; `mount` is what binds the delegation those clicks need.
+    app.page.mount();
+    app.page.openTypePicker();
+    const picker = app.panel().innerHTML;
+    assert.ok(picker.indexOf('data-ec-action="pick-type" data-kind="mcp"') >= 0);
+
+    // Looked up the way the page looks its actions up: by the attributes the
+    // rendered markup carries, not by values the test injected.
+    const mcpButton = controlIn(picker, ['data-ec-action="pick-type"', 'data-kind="mcp"']);
+    assert.equal(mcpButton.getAttribute('data-scope'), 'platform');
+    app.fire(app.root(), 'click', { target: mcpButton });
+    assert.equal(app.editor().isOpen(), true);
+    app.editor().close(true);
+
+    app.page.openTypePicker();
+    const erpButton = controlIn(app.panel().innerHTML,
+        ['data-ec-action="pick-type"', 'data-kind="erp"']);
+    app.fire(app.root(), 'click', { target: erpButton });
+    assert.equal(app.editor().isOpen(), false);
+    assert.ok(app.page.drawerState() && app.page.drawerState().kind === 'erp');
+    app.page.closeDrawer(true);
+});
+
+test('a JSON field the editor cannot submit is refused by name', () => {
+    const app = boot({ mcpEditor: true });
+    const editor = app.editor();
+
+    // A pasted config carrying something this editor has no way to store is
+    // named, not silently trimmed on the way to the connection store.
+    assert.throws(() => editor._parseJson(JSON.stringify({
+        mcpServers: { fetch: { command: 'uvx', args: ['mcp-server-fetch'], allowedTools: ['echo'] } },
+    })), /mcp_json_unknown_field|不支持的字段/);
+    const refused = (() => {
+        try {
+            editor._parseJson(JSON.stringify({ mcpServers: { fetch: { url: 'https://x/mcp', header: 'A' } } }));
+        } catch (err) { return err.message; }
+        return '';
+    })();
+    assert.match(refused, /fetch/, 'the message names the server');
+    assert.match(refused, /header/, 'and the field');
+
+    // The deployment's own vocabulary and master's are both honoured; neither
+    // the transport nor the OAuth scope is left for the submit path to guess.
+    const [stdio] = editor._parseJson('{"a":{"command":"uvx"}}');
+    assert.equal(stdio.type, 'stdio', 'a pasted mcp.json entry stays stdio');
+    const [remote] = editor._parseJson('{"a":{"transport":"streamable_http","url":"https://x/mcp"}}');
+    assert.equal(remote.type, 'streamable-http');
+    const [scoped] = editor._parseJson('{"a":{"url":"https://x/mcp","oauth_scope":"drive.readonly"}}');
+    assert.equal(scoped.scope, 'drive.readonly');
+});
+
+test('an override opens the editor bound to the platform template it replaces', async () => {
+    const app = boot({ mcpEditor: true, responder(url) {
+        if (/\/platform\/plat-1$/.test(url)) return envelope(Object.assign({}, MCP_CARD_TENANT, {
+            id: 'plat-1', scope: 'platform', name: '平台 MCP',
+        }));
+        return envelope({});
+    } });
+
+    app.page.openOverrideDrawer({ id: 'plat-1', kind: 'mcp', node: null });
+    await flush();
+
+    const state = app.editor().state.options;
+    assert.equal(app.editor().isOpen(), true);
+    assert.equal(state.mode, 'override');
+    assert.equal(state.baseConnectionId, 'plat-1');
+    // The override carries the tenant's own credentials: the template's secret
+    // presence must never be presented as if the tenant already owned it.
+    assert.deepEqual(plain(app.page.mcpServerForEditor(
+        Object.assign({}, MCP_CARD_TENANT, { secrets: { header: { configured: true } } })
+    )).headers, {});
+});
+
+// -- save: one item per request, and an unknown is never re-sent ----------
+
+test('a batch create posts one item per request with its own idempotency key',
+    async () => {
+        const app = boot({ mcpEditor: true, responder(url) {
+            if (url.indexOf('/draft-test') >= 0) {
+                return envelope({ outcome: 'ok', stages: [], metadata: { tools: ['echo'] } });
+            }
+            if (/\/api\/external-connections\/tenant$/.test(url)) {
+                const n = app.fetchCalls.filter(c => c.init && c.init.method === 'POST'
+                    && /\/api\/external-connections\/tenant$/.test(c.url)).length;
+                return envelope({ id: 'conn-' + n, version: 1 });
+            }
+            return envelope({});
+        } });
+
+        app.page.openMcpEditor({ mode: 'create', scope: 'tenant' });
+        app.editor()._showTab('json');
+        app.document.getElementById('mcp-field-json').value = JSON.stringify({
+            mcpServers: {
+                alpha: { command: 'uvx', args: ['a'] },
+                beta: { command: 'uvx', args: ['b'] },
+            },
+        });
+        app.editor().save();
+        for (let i = 0; i < 12; i += 1) await flush();
+
+        const creates = app.fetchCalls.filter(call => call.init && call.init.method === 'POST'
+            && /\/api\/external-connections\/tenant$/.test(call.url));
+        assert.equal(creates.length, 2, 'one request per server, sequentially');
+        const names = creates.map(call => JSON.parse(call.init.body).name);
+        assert.deepEqual(names, ['alpha', 'beta'], 'submission order is the input order');
+        // A pasted `mcp.json` entry names no transport; it is a stdio server and
+        // is submitted as one instead of defaulting to a remote transport.
+        const bodies = creates.map(call => JSON.parse(call.init.body));
+        assert.deepEqual(bodies.map(body => body.config.transport), ['stdio', 'stdio']);
+        assert.deepEqual(bodies.map(body => body.config.command), ['uvx', 'uvx']);
+        assert.deepEqual(plain(bodies.map(body => body.config.args)), [['a'], ['b']]);
+        const keys = creates.map(call => call.init.headers['Idempotency-Key']);
+        assert.equal(new Set(keys).size, 2, 'each item gets its own key');
+        keys.forEach(key => assert.ok(key, 'a key is always sent'));
+        // The editor closes once every item landed, and the JSON pane is wiped.
+        assert.equal(app.editor().isOpen(), false);
+        assert.equal(app.document.getElementById('mcp-field-json').value, '');
+    });
+
+test('a failed item stops the batch, and the retry re-sends only the rest',
+    async () => {
+        let failSecond = true;
+        const app = boot({ mcpEditor: true, responder(url) {
+            if (url.indexOf('/draft-test') >= 0) {
+                return envelope({ outcome: 'ok', stages: [], metadata: { tools: [] } });
+            }
+            if (/\/api\/external-connections\/tenant$/.test(url)) {
+                const creates = app.fetchCalls.filter(c => c.init && c.init.method === 'POST'
+                    && /\/api\/external-connections\/tenant$/.test(c.url));
+                if (creates.length === 2 && failSecond) {
+                    failSecond = false;
+                    return { status: 400, json: { status: 'error',
+                        error: { code: 'field_invalid', message: 'bad server', fields: {} } } };
+                }
+                return envelope({ id: 'conn-' + creates.length });
+            }
+            return envelope({});
+        } });
+
+        app.page.openMcpEditor({ mode: 'create', scope: 'tenant' });
+        app.editor()._showTab('json');
+        app.document.getElementById('mcp-field-json').value = JSON.stringify({
+            mcpServers: {
+                alpha: { command: 'uvx', args: ['a'] },
+                beta: { command: 'uvx', args: ['b'] },
+                gamma: { command: 'uvx', args: ['c'] },
+            },
+        });
+        app.editor().save();
+        for (let i = 0; i < 12; i += 1) await flush();
+
+        const creates = app.fetchCalls.filter(call => call.init && call.init.method === 'POST'
+            && /\/api\/external-connections\/tenant$/.test(call.url));
+        // The third item was never attempted: the first refusal stops the run
+        // rather than continuing to create connections nobody reviewed.
+        assert.deepEqual(creates.map(call => JSON.parse(call.init.body).name),
+            ['alpha', 'beta']);
+        assert.equal(app.editor().isOpen(), true, 'the editor stays open on a partial run');
+        // Nothing is deleted to "roll back": the successful item is done.
+        assert.equal(app.fetchCalls.filter(call => /\/delete$/.test(call.url)).length, 0);
+        // The confirmed item is a real change, so the partial run refreshes the
+        // directory -- and that refresh must not invalidate the editor the user
+        // is still working in, which is what the retry below proves. (This test
+        // never loads the view itself, so that one read is the refresh.)
+        assert.equal(app.fetchCalls.filter(call => /\/types$/.test(call.url)).length, 1,
+            'the partial run refreshed the directory');
+        const succeeded = creates[0].init.headers['Idempotency-Key'];
+        const refused = creates[1].init.headers['Idempotency-Key'];
+
+        // The user fixes the refused entry, then saves again.
+        app.fire(app.document.getElementById('mcp-editor-overlay'), 'input',
+            { target: app.document.getElementById('mcp-field-json'), isComposing: false });
+        app.editor().save();
+        for (let i = 0; i < 12; i += 1) await flush();
+        const retried = app.fetchCalls.filter(call => call.init && call.init.method === 'POST'
+            && /\/api\/external-connections\/tenant$/.test(call.url)).slice(2);
+        // Only the refused item and the untouched one are re-sent -- the
+        // success is not resubmitted, because the pane still contains it.
+        assert.deepEqual(retried.map(call => JSON.parse(call.init.body).name), ['beta', 'gamma']);
+        // Editing the refused entry makes the retry a new request, so it is a
+        // new key; the old key was for a body the server already rejected.
+        assert.notEqual(retried[0].init.headers['Idempotency-Key'], refused);
+        assert.notEqual(retried[0].init.headers['Idempotency-Key'], succeeded);
+    });
+
+test('an unconfirmed create keeps its key so the retry cannot duplicate it',
+    async () => {
+        let drop = true;
+        const app = boot({ mcpEditor: true, responder(url) {
+            if (url.indexOf('/draft-test') >= 0) {
+                return envelope({ outcome: 'ok', stages: [], metadata: { tools: [] } });
+            }
+            if (/\/api\/external-connections\/tenant$/.test(url)) {
+                if (drop) { drop = false; throw new Error('socket closed'); }
+                return envelope({ id: 'conn-1' });
+            }
+            return envelope({});
+        } });
+
+        app.page.openMcpEditor({ mode: 'create', scope: 'tenant' });
+        app.editor()._showTab('json');
+        app.document.getElementById('mcp-field-json').value = JSON.stringify({
+            mcpServers: { alpha: { command: 'uvx', args: ['a'] } },
+        });
+        app.editor().save();
+        for (let i = 0; i < 8; i += 1) await flush();
+
+        const first = app.fetchCalls.filter(call => /\/api\/external-connections\/tenant$/
+            .test(call.url) && call.init && call.init.method === 'POST')[0];
+        assert.ok(first, 'the create was attempted');
+        assert.equal(app.editor().isOpen(), true, 'an unknown outcome does not close the editor');
+
+        app.editor().save();
+        for (let i = 0; i < 8; i += 1) await flush();
+
+        const posts = app.fetchCalls.filter(call => /\/api\/external-connections\/tenant$/
+            .test(call.url) && call.init && call.init.method === 'POST');
+        assert.equal(posts.length, 2, 'the retry is the second attempt');
+        // Same key, same payload: if the first attempt did commit, the server
+        // answers with that row instead of creating a second connection.
+        assert.equal(posts[1].init.headers['Idempotency-Key'],
+            first.init.headers['Idempotency-Key']);
+        assert.equal(posts[1].init.body, first.init.body);
+    });
+
+test('editing tests the draft against the row version, and platform drafts are allowed',
+    async () => {
+        const app = boot({ mcpEditor: true, responder(url) {
+            if (url.indexOf('/draft-test') >= 0) {
+                return envelope({ outcome: 'ok', stages: [{ stage: 'protocol', status: 'ok' }],
+                    metadata: { tools: ['echo'] } });
+            }
+            return envelope({});
+        } });
+
+        app.page.openMcpEditor({ mode: 'edit', scope: 'tenant', id: 'mcp-t1', version: 6,
+            original: MCP_CARD_TENANT });
+        await flush();
+        app.editor().test();
+        for (let i = 0; i < 6; i += 1) await flush();
+
+        const probe = app.fetchCalls.filter(call => /\/draft-test$/.test(call.url)).pop();
+        const body = JSON.parse(probe.init.body);
+        assert.equal(body.kind, 'mcp');
+        assert.equal(body.scope, 'tenant');
+        // Both are what let the server resolve an unedited credential from the
+        // store and refuse a probe of a version that already moved.
+        assert.equal(body.connection_id, 'mcp-t1');
+        assert.equal(body.expected_version, 6);
+        // The name is the row's own declaration and has to travel with it: the
+        // config is replaced wholesale, so dropping it would leave the stored
+        // credential unreachable (and, `auth` being derived from it, rewrite
+        // the row as unauthenticated).
+        assert.equal(body.config.header_name, 'X-Api-Key',
+            'the stored declaration is carried, not dropped');
+        assert.equal(body.config.auth, 'header');
+        // The credential *value* is never echoed back into the request.
+        assert.equal(probe.init.body.indexOf('secret-value'), -1);
+        assert.equal(body.secrets, undefined,
+            'an untouched credential group sends no secrets');
+
+        // A platform template is filled in by a platform admin who may belong to
+        // no tenant, so the draft must be testable with scope=platform.
+        app.editor().close(true);
+        app.page.openMcpEditor({ mode: 'create', scope: 'platform' });
+        app.editor()._showTab('json');
+        app.document.getElementById('mcp-field-json').value = JSON.stringify({
+            mcpServers: { tpl: { command: 'uvx', args: ['a'] } },
+        });
+        app.editor().test();
+        for (let i = 0; i < 6; i += 1) await flush();
+
+        const platformProbe = app.fetchCalls.filter(call => /\/draft-test$/.test(call.url))
+            .map(call => JSON.parse(call.init.body)).pop();
+        assert.equal(platformProbe.scope, 'platform');
+        assert.equal(platformProbe.connection_id, undefined);
+    });
+
+test('a discarded change is asked about, and answering "keep" leaves the editor open',
+    async () => {
+        const app = boot({ mcpEditor: true });
+        app.page.openMcpEditor({ mode: 'create', scope: 'tenant' });
+        assert.equal(app.editor().isOpen(), true);
+
+        // Nothing typed yet: closing asks nothing.
+        app.editor().close();
+        assert.equal(app.editor().isOpen(), false);
+
+        app.page.openMcpEditor({ mode: 'create', scope: 'tenant' });
+        app.document.getElementById('mcp-field-name').value = 'half-typed';
+        app.editor().close();
+        await flush();
+        // The page's own dialog is used, raised above the editor's overlay so
+        // the question is not hidden behind the thing it asks about.
+        assert.ok(app.panel().innerHTML.indexOf(zh.ec_unsaved_title) >= 0);
+        assert.ok(app.document.getElementById('ec-modal')
+            .classList.contains('ec-modal-raised'));
+        assert.equal(app.editor().isOpen(), true, 'the editor waits for the answer');
+
+        const keep = app.panelEl('[data-ec-action="modal-close"]');
+        app.fire(keep, 'click');
+        await flush();
+        assert.equal(app.editor().isOpen(), true, '"keep editing" keeps the input');
+
+        app.editor().close();
+        await flush();
+        app.fire(app.panelEl('[data-ec-action="modal-confirm"]'), 'click');
+        for (let i = 0; i < 3; i += 1) await flush();
+        assert.equal(app.editor().isOpen(), false);
+        // And the secret-bearing panes are wiped on the way out.
+        assert.equal(app.document.getElementById('mcp-field-name').value, '');
+        assert.equal(app.document.getElementById('mcp-field-json').value, '');
+    });
+
+test('an editor draft takes part in the page\'s leave guard', async () => {
+    const app = boot({ mcpEditor: true });
+    app.page.openMcpEditor({ mode: 'create', scope: 'tenant' });
+
+    // A freshly opened editor holds nothing: navigating away is not a loss.
+    assert.equal(app.page.confirmLeave('chat'), true);
+
+    app.document.getElementById('mcp-field-name').value = 'half-typed';
+    assert.equal(app.page.confirmLeave('chat'), false,
+        'the question is asked before the draft is destroyed');
+    assert.ok(app.panel().innerHTML.indexOf(zh.ec_unsaved_title) >= 0);
+    assert.equal(app.editor().isOpen(), true, 'nothing is destroyed while the question is open');
+
+    // "Keep editing" leaves both the editor and its input alone.
+    app.fire(app.panelEl('[data-ec-action="modal-close"]'), 'click');
+    assert.equal(app.editor().isOpen(), true);
+    assert.equal(app.document.getElementById('mcp-field-name').value, 'half-typed');
+
+    // Confirming the discard destroys the draft and wipes the panes.
+    app.page.confirmLeave('chat');
+    app.fire(app.panelEl('[data-ec-action="modal-confirm"]'), 'click');
+    assert.equal(app.editor().isOpen(), false);
+    assert.equal(app.document.getElementById('mcp-field-name').value, '');
+});
+
+test('a changed identity force-clears the open editor instead of offering it back',
+    async () => {
+        const app = boot({ mcpEditor: true, tenantId: 'tenant-1' });
+        app.page.openMcpEditor({ mode: 'create', scope: 'tenant' });
+        app.document.getElementById('mcp-field-name').value = 'half-typed';
+        app.document.getElementById('mcp-field-env').value = 'TOKEN=s3cret';
+        assert.equal(app.editor().isDirty(), true);
+
+        // Re-authenticated under another identity while the editor was open.
+        const before = app.page.identityToken();
+        app.ctx._authEpoch = 7;
+        assert.notEqual(app.page.identityToken(), before);
+
+        // The teardown the periodic identity check runs: a draft belonging to
+        // the previous identity is destroyed, never offered back.
+        app.page.forceClearDrafts();
+        assert.equal(app.editor().isOpen(), false);
+        assert.equal(app.document.getElementById('mcp-field-env').value, '',
+            'the typed secret went with the draft');
+        assert.equal(app.page.state.cards.length, 0);
+    });

@@ -392,9 +392,22 @@ class ExternalConnectionDraftTestHandler:
     """
 
     def POST(self):
-        ctx, service = _guard(require_tenant=True)
         data = _body()
+        scope = str(data.get("scope") or registry.SCOPE_TENANT).strip()
+        if scope not in (registry.SCOPE_TENANT, registry.SCOPE_PLATFORM):
+            raise _fail(ExternalConnectionError(
+                "draft scope must be tenant or platform",
+                code="unsupported_scope"))
+        # A platform draft is tested by a platform administrator and must not
+        # require a tenant membership: a zero-tenant admin is exactly the caller
+        # who fills in the platform template. The scope is declared by the
+        # payload, so the independent platform permission is checked here rather
+        # than by the route gate -- a tenant manager cannot reach platform scope
+        # by naming it.
+        ctx, service = _guard(require_tenant=scope != registry.SCOPE_PLATFORM)
         try:
+            if scope == registry.SCOPE_PLATFORM:
+                service.require_platform_admin(ctx.user_id)
             kind = str(_require(data, "kind") or "").strip()
             config = _require(data, "config")
             if not isinstance(config, dict):
@@ -406,10 +419,19 @@ class ExternalConnectionDraftTestHandler:
                 raise ExternalConnectionError(
                     "secrets must be an object", code="field_type",
                     fields={"secrets": "type"})
+            connection_id = _optional_str(data, "connection_id")
+            if connection_id:
+                # Authorize the address before probing: an editing draft must
+                # not become a way to test a row the caller cannot read, and the
+                # error must match the read's so existence does not leak.
+                service.get_connection(
+                    actor_user_id=ctx.user_id, scope=scope,
+                    tenant_id=ctx.tenant_id, connection_id=connection_id)
             return _ok(service.probe_draft(
                 kind, config, secrets=secrets, actor_user_id=ctx.user_id,
-                tenant_id=ctx.tenant_id, scope=registry.SCOPE_TENANT,
-                owner_user_id=None))
+                tenant_id=ctx.tenant_id, scope=scope, owner_user_id=None,
+                connection_id=connection_id,
+                expected_version=_version(data) or None))
         except ExternalConnectionError as error:
             _fail(error)
         except Exception as error:  # noqa: BLE001
@@ -497,6 +519,7 @@ class ExternalConnectionTenantWriteHandler:
                 name=str(_require(data, "name")),
                 config=_require(data, "config"),
                 secrets=data.get("secrets"),
+                enabled=data.get("enabled"),
                 base_connection_id=_optional_str(data, "base_connection_id"),
                 idempotency_key=_idempotency_key(data)))
         except ExternalConnectionError as error:
@@ -552,6 +575,7 @@ class ExternalConnectionPlatformWriteHandler:
                 name=str(_require(data, "name")),
                 config=_require(data, "config"),
                 secrets=data.get("secrets"),
+                enabled=data.get("enabled"),
                 idempotency_key=_idempotency_key(data)))
         except ExternalConnectionError as error:
             _fail(error)
@@ -589,6 +613,7 @@ class ExternalConnectionPersonalWriteHandler:
                 name=str(_require(data, "name")),
                 config=_require(data, "config"),
                 secrets=data.get("secrets"),
+                enabled=data.get("enabled"),
                 idempotency_key=_idempotency_key(data)))
         except ExternalConnectionError as error:
             _fail(error)

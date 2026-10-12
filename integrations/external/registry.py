@@ -59,7 +59,11 @@ SCOPES: Tuple[str, ...] = (SCOPE_PLATFORM, SCOPE_TENANT, SCOPE_PERSONAL)
 #: one — which is what stops a request pointing a platform connection at a
 #: tenant credential.
 SLOTS: Dict[str, FrozenSet[str]] = {
-    KIND_MCP: frozenset({"header", "env", "oauth"}),
+    # ``headers`` is the master-editor representation: one encrypted JSON map of
+    # request-header name -> value for a remote MCP connection. ``header`` is the
+    # legacy single-header slot, kept readable so an existing connection keeps
+    # working; the new slot wins when both exist (see the MCP adapter).
+    KIND_MCP: frozenset({"header", "headers", "env", "oauth"}),
     KIND_ERP: frozenset({"password"}),
     KIND_OA: frozenset({"password", "app_secret"}),
     KIND_EMAIL: frozenset({"imap_password", "smtp_password"}),
@@ -130,6 +134,10 @@ _MAX_LIST = 64
 _MAX_URL = 1024
 _SECRETISH = re.compile(r"(pass|secret|token|key|credential|authorization)", re.I)
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+#: An HTTP header field-name (:rfc:`7230` ``token``). The request-header names a
+#: master-style connection declares live in the non-secret configuration; their
+#: *values* live in the ``headers`` secret slot.
+_HEADER_NAME = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]{1,128}$")
 _EMAIL_ADDR = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 #: What a ``tool_name_prefix`` may contain. Whitespace, the ``:`` id separator
@@ -161,8 +169,9 @@ _SPECS: Tuple[TypeSpec, ...] = (
         label_key="ext_conn_type_mcp",
         scopes=frozenset({SCOPE_PLATFORM, SCOPE_TENANT}),
         config_keys=frozenset({
-            "transport", "url", "auth", "header_name", "command", "args",
-            "env_keys", "oauth_provider", "tool_name_prefix",
+            "transport", "url", "auth", "header_name", "header_names",
+            "command", "args", "env_keys", "oauth_provider", "oauth_scope",
+            "tool_name_prefix", "timeout",
         }),
         secret_slots=SLOTS[KIND_MCP],
     ),
@@ -382,13 +391,19 @@ def _validate_mcp(config: Mapping[str, Any]) -> Dict[str, Any]:
     prefix = _tool_name_prefix(config)
     if prefix:
         out["tool_name_prefix"] = prefix
+    # ``timeout`` is optional and carried only when given, so an existing row
+    # keeps its stored shape and the deployment default (30s) still applies to
+    # one that never set it.
+    if config.get("timeout") not in (None, ""):
+        out["timeout"] = _integer(config, "timeout", default=30, low=1, high=300)
     # ``tool_name_prefix`` is optional and carried above. There is deliberately
     # no per-tool list here: which remote tools a connection publishes is
     # discovered from the server, and a configuration field naming them would be
     # a second, hand-maintained copy of that answer -- one the operator would
     # have to write without being told what the server publishes.
     if transport == "stdio":
-        for forbidden in ("url", "auth", "header_name", "oauth_provider"):
+        for forbidden in ("url", "auth", "header_name", "header_names",
+                          "oauth_provider", "oauth_scope"):
             if config.get(forbidden) not in (None, ""):
                 raise invalid("%s is not used by a stdio connection" % forbidden,
                               code="field_invalid", fields={forbidden: "not_allowed"})
@@ -402,18 +417,51 @@ def _validate_mcp(config: Mapping[str, Any]) -> Dict[str, Any]:
                           code="field_invalid", fields={forbidden: "not_allowed"})
     out["url"] = _http_url(_string(config, "url", required=True, max_len=_MAX_URL),
                            "url")
-    auth = _string(config, "auth", default="none") or "none"
-    if auth not in ("none", "header", "oauth"):
-        raise invalid("auth must be none, header or oauth", code="field_invalid",
-                      fields={"auth": "invalid"})
+    # ``header_names`` is the master-editor request-header declaration: names
+    # here, values in the ``headers`` secret slot. ``header_name`` is the legacy
+    # single-header field and stays accepted for an existing connection.
+    header_names = _string_list(config, "header_names", pattern=_HEADER_NAME)
+    seen_names = set()
+    for name in header_names:
+        lowered = name.lower()
+        if lowered in seen_names:
+            raise invalid("header_names contains a duplicate name",
+                          code="field_invalid", fields={"header_names": "duplicate"})
+        seen_names.add(lowered)
+    oauth_scope = _string(config, "oauth_scope", max_len=_MAX_STRING)
+    raw_auth = config.get("auth")
+    if raw_auth in (None, ""):
+        # The master editor has no auth selector: the presence of a scope or of
+        # request headers is what selects the mode. An explicit ``auth`` from an
+        # existing console/legacy writer is still honoured below.
+        if oauth_scope:
+            auth = "oauth"
+        elif header_names:
+            auth = "header"
+        else:
+            auth = "none"
+    else:
+        auth = _string(config, "auth", default="none") or "none"
+        if auth not in ("none", "header", "oauth"):
+            raise invalid("auth must be none, header or oauth",
+                          code="field_invalid", fields={"auth": "invalid"})
+    if auth == "oauth" and "authorization" in seen_names:
+        # An explicit Authorization header would be overwritten by (or would
+        # shadow) the bound token; the one combination the client cannot serve.
+        raise invalid("a hand-written Authorization header conflicts with oauth",
+                      code="field_invalid", fields={"header_names": "not_allowed"})
     out["auth"] = auth
-    if auth == "header":
+    if header_names:
+        out["header_names"] = header_names
+    if config.get("header_name") not in (None, ""):
+        if auth != "header":
+            raise invalid("header_name requires auth=header", code="field_invalid",
+                          fields={"header_name": "not_allowed"})
         out["header_name"] = _string(config, "header_name", required=True)
-    elif config.get("header_name") not in (None, ""):
-        raise invalid("header_name requires auth=header", code="field_invalid",
-                      fields={"header_name": "not_allowed"})
     if auth == "oauth":
         out["oauth_provider"] = _string(config, "oauth_provider", default="generic")
+    if oauth_scope:
+        out["oauth_scope"] = oauth_scope
     return out
 
 

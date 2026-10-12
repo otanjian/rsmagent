@@ -56,7 +56,13 @@ from auth import capability_matrix
 HTTP_METHODS: Tuple[str, ...] = ("GET", "POST", "PUT", "DELETE", "PATCH")
 
 #: Authorization domains a policy entry may use.
-POLICIES = frozenset({"public", "personal", "platform", "tenant", "closed"})
+#:
+#: ``scoped`` is the one domain the *payload* decides: the request carries its
+#: scope (the draft-test route sends ``scope`` in the body), so the gate resolves
+#: the caller and the declared permission but leaves the tenant requirement to
+#: the handler. Declaring ``tenant`` there would refuse the zero-tenant platform
+#: admin before the handler could see which scope the request asked for.
+POLICIES = frozenset({"public", "personal", "platform", "tenant", "scoped", "closed"})
 
 
 class RouteEntry:
@@ -325,7 +331,7 @@ ROUTES: Tuple[RouteEntry, ...] = (
     # switch for the type, which defaults closed — so declaring the route does
     # not make a test runnable. ``runtime`` is a read: the limits, the effective
     # outbound policy and the adapter's capability reasons.
-    RouteEntry("/api/external-connections/draft-test", "ExternalConnectionDraftTestHandler", "fork:external-connections", {"POST": S("external_connections", "draft_test", policy="tenant", permission="external.connections.manage", comment="test an unsaved form (kind + config + one-shot secrets); persists no connection, no secret and no test record")}),
+    RouteEntry("/api/external-connections/draft-test", "ExternalConnectionDraftTestHandler", "fork:external-connections", {"POST": S("external_connections", "draft_test", policy="scoped", permission="external.connections.manage", comment="test an unsaved form (kind + config + one-shot secrets); persists no connection, no secret and no test record. The scope is in the payload, so the route gate leaves the tenant requirement to the handler: a platform draft is the zero-tenant admin's, a tenant draft needs a tenant selection")}),
     RouteEntry("/api/external-connections/tenant/([^/]+)/test", "ExternalConnectionTestHandler", "fork:external-connections", {"GET": S("external_connections", "test", policy="tenant", comment="the recorded test state for a tenant connection (version- and secret-bound)"), "POST": S("external_connections", "test", policy="tenant", permission="external.connections.manage", comment="run a bounded connectivity/authentication test; refused with test_not_available until the deployment opens the type")}),
     RouteEntry("/api/external-connections/tenant/([^/]+)/runtime", "ExternalConnectionRuntimeHandler", "fork:external-connections", {"GET": S("external_connections", "runtime", policy="tenant", comment="runtime limits, effective outbound policy and adapter capability reasons")}),
     RouteEntry("/api/external-connections/platform/([^/]+)/test", "ExternalConnectionTestHandler", "fork:external-connections", {"GET": S("external_connections", "test", policy="platform", permission="", comment="the recorded test state for a platform connection"), "POST": S("external_connections", "test", policy="platform", permission="", comment="run a bounded test for a platform connection (platform admin)")}),
