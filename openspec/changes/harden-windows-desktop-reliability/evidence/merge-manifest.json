@@ -1,0 +1,67 @@
+[
+  {
+    "source": ".openspec.yaml",
+    "snapshot": "evidence/merged-source/.openspec.yaml",
+    "sha256": "58269d7db72cdbd907f1e3d553954adec105b48d45868fe89fca01036e3dbe35"
+  },
+  {
+    "source": "design.md",
+    "snapshot": "evidence/merged-source/design.md",
+    "sha256": "62df290a7df61b699ec955cb97bb54c20bd320da265bf77be8d8f23f290ac807"
+  },
+  {
+    "source": "evidence/baseline.md",
+    "snapshot": "evidence/merged-source/evidence/baseline.md",
+    "sha256": "fbc876443b964e4e8ec989f5f744213d10bfa409e0921dd19379ff48d33e0fcf"
+  },
+  {
+    "source": "evidence/generation-fix.md",
+    "snapshot": "evidence/merged-source/evidence/generation-fix.md",
+    "sha256": "c4fa34ccbaf063a4f9b8715074c95f5bec32505ef035935c2b1a147d9a491f1b"
+  },
+  {
+    "source": "evidence/local-read-windows.md",
+    "snapshot": "evidence/merged-source/evidence/local-read-windows.md",
+    "sha256": "f3289b79738e230d7dbe42c8d0a780d3badbe52a1a15e8f4cc16a9d79b83304a"
+  },
+  {
+    "source": "proposal.md",
+    "snapshot": "evidence/merged-source/proposal.md",
+    "sha256": "e0082d614748776d96a5a1561e44443f985ef0bf9210f9575f7adb748cf50e16"
+  },
+  {
+    "source": "specs/desktop-execution-delivery/spec.md",
+    "snapshot": "evidence/merged-source/specs/desktop-execution-delivery/spec.md",
+    "sha256": "8de768342861183b2a8962b84785ee23bab6ef668f6251c11de3f495cb5b6a1e"
+  },
+  {
+    "source": "specs/desktop-project-artifacts/spec.md",
+    "snapshot": "evidence/merged-source/specs/desktop-project-artifacts/spec.md",
+    "sha256": "47f98a9c083b0619409312106aa017858b99de4c162591a32332190d98ddcf88"
+  },
+  {
+    "source": "specs/desktop-project-execution/spec.md",
+    "snapshot": "evidence/merged-source/specs/desktop-project-execution/spec.md",
+    "sha256": "f14dc5e72c6e85650a6f634ea627ae2e2d3b20cde987adbb25c88739f7dec04a"
+  },
+  {
+    "source": "specs/desktop-skill-runtime/spec.md",
+    "snapshot": "evidence/merged-source/specs/desktop-skill-runtime/spec.md",
+    "sha256": "674a2ffa96dc6d44d096b7a24d37c93d94776856b7323b45675ffc0662bdb6ef"
+  },
+  {
+    "source": "specs/execution-isolation/spec.md",
+    "snapshot": "evidence/merged-source/specs/execution-isolation/spec.md",
+    "sha256": "b9d74c6eea77a38eeba1a67b602220979373fb6d23fa1bbe9d9bfba76ce53490"
+  },
+  {
+    "source": "specs/scoped-project-browser/spec.md",
+    "snapshot": "evidence/merged-source/specs/scoped-project-browser/spec.md",
+    "sha256": "7604c2cf1bf69e7d76110939d107eb6a24d5352ef953b050c2dd1b1451391f33"
+  },
+  {
+    "source": "tasks.md",
+    "snapshot": "evidence/merged-source/tasks.md",
+    "sha256": "e843e607ea5d6dc962f31bbeec7bbd1b42f2b7f8855003935a8b9b003e328b32"
+  }
+]

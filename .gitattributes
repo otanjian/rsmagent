@@ -16,3 +16,12 @@ docs/images/rongda-ai-logo.svg binary
 docs/images/rongda-ai-logo-dark.svg binary
 webhelp/assets/img/rongda-ai-logo.svg binary
 webhelp/assets/img/rongda-ai-logo-dark.svg binary
+# --- forensic evidence (byte-preserved, never mergeable) ----------------------
+# An OpenSpec change may archive a source snapshot next to a SHA-256 manifest
+# (see openspec/changes/harden-windows-desktop-reliability/evidence/). EOL
+# normalisation rewrites those bytes, so a recorded hash would only match on the
+# platform that wrote it: with autocrlf=true a Windows checkout restores CRLF,
+# while Linux/macOS checkouts keep LF and every hash mismatches. `-text` stores
+# the bytes verbatim, so the manifest verifies anywhere and the snapshot stays a
+# faithful copy.
+openspec/changes/*/evidence/** -text
