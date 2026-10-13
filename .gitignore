@@ -60,6 +60,13 @@ client_config.json
 ref/
 **/.dev.vars
 .cursor/
+# OpenSpec-generated AI tool instruction files (`openspec update` refreshes
+# them): the same skill set installed per tool, so three byte-identical copies
+# would otherwise drift apart in the tree. `.trae/` additionally carries the
+# generated opsx-* slash commands. Generated copies, never source.
+.agents/
+.qoder/
+.trae/
 local/
 node_modules/
 
@@ -202,6 +209,11 @@ README*.md
 /scenes/sap_workbench_assets_backup*/
 # Same rollback-copy convention with the `assets.bak-<stamp>` naming variant.
 /scenes/sap_workbench_assets.bak-*/
+
+# Local runtime database of the production-forecast scene (same class as the SAP
+# workbench sqlite above: local run data, not source). The trailing `*` also
+# covers the -wal/-shm sidecars SQLite creates next to it.
+/scenes/production_forecast.sqlite3*
 
 # Timestamped pre-edit copies of preset/agent configs written next to the live
 # file (same convention as config.json.bak-* above, but named `*.bak-tags-<stamp>`).
