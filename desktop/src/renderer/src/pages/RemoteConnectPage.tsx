@@ -24,6 +24,10 @@ const failureText = (failure: RemoteFailure): string => {
   // Stable mapping from the main process's failure kind to a sentence. The
   // server address and any certificate detail are never echoed: a TLS error is
   // reported as a refusal, never as a hint to "try HTTP".
+  // The code first: one kind ('network') covers both "could not reach it" and
+  // "it accepted the connection and never answered", and those send the reader
+  // to different places (task 6.1).
+  if (failure.code === 'network_timeout') return t('remote_err_timeout')
   switch (failure.kind) {
     case 'tls':
       return t('remote_err_tls')

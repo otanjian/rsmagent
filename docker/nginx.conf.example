@@ -38,4 +38,39 @@ server {
         proxy_buffering off;
         proxy_read_timeout 3600s;
     }
+
+    # The optional device channel, and the only route that is NOT the Web app.
+    #
+    # `/api/desktop/connect` is a WebSocket upgrade served by the standalone
+    # gateway (`python -m integrations.desktop.gateway`, loopback 127.0.0.1:9877
+    # by default) -- the WSGI Web app cannot upgrade it at all
+    # (channel/web/fork/runtime.py). Forwarding it to 9899, or leaving the
+    # `Connection ""` above in force, turns every device connection into a
+    # failed upgrade, and the client then reports a device-channel fault while
+    # the server business looks fine -- which is exactly the pair of states the
+    # deployment has to keep separate (change
+    # harden-windows-desktop-reliability, task 6.3).
+    #
+    # `Upgrade`/`Connection` are what make the handshake work; the long read and
+    # send timeouts cover heartbeats and idle leases, and `proxy_buffering off`
+    # keeps frames flowing. Nothing here relaxes authentication or the origin
+    # checks: the gateway validates the native bearer itself.
+    location = /api/desktop/connect {
+        proxy_pass http://127.0.0.1:9877;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host agent.example.com;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host agent.example.com;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    # The gateway's readiness endpoint is deliberately NOT published here: it is
+    # a loopback diagnostic (`curl http://127.0.0.1:9877/healthz`), and exposing
+    # it would advertise the internal port on the public origin. Web readiness
+    # is not gateway readiness -- check both, separately.
 }

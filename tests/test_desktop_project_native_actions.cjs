@@ -69,6 +69,18 @@ before(() => {
  * dropping the `async` would hand a test a plain value where the shipped code
  * returns a promise.
  */
+/** The shared local-refusal table and its lookup, for a sandbox that needs them. */
+function extractRefusalTable(src) {
+  const tableFrom = src.indexOf('const WS_LOCAL_REFUSAL_KEYS');
+  const tableTo = src.indexOf('};', tableFrom);
+  const lookupFrom = src.indexOf('function wsLocalRefusalText');
+  const lookupTo = src.indexOf('\n}', lookupFrom);
+  if (tableFrom < 0 || lookupFrom < 0) {
+    throw new Error('the local-refusal table is not in workspace.js');
+  }
+  return `${src.slice(tableFrom, tableTo + 2)}\n${src.slice(lookupFrom, lookupTo + 2)}`;
+}
+
 function extractFunction(src, name) {
   const asyncAt = src.indexOf(`async function ${name}(`);
   const from = asyncAt >= 0 ? asyncAt : src.indexOf(`function ${name}(`);
@@ -657,6 +669,11 @@ function loadPanel(overrides = {}) {
   vm.createContext(ctx);
   vm.runInContext([
     extractFunction(workspaceJs, 'wsEditTargetPath'),
+    // The failing callers below all decode through the shared table (change
+    // harden-windows-desktop-reliability, task 4.3), so the sandbox needs it
+    // and its lookup -- a function extracted alone would only ever throw
+    // "wsLocalRefusalText is not defined".
+    extractRefusalTable(workspaceJs),
     extractFunction(workspaceJs, 'wsLocalAction'),
     extractFunction(workspaceJs, 'wsLocalCardIsGone'),
     extractFunction(workspaceJs, 'wsLocalCardScope'),

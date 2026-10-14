@@ -640,7 +640,16 @@ export async function attachRemoteContainer(options: {
     spawnGuard: guardBinary
       ? () => spawnGuardProcess(guardBinary)
       : () => {
-        throw new Error('the local file helper (fs-guard) is not installed in this build')
+        // Coded, not bare. A bare Error reached the console as ``device_error``
+        // and was rendered as "the device is offline", which sends the user to
+        // reconnect a device that is connected and working; the real fix is to
+        // install or rebuild the app that ships the fs-guard helper
+        // (change harden-windows-desktop-reliability, task 4.3). The code
+        // travels with the refusal because the server relays the device's own
+        // ``error_code`` verbatim (agent/tools/client_files/client_files.py).
+        throw Object.assign(
+          new Error('the local file helper (fs-guard) is not installed in this build'),
+          { code: 'helper_missing' })
       },
     token: async () => (status().session ? nativeBearer() : null),
     registeredLocalOrigin: getLocalBackendOrigin,

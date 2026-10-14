@@ -59,6 +59,8 @@ from typing import List, Optional, Tuple
 
 __all__ = [
     "UnsafePathError",
+    "LockBusyError",
+    "is_link_like",
     "split_relative",
     "resolve_within",
     "contains",
@@ -78,6 +80,18 @@ __all__ = [
     "rename",
     "remove_tree",
 ]
+
+
+class LockBusyError(Exception):
+    """Another process holds the lock this call needs, right now.
+
+    Deliberately separate from :class:`UnsafePathError`: "the path is not the
+    plain file you asked for" is a refusal that retrying cannot fix, while "the
+    lock is held" is transient. Callers that collapse the two end up telling a
+    user their memory directory was replaced when they only had to wait -- and
+    sending them to re-login, which cannot help either (change
+    harden-windows-desktop-reliability, task 3.3).
+    """
 
 
 class UnsafePathError(Exception):
@@ -103,7 +117,21 @@ def file_lock(root, relative):
             fd = os.open(parts[-1], os.O_RDWR | os.O_CREAT | _O_NOFOLLOW,
                          0o600, dir_fd=chain.fd)
         else:
-            path = _resolve_chain(_root_path(root), parts, allow_missing_tail=True)[0]
+            # ``parts`` ends in the lock *file*, so validate its parent chain and
+            # append the name -- the way every other file primitive here does.
+            # ``_resolve_chain`` requires every component to be a directory, so
+            # once the lock file existed this branch refused its own lock with
+            # "non-directory component '<name>'": every lock after the first
+            # failed, permanently, which callers such as
+            # ``agent.memory.personal.scope_transaction`` report as a replaced
+            # memory directory (403). See scripts/repro for the reproduction.
+            _parent, name, path = _resolve_parent(_root_path(root), parts, create=True)
+            if is_link_like(path):
+                # The descriptor path gets this guarantee from O_NOFOLLOW; the
+                # fallback has to ask for it. Following a link here would let two
+                # processes lock different inodes through one name, which is the
+                # one thing this function promises cannot happen.
+                raise UnsafePathError("symbolic link component %r" % name)
             fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
         try:
             if not _stat.S_ISREG(os.fstat(fd).st_mode):
@@ -113,7 +141,15 @@ def file_lock(root, relative):
                 if os.fstat(fd).st_size == 0:
                     os.write(fd, b'0')
                 os.lseek(fd, 0, os.SEEK_SET)
-                msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+                try:
+                    # LK_LOCK retries for about ten seconds and then raises. That
+                    # raise means "someone else holds this byte range", not "this
+                    # path is wrong", and the caller has to be able to tell the
+                    # difference to give the user the right advice.
+                    msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+                except OSError as error:
+                    raise LockBusyError(
+                        "another process holds the lock on %r" % relative) from error
             else:
                 import fcntl
                 fcntl.flock(fd, fcntl.LOCK_EX)
@@ -167,10 +203,33 @@ def _root_path(root) -> str:
     raise UnsafePathError("root must be a path")
 
 
+def is_link_like(path) -> bool:
+    """True when ``path`` redirects elsewhere: a symbolic link, or a junction.
+
+    ``os.path.islink`` alone is not enough on Windows from Python 3.12 on: a
+    directory junction is a reparse point that redirects exactly like a symlink,
+    while ``islink`` -- and ``lstat``'s ``S_ISLNK`` -- report it as an ordinary
+    directory. Every anti-replacement guard asks this instead, so "the root is a
+    link" and "the root is a junction" get the same answer, which is a refusal.
+    Measured on Python 3.12.13: with a junction at the personal-memory root the
+    guards passed and another user's ``MEMORY.md`` was read
+    (scripts/repro/probe-junction-memory-root.py).
+    """
+    if os.path.islink(path):
+        return True
+    isjunction = getattr(os.path, "isjunction", None)
+    if isjunction is None:
+        return False
+    try:
+        return bool(isjunction(path))
+    except OSError:
+        return False
+
+
 def _assert_root_is_not_link(root: str) -> None:
-    """A symlinked root would make every containment promise meaningless."""
-    if os.path.islink(root):
-        raise UnsafePathError("root is a symbolic link")
+    """A redirecting root would make every containment promise meaningless."""
+    if is_link_like(root):
+        raise UnsafePathError("root is a symbolic link or a junction")
 
 
 def contains(root, candidate) -> bool:
@@ -216,7 +275,7 @@ def _mkdir_level(part: str, *, directory: Optional[str] = None,
             is_link = _stat.S_ISLNK(info.st_mode)
             is_dir = _stat.S_ISDIR(info.st_mode)
         else:
-            is_link, is_dir = os.path.islink(target), os.path.isdir(target)
+            is_link, is_dir = is_link_like(target), os.path.isdir(target)
         if is_link:
             raise UnsafePathError("symbolic link component %r" % part) from None
         if not is_dir:
@@ -234,8 +293,8 @@ def _resolve_chain(root: str, parts: List[str], *, create: bool = False,
     current = root
     for index, part in enumerate(parts):
         current = os.path.join(current, part)
-        if os.path.islink(current):
-            raise UnsafePathError("symbolic link component %r" % part)
+        if is_link_like(current):
+            raise UnsafePathError("symbolic link or junction component %r" % part)
         if not os.path.lexists(current):
             if create:
                 _mkdir_level(part, directory=current)
@@ -279,8 +338,8 @@ def _resolve_parent(root: str, parts: List[str], *, create: bool = False
     parent = root
     for part in parts[:-1]:
         parent = os.path.join(parent, part)
-        if os.path.islink(parent):
-            raise UnsafePathError("symbolic link component %r" % part)
+        if is_link_like(parent):
+            raise UnsafePathError("symbolic link or junction component %r" % part)
         if not os.path.lexists(parent):
             if not create:
                 raise FileNotFoundError(parent)
@@ -500,8 +559,26 @@ def is_dir(root, relative) -> bool:
 
 
 def is_symlink(root, relative) -> bool:
-    st = _lstat(_root_path(root), split_relative(relative))
-    return st is not None and _stat.S_ISLNK(st.st_mode)
+    """True for an entry that redirects: a symlink, or a junction.
+
+    Named for the common case, but the answer has to cover junctions too: from
+    Python 3.12 ``lstat`` reports a junction as a directory, so a caller asking
+    ``S_ISLNK`` would follow one (see :func:`is_link_like`). Absent entries are
+    not links.
+    """
+    parts = split_relative(relative)
+    st = _lstat(_root_path(root), parts)
+    if st is None:
+        return False
+    if _stat.S_ISLNK(st.st_mode):
+        return True
+    if getattr(os.path, "isjunction", None) is None:
+        return False
+    try:
+        _parent, _name, full = _resolve_parent(_root_path(root), parts)
+    except (FileNotFoundError, UnsafePathError):
+        return False
+    return is_link_like(full)
 
 
 def stat(root, relative) -> Optional[os.stat_result]:
@@ -565,8 +642,8 @@ def read_bytes(root, relative) -> Optional[bytes]:
     if fd is None and full is None:
         return None
     if fd is None:
-        if os.path.islink(full):
-            raise UnsafePathError("symbolic link entry")
+        if is_link_like(full):
+            raise UnsafePathError("symbolic link or junction entry")
         with open(full, "rb") as handle:
             return handle.read()
     try:
@@ -596,12 +673,16 @@ def mkdir(root, relative) -> None:
 
 def _write_temp_then_replace(root: str, parts: List[str], data: bytes) -> None:
     directory, name = parts[:-1], parts[-1]
+    # The descriptor branch is covered by _DirChain's own root assertion; this
+    # fallback has to ask, or a write lands *through* a redirecting root (found
+    # with a junction: the read path refused it and the write path did not).
+    _assert_root_is_not_link(root)
     if not _DIR_FD_OK:
         parent_dir = root
         for part in directory:
             parent_dir = os.path.join(parent_dir, part)
-            if os.path.islink(parent_dir):
-                raise UnsafePathError("symbolic link directory %r" % part)
+            if is_link_like(parent_dir):
+                raise UnsafePathError("symbolic link or junction directory %r" % part)
             if not os.path.lexists(parent_dir):
                 _mkdir_level(part, directory=parent_dir)
             elif not os.path.isdir(parent_dir):
@@ -609,8 +690,8 @@ def _write_temp_then_replace(root: str, parts: List[str], data: bytes) -> None:
         if not contains(root, parent_dir):
             raise UnsafePathError("path escapes the trusted root")
         full = os.path.join(parent_dir, name)
-        if os.path.islink(full):
-            raise UnsafePathError("symbolic link entry %r" % name)
+        if is_link_like(full):
+            raise UnsafePathError("symbolic link or junction entry %r" % name)
         handle = tempfile.NamedTemporaryFile(
             "wb", dir=parent_dir, delete=False, prefix=".tmp-")
         try:
@@ -686,8 +767,8 @@ def unlink(root, relative) -> bool:
             st = os.lstat(full)
         except FileNotFoundError:
             return False
-        if _stat.S_ISLNK(st.st_mode):
-            raise UnsafePathError("symbolic link entry %r" % name)
+        if is_link_like(full):
+            raise UnsafePathError("symbolic link or junction entry %r" % name)
         os.unlink(full)
         return True
     try:
@@ -744,8 +825,8 @@ def rename(root, src_relative, dst_relative, *, create_parents: bool = False
             src_parent, src_name, src_full = _resolve_parent(root_path, src_parts)
         except FileNotFoundError:
             raise FileNotFoundError(src_relative) from None
-        if _stat.S_ISLNK(os.lstat(src_full).st_mode):
-            raise UnsafePathError("symbolic link entry %r" % src_name)
+        if is_link_like(src_full):
+            raise UnsafePathError("symbolic link or junction entry %r" % src_name)
         dst_parent, dst_name, dst_full = _resolve_parent(
             root_path, dst_parts, create=create_parents)
         if os.path.lexists(dst_full):
@@ -799,8 +880,8 @@ def remove_tree(root, relative) -> bool:
             st = os.lstat(full)
         except FileNotFoundError:
             return False
-        if _stat.S_ISLNK(st.st_mode):
-            raise UnsafePathError("symbolic link entry %r" % name)
+        if is_link_like(full):
+            raise UnsafePathError("symbolic link or junction entry %r" % name)
         if _stat.S_ISDIR(st.st_mode):
             _remove_tree_path(full)
         else:

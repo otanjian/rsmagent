@@ -1,10 +1,12 @@
 import { app, BrowserWindow, session, shell, ipcMain, dialog, nativeImage, Notification, systemPreferences, crashReporter, Menu, clipboard, net, powerMonitor } from 'electron'
 import path from 'path'
 import fs from 'fs'
-import os from 'os'
+
 import http from 'http'
 import { PythonBackend, BackendError } from './python-manager'
 import { resolveBackendPath } from './backend-path'
+import { resolveDataDir } from './data-dir'
+import { initHostLog } from './host-log'
 import { buildAppMenu } from './menu'
 import { createTray, destroyTray, getTray } from './tray'
 import { initUpdater, checkForUpdates, startDownload, quitAndInstall, setUpdateLanguage, setUpdateFeedQuery } from './updater'
@@ -28,54 +30,20 @@ import { setupRemoteConfigIPC, startupMode, syncBrokerOrigin } from './remote/co
 import { detachRemoteContainer, setupRemoteContainerIPC } from './remote/remote-container-ipc'
 import { setLocalWebBindWindow, tryAutoBindLocalWeb } from './remote/local-web-bind'
 
-// Where the packaged backend keeps its writable data (config.json, run.log).
-// Kept in sync with COW_DATA_DIR in python-manager.ts so the desktop shell
-// writes its own diagnostics into the SAME run.log the "open log folder" button
-// reveals and the in-app Logs page tails — one place to look for both layers.
-const COW_DATA_DIR = path.join(os.homedir(), '.cow')
-
-// Mirror the main process's console output and any uncaught crash to run.log.
-// Packaged builds have no terminal, so every console.log/error and every
-// Electron-layer crash (renderer/GPU gone, main-process exception) used to
-// vanish: the backend's run.log covered Python failures, but a white screen or
-// a silent app quit left nothing behind. This closes that gap without a crash
-// server — the evidence lands locally where the user can already find it.
+// The shell's own diagnostics live in <data-dir>/desktop-main.log, beside the
+// backend's run.log: one writer per file, so neither process rotates a file the
+// other one holds. Packaged builds have no terminal, so every console.log/error
+// and every Electron-layer crash (renderer/GPU gone, main-process exception)
+// used to vanish -- the backend's run.log covered Python failures, but a white
+// screen or a silent app quit left nothing behind. See host-log.ts for why the
+// console wrapper and the crash handlers are guarded the way they are.
 function initDesktopLogging(): void {
-  let stream: fs.WriteStream | null = null
-  try {
-    fs.mkdirSync(COW_DATA_DIR, { recursive: true })
-    // Append so we never clobber the backend's own run.log history; both sides
-    // are line-based, so interleaving is fine.
-    stream = fs.createWriteStream(path.join(COW_DATA_DIR, 'run.log'), { flags: 'a' })
-    stream.on('error', () => { stream = null })
-  } catch {
-    stream = null
-  }
-
-  const write = (level: string, args: unknown[]) => {
-    if (!stream) return
-    const text = args
-      .map((a) => (typeof a === 'string' ? a : a instanceof Error ? a.stack || a.message : JSON.stringify(a)))
-      .join(' ')
-    try {
-      stream.write(`[MAIN][${new Date().toISOString()}] [${level}] ${text}\n`)
-    } catch {
-      // logging must never break the app
-    }
-  }
-
-  // Wrap console so existing console.* calls throughout main also persist,
-  // while still printing to stdout for `npm run dev`.
-  const patch = (name: 'log' | 'warn' | 'error') => {
-    const original = console[name].bind(console)
-    console[name] = (...args: unknown[]) => {
-      write(name.toUpperCase(), args)
-      original(...args)
-    }
-  }
-  patch('log')
-  patch('warn')
-  patch('error')
+  const log = initHostLog(resolveDataDir(getBackendPath(), !isDev))
+  // These two are the fix for the 1.1 GB log storm: the console mirror survives
+  // a terminal that is already gone, and a crash can no longer report itself
+  // through the channel that just failed.
+  log.captureConsole()
+  log.captureCrashes()
 
   // Native minidumps for hard crashes (segfaults in Electron/Chromium). Stored
   // locally under userData/Crashpad; no upload server is configured.
@@ -85,16 +53,10 @@ function initDesktopLogging(): void {
     // crashReporter is best-effort; never let it block startup
   }
 
-  // Main-process JS errors that would otherwise kill the app silently.
-  process.on('uncaughtException', (err) => {
-    console.error('[crash] uncaughtException:', err?.stack || err)
-  })
-  process.on('unhandledRejection', (reason) => {
-    console.error('[crash] unhandledRejection:', reason instanceof Error ? reason.stack : reason)
-  })
-
   // Renderer/GPU/utility process crashes. These are the "white screen" and
   // "window vanished" cases the user sees but that leave no trace by default.
+  // Reported through console.error on purpose: the file write happens first, so
+  // the evidence survives a terminal that no longer accepts writes.
   app.on('render-process-gone', (_e, _wc, details) => {
     console.error(`[crash] render-process-gone: reason=${details.reason} exitCode=${details.exitCode}`)
   })
@@ -103,13 +65,11 @@ function initDesktopLogging(): void {
   })
 
   app.on('before-quit', () => {
-    try {
-      stream?.end()
-    } catch {
-      // ignore
-    }
+    log.close()
   })
 }
+
+const isDev = !app.isPackaged
 
 // Set up main-process logging + crash capture before anything else runs, so the
 // earliest console output and any startup crash are already being persisted.
@@ -135,8 +95,6 @@ let mainWindow: BrowserWindow | null = null
 let pythonBackend: PythonBackend | null = null
 // True once the user explicitly quits (menu/tray), so close-to-tray is bypassed.
 let isQuitting = false
-
-const isDev = !app.isPackaged
 // Must match `server.port` in vite.config.ts. A single port, not a range:
 // strictPort there means our server never drifts, so a neighbouring port can
 // only ever belong to somebody else.

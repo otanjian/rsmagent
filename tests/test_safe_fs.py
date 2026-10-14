@@ -228,5 +228,86 @@ class ConcurrentCreateTests(SafeFsCase):
             os.mkdir = real_mkdir
 
 
+class LockFileTests(SafeFsCase):
+    """``file_lock`` has to keep working on the *second* call, everywhere.
+
+    The lock file used to be resolved through ``_resolve_chain`` on platforms
+    without ``dir_fd`` -- and that helper requires every component to be a
+    directory, so once ``.memory.lock`` existed the next lock was refused with
+    "non-directory component '.memory.lock'". Callers that read
+    ``UnsafePathError`` as "the directory was replaced"
+    (``agent.memory.personal.scope_transaction``) turned that into a permanent
+    403: the first memory access succeeded and every one after it claimed the
+    memory directory had been swapped (Windows, reported 2026-10-13).
+    """
+
+    def test_the_lock_can_be_taken_again(self):
+        for _ in range(3):
+            with safe_fs.file_lock(self.root, ".memory.lock"):
+                pass
+        self.assertTrue(os.path.isfile(os.path.join(self.root, ".memory.lock")))
+
+    def test_the_path_fallback_survives_a_second_lock(self):
+        """The same guarantee with ``dir_fd`` support forced off.
+
+        Forcing the flag is what keeps this covered on POSIX CI, where the
+        descriptor branch is what normally runs and the defect was invisible.
+        """
+        original = safe_fs._DIR_FD_OK
+        safe_fs._DIR_FD_OK = False
+        try:
+            for _ in range(3):
+                with safe_fs.file_lock(self.root, ".memory.lock"):
+                    pass
+        finally:
+            safe_fs._DIR_FD_OK = original
+
+    def test_the_lock_file_is_reused_not_replaced(self):
+        """All processes must lock the same inode: never unlink, never replace."""
+        path = os.path.join(self.root, ".memory.lock")
+        with safe_fs.file_lock(self.root, ".memory.lock"):
+            pass
+        before = os.stat(path)
+        with safe_fs.file_lock(self.root, ".memory.lock"):
+            pass
+        after = os.stat(path)
+        self.assertEqual((after.st_dev, after.st_ino), (before.st_dev, before.st_ino))
+
+    def test_a_missing_root_and_its_lock_are_created(self):
+        root = os.path.join(self.root, "users", "1001")
+        with safe_fs.file_lock(root, ".memory.lock"):
+            pass
+        self.assertTrue(os.path.isfile(os.path.join(root, ".memory.lock")))
+
+    def test_a_symlinked_lock_path_is_refused_on_the_fallback_path(self):
+        link = os.path.join(self.root, ".memory.lock")
+        try:
+            os.symlink(self.write("elsewhere/target.md", "secret"), link)
+        except (OSError, NotImplementedError):  # pragma: no cover - platform
+            self.skipTest("symlinks unavailable on this platform")
+        original = safe_fs._DIR_FD_OK
+        safe_fs._DIR_FD_OK = False
+        try:
+            with self.assertRaises(UnsafePathError):
+                with safe_fs.file_lock(self.root, ".memory.lock"):
+                    pass
+        finally:
+            safe_fs._DIR_FD_OK = original
+
+    def test_a_symlinked_lock_path_is_refused_as_shipped(self):
+        """Whatever the branch, a link at the lock path never becomes the lock."""
+        link = os.path.join(self.root, ".memory.lock")
+        target = self.write("elsewhere/target.md", "secret")
+        try:
+            os.symlink(target, link)
+        except (OSError, NotImplementedError):  # pragma: no cover - platform
+            self.skipTest("symlinks unavailable on this platform")
+        with self.assertRaises((UnsafePathError, OSError)):
+            with safe_fs.file_lock(self.root, ".memory.lock"):
+                pass
+        with open(target, encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), "secret", "the link target is untouched")
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

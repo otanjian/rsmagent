@@ -10,7 +10,12 @@
 // The Python side is the definition (`agent/desktop_local/package_rules.py` and
 // `agent/skills/manifest.py`); `skill-package.ts` is a port and must not drift.
 
-const test = require('node:test')
+const nodeTest = require('node:test')
+const { resolvePython, pythonTest } = require('./_python_bin.cjs')
+// Every assertion below compares against the real Python implementation, so the
+// file skips itself when this host has no interpreter (task 2.1's rule).
+const PY = resolvePython()
+const test = pythonTest(nodeTest)
 const assert = require('node:assert/strict')
 const crypto = require('node:crypto')
 const fs = require('node:fs')
@@ -22,7 +27,7 @@ const ROOT = path.join(__dirname, '..')
 const DESKTOP = path.join(ROOT, 'desktop')
 const SRC_DIR = path.join(DESKTOP, 'src', 'main', 'project-execution')
 const DIST_DIR = path.join(DESKTOP, 'dist', 'main', 'project-execution')
-const PY = path.join(ROOT, '.venv', 'bin', 'python')
+
 
 let mod
 
@@ -44,7 +49,7 @@ test.before(() => {
 })
 
 function python(script) {
-  return execFileSync(PY, ['-c', script], { cwd: ROOT, encoding: 'utf-8' }).trim()
+  return execFileSync(PY.path, ['-c', script], { cwd: ROOT, encoding: 'utf-8' }).trim()
 }
 
 /** A Python snippet with the repo root already on `sys.path`. */

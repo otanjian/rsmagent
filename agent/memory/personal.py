@@ -63,7 +63,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set
 
 from common import safe_fs
 from common.log import logger
-from common.safe_fs import UnsafePathError
+from common.safe_fs import LockBusyError, UnsafePathError
 
 MAIN_ENTRY_ID = "MEMORY.md"
 
@@ -158,6 +158,12 @@ def scope_transaction(root):
                     _held_roots.roots = held
         except UnsafePathError as error:
             raise PersonalMemoryError('个人记忆目录被替换', code='unsafe_path', status=403) from error
+        except LockBusyError as error:
+            # Transient, and nothing to do with the path or the session: the
+            # user's advice is to retry, and the console must not describe this
+            # as a replaced directory or send them to sign in again.
+            raise PersonalMemoryError('记忆正在被其他操作占用，请稍后重试',
+                                      code='busy', status=409) from error
 
 
 def personal_service_for(user_id):
@@ -560,7 +566,10 @@ class PersonalMemoryService:
         # A symlinked user root would make every containment promise in
         # ``safe_fs`` meaningless: the caller would be writing "inside" a
         # directory that actually points somewhere else.
-        if os.path.islink(root):
+        # ``is_link_like`` and not ``os.path.islink``: from Python 3.12 a
+        # directory junction is not reported as a symlink, and a junction here
+        # redirects the whole memory root just as effectively.
+        if safe_fs.is_link_like(root):
             raise PersonalMemoryError(
                 "本人记忆根目录被替换", code="unsafe_path", status=403)
         return root

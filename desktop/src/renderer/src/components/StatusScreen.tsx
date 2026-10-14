@@ -30,6 +30,9 @@ const CAUSE_COPY: Record<BackendErrorCode, { desc: string; hint: string }> = {
   backend_crashed: { desc: 'status_error_crashed_desc', hint: 'status_error_hint' },
   backend_timeout: { desc: 'status_error_timeout_desc', hint: 'status_error_hint' },
   backend_unresponsive: { desc: 'status_error_unresponsive_desc', hint: 'status_error_hint' },
+  python_not_found: { desc: 'status_error_python_missing_desc', hint: 'status_error_python_missing_hint' },
+  python_invalid: { desc: 'status_error_python_invalid_desc', hint: 'status_error_python_invalid_hint' },
+  dependency_missing: { desc: 'status_error_dependency_desc', hint: 'status_error_dependency_hint' },
 }
 
 const StatusScreen: React.FC<StatusScreenProps> = ({ status, error, code, path, slow, reconnecting, onRetry }) => {

@@ -6,11 +6,16 @@ import os from 'os'
 import fs from 'fs'
 import http from 'http'
 import net from 'net'
-
-// Writable data dir for the packaged app (config.json, run.log, user data).
-// Lives in the user's home so it survives app updates and avoids writing into
-// the read-only app bundle. Source/dev runs keep using the repo CWD instead.
-const COW_DATA_DIR = path.join(os.homedir(), '.cow')
+import {
+  isPortFree as portIsFree,
+  listenerImage,
+  listenerPids,
+  isOurBackend,
+} from './backend-port'
+import { missingModuleFrom } from './dependency-error'
+import { COW_DATA_DIR, resolveDataDir } from './data-dir'
+import { getHostLog } from './host-log'
+import { pythonCandidates, selectInterpreter, summariseAttempts } from './python-probe'
 
 // Preferred port for the desktop backend. Deliberately not 9899 (the web
 // console's default) so a source-run `python app.py` never collides with the
@@ -63,6 +68,16 @@ export type BackendErrorCode =
   | 'backend_blocked'
   // It launched and then exited before ever answering.
   | 'backend_crashed'
+  // No usable Python interpreter: no candidate answered, or the one the user
+  // named explicitly could not be run at all.
+  | 'python_not_found'
+  // An interpreter answered and is unusable anyway: the Microsoft Store
+  // placeholder, an unreadable answer, or a version outside the supported
+  // window. Named separately from "not found" because the user's fix differs.
+  | 'python_invalid'
+  // The backend started and stopped because a required package is missing.
+  // Python says which one, and that sentence is the actionable part.
+  | 'dependency_missing'
   // It stayed alive but never answered /api/health.
   | 'backend_timeout'
   // It served requests, then stopped and could not be restarted.
@@ -108,14 +123,6 @@ export class PythonBackend extends EventEmitter {
   private recovering = false
   private recoveryAttempts = 0
   private recoveryWindowStart = 0
-  // Append stream to run.log so the backend's OWN stdout/stderr is persisted by
-  // the shell too. The backend writes run.log itself once its Python logging is
-  // up — but a bootstrap crash (missing DLL, broken onedir after an update,
-  // antivirus block) dies BEFORE that, spilling the real cause only to stderr.
-  // We captured that stderr already, but never wrote it anywhere durable, so the
-  // "open log folder" button showed a stale run.log with no trace of the crash.
-  // Mirroring here closes that gap without touching the Python side.
-  private logStream: fs.WriteStream | null = null
   // The failure that put us in 'error', kept so it can be fetched later. The
   // renderer subscribes to 'backend-status' only after React mounts, which is
   // hundreds of milliseconds after launch — every error raised before that
@@ -170,11 +177,9 @@ export class PythonBackend extends EventEmitter {
    * another is exactly the disagreement this removes.
    */
   getDataDir(): string {
-    const override = process.env.COW_DATA_DIR
-    if (override) {
-      return override.replace(/^~(?=$|[/\\])/, os.homedir())
-    }
-    return this.packaged ? COW_DATA_DIR : this.backendPath
+    // Shared with the shell's own log location (data-dir.ts), so config.json,
+    // run.log and desktop-main.log always land in the same directory.
+    return resolveDataDir(this.backendPath, this.packaged)
   }
 
   // Optional fields of the bundled app-config forwarded to the backend:
@@ -208,47 +213,16 @@ export class PythonBackend extends EventEmitter {
   }
 
   /**
-   * Open an append stream to <dataDir>/run.log so we can persist the backend's
-   * stdout/stderr from the shell side. This is the same file the backend writes
-   * once its Python logging initializes, and the same file the "open log folder"
-   * button reveals — so a bootstrap crash's stderr lands exactly where the user
-   * (and we) already look. Best-effort: any failure just disables mirroring.
-   */
-  private openLogStream(dataDir: string): void {
-    this.closeLogStream()
-    try {
-      fs.mkdirSync(dataDir, { recursive: true })
-      const logPath = path.join(dataDir, 'run.log')
-      // Append (not truncate): the backend appends to this same file, so we must
-      // not clobber its history, and interleaving is fine — both are line-based.
-      this.logStream = fs.createWriteStream(logPath, { flags: 'a' })
-      // A logging error must never crash the app; drop the stream instead.
-      this.logStream.on('error', () => {
-        this.logStream = null
-      })
-      const stamp = new Date().toISOString()
-      this.logStream.write(`\n[SHELL][${stamp}] --- launching backend (stdout/stderr mirrored below) ---\n`)
-    } catch {
-      this.logStream = null
-    }
-  }
-
-  /**
-   * Write one line to run.log from the shell side, opening the file if the
-   * failure happened before (or instead of) a spawn. Everything we report to
-   * the user must also land here: the failure screen tells them to read
-   * run.log, so a diagnosis that exists only in an IPC message is a diagnosis
-   * they can never send us.
+   * Write one shell-side diagnostic line to the shell's own log.
+   *
+   * Everything we report to the user must also land in a file: the failure
+   * screen tells them to read the log, so a diagnosis that exists only in an IPC
+   * message is one they can never send us. The shell owns desktop-main.log;
+   * run.log belongs to the backend alone, because two writers cannot rotate one
+   * file safely (and on Windows cannot even rename one the other holds).
    */
   private writeLog(line: string): void {
-    if (!this.logStream) {
-      this.openLogStream(this.getDataDir())
-    }
-    try {
-      this.logStream?.write(`[SHELL][${new Date().toISOString()}] ${line}\n`)
-    } catch {
-      // ignore — logging must never break startup
-    }
+    getHostLog()?.line('SHELL', line)
   }
 
   /**
@@ -271,17 +245,6 @@ export class PythonBackend extends EventEmitter {
     }
   }
 
-  private closeLogStream(): void {
-    if (this.logStream) {
-      try {
-        this.logStream.end()
-      } catch {
-        // ignore
-      }
-      this.logStream = null
-    }
-  }
-
   /**
    * Append the most recent backend error line to a message, so the UI can show
    * what actually went wrong instead of just "startup timed out".
@@ -294,6 +257,20 @@ export class PythonBackend extends EventEmitter {
       }
     }
     return message
+  }
+
+  /**
+   * The module a startup failure named, when it named one.
+   *
+   * Python says exactly what is missing -- "ModuleNotFoundError: No module named
+   * 'xlsxwriter'" -- and that sentence is the only actionable part of a
+   * bootstrap failure. The bundle is supposed to ship every declared dependency,
+   * so a missing one means either a damaged installation or a development
+   * environment that was never completed; both have a different fix from "the
+   * backend crashed".
+   */
+  private missingModule(): string | null {
+    return missingModuleFrom(this.recentLogs)
   }
 
   // Cache the resolved PATH so we only spawn a login shell once per process.
@@ -416,21 +393,73 @@ export class PythonBackend extends EventEmitter {
     return bundle.hasExe ? bundle.exePath : null
   }
 
-  private findPython(): string {
-    const venvPaths = [
-      path.join(this.backendPath, '.venv', 'bin', 'python'),
-      path.join(this.backendPath, '.venv', 'Scripts', 'python.exe'),
-      path.join(this.backendPath, 'venv', 'bin', 'python'),
-      path.join(this.backendPath, 'venv', 'Scripts', 'python.exe'),
-    ]
+  /**
+   * Choose the interpreter that will run `app.py`, or record why none can.
+   *
+   * Candidates are probed, not assumed (see python-probe.ts): an interpreter
+   * that does not answer is not a candidate, whatever its path looks like. On
+   * failure this returns null *after* reporting a specific reason, so the caller
+   * stops instead of spawning something that will die with a bare exit code —
+   * which is what "The app exited during startup (code 9009)" was.
+   */
+  private async resolvePython(dataDir: string): Promise<string | null> {
+    const candidates = pythonCandidates({
+      backendPath: this.backendPath,
+      platform: process.platform,
+      envPython: process.env.COW_PYTHON_PATH,
+      configuredPython: this.readConfiguredPython(dataDir),
+    })
 
-    for (const p of venvPaths) {
-      if (fs.existsSync(p)) {
-        return p
-      }
+    const { selected, attempts } = await selectInterpreter(candidates)
+    if (selected) {
+      // Log the resolved executable, not the name we asked for: a shim that
+      // forwards to the real interpreter is worth knowing about later.
+      this.emit(
+        'log',
+        `Python interpreter: ${selected.executable || selected.candidate.command} `
+          + `(${selected.version}, from ${selected.candidate.source})`,
+      )
+      return selected.candidate.command
     }
 
-    return process.platform === 'win32' ? 'python' : 'python3'
+    // When the user named an interpreter, that name is the answer we report:
+    // the alternative environments were never tried, and saying "tried:
+    // python3" would misdescribe what happened.
+    const explicit = attempts.find(
+      (attempt) => attempt.candidate.source === 'env' || attempt.candidate.source === 'config',
+    )
+    const decisive = explicit || attempts[attempts.length - 1]
+    const unusable = decisive?.failure === 'store_alias'
+      || decisive?.failure === 'unsupported_version'
+      || decisive?.failure === 'unreadable'
+      || decisive?.failure === 'timeout'
+
+    this.fail(
+      unusable ? 'python_invalid' : 'python_not_found',
+      `No usable Python interpreter for the local backend. Tried: ${summariseAttempts(attempts)}`,
+      decisive?.candidate.command,
+    )
+    return null
+  }
+
+  /**
+   * The development config's explicit `python_path`, if it set one.
+   *
+   * Only the development config is consulted: an installed app runs the backend
+   * bundled with it and never goes looking for a system interpreter. The
+   * environment variable `COW_PYTHON_PATH` outranks this file, so a developer
+   * can override a checkout's config without editing it.
+   */
+  private readConfiguredPython(dataDir: string): string | undefined {
+    try {
+      const configPath = path.join(dataDir, 'config.json')
+      if (!fs.existsSync(configPath)) return undefined
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+      const value = config.python_path
+      return typeof value === 'string' && value.trim() ? value.trim() : undefined
+    } catch {
+      return undefined
+    }
   }
 
   /**
@@ -509,35 +538,53 @@ export class PythonBackend extends EventEmitter {
     })
   }
 
-  /** True if we can bind 127.0.0.1:port right now (i.e. it's free). */
+  /**
+   * True if 127.0.0.1:port can really be used.
+   *
+   * Delegates to backend-port.ts, which follows a successful bind with a real
+   * connection attempt: on Windows a bind takes SO_REUSEADDR, so it succeeds
+   * even while another process serves 0.0.0.0:port, and believing it is what
+   * put a second backend on a busy port (WinError 10048, task 5.1).
+   */
   private isPortFree(port: number): Promise<boolean> {
-    return new Promise((resolve) => {
-      const tester = net
-        .createServer()
-        .once('error', () => resolve(false))
-        .once('listening', () => {
-          tester.close(() => resolve(true))
-        })
-        .listen(port, '127.0.0.1')
-    })
+    return portIsFree(port)
   }
 
   /**
-   * Make sure our fixed port is usable before launch by killing whatever is
-   * holding it (almost always a stale backend from a previous run that didn't
-   * shut down cleanly). We only ever target a process actually listening on
-   * 127.0.0.1:<port>, so we won't touch unrelated apps. Best-effort: if we
-   * can't free it we still try to bind and let the backend surface EADDRINUSE.
+   * Make our preferred port usable before launch -- but only by clearing a
+   * listener this app can prove is its own backend (the child of this instance,
+   * or the packaged ``cowagent-backend.exe``). Anything else is left running and
+   * the caller moves to the next candidate port.
+   *
+   * This used to kill whatever was listening, on the theory that "listening on
+   * our port" meant "stale backend of ours". It does not: a source-run
+   * ``python app.py`` is the user's own process, and killing it is the app
+   * deciding a process it never started is disposable (task 5.1).
    */
   private async freePort(port: number): Promise<void> {
     if (await this.isPortFree(port)) {
       return
     }
-    this.emit('log', `Port ${port} is busy — clearing stale process before launch`)
-    const pids = await this.findListenerPids(port)
-    for (const pid of pids) {
+    const ours: number[] = []
+    for (const pid of await this.findListenerPids(port)) {
       // Never signal ourselves (Electron could, in theory, be the listener).
       if (pid === process.pid) continue
+      const image = await listenerImage(pid)
+      if (isOurBackend(pid, image, this.process?.pid)) {
+        ours.push(pid)
+      } else {
+        this.emit(
+          'log',
+          `Port ${port} is held by ${image || 'a process this app cannot identify'} (pid ${pid}), ` +
+            'which this app did not start — leaving it running and trying another port',
+        )
+      }
+    }
+    if (ours.length === 0) {
+      return
+    }
+    this.emit('log', `Port ${port} is held by a leftover backend of ours — clearing it before launch`)
+    for (const pid of ours) {
       try {
         process.kill(pid, 'SIGTERM')
       } catch {
@@ -549,6 +596,8 @@ export class PythonBackend extends EventEmitter {
     if (!(await this.isPortFree(port))) {
       for (const pid of await this.findListenerPids(port)) {
         if (pid === process.pid) continue
+        const image = await listenerImage(pid)
+        if (!isOurBackend(pid, image, this.process?.pid)) continue
         try {
           process.kill(pid, 'SIGKILL')
         } catch {
@@ -561,39 +610,7 @@ export class PythonBackend extends EventEmitter {
 
   /** PIDs listening on 127.0.0.1:<port>, via lsof (POSIX) / netstat (Windows). */
   private findListenerPids(port: number): Promise<number[]> {
-    return new Promise((resolve) => {
-      const isWin = process.platform === 'win32'
-      const cmd = isWin ? 'netstat' : 'lsof'
-      const args = isWin
-        ? ['-ano', '-p', 'tcp']
-        : ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t']
-      let out = ''
-      try {
-        const child = spawn(cmd, args)
-        child.stdout?.on('data', (d: Buffer) => (out += d.toString()))
-        child.on('error', () => resolve([]))
-        child.on('close', () => {
-          const pids = new Set<number>()
-          if (isWin) {
-            // Match lines like: TCP 127.0.0.1:9876 ... LISTENING  12345
-            for (const line of out.split('\n')) {
-              if (!/LISTENING/i.test(line)) continue
-              if (!new RegExp(`[:.]${port}\\b`).test(line)) continue
-              const pid = Number(line.trim().split(/\s+/).pop())
-              if (Number.isInteger(pid) && pid > 0) pids.add(pid)
-            }
-          } else {
-            for (const tok of out.split(/\s+/)) {
-              const pid = Number(tok)
-              if (Number.isInteger(pid) && pid > 0) pids.add(pid)
-            }
-          }
-          resolve([...pids])
-        })
-      } catch {
-        resolve([])
-      }
-    })
+    return listenerPids(port)
   }
 
   /** One-shot /api/health probe. Never throws; false means "unreachable". */
@@ -711,10 +728,9 @@ export class PythonBackend extends EventEmitter {
     // Packaged app stores writable data in ~/.cow; dev keeps it in the repo.
     const dataDir = this.getDataDir()
 
-    // Start mirroring backend output to run.log before we spawn, so even an
-    // instant bootstrap crash (before Python logging is up) leaves its stderr
-    // in the file the user can open from the failure screen.
-    this.openLogStream(dataDir)
+    // Backend output is persisted by the shell (see onOutput) before Python's
+    // own logging is up, so even an instant bootstrap crash leaves its stderr in
+    // a file the failure screen points the user at.
 
     // Prefer the packaged self-contained backend (production); fall back to
     // running app.py with a Python interpreter (local development).
@@ -772,12 +788,15 @@ export class PythonBackend extends EventEmitter {
       cwd = COW_DATA_DIR
       this.emit('log', `Starting bundled backend: ${bundled} (cwd=${cwd})`)
     } else {
-      const pythonPath = this.findPython()
       const appPath = path.join(this.backendPath, 'app.py')
       if (!fs.existsSync(appPath)) {
         this.fail('backend_missing', 'app.py not found — this is a source checkout with no backend', appPath)
         return
       }
+      // Probed before we spawn, so an interpreter that cannot run is reported
+      // with its own reason instead of as "exited during startup (code 9009)".
+      const pythonPath = await this.resolvePython(dataDir)
+      if (!pythonPath) return
       command = pythonPath
       args = [appPath]
       cwd = this.backendPath
@@ -809,20 +828,19 @@ export class PythonBackend extends EventEmitter {
 
     const onOutput = (data: Buffer) => {
       const text = data.toString()
-      // Mirror to run.log ONLY before the backend is ready. Once Python's own
-      // logging is up it writes every line to this same file via its FileHandler,
-      // so mirroring the same stdout here would duplicate every line. Before that
+      const lines = text.split('\n').filter(Boolean)
+      // Persist backend output ONLY before the backend is ready. Once Python's
+      // own logging is up it writes every line to run.log via its FileHandler, so
+      // mirroring the same stdout would duplicate every line. Before that
       // (bootstrap crash: missing DLL, broken onedir, antivirus block) Python
       // logging isn't running yet, and this is the only thing that captures the
       // real cause — the reason this mirror exists at all.
-      if (this.logStream && this.status !== 'ready') {
-        try {
-          this.logStream.write(text)
-        } catch {
-          // ignore — logging must never break startup
+      if (this.status !== 'ready') {
+        const log = getHostLog()
+        for (const line of lines) {
+          log?.line('SHELL', line.trimEnd())
         }
       }
-      const lines = text.split('\n').filter(Boolean)
       for (const line of lines) {
         this.recordLog(line)
         this.emit('log', line)
@@ -837,15 +855,22 @@ export class PythonBackend extends EventEmitter {
       // (code 0/null, e.g. our own stop()) just marks stopped.
       const wasReady = this.status === 'ready'
       this.status = 'stopped'
-      if (this.logStream) {
-        try {
-          this.logStream.write(`[SHELL][${new Date().toISOString()}] backend process exited with code ${code}\n`)
-        } catch {
-          // ignore
-        }
-      }
+      getHostLog()?.line('SHELL', `backend process exited with code ${code}`)
       this.emit('log', `Python process exited with code ${code}`)
       if (!wasReady && code !== 0 && code !== null) {
+        // A missing import is not a crash: the interpreter worked, the backend
+        // started, and one package is not there. Python names it, and that name
+        // is the difference between "the app is broken" and "install the
+        // desktop requirements / repair the installation".
+        const missing = this.missingModule()
+        if (missing) {
+          this.fail(
+            'dependency_missing',
+            `The backend stopped because a required package is missing: ${missing}`,
+            command,
+          )
+          return
+        }
         this.fail('backend_crashed', this.withLastError(`The app exited during startup (code ${code})`))
         return
       }
@@ -939,7 +964,6 @@ export class PythonBackend extends EventEmitter {
     // teardown and doesn't try to "recover" a process we just asked to die.
     this.shuttingDown = true
     this.stopHealthMonitor()
-    this.closeLogStream()
     const proc = this.process
     if (proc) {
       proc.kill('SIGTERM')
@@ -971,7 +995,6 @@ export class PythonBackend extends EventEmitter {
   stopSync(): void {
     this.shuttingDown = true
     this.stopHealthMonitor()
-    this.closeLogStream()
     const proc = this.process
     this.process = null
     this.status = 'stopped'

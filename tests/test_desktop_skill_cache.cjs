@@ -16,7 +16,9 @@ const ROOT = path.join(__dirname, '..')
 const DESKTOP = path.join(ROOT, 'desktop')
 const SRC_DIR = path.join(DESKTOP, 'src', 'main', 'project-execution')
 const DIST_DIR = path.join(DESKTOP, 'dist', 'main', 'project-execution')
-const PY = path.join(ROOT, '.venv', 'bin', 'python')
+const { resolvePython, PYTHON_SKIP_REASON } = require('./_python_bin.cjs')
+// Task 2.1's resolution, reused: never a hardcoded POSIX venv path.
+const PY = resolvePython()
 
 let pkg
 let cacheMod
@@ -229,11 +231,12 @@ test('a skill id cannot escape the cache root', () => {
   assert.equal(fs.existsSync(path.join(cache.root, '..', '..', 'etc')), false)
 })
 
-test('a version the real Python published is accepted by the device cache', () => {
+test('a version the real Python published is accepted by the device cache',
+  { skip: PY ? false : PYTHON_SKIP_REASON }, () => {
   // The two ends only agree if the digest algorithm agrees, so this drives the
   // Python publish path and feeds the result to the TypeScript cache. A digest
   // that matched only in a JavaScript re-derivation would fail here.
-  const published = JSON.parse(execFileSync(PY, ['-c', [
+  const published = JSON.parse(execFileSync(PY.path, ['-c', [
     'import sys, json, os, tempfile, hashlib, base64',
     `sys.path.insert(0, ${JSON.stringify(ROOT)})`,
     'from agent.desktop_local.skill_cache import SkillCache, SkillScope',

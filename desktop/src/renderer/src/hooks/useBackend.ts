@@ -27,6 +27,13 @@ const UNRECOVERABLE_CODES: ReadonlySet<string> = new Set<BackendErrorCode>([
   'backend_removed',
   'backend_missing',
   'backend_blocked',
+  // Nothing here improves by waiting: an interpreter that is not installed will
+  // not appear, and a missing package will not install itself. Skipping the
+  // polling deadline is what lets the advice show up immediately instead of
+  // after 40 seconds of a spinner.
+  'python_not_found',
+  'python_invalid',
+  'dependency_missing',
 ])
 
 interface BackendState {

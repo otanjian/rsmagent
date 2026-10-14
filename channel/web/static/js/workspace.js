@@ -539,6 +539,43 @@ async function wsApiPost(path, body) {
     return data;
 }
 
+//: Every refusal that comes *from this device*, and the sentence the panel shows
+//: for it. One table because the same code arrives down three different paths (a
+//: workspace read, a preview, a local action such as "open in Word"), and the
+//: three used to answer slightly differently -- and, worse, answered
+//: ``device_offline`` for ``device_error``, telling a user whose file helper had
+//: failed to reconnect a device that was connected the whole time
+//: (2026-10-13 verification report, section 4.3).
+const WS_LOCAL_REFUSAL_KEYS = {
+    not_found: 'ws_local_file_gone',
+    wrong_project: 'ws_local_other_project',
+    stale_context: 'ws_local_stale',
+    grant_revoked: 'ws_local_stale',
+    device_offline: 'ws_local_offline',
+    device_error: 'ws_local_device_failed',
+    helper_missing: 'ws_local_helper_missing',
+    platform_unsupported: 'ws_local_platform_unsupported',
+    no_host: 'ws_local_action_unavailable',
+    feature_unavailable: 'ws_local_action_unavailable',
+    limit_exceeded: 'ws_local_preview_too_large',
+    unsupported_type: 'ws_local_preview_unsupported',
+    source_read_only: 'ws_local_read_only',
+};
+
+/** The sentence for a local-source refusal, or `''` when this table has none. */
+function wsLocalRefusalText(code) {
+    const key = WS_LOCAL_REFUSAL_KEYS[code];
+    return key ? t(key) : '';
+}
+
+//: The device-local codes a *workspace* read can fail with. Narrower than the
+//: table on purpose: `not_found` and `wrong_project` are only device-local on
+//: the preview and action paths, where the request named a local file already.
+const WS_LOCAL_WORKSPACE_CODES = [
+    'source_read_only', 'device_offline', 'device_error', 'helper_missing',
+    'platform_unsupported', 'stale_context', 'grant_revoked',
+];
+
 /**
  * Turn a workspace request failure into a readable, localized message.
  * The backend reports a stable `code` (e.g. `forbidden`, `database_unavailable`);
@@ -556,11 +593,12 @@ function wsErrorMessage(e) {
         return t('ws_unavailable');
     }
     // A refusal from the *local* source (task 9.2). Each one is a different
-    // situation with a different fix, so they are told apart rather than
-    // collapsed into "the file could not be read".
-    if (code === 'source_read_only') return t('ws_local_read_only');
-    if (code === 'device_offline' || code === 'device_error') return t('ws_local_offline');
-    if (code === 'stale_context' || code === 'grant_revoked') return t('ws_local_stale');
+    // situation with a different fix, and the shared table is what keeps this
+    // path and the two below from disagreeing about them. Only codes that are
+    // unambiguously about this device are consulted here: on a *workspace*
+    // request `not_found` means a workspace resource, not a file on this
+    // machine, and it has to keep the server's own message.
+    if (WS_LOCAL_WORKSPACE_CODES.indexOf(code) !== -1) return wsLocalRefusalText(code);
     if (e && e.local) return t('ws_local_unavailable');
     return msg || t('ws_preview_failed');
 }
@@ -1049,13 +1087,8 @@ function wsLocalPreviewUnsupported(refusal) {
 /** Why a local file could not be previewed, in the user's language. */
 function wsLocalPreviewMessage(refusal) {
     const code = (refusal && refusal.code) || '';
-    if (code === 'not_found') return t('ws_local_file_gone');
-    if (code === 'wrong_project') return t('ws_local_other_project');
-    if (code === 'stale_context' || code === 'grant_revoked') return t('ws_local_stale');
-    if (code === 'device_offline' || code === 'device_error') return t('ws_local_offline');
-    if (code === 'limit_exceeded') return t('ws_local_preview_too_large');
-    if (code === 'unsupported_type') return t('ws_local_preview_unsupported');
-    if (code === 'feature_unavailable' || code === 'no_host') return t('ws_local_action_unavailable');
+    const known = wsLocalRefusalText(code);
+    if (known) return known;
     return t('ws_local_preview_failed');
 }
 
@@ -1193,14 +1226,11 @@ function wsLocalActionMessage(refusal) {
     const code = (refusal && refusal.code) || '';
     const detail = String((refusal && refusal.message) || '').trim();
     const suffix = detail && detail !== code ? ` (${detail})` : '';
-    if (code === 'not_found') return t('ws_local_file_gone');
-    if (code === 'wrong_project') return t('ws_local_other_project');
     if (code === 'changed') return `${t('ws_local_file_changed')}${suffix}`;
-    if (code === 'stale_context' || code === 'grant_revoked') return t('ws_local_stale');
-    if (code === 'device_offline' || code === 'device_error') return t('ws_local_offline');
     if (code === 'no_application') return `${t('ws_local_no_application')}${suffix}`;
-    if (code === 'feature_unavailable' || code === 'no_host') return t('ws_local_action_unavailable');
     if (code === 'permission_denied') return `${t('ws_forbidden')}${suffix}`;
+    const known = wsLocalRefusalText(code);
+    if (known) return known;
     return `${t('ws_local_action_failed')}${suffix}`;
 }
 

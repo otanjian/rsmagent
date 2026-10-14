@@ -807,7 +807,7 @@ const translations: Record<string, Record<string, string>> = {
     task_targets_unavailable: '当前部署未开放投递目标选择',
     task_content_required: '请输入内容',
     logs_title: '日志',
-    logs_desc: '实时日志输出 (run.log)',
+    logs_desc: '实时日志输出（后端 run.log；桌面宿主日志是 desktop-main.log）',
     logs_live: '实时',
     logs_connecting: '日志流将在连接后显示...',
     logs_download: '下载日志',
@@ -819,7 +819,7 @@ const translations: Record<string, Record<string, string>> = {
     status_reconnecting_desc: '客户端程序无响应，正在自动重启',
     status_error: '初始化失败',
     status_error_desc: '客户端程序未能启动，无法连接',
-    status_error_hint: '若重试无效，请打开日志目录查看 run.log，并反馈其中的报错信息。',
+    status_error_hint: '若重试无效，请打开日志目录：后端错误在 run.log，桌面宿主错误在 desktop-main.log，并反馈其中的报错信息。',
     status_error_file: '涉及的文件：',
     status_error_removed_desc: '客户端的核心程序文件不见了，其余文件都完好，这通常是被杀毒软件误判并删除或隔离了',
     status_error_removed_hint:
@@ -831,6 +831,15 @@ const translations: Record<string, Record<string, string>> = {
     status_error_crashed_desc: '核心程序启动后异常退出',
     status_error_timeout_desc: '核心程序已启动，但长时间没有响应',
     status_error_unresponsive_desc: '客户端程序停止响应，且多次自动重启均未成功',
+    status_error_python_missing_desc: '没有找到可用的 Python 解释器，本机后端无法启动',
+    status_error_python_missing_hint:
+      '开发模式下请安装 Python 3.8–3.13，并在项目根目录准备虚拟环境（Windows 可运行 desktop/build/setup-windows.ps1）；也可以用环境变量 COW_PYTHON_PATH 或 config.json 里的 python_path 指定解释器完整路径。安装版不使用系统 Python，若为安装版请重新安装客户端。',
+    status_error_python_invalid_desc: '找到的 Python 解释器无法使用（应用商店占位程序，或版本不符合要求）',
+    status_error_python_invalid_hint:
+      'Windows 上的 python 命令可能是「应用商店」占位别名，它存在但并不是解释器。请安装真实的 Python 3.8–3.13，或把解释器的完整路径写入环境变量 COW_PYTHON_PATH（或 config.json 的 python_path）。',
+    status_error_dependency_desc: '后端缺少必需的 Python 依赖，启动已停止',
+    status_error_dependency_hint:
+      '按上面的模块名补齐依赖：开发模式运行 pip install -r desktop/build/requirements-desktop.txt；安装版请重新安装客户端（随包后端不应缺依赖）。',
     status_retry: '重试',
     status_open_logs: '打开日志目录',
     // login (database account)
@@ -919,6 +928,7 @@ const translations: Record<string, Record<string, string>> = {
     remote_err_http: '服务器未提供桌面连接信息。',
     remote_err_identity: '登录失败，已停止重试，请重新登录。',
     remote_err_network: '无法连接到服务器。',
+    remote_err_timeout: '服务器在规定时间内没有回应，已停止等待（这不一定是网络问题）。',
     remote_err_not_offered: '该服务器当前未开放桌面远程工作台。',
     remote_err_invalid: '该服务器地址无效。',
   },
@@ -1734,7 +1744,7 @@ const translations: Record<string, Record<string, string>> = {
     task_targets_unavailable: 'Delivery target selection is not available in this deployment',
     task_content_required: 'Please enter content',
     logs_title: 'Logs',
-    logs_desc: 'Real-time log output (run.log)',
+    logs_desc: 'Real-time log output (backend run.log; the desktop shell log is desktop-main.log)',
     logs_live: 'Live',
     logs_connecting: 'Log streaming will connect shortly...',
     logs_download: 'Download logs',
@@ -1746,7 +1756,7 @@ const translations: Record<string, Record<string, string>> = {
     status_reconnecting_desc: 'The app stopped responding and is being restarted',
     status_error: 'Initialization Failed',
     status_error_desc: 'The app failed to start, so it cannot connect',
-    status_error_hint: 'If retrying does not help, open the log folder, check run.log and report the error it shows.',
+    status_error_hint: 'If retrying does not help, open the log folder: backend errors are in run.log, desktop shell errors in desktop-main.log. Please report what they show.',
     status_error_file: 'File involved:',
     status_error_removed_desc:
       "The app's core program file is gone while everything around it is intact, which normally means antivirus software flagged it and deleted or quarantined it",
@@ -1761,6 +1771,15 @@ const translations: Record<string, Record<string, string>> = {
     status_error_crashed_desc: 'The core program started and then exited unexpectedly',
     status_error_timeout_desc: 'The core program started but never responded',
     status_error_unresponsive_desc: 'The app stopped responding and several automatic restarts did not bring it back',
+    status_error_python_missing_desc: 'No usable Python interpreter was found, so the local backend cannot start',
+    status_error_python_missing_hint:
+      'For a source checkout, install Python 3.8-3.13 and prepare a virtual environment in the project root (on Windows run desktop/build/setup-windows.ps1); you can also point at an interpreter with the COW_PYTHON_PATH environment variable or python_path in config.json. An installed app never uses a system Python, so for an installation please reinstall the app.',
+    status_error_python_invalid_desc: 'The Python interpreter that was found cannot be used (a Store placeholder, or the wrong version)',
+    status_error_python_invalid_hint:
+      'On Windows the python command is often the Microsoft Store placeholder: it exists, but it is not an interpreter. Install a real Python 3.8-3.13, or give the full path to one in COW_PYTHON_PATH (or python_path in config.json).',
+    status_error_dependency_desc: 'The backend is missing a required Python package, so startup stopped',
+    status_error_dependency_hint:
+      'Install the module named above: for a source checkout run pip install -r desktop/build/requirements-desktop.txt; for an installation, reinstall the app (a bundled backend should never be missing a dependency).',
     status_retry: 'Retry',
     status_open_logs: 'Open log folder',
     // login (database account)
@@ -1848,6 +1867,7 @@ const translations: Record<string, Record<string, string>> = {
     remote_err_http: 'The server did not offer desktop connection metadata.',
     remote_err_identity: 'Sign-in failed; retrying has stopped — please sign in again.',
     remote_err_network: 'The server could not be reached.',
+    remote_err_timeout: 'The server did not answer in time; the wait was stopped (this is not necessarily a network problem).',
     remote_err_not_offered: 'This server does not currently offer the remote desktop workbench.',
     remote_err_invalid: 'That server address is invalid.',
   },

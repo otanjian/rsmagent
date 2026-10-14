@@ -1,7 +1,7 @@
 .DS_Store
 .idea
 .vscode
-.venv
+.venv*
 .vs
 __pycache__/
 venv*
@@ -99,6 +99,13 @@ desktop/build/*
 !desktop/build/build-feishu-vendor.py
 !desktop/build/entitlements.mac.plist
 !desktop/build/installer.nsh
+# The Windows development entry points (change
+# harden-windows-desktop-reliability, task 2.4): `setup-windows.ps1` prepares an
+# interpreter and .venv-win, `dev-windows.ps1` clears ELECTRON_RUN_AS_NODE before
+# Electron starts. Both are deliverables, and the generic build/ rule above would
+# otherwise drop them from version control without a word.
+!desktop/build/setup-windows.ps1
+!desktop/build/dev-windows.ps1
 
 # Icon authoring scratch dir: intermediate assets used to produce the final
 # icons. Only the finished icons under desktop/resources/ should be committed.

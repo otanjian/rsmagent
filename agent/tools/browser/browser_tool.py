@@ -256,6 +256,21 @@ class BrowserTool(BaseTool):
         if summary.get("ready"):
             return None
 
+        # A missing *package* is not an onboarding case. The desktop bundle ships
+        # playwright; if the import fails, the installation is damaged (or a
+        # development environment was never completed), and telling the user to
+        # install a browser engine would aim them at the wrong problem. The
+        # ``has_playwright`` field already exists in the capability probe -- no
+        # new dependency registry, just the value that was being computed.
+        if summary.get("has_playwright") is False:
+            return ToolResult.fail(
+                "Browser tool not ready: the Python module 'playwright' is missing from this "
+                "runtime (a missing module, not a missing browser). For a development checkout "
+                "run desktop/build/setup-windows.ps1 (or install "
+                "desktop/build/requirements-desktop.txt); for an installed app, reinstall it. "
+                "Do not retry until the user confirms."
+            )
+
         # Desktop clients (dev or packaged) have no `cow` CLI — onboard via the
         # in-chat `/install-browser` command. Source / web / server installs use
         # the `cow install-browser` terminal command.

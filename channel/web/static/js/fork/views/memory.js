@@ -33,7 +33,7 @@ function loadMemoryView(page) {
     memoryAbort = new AbortController();
     return fetch(`/api/memory?page=${page}&page_size=${memoryPageSize}&category=${memoryCategory}&scope=personal`, {signal: memoryAbort.signal}).then(r => r.json()).then(data => {
         if (!memoryCurrent(owner) || sequence !== memoryLoadSequence) return;
-        if (data.status !== 'success') throw new Error(data.message || t('memory_load_failed'));
+        if (data.status !== 'success') throw memoryError(data);
         memoryMetadata = data;
         memoryUpdateStatus();
         const emptyEl = document.getElementById('memory-empty');
@@ -98,7 +98,7 @@ function loadMemoryView(page) {
         pagEl.innerHTML = pagHtml;
     }).catch(error => {
         if (error.name !== 'AbortError' && memoryCurrent(owner) && sequence === memoryLoadSequence)
-            memoryShowState(error.message || t('memory_load_failed'), t('memory_retry_hint'), true);
+            memoryShowState(error.message || t('memory_load_failed'), memoryHintFor(error), true);
     });
 }
 
@@ -128,6 +128,41 @@ function resetMemoryView() {
     document.getElementById('memory-panel-list')?.classList.remove('hidden');
     memoryUpdateStatus();
 }
+//: The refusal codes this view can be handed, and the advice each one carries.
+//: A security refusal and an expired session need different things from the
+//: user; one generic line ("refresh, or sign in again") sent people to re-login
+//: for a refusal that signing in cannot change (2026-10-13 verification report,
+//: section 4.3).
+const MEMORY_HINTS = {
+    unsafe_path: 'memory_hint_refused',
+    invalid_entry: 'memory_hint_refused',
+    forbidden: 'memory_hint_refused',
+    capability_disabled: 'memory_hint_refused',
+    not_owner: 'memory_hint_refused',
+    read_only_category: 'memory_hint_refused',
+    personal_write_endpoint: 'memory_hint_refused',
+    busy: 'memory_hint_busy',
+    memory_unavailable: 'memory_hint_busy',
+    scope_unavailable: 'memory_hint_busy',
+    no_identity: 'memory_hint_identity',
+    unauthorized: 'memory_hint_identity',
+    not_authorized: 'memory_hint_identity',
+    missing_tenant: 'memory_hint_identity',
+};
+
+/** An Error that keeps the server's machine code, which chooses the advice. */
+function memoryError(data) {
+    const error = new Error(data.message || t('memory_load_failed'));
+    error.code = data.code || '';
+    return error;
+}
+
+/** The hint for this failure: security, transient, identity, or generic. */
+function memoryHintFor(error) {
+    const key = error && MEMORY_HINTS[error.code];
+    return t(key || 'memory_retry_hint');
+}
+
 function memoryShowState(title, hint, retry) {
     const el = document.getElementById('memory-empty');
     if (!el) return;
@@ -156,7 +191,7 @@ async function memoryDocRead(doc) {
     const res = await fetch(`/api/memory/content?scope=personal&filename=${encodeURIComponent(doc.filename)}&category=${doc.category}`);
     const data = await res.json();
     memoryAssertOwner(doc.owner);
-    if (data.status !== 'success') throw new Error(data.message || t('memory_load_failed'));
+    if (data.status !== 'success') throw memoryError(data);
     if (!data.revision) throw new Error(t('memory_entry_missing'));
     doc.revision = data.revision;
     doc.actions = data.actions;

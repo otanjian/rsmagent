@@ -33,6 +33,7 @@ from typing import Dict, List, Optional
 from pathlib import Path
 
 from agent.memory.personal import PersonalMemoryError, PersonalMemoryService
+from common import safe_fs
 from common.log import logger
 
 #: Entries an Agent workspace may address. Wider than the personal grammar
@@ -88,7 +89,9 @@ class MemoryService(PersonalMemoryService):
         make "inside the Agent's memory" mean somewhere else entirely.
         """
         root = Path(self.workspace_root)
-        if os.path.islink(root):
+        # A junction redirects a root just as a symlink does, and from Python
+        # 3.12 ``os.path.islink`` does not report one (see safe_fs.is_link_like).
+        if safe_fs.is_link_like(root):
             raise PersonalMemoryError(
                 "智能体记忆根目录被替换", code="unsafe_path", status=403)
         return root

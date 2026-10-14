@@ -7,7 +7,11 @@
 // 组织与权限 / 模型与接入 heading behind: console-information-architecture requires
 // 实际菜单 to show only pages the identity may actually read, and forbids empty
 // groups. So a group is visible exactly when at least one of its pages is.
-const { test } = require('node:test');
+const nodeTest = require('node:test');
+const { resolvePython, pythonTest } = require('./_python_bin.cjs');
+const PYTHON = resolvePython();
+// The authoritative route table comes from Python: skip when there is none.
+const test = pythonTest(nodeTest.test);
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -24,7 +28,8 @@ const ROUTER_SOURCE = fs.readFileSync(path.join(__dirname, '../channel/web/stati
 let consolePagesCache = null;
 function consolePages() {
     if (!consolePagesCache) {
-        const python = process.env.PYTHON_BIN || path.join(__dirname, '../.venv/bin/python');
+        const python = PYTHON ? PYTHON.path : null;
+if (!python) throw new Error('no usable Python interpreter on this host (set PYTHON_BIN)');
         const out = require('node:child_process').execFileSync(python, ['-B', '-c',
             'import json; from channel.web.route_registry import console_page_metadata; '
             + 'print(json.dumps(console_page_metadata()))'],
@@ -259,7 +264,9 @@ test('an unqualified identity opening /admin is still bounced back to /chat', ()
 // and the production _navAreaFromPath instead of a stub that always says admin.
 // ---------------------------------------------------------------------------
 
-const PAGES = consolePages();
+// Without an interpreter the tests in this file are skipped, so the authoritative
+// table is never consulted; do not throw at load time in that case.
+const PAGES = PYTHON ? consolePages() : null;
 
 // An authenticated member with a known projection, no platform/tenant bypass
 // and no reachable 管理区 page: every signed admin page is withheld.

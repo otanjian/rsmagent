@@ -370,14 +370,22 @@
 
             <!-- Pinned above account: open admin (workbench) / return workbench (admin). -->
             <div data-nav-shell="workbench" class="sidebar-admin-entry-wrap">
-                <a id="nav-open-admin" href="/admin" target="cow-admin" rel="noopener"
+                <!-- No `target`: these two entries switch areas in the SAME window
+                     (console.js `_openNavArea` + pushState). A named target turned
+                     the click into a popup, which the desktop container refuses
+                     outright, and which in a browser opened a window that inherited
+                     a pending view from sessionStorage and landed there instead of
+                     on the entry's own page (change
+                     harden-windows-desktop-reliability, task 5.2). -->
+                <a id="nav-open-admin" href="/admin"
                    class="sidebar-item sidebar-admin-entry hidden">
                     <i class="fas fa-sliders item-icon" aria-hidden="true"></i>
                     <span data-i18n="nav_admin_console">控制台</span>
                 </a>
             </div>
             <div data-nav-shell="admin" class="sidebar-admin-entry-wrap">
-                <a id="nav-return-workbench" href="/chat" target="cow-workbench" rel="noopener"
+                <!-- Same-window switch, same reason as the entry above. -->
+                <a id="nav-return-workbench" href="/chat"
                    class="sidebar-item sidebar-admin-entry">
                     <i class="fas fa-house item-icon" aria-hidden="true"></i>
                     <span data-i18n="nav_workbench">工作台</span>

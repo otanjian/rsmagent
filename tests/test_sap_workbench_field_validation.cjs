@@ -1,25 +1,20 @@
 // Execute the fixed observation code against isolated DOM attributes, then
 // project its actual JSON through Python. These are not live SAP fixtures.
-const {test}=require('node:test');
+const nodeTest=require('node:test');
+const {resolvePython,pythonTest}=require('./_python_bin.cjs');
+const pythonInfo=resolvePython();
+// Python-driven throughout: skip when this host has no interpreter.
+const test=pythonTest(nodeTest.test);
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const {spawnSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
-// The project ships a POSIX venv, but these assertions must also run where
-// that path exists yet is not executable (e.g. a Windows host reading a WSL
-// venv). Probe candidates and use the first interpreter that actually runs.
-const python=(()=>{
-    const candidates=[process.env.SAP_WORKBENCH_PYTHON,
-        path.join(root,'.venv/bin/python'),path.join(root,'.venv/Scripts/python.exe'),
-        process.env.PYTHON,'python3','python'];
-    for(const candidate of candidates){
-        if(!candidate) continue;
-        if(spawnSync(candidate,['-c','print(1)'],{encoding:'utf8'}).status===0) return candidate;
-    }
-    return path.join(root,'.venv/bin/python');
-})();
+// The interpreter comes from tests/_python_bin.cjs: it probes candidates,
+// refuses the Microsoft Store alias, and returns null rather than a path that
+// cannot exist -- so this file skips instead of failing with ENOENT.
+const python=pythonInfo?pythonInfo.path:null;
 const source=fs.readFileSync(path.join(root,'Scene/sap_workbench/browser_service/dom.py'),'utf8');
 const snapshotScript=source.match(/SNAPSHOT = r"""([\s\S]*?)"""/)[1];
 

@@ -708,9 +708,14 @@ test('a local preview asks the host and embeds the answer, and never a server UR
 test('a refusal the page can act on is shown with the action that works', () => {
   // Each refusal is a different situation: gone, revoked, offline, too large,
   // and a kind this surface cannot render are five different sentences.
-  assert.match(workspaceJs, /if \(code === 'limit_exceeded'\) return t\('ws_local_preview_too_large'\);/);
-  assert.match(workspaceJs, /if \(code === 'unsupported_type'\) return t\('ws_local_preview_unsupported'\);/);
-  assert.match(workspaceJs, /if \(code === 'not_found'\) return t\('ws_local_file_gone'\);/);
+  // The sentences live in the shared table now, so that the preview path, the
+  // action path and the workspace-read path cannot disagree about a code
+  // (change harden-windows-desktop-reliability, task 4.3).
+  const refusalTable = /const WS_LOCAL_REFUSAL_KEYS = \{([\s\S]*?)\n\};/.exec(workspaceJs);
+  assert.ok(refusalTable, 'the shared local-refusal table is missing from workspace.js');
+  assert.match(refusalTable[1], /limit_exceeded: 'ws_local_preview_too_large',/);
+  assert.match(refusalTable[1], /unsupported_type: 'ws_local_preview_unsupported',/);
+  assert.match(refusalTable[1], /not_found: 'ws_local_file_gone',/);
   // The fallback card offers the system application, which is what actually
   // works for a file this shell cannot render.
   assert.match(workspaceJs, /function wsSetLocalPreviewFallback\(body, name, message\)[\s\S]*?onclick="openPreviewExternally\(\)"/);

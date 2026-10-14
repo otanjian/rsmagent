@@ -216,6 +216,9 @@ export type BackendErrorCode =
   | 'backend_crashed'
   | 'backend_timeout'
   | 'backend_unresponsive'
+  | 'python_not_found'
+  | 'python_invalid'
+  | 'dependency_missing'
 
 export interface BackendFailure {
   code: BackendErrorCode

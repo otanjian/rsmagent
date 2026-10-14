@@ -98,6 +98,13 @@ export function classifyFetchError(err: unknown): ConnectionFailure {
   const cause = (err as { cause?: { code?: string } } | undefined)?.cause
   const code = cause?.code || (err as { code?: string } | undefined)?.code || ''
   const name = (err as { name?: string } | undefined)?.name || ''
+  // A probe that ran out of time is its own answer, and not "unreachable": the
+  // server may well have accepted the connection and then said nothing. Telling
+  // the reader their network is down would send them to the wrong place
+  // (change harden-windows-desktop-reliability, task 6.1).
+  if (name === 'TimeoutError' || name === 'AbortError' || code === 'ABORT_ERR' || code === 'ETIMEDOUT') {
+    return { kind: 'network', code: 'network_timeout', message: 'the server did not answer in time' }
+  }
   if (TLS_CODES.has(code) || /CERT|TLS|SSL/i.test(code) || /CERT|TLS|SSL/i.test(name)) {
     return { kind: 'tls', code: 'tls_verification_failed', message: 'the server certificate could not be verified' }
   }
@@ -117,7 +124,7 @@ export function classifyFetchError(err: unknown): ConnectionFailure {
 export async function probeServer(
   rawOrigin: unknown,
   fetchImpl: typeof fetch,
-  options?: { allowHttpOrigin?: string },
+  options?: { allowHttpOrigin?: string; timeoutMs?: number },
 ): Promise<ProbeResult> {
   let origin = ''
   const allowed = typeof options?.allowHttpOrigin === 'string'
@@ -136,10 +143,14 @@ export async function probeServer(
   }
   let response: Response
   try {
+    // Bounded on purpose: a server that accepts the connection and never
+    // answers used to leave the probe -- and the page waiting on it -- hanging
+    // with no deadline at all (spec desktop-tenant-context: "有期限的探测").
     response = await fetchImpl(`${origin}/api/desktop/meta`, {
       method: 'GET',
       redirect: 'error',
       headers: { Accept: 'application/json', 'Cache-Control': 'no-store' },
+      signal: probeSignal(options?.timeoutMs),
     })
   } catch (err) {
     return { ok: false, failure: classifyFetchError(err) }
@@ -163,6 +174,22 @@ export async function probeServer(
     return { ok: false, failure: { kind: 'protocol', code: 'invalid_metadata', message: 'the server returned incomplete metadata' } }
   }
   return { ok: true, meta }
+}
+
+/** How long the metadata probe may take before it is called a timeout. */
+export const PROBE_TIMEOUT_MS = 10_000
+
+/**
+ * The abort signal that bounds the probe, or ``undefined`` on a runtime without
+ * ``AbortSignal.timeout`` (the rest of the probe still works; it is just
+ * unbounded there, which is why the caller may lower ``timeoutMs`` for tests).
+ */
+function probeSignal(timeoutMs?: number): AbortSignal | undefined {
+  const budget = typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : PROBE_TIMEOUT_MS
+  if (typeof AbortSignal === 'undefined' || typeof AbortSignal.timeout !== 'function') {
+    return undefined
+  }
+  return AbortSignal.timeout(budget)
 }
 
 /** Loopback HTTP origins that may stand in for the in-process backend. */
