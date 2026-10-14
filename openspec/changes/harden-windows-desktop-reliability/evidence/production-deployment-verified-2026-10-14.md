@@ -47,3 +47,20 @@
 - **部署已确认含本 change**（前端资源指纹一致 + 服务可达 + 控制台正常）✓
 - **记忆 403 修复的行为验证**待登录态确认（预期 200）；
 - 设备通道（6.4 配对）仍缺反代与网关（`/api/desktop/connect` 404）。
+
+---
+
+## 2b. 登录态内实测（已完成 ✅，取代上方 §2 的"待执行"）
+
+在客户端（已登录工作台，容器页 `https://rd.rsmxm.com.cn/`）内经 CDP 做**同源只读 fetch**；会话身份 `/auth/me` → `RC004` / `tanjian`（`usr_hcWvTEbXtYDWq1ho`），租户 `tnt_EA3qM-lHPLD8ZPwW`。
+
+| 请求 | 部署前 | **部署后（实测）** |
+|---|---|---|
+| 本人 `GET /api/memory?scope=personal&category=memory&page=1&page_size=20` | **403 `unsafe_path`**「个人记忆目录被替换」 | **200** ✓ `total: 1`，条目 `memory/2026-09-26.md` |
+| 跨租户（`X-Tenant-ID: tnt_N8gC2oB4jo5flatC`） | 403 `forbidden` | **403 `forbidden`** ✓ 隔离未削弱 |
+| 不带租户头（会话默认租户） | — | **200**，同一份本人记忆 ✓ |
+| `/memory` 页面渲染 | 显示"个人记忆目录被替换" | **正常**：「记忆管理」列出 `memory/2026-09-26.md`（2.5 KB，2026-09-26 16:56:34），「清空我的记忆」「刷新」按钮在位 —— 截图 `production-memory-page-after-deploy.png` |
+
+**结论：本 change 修复的原始故障在生产上已消失** ✓（反向隔离保持拒绝 ✓）。核对全程**只读**（未写入、未上传、未清空任何记忆），浏览后已把容器页切回首页。
+
+执行脚本：`%TEMP%\cow-pack\prod-memory-inpage.py http://127.0.0.1:9232 <foreign-tenant> <screenshot.png>`
