@@ -145,13 +145,15 @@
 
 ## 10. 实施提交（2026-10-14）
 
-本 change 的实施、测试、文档、脚本与全部证据**一次性提交**到分支 `rdai`（**未推送远端**，`ahead 1`）：
+本 change 的实施、测试、文档、脚本与全部证据**一次性提交**到分支 `rdai`，并**已推送到 `origin/rdai`**（`05b32012..2cf61276`，2026-10-14；本地与远端同步）：
 
 | 项 | 值 |
 |---|---|
-| 提交 | **`f3703e6b`** — `harden-windows-desktop-reliability: 实施与证据（37/55 勾选）`（本节文字由紧随其后的小提交补记，其 SHA 见 `git log -1`；不再事后 amend，以免 SHA 自我失效） |
-| 规模 | **115 个文件**，`+10395 / −1278` |
-| 基线 HEAD | `05b32012daf5a5362fad8606451e2e42ba69e2cc`（分支起点） |
+| 实施提交 | **`f3703e6b`** — `harden-windows-desktop-reliability: 实施与证据（37/55 勾选）` |
+| 索引补记提交 | **`2cf61276`** — §10 记录 + 部署提示 |
+| 推送 | `git push origin rdai` → `05b32012..2cf61276  rdai -> rdai`（远端 `https://rd.rsmxm.com.cn/Gitea/rsmai/rsmagent.git`，Gitea 提示可开 PR） |
+| 规模 | **115 个文件**，`+10410 / −1278`（两提交合计） |
+| 基线 HEAD | `05b32012daf5a5362fad8606451e2e42ba69e2cc`（推送前远端所在提交） |
 | 内容分布 | `openspec/changes` 46（证据与规范）· `desktop/src` 14 · `tests` 20+ · `docs` 7 · `scripts` 7 · `channel/web` 5 · `agent` 4 · `docker` 1 · `.gitignore` 1 |
 | 密钥排查 | 提交前已扫描：本会话产生的**合成账号口令与固定 token 均未进入仓库**（8 处命中全为既有文件里的占位 key，非本次改动文件） |
 | 勾选进度 | **37/55**；其余 18 项按 §4 与本文件登记的阻塞原因处理 |
