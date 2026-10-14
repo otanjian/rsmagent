@@ -149,7 +149,7 @@
 
 | 项 | 值 |
 |---|---|
-| 提交 | **`a454c5a5`** — `harden-windows-desktop-reliability: 实施与证据（37/55 勾选）` |
+| 提交 | **`f3703e6b`** — `harden-windows-desktop-reliability: 实施与证据（37/55 勾选）`（本节文字由紧随其后的小提交补记，其 SHA 见 `git log -1`；不再事后 amend，以免 SHA 自我失效） |
 | 规模 | **115 个文件**，`+10395 / −1278` |
 | 基线 HEAD | `05b32012daf5a5362fad8606451e2e42ba69e2cc`（分支起点） |
 | 内容分布 | `openspec/changes` 46（证据与规范）· `desktop/src` 14 · `tests` 20+ · `docs` 7 · `scripts` 7 · `channel/web` 5 · `agent` 4 · `docker` 1 · `.gitignore` 1 |
