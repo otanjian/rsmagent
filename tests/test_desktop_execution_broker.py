@@ -42,6 +42,8 @@ from urllib.parse import urlencode
 
 from tests._helpers import WebAppHarness
 
+from agent.desktop_remote import CAPABILITY_KEY
+
 CLIENT_ID = "cowagent-desktop"
 REDIRECT_URI = "http://127.0.0.1:52345/callback"
 VERIFIER = "M" * 43
@@ -119,6 +121,37 @@ class BrokerFixture(unittest.TestCase):
                             side_effect=lambda name: _EnabledSlice())
         self._patch.start()
         self.addCleanup(self._patch.stop)
+        # ``_execution_enabled`` answers "has this deployment accepted a launcher
+        # for this platform?" before the broker is consulted, and on a host with no
+        # acceptance evidence it answers 503 for every route -- so without this the
+        # file would measure the deployment environment instead of the broker.
+        #
+        # The substitution is deliberately *narrow*: the real state is computed
+        # first, and it is replaced **only when the sole obstacle is platform
+        # support**. Everything a deployment actually controls -- the declaration,
+        # the deployment switch, the acceptance list, helper availability -- keeps
+        # deciding, which is what keeps ``ExecutionGateTests``,
+        # ``RollbackDrillTests`` and ``test_a_degraded_client_is_told_which_reason_
+        # applies`` honest: they close the switch or leave the slice unaccepted and
+        # assert the refusal that follows.
+        #
+        # Nor is ``desktop_contracts_v2.tool_supported_on`` replaced: that function
+        # is itself an assertion target ("a supported platform must still refuse a
+        # tool it cannot run"), so substituting it globally would make the suite
+        # contradict itself -- measured, not assumed.
+        from integrations.desktop import execution_capability as _ec
+
+        real_state = _ec.execution_state
+
+        def _platform_accepted(**kwargs):
+            state = real_state(**kwargs)
+            if state.get("reason") == "platform_unsupported":
+                return dict(state, available=True, reason="")
+            return state
+
+        self._platform = patch.object(_ec, "execution_state", _platform_accepted)
+        self._platform.start()
+        self.addCleanup(self._platform.stop)
         self._fixture = {}
         self._tokens = {}
 
@@ -216,6 +249,81 @@ class BrokerFixture(unittest.TestCase):
         self._fixture[platform] = fixture
         return fixture
 
+    def fixture_v3(self, *, platform="macos", operations=("scripts",),
+                   runtime=""):
+        """The same fixture, but with a **v3** grant, lease and capability block.
+
+        A separate builder rather than a flag on :meth:`fixture`, because the v3
+        shape differs in three places that must agree: the grant records the
+        operations the user confirmed (``bind_workspace(operations=...)``), the
+        lease declares ``protocol_major=3``, and the device's hello carries a v3
+        ``project_execution`` block. Building them apart is what lets a test say
+        which of the three it is varying.
+
+        The cache key carries a ``"v3"`` prefix so it cannot collide with the v2
+        key (a bare platform string): without it ``body()`` would find the v2
+        fixture and hand back the wrong lease epoch, which shows up as a
+        ``stale_context`` that has nothing to do with what is being tested.
+        """
+        key = ("v3", platform, tuple(operations), runtime)
+        if key in self._fixture:
+            return self._fixture[key]
+        from auth import desktop_contracts_v3 as v3
+
+        native, web = self.paired()
+        devices = self.devices()
+        device = devices.register_device(
+            token=native, installation_id="install_" + secrets.token_urlsafe(18),
+            display_name="BrokerBox3 %s" % platform, platform=platform,
+            client_version="2.1.9")
+        binding = devices.create_binding(
+            token=web, tenant_id=self.app.tenant_id, device_id=device["id"],
+            agent_id=AGENT, business_session_id=SESSION, context_nonce=NONCE)
+        workspace = devices.register_workspace(
+            token=native, tenant_id=self.app.tenant_id, device_id=device["id"],
+            label="我的 项目 v3", grant_version=1, project_mode="project-execution")
+        devices.bind_workspace(
+            token=native, tenant_id=self.app.tenant_id,
+            binding_id=binding["id"], workspace_id=workspace["id"],
+            grant_version=1, operations=list(operations))
+        block = v3.execution_capability(
+            platform="posix" if platform != "windows" else "win32",
+            tools=["read", "write", "edit", "ls", "search_files", "bash"],
+            available=True, reason="available",
+            files_write_verified=True, scripts_verified=True,
+            runtime=runtime or "python")
+        lease = self.commands().acquire_lease(
+            token=native, device_id=device["id"],
+            gateway_id="gw-broker3-" + secrets.token_urlsafe(6),
+            protocol_major=3,
+            capabilities={CAPABILITY_KEY: block})
+        fixture = {
+            "native": native, "web": web, "device": device,
+            "binding": binding, "workspace": workspace, "lease": lease,
+        }
+        self._fixture[key] = fixture
+        return fixture
+
+    def enqueue_v3(self, *, platform="macos", operations=("scripts",),
+                   runtime=None, **overrides):
+        """One real v3 command whose snapshot is ``operations``."""
+        ops = list(operations)
+        fix = self.fixture_v3(platform=platform, operations=ops,
+                              runtime=runtime or "")
+        kwargs = dict(
+            token=fix["web"], tenant_id=self.app.tenant_id,
+            binding_id=fix["binding"]["id"], workspace_id=fix["workspace"]["id"],
+            grant_version=1, tool="bash",
+            arguments={"command": "python3 -c \"print(1)\"", "timeout": 120},
+            run_id="run_" + secrets.token_hex(4),
+            tool_call_id="call_" + secrets.token_hex(4),
+            selection_generation=1, origin=ORIGIN,
+            request_id="req_" + secrets.token_hex(6),
+            permission_mode="full-access",
+            protocol_major=3, operations=ops, runtime=runtime)
+        kwargs.update(overrides)
+        return self.commands().create_execution(**kwargs)
+
     def enqueue(self, *, platform="macos", **overrides):
         """One real v2 command through the real creation path."""
         fix = self.fixture(platform=platform)
@@ -241,9 +349,18 @@ class BrokerFixture(unittest.TestCase):
         return cmds.acknowledge(command_id=command["id"],
                                 epoch=fix["lease"]["epoch"])
 
-    def body(self, command, *, platform="macos", **overrides):
-        """The identifiers a device holds for one command."""
-        fix = self.fixture(platform=platform)
+    def body(self, command, *, platform="macos", operations=None, **overrides):
+        """The identifiers a device holds for one command.
+
+        ``operations`` selects the v3 fixture (whose grant confirmed a set); it is
+        what pairs this body with the rows ``enqueue_v3`` created. Omitting it uses
+        the v2 fixture, so every existing caller is unaffected.
+        """
+        if operations is not None:
+            fix = self.fixture_v3(platform=platform,
+                                  operations=tuple(operations))
+        else:
+            fix = self.fixture(platform=platform)
         data = {
             "command_id": command["id"],
             "device_id": fix["device"]["id"],
@@ -253,6 +370,8 @@ class BrokerFixture(unittest.TestCase):
             "params_digest": command["params_digest"],
             "connection_epoch": fix["lease"]["epoch"],
         }
+        if operations is not None:
+            data["operations"] = list(operations)
         data.update(overrides)
         return data
 
@@ -497,6 +616,27 @@ class BrokerEndpointTests(BrokerFixture):
         response = self.call(PREPARE, self.body(command))
         self.refusal(response, status=403, code="grant_revoked")
 
+    def test_start_refuses_after_the_workspace_grant_was_revoked(self):
+        """Task 4.5: revocation is enforced at the *start*, not only at prepare.
+
+        A device asks again before every execution, so "prepare said yes" cannot be
+        the last word: the user may revoke in between, and that window is exactly
+        when a queued command would otherwise run. Checked at start rather than by
+        replaying the prepare answer, because only start actually spends the
+        authorization.
+        """
+        fix = self.fixture()
+        command = self.enqueue()
+        # A fresh prepare first, so the refusal below is attributable to the revoke
+        # rather than to a prepare that never happened.
+        prepared = self.call(PREPARE, self.body(command))
+        self.ok(prepared)
+        self.devices().revoke_workspace(
+            token=fix["native"], tenant_id=self.app.tenant_id,
+            workspace_id=fix["workspace"]["id"])
+        response = self.call(START, self.body(command))
+        self.refusal(response, status=403, code="grant_revoked")
+
     def test_prepare_refuses_a_disabled_device(self):
         """Disabling a device cascades to its bindings, and *that* fires first.
 
@@ -540,9 +680,58 @@ class BrokerEndpointTests(BrokerFixture):
 
 
     def _clear_quota(self):
+        """Return the shared harness's meter to its starting state.
+
+        Two things have to be undone, not one. Raising the ceiling back to zero is
+        the obvious half; the *usage* is the other, and it is the half that leaked.
+        ``consume_quota`` charges the same meter the broker's check reads, and this
+        fixture's ``WebAppHarness`` is shared by the whole class -- so a charge made
+        by one test stayed on the books for every test after it.
+
+        Measured symptom: ``test_start_refuses_a_quota_exhausted_after_prepare``
+        passes when run alone and failed inside the suite with the *opposite* answer
+        (200 OK, permit issued), because a later-alphabet test's leftover usage had
+        already pushed the meter past its own limit -- so its own charge was
+        refuse-worthy before the test had done anything.
+
+        ``refund_quota`` is the meter's own release half, so the reset uses the same
+        two tables the charge did rather than inventing a second quota truth.
+        """
         self.app.service.set_quota(
             actor_user_id=self.app.admin_id, tenant_id=self.app.tenant_id,
             metric="tool_calls", hard_limit=0)
+        try:
+            # ``quota_status`` answers per *tenant*, with one row per (user, metric).
+            # It takes no ``user_id``/``metric`` and returns no ``used`` key -- the
+            # earlier version of this reset assumed all three, so the call raised and
+            # the refund below was skipped *every* time. The usage then leaked for
+            # the rest of the class, which is precisely the symptom this reset was
+            # written to fix; it looked fixed because the failure moved to other
+            # tests rather than disappearing.
+            status = self.app.service.quota_status(
+                actor_user_id=self.app.admin_id, tenant_id=self.app.tenant_id)
+        except Exception:
+            return
+        used = []
+        if isinstance(status, dict):
+            for row in status.get("usage") or []:
+                if not isinstance(row, dict):
+                    continue
+                if row.get("metric") != "tool_calls":
+                    continue
+                # Both buckets, because ``consume_quota`` charges the tenant bucket
+                # (``user_id=''``) *and* the member's, and the broker's check reads
+                # both. Refunding only the member left the tenant's usage on the
+                # books, so the reset looked right while the next test still saw a
+                # spent meter.
+                if row.get("user_id") in ("", self.u1):
+                    amount = int(row.get("used") or 0)
+                    if amount > 0:
+                        used.append((row.get("user_id") or "", amount))
+        for bucket, amount in used:
+            self.app.service.refund_quota(
+                user_id=bucket, tenant_id=self.app.tenant_id,
+                metric="tool_calls", amount=amount, reason="test cleanup")
 
     def _approved_action(self, action="tool:bash"):
         """An approval for one action, requested by u1 and decided by root."""
@@ -871,10 +1060,32 @@ class ExecutionGateTests(unittest.TestCase):
                          "feature_unavailable")
 
     def test_the_declaration_is_what_closes_it(self):
-        """The same path opens once the declaration is accepted -- nothing else."""
+        """The same path opens once the declaration is accepted -- nothing else.
+
+        "Nothing else" is the claim, so anything else that happens to be closed has
+        to be held open for this to measure it. On a host whose platform has no
+        accepted launcher, ``platform_unsupported`` is a *second* reason the path is
+        shut, and the gate correctly still refuses -- which would leave this test
+        measuring the host rather than the declaration. Both other reasons are
+        therefore stated as accepted here (the platform, via the same narrow
+        substitution the rest of the file uses), leaving the declaration as the only
+        variable: accepted opens the path, and what answers then is the
+        authorization layer.
+        """
+        from integrations.desktop import execution_capability as _ec
+
         token = self.app.login("root")
+        real_state = _ec.execution_state
+
+        def _platform_accepted(**kwargs):
+            state = real_state(**kwargs)
+            if state.get("reason") == "platform_unsupported":
+                return dict(state, available=True, reason="")
+            return state
+
         with patch("auth.capability_matrix.slice_for",
-                   side_effect=lambda name: _EnabledSlice()):
+                   side_effect=lambda name: _EnabledSlice()), \
+                patch.object(_ec, "execution_state", _platform_accepted):
             response = self.app.request(
                 PREPARE, "POST", body=json.dumps({
                     "command_id": "c", "device_id": "d", "binding_id": "b",

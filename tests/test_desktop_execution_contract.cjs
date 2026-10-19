@@ -40,7 +40,15 @@ function sample(name) {
 
 before(() => {
     if (needsBuild()) {
-        execFileSync('npm', ['run', 'build:main'], { cwd: desktop, stdio: 'inherit' });
+        execFileSync('npm', ['run', 'build:main'], {
+            cwd: desktop,
+            stdio: 'inherit',
+            // ``npm`` is ``npm.cmd`` on Windows, and ``execFileSync`` without a
+            // shell fails with ``spawnSync npm ENOENT`` before the build starts --
+            // which made every test in this file fail for a reason unrelated to
+            // what it tests. Same flag as the sibling suites.
+            shell: process.platform === 'win32',
+        });
     }
     contract = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
     execution = require(compiled);
@@ -287,6 +295,111 @@ test('windows offers no tool at all until its launcher is accepted', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Task 3.5: the frame is judged by its *own* major.
+//
+// Before this, every execute frame was validated against v2 and a v3 frame was
+// refused with "protocol_major must be 2" -- a version-awareness gap reported as a
+// malformed frame, which is why the device side could not run a v3 command at all.
+// ---------------------------------------------------------------------------
+
+/** The shipped v3 sample, which the contract itself validates. */
+function v3Sample() {
+    return JSON.parse(fs.readFileSync(
+        path.join(root, 'contracts', 'desktop', 'samples', 'v3', 'execute_tool.valid.json'),
+        'utf8'));
+}
+
+test('a v3 frame is judged by v3, not refused for naming a major it may name', () => {
+    // The major is the *connection's*, so it is passed: a frame does not get to
+    // choose which rules judge it.
+    const problems = execution.validateExecuteFrame(v3Sample(), 'posix', 3);
+    assert.deepEqual(problems, []);
+});
+
+test('a v2 frame is judged exactly as before', () => {
+    // The regression guard for the refactor: the shared implementation must not
+    // change a single v2 answer, including its message text.
+    const v2Sample = JSON.parse(fs.readFileSync(
+        path.join(root, 'contracts', 'desktop', 'samples', 'v2', 'execute_tool.valid.json'),
+        'utf8'));
+    assert.deepEqual(execution.validateExecuteFrame(v2Sample, 'posix', 2), []);
+    assert.deepEqual(execution.validateExecuteFrame(v2Sample, 'posix'), [],
+        'omitting the agreed major keeps v2, which is what every old caller does');
+
+    const wrongMajor = { ...v2Sample, protocol_major: 3 };
+    assert.deepEqual(execution.validateExecuteFrame(wrongMajor, 'posix', 2),
+        ['protocol_major must be 2']);
+});
+
+test('a frame does not get to choose which rules judge it', () => {
+    // The reason the agreed major is a parameter rather than read from the frame:
+    // if the frame chose, a v3 frame on a v2 connection would be checked against
+    // v3 and pass. Here the connection agreed v2 and the frame claims v3, so it is
+    // judged by **v2** and the mismatch is reported.
+    const frame = { ...v3Sample(), protocol_major: 3 };
+    const problems = execution.validateExecuteFrame(frame, 'posix', 2);
+    assert.ok(problems.includes('protocol_major must be 2'), problems.join('; '));
+});
+
+test('a major this build cannot serve is refused by name, never guessed at', () => {
+    const problems = execution.validateExecuteFrame(
+        { ...v3Sample(), protocol_major: 9 }, 'posix', 9);
+    assert.equal(problems.length, 1);
+    assert.match(problems[0], /protocol_major must be one of 3, 2/);
+    assert.match(problems[0], /got 9/);
+});
+
+test('a v3 frame must name the operations it is spending', () => {
+    // Required by v3 and unknown to v2, so the difference has to come from the
+    // contract rather than from a hard-coded list.
+    const frame = { ...v3Sample() };
+    delete frame.operations;
+    const problems = execution.validateExecuteFrame(frame, 'posix', 3);
+    assert.ok(problems.some((p) => p.includes("missing 'operations'")), problems.join('; '));
+});
+
+test('v3 admits win32 as a platform but not every tool on it', () => {
+    // The distinction that platform admission alone would miss: v3's
+    // ``PLATFORM_SUPPORT.win32`` is true while ``PLATFORM_TOOLS.win32`` names only
+    // the file tools, because ``launcher_kinds.scripts`` is deliberately empty
+    // there. A check that asked only "is this platform supported?" would let a
+    // Windows v3 frame name a shell tool and pass.
+    const fileTool = v3Sample();
+    assert.deepEqual(execution.validateExecuteFrame(fileTool, 'win32', 3), [],
+        'the Windows file tools are the ones v3 offers there');
+
+    // The v2 sample's tool is ``bash``, which win32 has no launcher for -- in
+    // either major.
+    const bash = JSON.parse(fs.readFileSync(
+        path.join(root, 'contracts', 'desktop', 'samples', 'v2', 'execute_tool.valid.json'),
+        'utf8'));
+    const v3Bash = { ...bash, protocol_major: 3, operations: ['scripts'] };
+    const problems = execution.validateExecuteFrame(v3Bash, 'win32', 3);
+    assert.deepEqual(problems, ["tool 'bash' is unsupported on platform 'win32'"]);
+
+    // And v2's own answer is unchanged, message included.
+    assert.deepEqual(execution.validateExecuteFrame(bash, 'win32', 2),
+        ["tool 'bash' is unsupported on platform 'win32'"]);
+});
+
+test('a v3 run_script is asked for its language and script, not a command string', () => {
+    // v3 splits the v2 ``command`` into a declared runtime plus the script, which
+    // is what makes "which language" a fact rather than something inferred.
+    const frame = {
+        ...v3Sample(),
+        tool: 'run_script',
+        operations: ['scripts'],
+        arguments: { language: 'python', script: 'print(1)' },
+    };
+    assert.deepEqual(execution.validateExecuteFrame(frame, 'posix', 3), []);
+
+    const missingLanguage = { ...frame, arguments: { script: 'print(1)' } };
+    const problems = execution.validateExecuteFrame(missingLanguage, 'posix', 3);
+    assert.ok(problems.some((p) => p.includes('run_script.arguments.language')),
+        problems.join('; '));
+});
+
+// ---------------------------------------------------------------------------
 // Negotiation and phases
 // ---------------------------------------------------------------------------
 
@@ -298,7 +411,16 @@ test('an older server leaves the entry point unavailable, never downgraded', () 
     assert.deepEqual(execution.negotiateProjectExecution({ project_execution: { major: 1 } }),
         { available: false, reason: 'protocol_incompatible' });
     assert.deepEqual(execution.negotiateProjectExecution({ project_execution: { major: 2 } }),
-        { available: true, reason: 'available' });
+        { available: true, reason: 'available', major: 2 });
+    // v3 is reachable too (task 3.5). The chosen major comes back so no caller has
+    // to re-derive it -- reading it twice is how the negotiation and the frame
+    // validation would come to disagree.
+    assert.deepEqual(execution.negotiateProjectExecution({ project_execution: { major: 3 } }),
+        { available: true, reason: 'available', major: 3 });
+    // A major this build cannot serve is still refused by name, including one
+    // *newer* than v3: "the server named a number" is not agreement.
+    assert.deepEqual(execution.negotiateProjectExecution({ project_execution: { major: 4 } }),
+        { available: false, reason: 'protocol_incompatible' });
 });
 
 test('cancelling is a projection, and a terminated run never claims a rollback', () => {

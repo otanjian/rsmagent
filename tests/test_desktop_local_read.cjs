@@ -70,7 +70,7 @@ let hasBinary = false;
 
 before(() => {
   if (needsBuild()) {
-    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe' });
+    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe', shell: process.platform === 'win32',});
   }
   guardMod = require(path.join(dist, 'local-files', 'fs-guard.js'));
   opsMod = require(path.join(dist, 'remote', 'device-ops.js'));
@@ -118,6 +118,66 @@ test('the reader waits for a whole frame and refuses a desynchronised stream', (
   assert.throws(() => new guardMod.FrameReader().push(bad), (err) => err.code === 'frame_too_large');
 });
 
+// Task 4.5: a crashed helper must not leave the binding unrecoverable.
+//
+// The desktop's recovery is `ensureGuard`: it keeps its guard until the guard
+// reports itself closed, then spawns a fresh one for the next operation. That is
+// the *whole* restart path for the file helper, and nothing exercised it -- so a
+// regression that left `isClosed` false after a crash (or kept using the dead
+// process) would have surfaced only as "every read fails until the app restarts".
+//
+// Driven against the real binary rather than a stub: "the next operation works" is
+// a property of a real process being replaceable, and a fake child would assert the
+// intent instead of the behaviour.
+test('a killed helper reports itself closed, and a fresh one still works', async (t) => {
+  if (!hasBinary) return t.skip('fs-guard binary not built (cargo unavailable)');
+  const dir = makeTree();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const spawned = [];
+  const guard = new guardMod.FsGuard(() => {
+    const child = spawnReal();
+    spawned.push(child);
+    return child;
+  });
+  t.after(() => guard.dispose());
+
+  const opened = await guard.openRoot(dir);
+  assert.equal(guard.isClosed, false, 'a live helper is not closed');
+  assert.equal(spawned.length, 1);
+
+  // Kill it the way a crash would: the process goes away without answering.
+  spawned[0].kill();
+  // Wait for the exit to be observed, which is what flips `isClosed`.
+  await new Promise((resolve) => {
+    const deadline = Date.now() + 5000;
+    const poll = () => {
+      if (guard.isClosed || Date.now() > deadline) return resolve();
+      setTimeout(poll, 20);
+    };
+    poll();
+  });
+  assert.equal(guard.isClosed, true,
+    'a dead helper must report closed, or the caller keeps trying to use it');
+
+  // The same grant is worthless on a new process -- that is correct, and it is why
+  // the recovery is "spawn again", not "reuse the id".
+  let refused = null;
+  try {
+    await guard.list(opened.grant, {});
+  } catch (err) {
+    refused = err;
+  }
+  assert.ok(refused, 'a call on a dead helper must fail rather than hang');
+  assert.equal(refused.code, 'helper_exited');
+
+  // And a fresh helper works, which is the property that matters.
+  const fresh = openGuard();
+  t.after(() => fresh.dispose());
+  const reopened = await fresh.openRoot(dir);
+  const listed = await fresh.list(reopened.grant, {});
+  assert.ok(listed.entries.length > 0, 'a replacement helper serves the same directory');
+});
 test('a real open_root/list/stat/read/search round trip', (t) => {
   if (!hasBinary) return t.skip('fs-guard binary not built (cargo unavailable)');
   const dir = makeTree();

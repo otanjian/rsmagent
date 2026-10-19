@@ -41,4 +41,10 @@ from integrations.desktop.execution_payload import ORIGIN_RUNTIME
 #: The meta/hello key the ``project_execution`` capability is reported under.
 CAPABILITY_KEY = "project_execution"
 
-__all__ = ["CAPABILITY_KEY", "ORIGIN_RUNTIME"]
+#: The device's own OS name, as the gateway records it, mapped to the platform
+#: name a contract knows. Kept here rather than in the broker so the device and
+#: broker halves cannot disagree about which platform a connected device is --
+#: the broker imports this one.
+CONTRACT_PLATFORMS = {"macos": "posix", "linux": "posix", "windows": "win32"}
+
+__all__ = ["CAPABILITY_KEY", "CONTRACT_PLATFORMS", "ORIGIN_RUNTIME"]

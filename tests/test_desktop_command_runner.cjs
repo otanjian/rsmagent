@@ -39,7 +39,15 @@ function needsBuild() {
 
 before(() => {
     if (needsBuild()) {
-        execFileSync('npm', ['run', 'build:main'], { cwd: desktop, stdio: 'inherit' });
+        execFileSync('npm', ['run', 'build:main'], {
+            cwd: desktop,
+            stdio: 'inherit',
+            // ``npm`` is ``npm.cmd`` on Windows, and ``execFileSync`` without a
+            // shell fails with ``spawnSync npm ENOENT`` before the build starts --
+            // which made every test in this file fail for a reason unrelated to
+            // what it tests. Same flag as the sibling suites.
+            shell: process.platform === 'win32',
+        });
     }
     gate = {
         runner: require(path.join(distDir, 'command-runner.js')),
@@ -74,6 +82,24 @@ function scratch() {
 function frame(overrides = {}) {
     const base = JSON.parse(fs.readFileSync(samplePath, 'utf8'));
     return { ...base, ...overrides };
+}
+
+/**
+ * The same frame as a **v3** one, which the contract validates more strictly.
+ *
+ * Two things v3 adds are load-bearing rather than cosmetic: ``operations`` is
+ * required and must cover the tool (the v2 sample uses ``bash``, which needs
+ * ``scripts``), and ``expected_version`` is what the pre-write block keys on. Pass
+ * ``expected_version: undefined`` to model a versionless v3 frame -- a ``write``
+ * with ``create: true`` is legitimately one.
+ */
+function v3Frame(overrides = {}) {
+    const base = JSON.parse(fs.readFileSync(samplePath, 'utf8'));
+    const merged = { ...base, protocol_major: 3, operations: ['scripts'], ...overrides };
+    // ``{...base, expected_version: undefined}`` would leave the key present with
+    // an undefined value, which is not the same shape as a frame that never had it.
+    if (merged.expected_version === undefined) delete merged.expected_version;
+    return merged;
 }
 
 /**
@@ -128,7 +154,7 @@ function harness(log) {
     };
 }
 
-function build({ dir, log, journalFile, roots, now = NOW, onReconcile, connected, pathsOf }) {
+function build({ dir, log, journalFile, roots, now = NOW, onReconcile, connected, pathsOf, admitChange, executionMajor }) {
     void dir;
     const h = harness(log);
     const journal = new gate.journal.JournalStore({ file: journalFile, now: () => now });
@@ -143,6 +169,8 @@ function build({ dir, log, journalFile, roots, now = NOW, onReconcile, connected
         connected,
         onReconcile,
         pathsOf,
+        ...(admitChange ? { admitChange } : {}),
+        ...(executionMajor !== undefined ? { executionMajor } : {}),
         newJournalId: (() => { let n = 0; return () => `journal_${++n}`; })(),
     });
     return { runner, journal, ...h, dir };
@@ -798,4 +826,160 @@ test('A20: our own successful write makes the next edit current again', async ()
     }), IDENTITY);
     assert.ok(!second.code, 'our write re-established the view');
     assert.equal(lines(s.log), 2);
+});
+
+
+// ---------------------------------------------------------------------------
+// Task 3.4: a versioned write is refused *before* the tool runs.
+//
+// These were written and withdrawn while the device-side contract could not admit
+// a v3 frame at all (it validated everything against major 2), which meant an
+// `invalid_request` arrived from the contract layer before the runner was
+// consulted -- the blocker, not the behaviour under test. Both validation points
+// now take the negotiated major, so the assertions below are reachable and are the
+// ones that must hold.
+//
+// Note when reading failures: A20 is order-flaky in this file (it passes alone and
+// in its own group), so a whole-file failure of *these* is hard to tell apart from
+// that. Use ``--test-name-pattern`` on the names below.
+// ---------------------------------------------------------------------------
+
+/** The production rule, expressed once: a v3 frame carrying a version is refused. */
+const refuseVersioned = (f) => (Number(f.protocol_major ?? 1) >= 3
+    && f.expected_version ? 'refuse' : 'apply');
+
+/**
+ * The v3 shape, and the v3 *connection*: ``executionMajor`` is what lets the
+ * runner admit a v3 frame at all. It is the runner's own validation, so a test
+ * that only sets the frame's ``protocol_major`` gets ``invalid_request`` before
+ * ``admitChange`` is ever consulted -- which is exactly how this was found.
+ */
+const V3_RUNNER = { executionMajor: 3 };
+
+test('a versioned v3 write that lost the race is refused without running the tool', async () => {
+    const s = scratch();
+    const target = path.join(s.dir, 'raced.txt');
+    fs.writeFileSync(target, 'v1\n');
+    const h = build({
+        ...s,
+        ...V3_RUNNER,
+        roots: { ws_example: '/proj/a' },
+        pathsOf: () => ({ modifies: [target] }),
+        admitChange: refuseVersioned,
+    });
+    h.runner.versions.noteServed(target);
+    // Somebody else writes after we served the file.
+    fs.writeFileSync(target, 'the user wrote this\n');
+
+    const result = await h.runner.run(
+        v3Frame({ expected_version: 'fgv1:0123456789abcdef' }), IDENTITY);
+
+    assert.equal(result.outcome, 'refused');
+    assert.equal(result.code, 'file_changed');
+    assert.equal(result.effects, 'none', 'a refusal changes nothing');
+    assert.deepEqual(h.started, [], 'the tool must not have run at all');
+    assert.equal(fs.readFileSync(target, 'utf8'), 'the user wrote this\n',
+        'the newer bytes must survive');
+});
+
+test('a v2 frame keeps the report-and-apply semantics', async () => {
+    const s = scratch();
+    const target = path.join(s.dir, 'raced2.txt');
+    fs.writeFileSync(target, 'v1\n');
+    const h = build({
+        ...s,
+        roots: { ws_example: '/proj/a' },
+        pathsOf: () => ({ modifies: [target] }),
+        admitChange: refuseVersioned,
+    });
+    h.runner.versions.noteServed(target);
+    fs.writeFileSync(target, 'moved\n');
+
+    // No ``expected_version`` exists on a v2 frame, so the master's rule stands:
+    // report the outside change, still do not strand the model.
+    const result = await h.runner.run(frame(), IDENTITY);
+    assert.equal(result.code, 'file_changed', 'still reported');
+    assert.notEqual(result.outcome, 'refused', 'v2 keeps applying');
+});
+
+test('a v3 frame with no version is not refused on version grounds', async () => {
+    const s = scratch();
+    const target = path.join(s.dir, 'raced3.txt');
+    fs.writeFileSync(target, 'v1\n');
+    const h = build({
+        ...s,
+        ...V3_RUNNER,
+        roots: { ws_example: '/proj/a' },
+        pathsOf: () => ({ modifies: [target] }),
+        admitChange: refuseVersioned,
+    });
+    h.runner.versions.noteServed(target);
+    fs.writeFileSync(target, 'moved\n');
+
+    // A v3 ``write`` with ``create: true`` is legitimately versionless, so nothing
+    // may block it: inventing an expectation the caller never expressed would
+    // refuse edits that used to work.
+    const result = await h.runner.run(v3Frame({ expected_version: undefined }), IDENTITY);
+    assert.notEqual(result.outcome, 'refused');
+});
+
+test('without the seam the runner behaves exactly as it always did', async () => {
+    const s = scratch();
+    const target = path.join(s.dir, 'raced4.txt');
+    fs.writeFileSync(target, 'v1\n');
+    // No ``admitChange``: a caller not yet taught about versions must not silently
+    // gain a new refusal.
+    const h = build({
+        ...s,
+        ...V3_RUNNER,
+        roots: { ws_example: '/proj/a' },
+        pathsOf: () => ({ modifies: [target] }),
+    });
+    h.runner.versions.noteServed(target);
+    fs.writeFileSync(target, 'moved\n');
+
+    const result = await h.runner.run(
+        v3Frame({ expected_version: 'fgv1:0123456789abcdef' }), IDENTITY);
+    assert.notEqual(result.outcome, 'refused',
+        'an unconfigured runner keeps the old semantics');
+});
+
+// ---------------------------------------------------------------------------
+// Task 4.2: a read the device served leaves the file current -- and it is the
+// *runner* that records it.
+//
+// Every other staleness test calls ``h.runner.versions.noteServed(...)`` by hand,
+// so none of them would notice if the runner stopped recording served reads on its
+// own. This one deliberately does not, and asserts the property that depends on it:
+// an edit right after our own read must not claim the file changed.
+//
+// The recording happens *after* a successful run (both ``contents`` and
+// ``modifies`` are noted), and the staleness check for the next command compares
+// against it. A path with no record at all is not stale -- which is why the check
+// is "did this change since I served it", never "have I seen this before".
+// ---------------------------------------------------------------------------
+
+test('a read the runner served makes the next edit current, without being told', async () => {
+    const s = scratch();
+    const target = path.join(s.dir, 'served.txt');
+    fs.writeFileSync(target, 'the model read this\n');
+    const h = build({
+        ...s,
+        roots: { ws_example: '/proj/a' },
+        // The same frame path is both the read's target and the edit's target, which
+        // is what the runner derives from the tool: ``read`` -> contents, ``write``
+        // -> modifies.
+        pathsOf: () => ({ contents: [target], modifies: [target] }),
+    });
+
+    // No noteServed: the served read is the *run* that has to record it.
+    const first = await h.runner.run(frame({ command_id: 'cmd_r', tool: 'read' }), IDENTITY);
+    assert.equal(first.outcome, 'ran');
+
+    // Nobody touched the file in between, so an edit must not claim it changed.
+    const second = await h.runner.run(frame({
+        command_id: 'cmd_e', run_id: 'run_2', tool_call_id: 'call_2', tool: 'write',
+    }), IDENTITY);
+    assert.notEqual(second.code, 'file_changed',
+        'a file this device just served is not stale merely because nobody told the runner');
 });

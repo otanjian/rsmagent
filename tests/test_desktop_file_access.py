@@ -333,6 +333,49 @@ class BindingAndWorkspaceTests(_DesktopFilesBase):
         body = json.loads(response.data)
         self.assertEqual(body["code"], "invalid_request")
 
+    def test_bind_records_only_contract_operation_names(self):
+        """Task 4.2: the operations a device confirms are validated before storing.
+
+        The column is the *authority* the broker measures a command against, so a
+        client that could write it freely could authorize itself -- and a name the
+        contract does not register would be an operation nothing knows how to
+        refuse.
+        """
+        from integrations.desktop.errors import DesktopAccessError
+        native, web, device, binding = self._make_binding(
+            username="desk-u1", session=SESSION_A)
+        workspace = self.devices().register_workspace(
+            token=native, tenant_id=self.app.tenant_id,
+            device_id=device["id"], label="项目", grant_version=1)
+
+        bound = self.devices().bind_workspace(
+            token=native, tenant_id=self.app.tenant_id,
+            binding_id=binding["id"], workspace_id=workspace["id"],
+            grant_version=1, operations=["files"])
+        self.assertEqual(bound["grant_version"], 1)
+
+        # Stored as the confirmed set, on the grant row itself.
+        import sqlite3
+        con = sqlite3.connect(self.app.db_path)
+        row = con.execute(
+            "SELECT operations_json FROM desktop_binding_workspaces"
+            " WHERE workspace_id=?", (workspace["id"],)).fetchone()
+        con.close()
+        self.assertEqual(json.loads(row[0]), ["files"])
+
+        # An unregistered name is refused rather than coerced into an
+        # authorization. A fresh workspace because a grant binds once.
+        second = self.devices().register_workspace(
+            token=native, tenant_id=self.app.tenant_id,
+            device_id=device["id"], label="项目2", grant_version=2)
+        for bad in ("files", {"files": 1}, ["rm_rf"], [1], ["files", "rm_rf"]):
+            with self.assertRaises(DesktopAccessError) as caught:
+                self.devices().bind_workspace(
+                    token=native, tenant_id=self.app.tenant_id,
+                    binding_id=binding["id"], workspace_id=second["id"],
+                    grant_version=2, operations=bad)
+            self.assertEqual(caught.exception.code, "invalid_request")
+
     def test_revoked_grant_version_cannot_be_reactivated(self):
         """Task 8.4: a late/duplicate message for a revoked version fails."""
         from integrations.desktop.errors import DesktopAccessError

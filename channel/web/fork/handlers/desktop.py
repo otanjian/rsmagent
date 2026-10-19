@@ -399,6 +399,13 @@ class DesktopBindingWorkspaceHandler:
                 binding_id=binding_id,
                 workspace_id=workspace_id,
                 grant_version=body.get("grant_version"),
+                # The operations the *device* confirmed, recorded on the grant it
+                # belongs to (task 4.2). Absent means "the caller named none", which
+                # the service stores as NULL -- a v2 client, or a v3 one that
+                # confirmed nothing new. It is never derived here: the server does
+                # not know what the user was asked, so inventing a set would be
+                # authorizing on the device's behalf.
+                operations=body.get("operations"),
             )
         except Exception as e:
             return _desktop_files_error(e)

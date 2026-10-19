@@ -84,10 +84,15 @@ class ClientFiles(BaseTool):
             "expected_version": {
                 "type": "string",
                 "description": (
-                    "Optional source version for materialize, in the form a "
-                    "device stat reported it (`<size>:<modified>`). When given, "
-                    "the device refuses with file_changed unless the file still "
-                    "is that version -- the copy must be the one approved."
+                    "Optional source version for materialize, in the form the "
+                    "device reports it for this purpose: `<size>:<modified>` from "
+                    "`stat`. When given, the device refuses with file_changed "
+                    "unless the file still is that version -- the copy must be "
+                    "the one approved. (This is the copy-transfer version, and it "
+                    "is deliberately *not* the same value the project write tools "
+                    "exchange: those use an opaque `fgv1:<16 hex>` that `read_text` "
+                    "returns as `version`, and that one cannot be computed from "
+                    "size and mtime because it binds the file object too.)"
                 ),
             },
             "transfer_id": {

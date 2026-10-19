@@ -38,10 +38,13 @@ replayed an hour later.
 
 from __future__ import annotations
 
+import json
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from agent.desktop_remote import CONTRACT_PLATFORMS
 from auth import desktop_contracts_v2 as v2
+from integrations.desktop import execution_payload
 from integrations.desktop.errors import DesktopAccessError
 
 #: Body keys the broker refuses *anywhere* in a request, from the contract.
@@ -53,15 +56,55 @@ FORBIDDEN_BODY_FIELDS: Tuple[str, ...] = tuple(v2.BROKER["forbidden"])
 #: Identifiers every broker request must name (``broker.required``).
 REQUIRED_BODY_FIELDS: Tuple[str, ...] = tuple(v2.BROKER["required"])
 
-#: Device ``platform`` column -> the contract's platform name. The device table
-#: stores the *host* (``macos``/``windows``/``linux``); the contract describes
-#: the *isolation* family a launcher can enforce.
-CONTRACT_PLATFORMS = {"macos": "posix", "linux": "posix", "windows": "win32"}
-
 #: States in which a device may still be handed the work. A command already
 #: claimed is ``dispatched``; ``acknowledged`` means the device said it received
 #: it; ``running`` is a reconnect asking again about work it already began.
 _PREPARABLE = ("queued", "dispatched", "acknowledged", "running")
+
+
+def _operations_from_column(raw: Any) -> Optional[List[str]]:
+    """Read a stored ``operations_json`` column as a set, or ``None`` if absent.
+
+    ``None`` and ``[]`` mean different things and the difference is the whole
+    migration story:
+
+    * ``None`` -- nothing was ever written, so no v3 authorization exists. A row
+      from before migration 50 reads this way, and a v3 command with no snapshot
+      must be refused rather than inferred from its tool names.
+    * ``[]`` -- something wrote "the empty set" deliberately, which is also no
+      authorization but is a *recorded* decision.
+
+    Both authorize nothing; keeping them distinct lets the refusal say which one
+    happened. Anything unparseable is treated as absent, because "I could not read
+    the authorization" must never read as "there was none to check".
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, (str, bytes)):
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", "replace")
+        text = raw.strip()
+        if not text:
+            # An empty string is a written-down empty set, not an absent column:
+            # the column exists and holds nothing, which is a decision.
+            return []
+        try:
+            raw = json.loads(text)
+        except Exception:
+            # Unparseable is *absent*, never "empty": "I could not read the
+            # authorization" must not read as "there was none to check".
+            return None
+    if not isinstance(raw, (list, tuple)):
+        return None
+    out: List[str] = []
+    for name in raw:
+        if not isinstance(name, str) or not name:
+            # A malformed entry makes the whole set untrustworthy: dropping just
+            # the bad name would silently narrow an authorization.
+            return None
+        if name not in out:
+            out.append(name)
+    return out
 
 _TERMINAL = ("succeeded", "failed", "cancelled", "expired")
 
@@ -198,6 +241,11 @@ class BrokerService:
         self._check_row_scope(command, body)
         platform = self._platform(ctx)
         self._check_platform(command, platform)
+        # v3 only: the named operations this command may spend. A v2 row returns
+        # None here, so nothing about the v2 path changes. Placed after the
+        # platform check so "this platform cannot run the tool at all" is still
+        # reported as a platform fact rather than as a missing authorization.
+        self._check_operations(ctx, command, body.get("operations"))
         return ctx, command, platform
 
     def _check_row_scope(self, command: Dict[str, Any],
@@ -223,26 +271,176 @@ class BrokerService:
                                      "unsupported_platform", 422)
         return CONTRACT_PLATFORMS[host]
 
-    def _check_protocol(self, command: Dict[str, Any]) -> None:
-        if int(command.get("protocol_major") or 1) != v2.PROTOCOL_MAJOR:
-            # A v1 row has no execution to prepare or start; answering with a
-            # v2 phase for it would invent a state the row cannot hold.
+    def _contract(self, command: Dict[str, Any]):
+        """The contract module that governs this command's protocol major.
+
+        The major is a property of the durable *row*, so it is read from the row
+        rather than from anything the caller sent. A row whose major this build
+        cannot serve is refused by name instead of being judged by another
+        major's rules -- judging a v3 row with v2's tool list is how a Windows
+        file command would be refused as "unsupported on platform" when the real
+        problem is that the caller is older than the row.
+        """
+        major = int(command.get("protocol_major") or 1)
+        contract = execution_payload.contract_for_major(major)
+        if contract is None:
+            # A v1 row has no execution to prepare or start; answering with a v2
+            # phase for it would invent a state the row cannot hold. An unknown
+            # future major is refused the same way rather than guessed at.
             raise DesktopAccessError(
-                "the command is not a v2 execution",
+                "the command is not an execution this build can serve",
                 "protocol_incompatible", 400)
+        return contract
+
+    def _check_protocol(self, command: Dict[str, Any]) -> None:
+        self._contract(command)
 
     def _check_platform(self, command: Dict[str, Any], platform: str) -> None:
-        if not v2.platform_supported(platform):
+        contract = self._contract(command)
+        if not contract.platform_supported(platform):
             raise DesktopAccessError(
                 "this platform has no accepted launcher",
                 "unsupported_platform", 422)
         tool = str(command.get("tool_name") or "")
-        if not v2.tool_supported_on(tool, platform):
+        if not contract.tool_supported_on(tool, platform):
             # A supported platform that cannot run *this* tool (the contract
             # names the case): refuse by name rather than translate syntax.
             raise DesktopAccessError(
                 "tool %r is not offered on %s" % (tool, platform),
                 "feature_unavailable", 503)
+
+    def _check_operations(self, ctx, command: Dict[str, Any],
+                          declared: Any = None) -> Optional[List[str]]:
+        """The v3 authorization: which named operations this command may spend.
+
+        Returns the operation set for a v3 command, or ``None`` for a v2 row --
+        v2 had no such concept and must keep working exactly as it did.
+
+        Three sets have to agree, and each one closes a different hole:
+
+        * the *grant's* set (``desktop_binding_workspaces.operations_json``) is the
+          authority. It is what the user confirmed beside the grant version this
+          command carries, so it cannot be widened by a later confirmation or by
+          a device's own claim.
+        * the *command's* snapshot is what the command was created for. Reading
+          the grant live would let a confirmation made *after* the enqueue
+          retroactively authorize a queued command.
+        * ``declared`` is what the device says it is about to spend. It must be a
+          subset of the snapshot, so a device cannot ask for scripts under a
+          command enqueued for files.
+
+        A NULL set on a row is the empty set, not "unrestricted": that is what
+        makes the migration safe (task 3.3's "缺省无新权限"). A v3 row with no
+        operations therefore authorizes nothing, and the caller is told which
+        operation it needed instead.
+        """
+        contract = self._contract(command)
+        if not hasattr(contract, "tool_requires_operation"):
+            # v2 and earlier: no operations concept, and none is invented here.
+            return None
+
+        authorized = _operations_from_column(ctx.binding.get("operations_json"))
+        snapshot = _operations_from_column(command.get("operations_json"))
+        spending = _operations_from_column(declared)
+        tool = str(command.get("tool_name") or "")
+        needed = contract.tool_requires_operation(tool)
+
+        if not authorized:
+            raise DesktopAccessError(
+                "this grant authorizes no v3 operation; the project was never "
+                "confirmed for one", "permission_denied", 403)
+        if snapshot is None:
+            # A v3 row with no snapshot was created before the v3 authorization
+            # existed. It gets nothing rather than being inferred from its tools.
+            raise DesktopAccessError(
+                "this command carries no operation authorization",
+                "permission_denied", 403)
+        if needed is not None and needed not in snapshot:
+            raise DesktopAccessError(
+                "tool %r needs the %r operation, which this command was not "
+                "authorized with" % (tool, needed), "permission_denied", 403)
+        if not set(snapshot) <= set(authorized):
+            raise DesktopAccessError(
+                "the command's operations exceed the grant's",
+                "permission_denied", 403)
+        if spending is not None and not set(spending) <= set(snapshot):
+            raise DesktopAccessError(
+                "the declared operations are not the ones this command was "
+                "authorized with", "command_conflict", 409)
+        return snapshot
+
+    def _check_runtime(self, command: Dict[str, Any], declared: Any,
+                       platform: str) -> None:
+        """``runtime_verified``: the language this command asks for is one this
+        deployment has actually verified on this platform.
+
+        The contract's refusal code is ``runtime_not_verified`` and it answers
+        ``runtime_unavailable`` -- the same code the capability block uses when no
+        language is verified, so a caller cannot tell "the deployment has no such
+        runtime" from "this command named one it may not have". That is deliberate:
+        both mean the same thing to the user, and neither is about the tool.
+
+        Two sources, and which one is authority matters:
+
+        * the **row's** recorded ``runtime`` was written by the server at enqueue
+          from the arguments it had already validated. It is authority.
+        * the **frame's** declared runtime can only narrow. A frame that names a
+          different language from the one the command was authorized with is a
+          conflict, not a new permission -- the digest covers ``runtime``, so a
+          differing value would also mean the device is about to run something the
+          stored digest does not describe.
+
+        The "platform is not configured at all" case is *not* treated as "no
+        language is verified": ``accepted_runtimes`` distinguishes the two, and
+        collapsing them here would silently close the script surface on every
+        deployment that never wrote the setting, including the POSIX one whose
+        capability slice already accepted scripts.
+        """
+        from integrations.desktop import execution_capability
+
+        contract = self._contract(command)
+        # v3 only, like ``_check_operations``. ``runtime`` is a v3 field: a v2 row
+        # has no column for it, so asking a v2 command for one would refuse every
+        # v2 command on a device that cannot record it -- a compatibility break
+        # dressed up as a new check. The major is a property of the row, so it is
+        # read here rather than inferred from the tool.
+        if int(command.get("protocol_major") or 1) < 3:
+            return
+        tool = str(command.get("tool_name") or "")
+        script_tools = tuple(contract.TOOLS.get("script_tools") or ())
+        recorded = str(command.get("runtime") or "")
+        declared_text = str(declared) if isinstance(declared, str) else ""
+        if declared_text and recorded and declared_text != recorded:
+            raise DesktopAccessError(
+                "the runtime this frame declares is not the one this command was "
+                "authorized with", "command_conflict", 409)
+
+        requested = declared_text or recorded
+        if tool not in script_tools and not requested:
+            # A file tool needs no runtime at all, and an empty value is not a
+            # claim about a language.
+            return
+        if not requested:
+            # A script tool with no recorded language: the row predates the check
+            # or was written outside the v3 path. Refused rather than guessed --
+            # "which language" is exactly what must not be invented here.
+            raise DesktopAccessError(
+                "tool %r needs a verified runtime and this command records none"
+                % tool, "runtime_not_verified", 503)
+
+        from config import available_setting
+        settings = available_setting
+
+        configured = execution_capability.accepted_runtimes(platform, settings)
+        if not configured and not execution_capability.runtime_recorded(
+                platform, settings):
+            # Nothing has been recorded either way for this platform, so the
+            # capability slice's own answer stands -- see the docstring.
+            return
+        if requested not in configured:
+            raise DesktopAccessError(
+                "runtime %r is not verified on platform %r"
+                % (requested, platform), "runtime_not_verified", 503)
 
     # -- the remaining checks ----------------------------------------------
 
@@ -306,8 +504,31 @@ class BrokerService:
             grant_version=command.get("grant_version") or 0,
             selection_generation=int(command.get("selection_generation") or 0),
             resources=resources,
+            # The v3 covered fields. They MUST be passed with the row's own values
+            # or the digest cannot reproduce the stored one: v3 added ``operations``
+            # and ``runtime`` to ``digest.fields``, so omitting them here rebuilds a
+            # v2-shaped envelope and every v3 command fails this check with
+            # "the declared parameters are not the ones this command was authorized
+            # with" -- a conflict that is really a server-side omission.
+            #
+            # ``operations`` is read through the broker's own reader so the value
+            # that *authorizes* a command and the value that *digests* it come from
+            # the same decoder.
+            operations=_operations_from_column(command.get("operations_json")),
+            runtime=command.get("runtime") or None,
         )
-        if execution_payload.params_digest(envelope) != command.get("params_digest"):
+        # The *covered field list* is the peer's, not this build's default. v3
+        # added ``operations`` and ``runtime`` to ``digest.fields``, so digesting a
+        # v3 command with the v2 default set rebuilds a different envelope and
+        # every v3 command fails with "the declared parameters are not the ones
+        # this command was authorized with" -- a conflict that is really a
+        # server-side omission. ``digest_fields_for`` is the same resolver the
+        # enqueue side used, so the two cannot pick different sets.
+        covered = execution_payload.digest_fields_for(
+            command.get("protocol_major") or v2.PROTOCOL_MAJOR)
+        if covered is None:
+            covered = execution_payload.DIGEST_FIELDS
+        if execution_payload.params_digest(envelope, covered) != command.get("params_digest"):
             raise DesktopAccessError(
                 "the declared parameters are not the ones this command was "
                 "authorized with", "command_conflict", 409)
@@ -488,6 +709,19 @@ class BrokerService:
         self._check_quota(command, ctx)
         self._check_run_window(command, starting=True)
         epoch = self._live_epoch(command, body)
+        # The last of the v3 checks and deliberately the narrowest: it can only
+        # refuse a language, never grant a tool. It belongs *here* rather than in
+        # ``_open`` because ``_open`` answers identity and authorization, while
+        # this answers "may that specific thing run" -- the same class as the
+        # eligibility, approval, quota and window checks above.
+        #
+        # Placement is load-bearing, not cosmetic. In ``_open`` it ran before
+        # ``_check_run_window`` and ``_live_epoch``, so on a v3 script command with
+        # no recorded runtime -- which is every such command until the enqueue
+        # writes one -- a caller could not see an expired deadline or an epoch
+        # refusal at all: ``runtime_not_verified`` came first. A check that hides
+        # more basic refusals behind it is a check in the wrong place.
+        self._check_runtime(command, body.get("runtime"), platform)
         permit = self._commands.issue_start_permit(
             command_id=command["id"], epoch=epoch)
         # The contract's own shape check, so a permit this server hands out can

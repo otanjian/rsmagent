@@ -7,6 +7,7 @@ deliberately absent from every table and every return value.
 
 from __future__ import annotations
 
+import json
 import re
 import secrets
 import time
@@ -90,6 +91,52 @@ def _public_binding(row: Dict[str, Any]) -> Dict[str, Any]:
         "generation": row["generation"],
         "created_at": row["created_at"],
     }
+
+
+def _v3_operations():
+    """The v3 contract module, imported lazily like the other integrations."""
+    from auth import desktop_contracts_v3
+
+    return desktop_contracts_v3
+
+
+def _operation_known(name: str) -> bool:
+    return bool(_v3_operations().operation_known(name))
+
+
+def _operation_names() -> List[str]:
+    return list(_v3_operations().OPERATIONS["names"])
+
+
+def _validated_operations(raw: Any) -> List[str]:
+    """The v3 operation names a client may record on its own grant.
+
+    Kept deliberately strict, because this value is the *authority* a later command
+    is measured against: a client that could write arbitrary names here could
+    authorize itself, and a name the contract does not register would be an
+    operation nothing knows how to refuse.
+
+    * ``None`` stays ``None`` -- the v2 shape, and "no v3 authorization recorded".
+    * A list of registered names is accepted, de-duplicated and sorted, so the same
+      set written twice produces the same row.
+    * Anything else -- a string, a dict, an unregistered name, a non-string entry --
+      is a refusal rather than a coercion. Coercing would silently turn a malformed
+      client write into an authorization.
+    """
+    if raw is None:
+        return []
+    if isinstance(raw, (str, bytes)) or not isinstance(raw, (list, tuple)):
+        raise DesktopAccessError(
+            "operations must be a list of operation names", "invalid_request", 400)
+    names = []
+    for item in raw:
+        if not isinstance(item, str) or not _operation_known(item):
+            raise DesktopAccessError(
+                "operations may only name %s"
+                % ", ".join(sorted(_operation_names())),
+                "invalid_request", 400)
+        names.append(item)
+    return sorted(set(names))
 
 
 def _public_workspace(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -381,12 +428,24 @@ class DeviceService:
 
     def bind_workspace(
             self, *, token: str, tenant_id: str, binding_id: str,
-            workspace_id: str, grant_version: Any) -> Dict[str, Any]:
+            workspace_id: str, grant_version: Any,
+            operations: Any = None) -> Dict[str, Any]:
         """Attach a workspace grant to a live binding (native).
 
         A late or duplicate message for a *revoked* grant version is refused
         rather than re-activating it (task 8.4): revoked rows stay in the
         table so the comparison is possible.
+
+        ``operations`` is the v3 authorization set the user confirmed beside this
+        grant version (design D3). It is written here, at the moment of
+        confirmation, because the broker treats this column as the *authority* a
+        command may not exceed -- so the set that authorizes a command has to be
+        the set the user actually confirmed rather than one derived later.
+
+        Omitted (``None``) is the v2 shape and stores NULL: no v3 authorization was
+        recorded for this grant. The broker reports that as "this project was never
+        confirmed for a v3 operation", never as an empty set, and migration 50
+        backfills nothing -- so no existing grant gains an authorization here.
         """
         ctx = self._access.authenticate(token, require="native")
         self._access.require_tenant(ctx, tenant_id)
@@ -406,6 +465,14 @@ class DeviceService:
         if version != ctx.workspace["grant_version"]:
             raise DesktopAccessError(
                 "grant version is stale", "stale_context", 409)
+
+        # The operations this device says the user confirmed. Validated here rather
+        # than trusted: the column is the *authority* the broker checks a command
+        # against, so a client that could write it freely could authorize itself.
+        # Only names the contract registers are accepted, duplicates collapse, and
+        # the result is stored sorted so two confirmations of the same set are the
+        # same row.
+        declared = _validated_operations(operations)
 
         now = _now()
         con = self._svc._tx()
@@ -437,9 +504,17 @@ class DeviceService:
             try:
                 con.execute(
                     "INSERT INTO desktop_binding_workspaces"
-                    " (id, binding_id, workspace_id, grant_version, created_at)"
-                    " VALUES (?,?,?,?,?)",
-                    (grant_id, binding_id, workspace_id, version, now))
+                    " (id, binding_id, workspace_id, grant_version, created_at,"
+                    "  operations_json)"
+                    " VALUES (?,?,?,?,?,?)",
+                    (grant_id, binding_id, workspace_id, version, now,
+                     # NULL, not "[]": "the user confirmed no operation" and "no
+                     # authorization was ever recorded" are different claims, and
+                     # the broker's reader distinguishes them. A v2 binding keeps
+                     # writing NULL, which is what leaves every existing grant
+                     # exactly as it was.
+                     json.dumps(declared, ensure_ascii=False)
+                     if declared else None))
             except Exception:
                 raise DesktopAccessError(
                     "workspace already bound", "stale_context", 409)

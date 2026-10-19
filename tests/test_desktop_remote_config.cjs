@@ -46,7 +46,15 @@ function needsBuild() {
 
 before(() => {
     if (needsBuild()) {
-        execFileSync('npm', ['run', 'build:main'], { cwd: desktop, stdio: 'inherit' });
+        execFileSync('npm', ['run', 'build:main'], {
+            cwd: desktop,
+            stdio: 'inherit',
+            // ``npm`` is ``npm.cmd`` on Windows, and ``execFileSync`` without a
+            // shell fails with ``spawnSync npm ENOENT`` before the build starts --
+            // which made every test in this file fail for a reason unrelated to
+            // what it tests. Same flag as the sibling suites.
+            shell: process.platform === 'win32',
+        });
     }
     profiles = require(compiledProfiles);
     connection = require(compiledConnection);

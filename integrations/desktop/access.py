@@ -354,6 +354,18 @@ class AccessService:
                 raise DesktopAccessError(
                     "grant version is stale", "stale_context", 409)
             ctx.grant_version = grant["grant_version"]
+            # The v3 authorization set lives on the *grant* row (design D3), but
+            # every reader of the access context reads it from
+            # ``ctx.binding["operations_json"]`` -- that is the interface the
+            # broker's check and its tests are written against. Carrying the value
+            # across here is what connects the two: without it the broker sees a
+            # binding whose table has no such column, reads ``None``, and refuses
+            # every v3 command as "this project was never confirmed for one".
+            #
+            # It is the *live* grant's set, fetched above in the same call, so a
+            # grant revoked or replaced between two requests cannot be used: the
+            # lookup would return nothing and this line would not run.
+            ctx.binding["operations_json"] = grant.get("operations_json")
         return ctx
 
     def _live_binding_workspace(self, binding_id: str, workspace_id: str

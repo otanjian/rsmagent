@@ -268,6 +268,7 @@ class ToolViewTests(unittest.TestCase):
         tool_view_for_run(self.tools, "/client/proj")
         self.assertEqual(self.tools["read"].cwd, "/server/workspace")
 
+
     def test_a_later_retarget_does_not_move_a_built_view(self):
         """The in-flight switch: the Agent is re-pointed, the run is not."""
         from agent.desktop_local.run_context import tool_view_for_run
@@ -548,6 +549,64 @@ class ArtifactAnchorTests(_RegistryCase):
             artifact = safe_build_artifact(written, anchored)
         self.assertIsNotNone(artifact)
         self.assertEqual(artifact["rel_path"], "out.txt")
+
+class ProjectWriteSchemaTests(unittest.TestCase):
+    """Tasks 4.2/4.3: the project's write tool can be told which version it edits.
+
+    The v3 contract says the tool schemas "stay the master's; only the execution
+    end changes", so the master class must come out of this untouched while the
+    view a run uses offers the argument the write helper requires. Both halves are
+    asserted, because either one alone would pass against a wrong implementation:
+    only the first against "we never added it", only the second against "we mutated
+    the master".
+    """
+
+    def _view(self, name):
+        from agent.desktop_local.run_context import tool_view_for_run
+        from agent.tools.edit.edit import Edit
+        from agent.tools.read.read import Read
+        from agent.tools.write.write import Write
+
+        classes = {"write": Write, "edit": Edit, "read": Read}
+        tools = {n: classes[n]({"cwd": "/tmp"}) for n in classes}
+        return tool_view_for_run(tools, "/client/proj"), classes, tools
+
+    def test_the_run_view_declares_expected_version_for_the_writing_tools(self):
+        view, _, _ = self._view("write")
+        for name in ("write", "edit"):
+            props = view[name].params["properties"]
+            self.assertIn("expected_version", props, name)
+            self.assertEqual(props["expected_version"]["type"], "string")
+            # The consequence differs by operation and a model cannot discover it
+            # by trying, so the description has to carry it.
+            self.assertIn("file_changed", props["expected_version"]["description"])
+
+    def test_the_master_class_is_not_mutated(self):
+        _, classes, _ = self._view("write")
+        for name in ("write", "edit"):
+            self.assertNotIn("expected_version", classes[name].params["properties"],
+                             f"{name}'s master schema must be unchanged")
+
+    def test_a_read_only_tool_does_not_gain_the_argument(self):
+        view, _, _ = self._view("write")
+        self.assertNotIn("expected_version", view["read"].params["properties"])
+
+    def test_a_tool_without_a_usable_schema_is_left_alone(self):
+        # ``params`` is not guaranteed to be a mapping on every tool: a tool that
+        # declares none must not be rewritten (or crash the run).
+        from agent.desktop_local.run_context import tool_view_for_run
+
+        class Odd:
+            name = "write"
+
+            def __init__(self):
+                self.cwd = "/server/workspace"
+                self.params = None
+
+        view = tool_view_for_run({"write": Odd()}, "/client/proj")
+        self.assertIsNone(view["write"].params)
+
+
 
 
 if __name__ == "__main__":

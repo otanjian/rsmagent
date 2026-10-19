@@ -46,7 +46,7 @@ before(() => {
     (src, i) => !fs.existsSync(compiled[i]) || fs.statSync(compiled[i]).mtimeMs < fs.statSync(src).mtimeMs,
   );
   if (stale) {
-    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe' });
+    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe', shell: process.platform === 'win32',});
   }
   sandbox = require(path.join(dist, 'sandbox.js'));
   env = require(path.join(dist, 'env.js'));
@@ -67,18 +67,50 @@ function paths(overrides = {}) {
 // Support decisions
 // ---------------------------------------------------------------------------
 
+// `win32` is deliberately not the fixture here any more: it now has a real
+// boundary (a Job Object), so it is no longer an example of a platform this build
+// cannot confine. `linux` is, and the property under test -- never run unconfined
+// just because the boundary is absent -- is unchanged.
+// The positive half of the same rule: where a boundary *does* exist, the plan must
+// describe it, and must not smuggle in another platform's argv. Windows previously
+// got a seatbelt plan -- `/usr/bin/sandbox-exec -p <profile> ...` -- because the
+// builder ignored the platform it was asked about. That is what made every Windows
+// script hang at the handshake instead of running.
+test('a Windows plan names the interpreter itself, not another platform launcher', () => {
+  const plan = sandbox.buildLaunchPlan({
+    platform: 'win32',
+    paths: paths(),
+    pythonPath: 'C:\\app\\python.exe',
+    workingDirectory: 'C:\\app',
+    env: {},
+  });
+  assert.equal(plan.ok, true, JSON.stringify(plan));
+  assert.equal(plan.sandbox.kind, 'job');
+  assert.equal(plan.command, 'C:\\app\\python.exe');
+  assert.deepEqual(plan.args, ['-m', 'agent.desktop_local.worker']);
+  // No seatbelt policy text: the confinement is a kernel object the caller holds,
+  // not a document passed on this argv.
+  assert.equal(plan.sandbox.profile, '');
+  assert.ok(!plan.args.some((a) => a.includes('sandbox-exec')));
+  // And the capability text must not claim a file-system boundary it lacks.
+  assert.equal(plan.capabilities.readsConfined, false);
+  assert.equal(plan.capabilities.network, true);
+  assert.match(plan.capabilities.isolation, /NOT a file-system boundary/);
+});
 test('an unprobed platform refuses rather than running unconfined', () => {
   const support = sandbox.resolveScriptSupport({
-    platform: 'win32',
+    platform: 'linux',
     paths: paths(),
     pythonPath: 'C:\\app\\python.exe',
     seatbeltAvailable: false,
   });
   assert.equal(support.supported, false);
   assert.equal(support.code, 'unsupported_platform');
-  assert.match(support.reason, /disabled/);
-  // The refusal must not read as a temporary permission problem.
-  assert.match(support.reason, /not a permissions problem/);
+  assert.match(support.reason, /not supported|disabled/);
+  // The refusal must not read as a temporary permission problem: assert the
+  // absence, which is the property, rather than one phrase that happened to carry
+  // it before this fixture named a different platform.
+  assert.doesNotMatch(support.reason, /permission|you can grant|not allowed yet/i);
 });
 
 test('a linux build refuses too', () => {
@@ -292,7 +324,7 @@ test('the plan launches the worker through the sandbox, never directly', () => {
 
 test('the plan refuses on a platform without a probed boundary', () => {
   const plan = sandbox.buildLaunchPlan({
-    platform: 'win32',
+    platform: 'linux',
     paths: paths(),
     pythonPath: 'C:\\app\\python.exe',
     workingDirectory: 'C:\\app',
