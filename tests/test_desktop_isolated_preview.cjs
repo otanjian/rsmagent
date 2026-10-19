@@ -74,7 +74,7 @@ function needsBuild() {
 let preview;
 before(() => {
   if (needsBuild()) {
-    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: DESKTOP, stdio: 'pipe' });
+    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: DESKTOP, stdio: 'pipe', shell: process.platform === 'win32',});
   }
   preview = require(compiled.preview);
   assert.equal(typeof preview.planLocalPreview, 'function', 'the planner is compiled');

@@ -469,7 +469,7 @@ function needsBuild() {
 
 before(() => {
     if (needsBuild()) {
-        execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: DESKTOP, stdio: 'pipe' });
+        execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: DESKTOP, stdio: 'pipe', shell: process.platform === 'win32',});
     }
     restoreLocalContext = require(path.join(DIST, 'project-browser', 'restore.js'))
         .restoreLocalContext;

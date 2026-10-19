@@ -55,7 +55,7 @@ function needsBuild() {
 let native;
 before(() => {
   if (needsBuild()) {
-    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: DESKTOP, stdio: 'pipe' });
+    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: DESKTOP, stdio: 'pipe', shell: process.platform === 'win32',});
   }
   native = require(compiled.native);
   assert.equal(typeof native.planNativeAction, 'function', 'the planner is compiled');

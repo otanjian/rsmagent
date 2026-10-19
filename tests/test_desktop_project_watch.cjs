@@ -75,7 +75,7 @@ function ensureBinary() {
 
 before(() => {
   if (needsBuild()) {
-    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe' });
+    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe', shell: process.platform === 'win32',});
   }
   guardMod = require(path.join(dist, 'local-files', 'fs-guard.js'));
   opsMod = require(path.join(dist, 'remote', 'device-ops.js'));

@@ -43,7 +43,7 @@ function needsBuild() {
 
 test.before(() => {
   if (needsBuild()) {
-    execFileSync('npm', ['run', 'build:main'], { cwd: DESKTOP, stdio: 'inherit' })
+    execFileSync('npm', ['run', 'build:main'], { cwd: DESKTOP, stdio: 'inherit', shell: process.platform === 'win32',})
   }
   mod = require(path.join(DIST_DIR, 'skill-package.js'))
 })

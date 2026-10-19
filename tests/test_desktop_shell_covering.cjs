@@ -27,7 +27,7 @@ let mod;
 before(() => {
   const src = path.join(desktop, 'src', 'main', 'remote', 'shell-covering.ts');
   if (!fs.existsSync(compiled) || fs.statSync(compiled).mtimeMs < fs.statSync(src).mtimeMs) {
-    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe' });
+    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe', shell: process.platform === 'win32',});
   }
   mod = require(compiled);
 });
