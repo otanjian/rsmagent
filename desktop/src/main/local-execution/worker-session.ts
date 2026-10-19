@@ -194,6 +194,15 @@ export interface WorkerSessionOptions {
 export interface WorkerWrapper {
   /** Absolute path of the `script-launcher` binary. */
   executable: string;
+  /**
+   * The access boundary to start the worker under.
+   *
+   * `app_container` is the LPAC boundary: the child reaches nothing but the
+   * project directory the launcher grants it (and takes back afterwards). Absent
+   * means `inherited` -- the historical spawn, which is what a platform without
+   * the boundary keeps.
+   */
+  access?: 'inherited' | 'app_container'
   /** Kills the whole tree after this long, when the caller sets one. */
   timeoutMs?: number;
   maxProcesses?: number;
@@ -238,6 +247,7 @@ export class WorkerSession {
             // Configuration travels in the environment so the command line stays
             // exactly the wrapped command.
             COW_WRAP_CWD: plan.cwd,
+            ...(options.wrapper.access ? { COW_WRAP_ACCESS: options.wrapper.access } : {}),
             COW_WRAP_ENV: Object.entries(plan.env)
               .filter(([, value]) => typeof value === 'string')
               .map(([name, value]) => `${name}=${String(value)}`)

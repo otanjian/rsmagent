@@ -85,7 +85,20 @@ export async function startExecutorEndpoint(options: {
       // The Job Object. Present only when this build shipped the launcher, so a
       // build without it keeps the historical spawn rather than refusing scripts.
       ...(launcherBinary
-        ? { wrapper: { executable: launcherBinary, maxProcesses: 64, maxMemoryBytes: 4 * 1024 * 1024 * 1024 } }
+        ? {
+            wrapper: {
+              executable: launcherBinary,
+              // The access boundary is NOT enabled here yet, deliberately. The
+              // launcher grants only the project root, and this worker also needs
+              // its own temp directory -- which lives outside the project, so a
+              // confined run would fail to write there. Enabling it needs the
+              // extra-grant support described in script-launcher/docs/isolation-status.md;
+              // until then the spawn stays inherited rather than being confined into
+              // a state that cannot run.
+              maxProcesses: 64,
+              maxMemoryBytes: 4 * 1024 * 1024 * 1024,
+            },
+          }
         : {}),
     })
     console.log(

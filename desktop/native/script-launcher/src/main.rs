@@ -81,7 +81,31 @@ fn wrap_main(args: &[String]) {
     }
     let env = wrap_environment(&declared);
 
-    match run_wrapped(&executable, &command_args, &cwd, &env, limits) {
+    // The access boundary, chosen by the caller's environment for the same reason
+    // the limits are: the command line stays exactly the wrapped command, so this
+    // wrapper never has to parse its child's arguments.
+    let access = match std::env::var("COW_WRAP_ACCESS").unwrap_or_default().as_str() {
+        "app_container" => script_launcher::Access::AppContainer,
+        _ => script_launcher::Access::Inherited,
+    };
+    // An AppContainer cannot inherit this process's environment, and the ones below
+    // are not optional: without `LOCALAPPDATA`/`APPDATA` the child fails to start
+    // with ERROR_ENVVAR_NOT_FOUND (203) -- the same wall the JSON mode hit. They are
+    // added only for the confined path, so an unconfined wrap keeps exactly the
+    // environment its caller declared.
+    let mut env = env;
+    if access == script_launcher::Access::AppContainer {
+        for name in ["LOCALAPPDATA", "APPDATA", "USERPROFILE"] {
+            if env.iter().any(|(existing, _)| existing.eq_ignore_ascii_case(name)) {
+                continue;
+            }
+            if let Ok(value) = std::env::var(name) {
+                env.push((name.to_string(), value));
+            }
+        }
+    }
+
+    match run_wrapped(&executable, &command_args, &cwd, &env, limits, access) {
         Ok((_result, exit_code)) => std::process::exit(exit_code as i32),
         Err(err) => {
             // Reported on stderr, never stdout: the caller's stdout belongs to the

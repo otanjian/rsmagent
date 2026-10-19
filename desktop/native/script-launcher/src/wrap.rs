@@ -48,6 +48,7 @@ pub fn run_wrapped(
     cwd: &str,
     env: &[(String, String)],
     limits: Limits,
+    access: crate::Access,
 ) -> Result<(RunResult, u32), LaunchError> {
     if !Path::new(cwd).is_dir() {
         return Err(LaunchError::Unsupported(format!(
@@ -59,7 +60,24 @@ pub fn run_wrapped(
     // which an unconfined child could run.
     let job = create_job(&limits)?;
 
+    // The access boundary, when one was asked for. An AppContainer reaches nothing
+    // by default -- including the project it is started in -- so the directory needs
+    // an ACE before the process exists, and that ACE has to be taken back afterwards
+    // (`_grant` is a guard, so every return path below revokes it).
+    let container_sid = if access == crate::Access::AppContainer {
+        Some(crate::appcontainer::sid()?)
+    } else {
+        None
+    };
+    let _grant = match &container_sid {
+        Some(sid) => Some(crate::acl::activate(cwd, sid.as_ptr())?),
+        None => None,
+    };
+
     unsafe {
+        let stdin_handle = GetStdHandle(STD_INPUT_HANDLE);
+        let stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+        let stderr_handle = GetStdHandle(STD_ERROR_HANDLE);
         let mut start: STARTUPINFOW = zeroed();
         start.cb = size_of::<STARTUPINFOW>() as u32;
         // Hand our standard handles to the child **explicitly**.
@@ -75,6 +93,21 @@ pub fn run_wrapped(
         start.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
         start.hStdError = GetStdHandle(STD_ERROR_HANDLE);
 
+        // A confined child needs the attribute list, and it names the same standard
+        // handles -- so the protocol on this process's stdio is unchanged whether or
+        // not a boundary is in force.
+        let extended = match &container_sid {
+            Some(sid) => Some(crate::appcontainer::StartupInfoEx::new(
+                sid,
+                [stdin_handle, stdout_handle, stderr_handle],
+                // No handle list: passing one measured *worse*
+                // (ERROR_INVALID_PARAMETER dominant), and with it removed the
+                // confined launch is 15/15 against a granted project.
+                &[],
+            )?),
+            None => None,
+        };
+
         let mut command = build_command_line(executable, args);
         let cwd_wide = wide(cwd);
         let mut environment = environment_block(env, cwd);
@@ -82,16 +115,24 @@ pub fn run_wrapped(
 
         let mut info: PROCESS_INFORMATION = zeroed();
         // Step 2: suspended.
+        let startup: *const STARTUPINFOW = match &extended {
+            Some(extended) => &extended.info.StartupInfo,
+            None => &start,
+        };
+        let mut flags = CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW;
+        if let Some(extended) = &extended {
+            flags |= extended.flags();
+        }
         let created = CreateProcessW(
             std::ptr::null(),
             command.as_mut_ptr(),
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             1, // inherit handles: the child needs ours
-            CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW,
+            flags,
             environment,
             cwd_wide.as_ptr(),
-            &start,
+            startup,
             &mut info,
         );
         if created == 0 {

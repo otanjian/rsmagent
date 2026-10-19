@@ -693,6 +693,9 @@ export async function attachRemoteContainer(options: {
         ? {
             wrapper: {
               executable: launcherBinary,
+              // The AppContainer boundary is not enabled yet: see the note in
+              // executor-lifecycle.ts (the worker's temp directory is outside the
+              // project and would not be granted).
               maxProcesses: 64,
               maxMemoryBytes: 4 * 1024 * 1024 * 1024,
             },
