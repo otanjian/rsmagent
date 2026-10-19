@@ -31,8 +31,10 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(windows)]
+mod acl;
 #[cfg(windows)]
 mod appcontainer;
+#[cfg(windows)]
 mod windows;
 #[cfg(windows)]
 pub mod wrap;

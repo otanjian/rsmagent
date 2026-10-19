@@ -313,10 +313,27 @@ pub fn run(job: &JobSpec) -> Result<RunResult, LaunchError> {
         // because `CreateProcess` reads the attribute list through the startup info
         // pointer: dropping it earlier would be a use-after-free the compiler
         // cannot see.
-        let confined = match job.access.unwrap_or(crate::Access::Inherited) {
+        // The AppContainer reaches nothing by default, including the project it was
+        // started in, so it needs an ACE on that directory before the process
+        // exists. Measured: 0/5 reads without one, 5/6 with one (the single failure
+        // is the separate launch instability).
+        //
+        // `_grant` is declared before the process is created and dropped after the
+        // run, so every early return below still takes the ACE back.
+        let access = job.access.unwrap_or(crate::Access::Inherited);
+        let container_sid = if access == crate::Access::AppContainer {
+            Some(appcontainer::sid()?)
+        } else {
+            None
+        };
+        let _grant = match &container_sid {
+            Some(sid) => Some(crate::acl::activate(&job.cwd, sid.as_ptr())?),
+            None => None,
+        };
+        let confined = match access {
             crate::Access::Inherited => None,
             crate::Access::AppContainer => {
-                let sid = appcontainer::sid()?;
+                let sid = container_sid.as_ref().expect("a SID exists for this arm");
                 // [GAP] The handle list is deliberately NOT passed. Including
                 // PROC_THREAD_ATTRIBUTE_HANDLE_LIST was measured to make this
                 // *worse* -- 7/25 successes against 14/20 without it, with
@@ -326,18 +343,19 @@ pub fn run(job: &JobSpec) -> Result<RunResult, LaunchError> {
                 // carried: a change that degrades a measured result does not belong
                 // in the tree while its defect is unknown.
                 //
-                // What is established: the *pipes* are the trigger. The same launch
-                // is 20/20 with inherited handles and 14/20 with pipes, and
-                // appcontainer.rs explains why (bInheritHandles offers every
-                // inheritable handle, and an AppContainer cannot open most of them).
+                // What is established (single-variable): with the same pipes,
+                // `access: inherited` succeeds 20/20 and `access: app_container`
+                // about 16/20. The pipes are therefore not the trigger -- an earlier
+                // note here said they were, which was a two-variable comparison.
+                // appcontainer.rs has the current state.
                 Some(appcontainer::StartupInfoEx::new(
-                    &sid,
+                    sid,
                     [std::ptr::null_mut(), stdout_write, stderr_write],
-                    // The two write ends only. Naming them stops `CreateProcess`
-                    // from offering the child every other inheritable handle in this
-                    // process -- which an AppContainer cannot open, and which made this
-                    // launch fail about a third of the time.
-                    &[stdout_write, stderr_write],
+                    // No handle list. Passing one measured *worse* (7/25, with
+                    // ERROR_INVALID_PARAMETER 87 dominant) than omitting it, and the
+                    // attribute list then carries only the capabilities -- which is
+                    // the shape that works.
+                    &[],
                 )?)
             }
         };
