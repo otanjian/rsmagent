@@ -614,6 +614,18 @@ export async function attachRemoteContainer(options: {
     resourcesPath: (process as { resourcesPath?: string }).resourcesPath,
     appPath: app.getAppPath(),
   })
+  // The native launcher, resolved the same way and for the same reason: one
+  // question ("which of our binaries is where") with one answer, so a build cannot
+  // end up shipping one of them and not the other.
+  //
+  // Only used for the *project worker*, which executes a user's scripts and can
+  // spawn descendants. The file helper is a single-process op allow-list that
+  // spawns nothing, so a Job around it would be a detour rather than a boundary.
+  const launcherBinary = resolveGuardBinary({
+    role: 'launcher',
+    resourcesPath: (process as { resourcesPath?: string }).resourcesPath,
+    appPath: app.getAppPath(),
+  })
   // The v2 execution channel (group 7). The interpreter is resolved once here,
   // and probed lazily by the registry: a build without an interpreter still
   // offers the pipeline and refuses each frame with a real reason, rather than
@@ -673,6 +685,19 @@ export async function attachRemoteContainer(options: {
       platform: process.platform,
       seatbeltAvailable: fs.existsSync('/usr/bin/sandbox-exec'),
       baseEnv: process.env,
+      // Absent on a build without the launcher, which keeps the historical spawn
+      // exactly as it was. The ceilings are deliberately loose to start: a Job that
+      // killed legitimate work would be worse than no Job, and these are meant to
+      // be tightened from measurements rather than guessed at.
+      ...(launcherBinary
+        ? {
+            wrapper: {
+              executable: launcherBinary,
+              maxProcesses: 64,
+              maxMemoryBytes: 4 * 1024 * 1024 * 1024,
+            },
+          }
+        : {}),
     },
     onReconcile: noteExecutionReconcile,
     // The explicit hand-over (task 9.7). Nothing else in this process uploads a

@@ -150,14 +150,24 @@ class Read(BaseTool):
         absolute_path = self._resolve_path(path)
         # Personal memory uses the same anchored owner access as the console;
         # evolution sees its staged edits without exposing them before commit.
-        try:
+        #
+        # Gated on ``personal_memory``. The desktop local worker turns it off: its
+        # `read` is scoped to the project the user opened, where a personal-memory
+        # path cannot resolve, so the probe can only ever answer "no" -- and the
+        # import it needs drags in the whole memory stack. Inside the worker that
+        # import deadlocked against the worker's own threads: every local `read`
+        # hung with no reply and no stderr, which is indistinguishable from a
+        # crashed worker. Server-side reads keep the default, so their behaviour is
+        # unchanged.
+        if self.config.get("personal_memory", True):
+          try:
             from agent.memory.personal import personal_file, read_personal_file
             personal = personal_file(absolute_path)
             if personal:
                 content = read_personal_file(personal)
                 result, error = self._paginate(split_lines(content), offset, limit, path)
                 return ToolResult.fail(error) if error else ToolResult.success(result)
-        except Exception as error:
+          except Exception as error:
             return ToolResult.fail(f'Error reading personal memory: {error}')
 
         # Reached only once the path already missed, so nothing that resolves

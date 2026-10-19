@@ -130,6 +130,25 @@ export class PythonBackend extends EventEmitter {
   // into the void, leaving the user with a bare "initialization failed".
   private lastError: BackendError | null = null
 
+  /**
+   * Extra environment for the backend process, set before `start()`.
+   *
+   * A callback rather than a value because the caller may not have the values yet
+   * when it constructs this object, and because the shell's own start order (start
+   * the local executor, then the backend that is told where it is) is a decision
+   * for the caller, not for this class.
+   *
+   * The values are read once, at spawn: the backend caches the executor endpoint on
+   * first use, so a later change here would be a silent no-op rather than a
+   * reconfiguration.
+   */
+  private extraEnv: () => Record<string, string> = () => ({})
+
+  /** Set the extra environment the next `start()` will use. */
+  setExtraEnv(provider: () => Record<string, string>): void {
+    this.extraEnv = provider
+  }
+
   constructor(backendPath: string, packaged = false) {
     super()
     this.backendPath = backendPath
@@ -821,6 +840,10 @@ export class PythonBackend extends EventEmitter {
         COW_WEB_PORT: String(this.port),
         ...(bundled ? { COW_DATA_DIR } : {}),
         ...this.appConfigEnv(),
+        // The local executor endpoint, when this build started one. Absent means
+        // the backend has no script surface at all, which is the honest answer
+        // rather than a surface it cannot reach.
+        ...this.extraEnv(),
         COW_CLIENT_VERSION: app.getVersion(),
       },
       stdio: ['pipe', 'pipe', 'pipe'],

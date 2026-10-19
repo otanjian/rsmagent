@@ -30,7 +30,7 @@ import {
   nextReconnectDelayMs,
 } from './device-connection'
 import { resultFrame, type DeviceCommand, type DeviceResult } from './device-ops'
-import { PROJECT_EXECUTION_PROTOCOL } from '../project-execution/contract'
+import { PROJECT_EXECUTION_PROTOCOL, SUPPORTED_EXECUTION_MAJORS } from '../project-execution/contract'
 import { openWebSocket, type OpenSocketOptions, type WebSocketLike } from './ws-client'
 
 /** Heartbeat cadence (contracts ``limits.heartbeat_seconds``). */
@@ -307,10 +307,16 @@ export class DeviceClient {
     } catch {
       return
     }
-    if (frame.protocol_major === PROJECT_EXECUTION_PROTOCOL.major) {
-      // The v2 execution channel. Recognised by its own major version rather
-      // than by the frame type, so a v2 frame this build does not know is
-      // ignored instead of being mistaken for a v1 ``command``.
+    if (SUPPORTED_EXECUTION_MAJORS.includes(Number(frame.protocol_major))) {
+      // The execution channel, recognised by its major version rather than by the
+      // frame type, so an execution frame this build does not know is ignored
+      // instead of being mistaken for a v1 ``command``.
+      //
+      // Every *servable* major is accepted here, not just v2: the major is the
+      // connection's business, and the downstream validator is what decides
+      // whether this particular frame is well-formed under it. Recognising only v2
+      // would drop a v3 frame on the floor silently -- the worst outcome, because
+      // the device would look connected while nothing ever ran.
       void this.handleExecutionFrame(frame)
       return
     }

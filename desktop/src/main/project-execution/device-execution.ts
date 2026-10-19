@@ -119,6 +119,19 @@ export interface DeviceExecutionOptions {
     /** Where the durable journal lives (under the app's user-data directory). */
     journalFile: string
     platform?: NodeJS.Platform
+    /**
+     * The protocol major this connection **negotiated**, or ``undefined`` for v2.
+     *
+     * Passed in rather than read off each frame, because a frame must not choose
+     * which rules judge it: if it could, a v3 frame on a v2 connection would be
+     * checked against v3 -- the looser contract selected by the party being
+     * checked. The negotiation decides once, here, and the frame's own
+     * ``protocol_major`` is then required to match (task 3.5).
+     *
+     * Omitted keeps v2, which is what every caller that has not been taught about
+     * majors means.
+     */
+    executionMajor?: number
     /** Whether the connection is live; ``false`` refuses new frames (A19). */
     connected?: () => boolean
     now?: () => number
@@ -180,7 +193,41 @@ export class DeviceExecution {
             ...(options.livenessWindowMs === undefined
                 ? {} : { livenessWindowMs: options.livenessWindowMs }),
             pathsOf: (frame, realRoot) => this.pathsOf(frame, realRoot),
+            admitChange: (frame, _paths, stale) => this.admitChange(frame, stale),
+            ...(options.executionMajor !== undefined
+                ? { executionMajor: options.executionMajor } : {}),
         })
+    }
+
+    /**
+     * Whether an outside edit stops this frame, or is only reported afterwards.
+     *
+     * The deciding fact is whether the frame **carried an expected_version**, not
+     * which platform is running. The contract's own rule is the basis: a `write`
+     * or `edit` that names the version it was built from has *already* been told
+     * to re-read if that version moved, so applying on top of newer bytes is the
+     * outcome ``file_changed`` exists to prevent. A frame that names no version
+     * made no such claim, and inventing an expectation the caller never expressed
+     * would refuse edits that used to work.
+     *
+     * That is why this reads identically on macOS and Windows: a v3 frame that
+     * carries a version is blocked on both, and a v1/v2 frame -- which has no such
+     * field -- keeps the master's older "report, still apply" behaviour on both.
+     * The platform decides whether Windows file execution is *offered at all*
+     * (the server's capability gate), which is a different question from what
+     * happens once a versioned write has been admitted.
+     */
+    private admitChange(
+        frame: Record<string, unknown>,
+        stale: { path: string; reason: string },
+    ): 'apply' | 'refuse' {
+        if (Number(frame.protocol_major ?? 1) < 3) return 'apply'
+        // The version may ride on the frame or inside ``arguments``; the contract
+        // allows either, so both are read the same way the v3 validator reads them.
+        const args = (frame.arguments ?? {}) as Record<string, unknown>
+        const carried = frame.expected_version ?? args.expected_version
+        if (carried === undefined || carried === null || carried === '') return 'apply'
+        return 'refuse'
     }
 
     /** Whether the journal could not be read, in which case nothing runs. */
@@ -203,7 +250,10 @@ export class DeviceExecution {
                 'this device is not bound to a session')
         }
         const platform = (this.options.platform ?? process.platform) === 'win32' ? 'win32' : 'posix'
-        const problems = validateExecuteFrame(frame, platform)
+        // The *negotiated* major, never the frame's own claim: see
+        // ``executionMajor``. A frame that names a different major is reported by
+        // the validator rather than being judged by its own declaration.
+        const problems = validateExecuteFrame(frame, platform, this.options.executionMajor)
         if (problems.length > 0) {
             // A frame that fails the contract is never "close enough": the
             // first problem is the one the caller has to fix.

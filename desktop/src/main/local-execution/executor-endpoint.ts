@@ -42,7 +42,7 @@ import type { InterpreterProbe, WorkerRuntime } from './interpreter'
 import { runtimeKey } from './interpreter'
 import { describeScriptCapabilities, resolveScriptSupport } from './sandbox'
 import type { ScriptSupport } from './sandbox'
-import { WorkerSession } from './worker-session'
+import { WorkerSession, type WorkerWrapper } from './worker-session'
 import { newLaunchToken } from './launch-token'
 
 /** The one operation this endpoint performs. Anything else is refused by name. */
@@ -109,6 +109,17 @@ export interface LocalExecutorConfig {
   spawnFn?: typeof spawn
   /** Only for tests; production mints one per app run. */
   token?: string
+  /**
+   * The native launcher to start a script's worker *through*, when this build has
+   * one (task 7.4).
+   *
+   * A script run is the case the Job Object exists for: it executes the user's own
+   * code, so it can spawn descendants, and `KILL_ON_JOB_CLOSE` is what keeps a
+   * crashed or timed-out run from leaving them behind. Optional, and its absence is
+   * the historical spawn -- so a build without the launcher keeps working rather
+   * than refusing every script.
+   */
+  wrapper?: WorkerWrapper
 }
 
 export interface RunningLocalExecutor {
@@ -321,7 +332,13 @@ export async function startLocalExecutor(
     const session = new WorkerSession(
       plan,
       { onStderr: (chunk) => process.stderr.write(`[local-executor] ${chunk}`) },
-      { spawnFn: config.spawnFn, callTimeoutMs: config.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS },
+      {
+        spawnFn: config.spawnFn,
+        callTimeoutMs: config.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS,
+        // Conditional for the same reason as the other assembly: a build without
+        // the launcher must keep the spawn it had.
+        ...(config.wrapper ? { wrapper: config.wrapper } : {}),
+      },
     )
     const reply = await session.hello(root, tempRoot)
     if (reply.status !== 'success') {

@@ -28,14 +28,15 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { FsGuard, type GuardChild } from '../local-files/fs-guard'
+import { authorizesOperation } from '../local-files/grants'
 import type { GrantRegistry } from '../local-files/grants'
 import { buildGrantLaunchPlan } from '../local-execution/launch'
 import type { InterpreterProbe, WorkerRuntime } from '../local-execution/interpreter'
-import { WorkerSession, DEFAULT_CALL_TIMEOUT_MS, type WorkerReply } from '../local-execution/worker-session'
+import { WorkerSession, DEFAULT_CALL_TIMEOUT_MS, type WorkerWrapper, type WorkerReply } from '../local-execution/worker-session'
 import { DeviceExecution } from '../project-execution/device-execution'
 import { SkillCache, type DeclaredSkill } from '../project-execution/skill-cache'
 import { ensureSkillVersions } from '../project-execution/skill-transfer'
-import { EXECUTION_LIMITS } from '../project-execution/contract'
+import { EXECUTION_LIMITS, requiredOperationForTool } from '../project-execution/contract'
 import type {
   DeviceIdentity,
   ExecutionOutcome,
@@ -114,6 +115,16 @@ export interface LocalReadAssemblyOptions {
     baseEnv?: NodeJS.ProcessEnv
     tempBase?: string
     callTimeoutMs?: number
+    /**
+     * The native launcher to start the project worker *through*, when this build
+     * has one (task 7.4).
+     *
+     * Optional, and its absence is the historical behaviour: without it the worker
+     * is spawned directly and its tree is ended with `taskkill /T`. With it the
+     * tree belongs to a Job Object, so `KILL_ON_JOB_CLOSE` ends every member even
+     * when the launcher is killed and never runs its own cleanup.
+     */
+    wrapper?: WorkerWrapper
     /**
      * Override the contract's liveness window. Only for tests: production
      * reaps past {@link EXECUTION_LIMITS.run_liveness_seconds}, and a suite that
@@ -710,15 +721,20 @@ export class LocalReadAssembly {
    * The real root a workspace may execute in, or ``null``.
    *
    * Three things must hold at this moment, not at bind time: the workspace is
-   * still bound here, its grant is still live, and that grant is a
-   * ``project-execution`` grant. A read-only grant is *not* widened into
-   * execution by being present.
+   * still bound here, its grant is still live, and that grant authorizes the
+   * operation being asked for. A read-only grant is *not* widened into execution
+   * by being present.
+   *
+   * The question is asked by **operation name** (task 4.1) rather than by purpose:
+   * "this is a project-execution grant" cannot tell a file edit from running code,
+   * and v3 deliberately made those two names so that opening a project for editing
+   * could never authorize executing in it.
    */
-  private executableRootFor(workspaceId: string): string | null {
+  private executableRootFor(workspaceId: string, operation = 'files'): string | null {
     const entry = this.roots.get(workspaceId)
     if (!entry) return null
     const grant = this.liveGrant(entry.grantId)
-    if (!grant || grant.purpose !== 'project-execution') return null
+    if (!grant || !authorizesOperation(grant, operation)) return null
     return this.options.registry.absolutePathFor(entry.grantId)
   }
 
@@ -742,8 +758,11 @@ export class LocalReadAssembly {
     const grant = entry ? this.liveGrant(entry.grantId) : null
     // A re-picked directory bumps the version, so a frame issued before the
     // repick is a miss rather than a write into a directory the user no longer
-    // authorized.
-    if (!grant || grant.purpose !== 'project-execution'
+    // authorized. The operation is derived from the **frame's own tool**, so a
+    // grant holding only ``files`` cannot run ``bash`` or ``run_script`` -- the
+    // check asks about the tool that is actually being spent (task 4.1).
+    const needed = requiredOperationForTool(frame.tool)
+    if (!grant || !needed || !authorizesOperation(grant, needed)
       || grant.grantVersion !== Number(frame.grant_version || 0)) {
       return this.executionRefusal(frame, 'grant_revoked',
         'the frame names a grant version that is no longer live on this device')
@@ -759,7 +778,11 @@ export class LocalReadAssembly {
   ): Record<string, unknown> {
     return {
       type: 'execution_result',
-      protocol_major: 2,
+      // The *frame's* major, not a hard-coded 2: a refusal is a result for the
+      // frame that was refused, so answering a v3 frame with a v2 result would
+      // hand the peer a frame it cannot match to its request. Echoing what arrived
+      // is also the honest answer -- this device is reporting on *that* frame.
+      protocol_major: Number(frame.protocol_major) || 2,
       command_id: String(frame.command_id || ''),
       run_id: String(frame.run_id || ''),
       tool_call_id: String(frame.tool_call_id || ''),
@@ -891,7 +914,12 @@ export class LocalReadAssembly {
     const session = new WorkerSession(
       plan,
       { onStderr: (chunk) => process.stderr.write(`[device-exec] ${chunk}`) },
-      { callTimeoutMs: config.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS },
+      {
+        callTimeoutMs: config.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS,
+        // Only when this build has the launcher: a platform without it keeps the
+        // existing spawn, which is why adding this cannot regress that platform.
+        ...(config.wrapper ? { wrapper: config.wrapper } : {}),
+      },
     )
     const hello = await session.hello(root, tempRoot)
     if (hello.status !== 'success') {

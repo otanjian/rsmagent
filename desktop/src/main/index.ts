@@ -6,6 +6,7 @@ import http from 'http'
 import { PythonBackend, BackendError } from './python-manager'
 import { resolveBackendPath } from './backend-path'
 import { resolveDataDir } from './data-dir'
+import { startExecutorEndpoint, stopExecutorEndpoint, executorEnv } from './local-execution/executor-lifecycle'
 import { initHostLog } from './host-log'
 import { buildAppMenu } from './menu'
 import { createTray, destroyTray, getTray } from './tray'
@@ -527,6 +528,13 @@ async function startBackend() {
     mainWindow?.webContents.send('backend-log', line)
   })
 
+  // The local executor must exist before the backend spawns: the backend reads
+  // COW_DESKTOP_EXECUTOR_URL/_TOKEN from its own environment, which is fixed at
+  // spawn, so a later start would leave it permanently believing there is no
+  // script launcher. A failure here is logged and non-fatal -- the file features
+  // do not depend on it, and every script run refuses with a real reason.
+  await startExecutorEndpoint({ backendPath })
+  pythonBackend.setExtraEnv(() => executorEnv())
   await pythonBackend.start()
 }
 
@@ -898,6 +906,12 @@ app.on('before-quit', () => {
   } catch {
     /* module may be absent in older builds */
   }
+  // Close the executor before the backend: a script still running must be stopped
+  // while its grant is still resolvable, and its workers' Job Objects end with the
+  // endpoint rather than being orphaned. Not awaited -- `before-quit` cannot block,
+  // and the kernel closes the loopback socket and any surviving Job handle when the
+  // process exits anyway.
+  void stopExecutorEndpoint().catch(() => undefined)
   pythonBackend?.stop()
 })
 

@@ -170,6 +170,34 @@ export interface WorkerSessionOptions {
   callTimeoutMs?: number;
   /** Injected in tests; the only place a process is created. */
   spawnFn?: typeof spawn;
+  /**
+   * The native launcher to start the worker *through*, when this platform has one.
+   *
+   * Supplied by the caller rather than discovered here, so the resolution (which
+   * lives in `local-files/fs-guard-binary.ts` for the file helpers) stays in one
+   * place and this class keeps deciding nothing about paths on disk.
+   *
+   * Why route through it at all: the worker's tree is currently ended with
+   * `taskkill /T`, which walks the live process table and can miss a descendant
+   * that was reparented or that appeared after the walk. Under a Job Object the
+   * kernel owns the tree, so `KILL_ON_JOB_CLOSE` ends every member even when the
+   * launcher is killed and never runs its own cleanup.
+   *
+   * When this is absent the worker is spawned directly, exactly as before: a
+   * platform without the launcher keeps its existing behaviour rather than
+   * silently losing confinement.
+   */
+  wrapper?: WorkerWrapper;
+}
+
+/** Where to find the native launcher and what ceilings to give the wrapped tree. */
+export interface WorkerWrapper {
+  /** Absolute path of the `script-launcher` binary. */
+  executable: string;
+  /** Kills the whole tree after this long, when the caller sets one. */
+  timeoutMs?: number;
+  maxProcesses?: number;
+  maxMemoryBytes?: number;
 }
 
 export interface WorkerSessionEvents {
@@ -197,12 +225,40 @@ export class WorkerSession {
   constructor(plan: LaunchPlan, events: WorkerSessionEvents = {}, options: WorkerSessionOptions = {}) {
     this.callTimeoutMs = options.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
     const spawnFn = options.spawnFn ?? spawn;
-    this.child = spawnFn(plan.command, plan.args, {
-      env: plan.env,
+    // Routed through the native launcher when there is one, so the tree is owned
+    // by a Job Object instead of by a `taskkill` walk. The worker's own command
+    // line is unchanged and becomes the launcher's, which is why the wrapper can
+    // stay ignorant of the protocol on these pipes.
+    const wrapped = options.wrapper
+      ? {
+          command: options.wrapper.executable,
+          args: ['--wrap', plan.command, ...plan.args],
+          env: {
+            ...plan.env,
+            // Configuration travels in the environment so the command line stays
+            // exactly the wrapped command.
+            COW_WRAP_CWD: plan.cwd,
+            COW_WRAP_ENV: Object.entries(plan.env)
+              .filter(([, value]) => typeof value === 'string')
+              .map(([name, value]) => `${name}=${String(value)}`)
+              .join('\n'),
+            ...(options.wrapper.timeoutMs !== undefined
+              ? { COW_WRAP_TIMEOUT_MS: String(options.wrapper.timeoutMs) } : {}),
+            ...(options.wrapper.maxProcesses !== undefined
+              ? { COW_WRAP_MAX_PROCESSES: String(options.wrapper.maxProcesses) } : {}),
+            ...(options.wrapper.maxMemoryBytes !== undefined
+              ? { COW_WRAP_MAX_MEMORY: String(options.wrapper.maxMemoryBytes) } : {}),
+          },
+        }
+      : { command: plan.command, args: plan.args, env: plan.env };
+    this.child = spawnFn(wrapped.command, wrapped.args, {
+      env: wrapped.env,
       cwd: plan.cwd,
       // Own process group, so a script's children die with it (Windows uses
       // taskkill /T; see killWorkerTree).
       detached: process.platform !== 'win32',
+      // The launcher passes these straight to the worker, so the protocol on them
+      // is exactly the same whether or not a wrapper is in the middle.
       stdio: ['pipe', 'pipe', 'pipe'],
     }) as ChildProcessWithoutNullStreams;
 

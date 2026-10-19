@@ -129,6 +129,15 @@ export interface CommandRunnerOptions {
   realRootOf: (workspaceId: string) => string | null
   execute: (request: ExecutionRequest) => Promise<ExecutionOutcome>
   terminate: Terminator
+  /**
+   * The protocol major this connection **negotiated**; omitted means v2.
+   *
+   * The runner validates the frame a second time, so it needs the same answer the
+   * caller used: without it the second check would judge a v3 frame by v2 and
+   * refuse it *after* the caller had accepted it -- a refusal from the middle of
+   * the pipeline, reported as a malformed frame.
+   */
+  executionMajor?: number
   now?: () => number
   /**
    * Whether the device currently holds a live connection (task 7.5).
@@ -148,6 +157,27 @@ export interface CommandRunnerOptions {
    * the honest state for a tool that touches no file at all.
    */
   pathsOf?: (frame: Record<string, unknown>, realRoot: string) => FramePaths
+  /**
+   * Whether an outside change **stops** the frame, or is only reported (task 3.4).
+   *
+   * The master's rule has always been "report, do not block": an edit built on a
+   * view that moved still applies, because refusing it would strand the model.
+   * The v3 contract adds ``expected_version`` -- the caller states which content it
+   * built the edit from -- and that makes blocking possible *and* correct for the
+   * frames that carry one: the caller has already been told to re-read, so
+   * overwriting its newer bytes is the outcome the precondition exists to prevent.
+   *
+   * So this is not "block on any stale file". It is asked only when the frame
+   * declared a version, and the answer is ``'apply'`` for every frame that did not
+   * -- which is what keeps v1, v2 and every POSIX frame behaving exactly as before.
+   * Absent means ``'apply'``, so a caller that has not been taught about versions
+   * keeps the old semantics rather than silently gaining a new refusal.
+   */
+  admitChange?: (
+    frame: Record<string, unknown>,
+    paths: FramePaths,
+    stale: { path: string; reason: string },
+  ) => 'apply' | 'refuse'
   /** Where an unresolved entry is surfaced for reconciliation (task 7.3). */
   onReconcile?: (entry: JournalEntry, reason: string) => void
   /**
@@ -288,7 +318,7 @@ export class CommandRunner {
     }
 
     const problems = validateExecuteFrame(
-      frame, this.platformFor(frame))
+      frame, this.platformFor(frame), this.options.executionMajor)
     if (problems.length > 0) {
       return { kind: 'refused', code: 'invalid_request',
         message: problems.join('; ') }
@@ -380,6 +410,32 @@ export class CommandRunner {
         // Checked *before* the tool runs: an outside edit is reported from the
         // version this device served, not from a diff of the result.
         const stale = this.versions.firstStale(paths.modifies ?? [])
+        // v3's ``expected_version`` precondition, enforced *before* the tool runs.
+        //
+        // The older rule -- warn after the edit already applied -- is what the
+        // contract replaced for the frames that carry a version, and reusing it
+        // would leave a window in which a user's newer bytes are overwritten and
+        // merely reported afterwards.
+        //
+        // Refusing is only possible because the frame carried a version: the caller
+        // said which content it built this edit from, so "that content is gone" is a
+        // fact to act on. A frame that carried *no* version made no such claim, and
+        // refusing it would invent an expectation the caller never expressed --
+        // which is why ``admitChange`` is asked at all rather than the runner
+        // deciding from staleness alone. Absent or ``'apply'`` keeps the old
+        // semantics exactly.
+        if (stale && this.options.admitChange?.(frame, paths, stale) === 'refuse') {
+          const refused: CommandResult = {
+            outcome: 'refused',
+            phase: 'failed',
+            effects: 'none',
+            entry: null,
+            code: 'file_changed',
+            message: stalenessWarning(stale.path, stale.reason),
+          }
+          settle()
+          return refused
+        }
         try {
           this.live.set(handle.commandId, { handle, started: true, settled: settledRun })
           outcome = await this.options.execute({ frame, realRoot, handle })

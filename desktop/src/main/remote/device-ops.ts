@@ -233,6 +233,11 @@ export async function runDeviceCommand(
             truncated: chunk.truncated,
             encoding,
             text: decodeText(bytes, encoding),
+            // The opaque version of the object these bytes came from, so the caller
+            // can name it when it later edits this file (task 4.2). Carried on every
+            // chunk: the contract's ``returned_by`` names ``read`` as a producer, and
+            // a caller that only sees the last chunk must still be able to edit.
+            version: chunk.version,
           },
         }
       }
