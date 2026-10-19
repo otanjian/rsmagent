@@ -115,7 +115,12 @@ fn wrap_main(args: &[String]) {
         .filter(|line| !line.is_empty())
         .collect();
 
-    match run_wrapped(&executable, &command_args, &cwd, &env, limits, access, &extra_grants) {
+    // Whether the working directory is itself a granted path. Defaults to on, so the
+    // one-shot shape keeps working; a script run turns it off because its cwd is the
+    // backend, not the project.
+    let grant_cwd = std::env::var("COW_WRAP_GRANT_CWD").map(|v| v != "0").unwrap_or(true);
+
+    match run_wrapped(&executable, &command_args, &cwd, &env, limits, access, &extra_grants, grant_cwd) {
         Ok((_result, exit_code)) => std::process::exit(exit_code as i32),
         Err(err) => {
             // Reported on stderr, never stdout: the caller's stdout belongs to the

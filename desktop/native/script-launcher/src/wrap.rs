@@ -50,6 +50,7 @@ pub fn run_wrapped(
     limits: Limits,
     access: crate::Access,
     extra_grants: &[String],
+    grant_cwd: bool,
 ) -> Result<(RunResult, u32), LaunchError> {
     if !Path::new(cwd).is_dir() {
         return Err(LaunchError::Unsupported(format!(
@@ -70,9 +71,14 @@ pub fn run_wrapped(
     } else {
         None
     };
+    // The working directory is granted only when asked for. For a script run it is
+    // the *backend*, not the project -- the project arrives in the handshake frame --
+    // and granting the backend is both wrong (it is not the user's directory) and
+    // impossible in practice: setting a DACL on it fails with error 5, which aborted
+    // the whole launch. The caller names every path it needs in `extra_grants`.
     let _grant = match &container_sid {
-        Some(sid) => Some(crate::acl::activate(cwd, sid.as_ptr())?),
-        None => None,
+        Some(sid) if grant_cwd => Some(crate::acl::activate(cwd, sid.as_ptr())?),
+        _ => None,
     };
     // Directories the run also needs and that are not under `cwd` -- in practice the
     // run's own temp directory, which the desktop creates outside the project. Each
