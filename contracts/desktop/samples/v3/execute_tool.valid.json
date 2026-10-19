@@ -1,0 +1,26 @@
+{
+  "type": "execute_tool",
+  "protocol_major": 3,
+  "command_id": "cmd_example",
+  "run_id": "run_example",
+  "tool_call_id": "call_example",
+  "session_id": "sess_example",
+  "agent_id": "agent_example",
+  "binding_id": "bind_example",
+  "workspace_id": "ws_example",
+  "device_id": "dev_example",
+  "grant_version": 3,
+  "selection_generation": 8,
+  "connection_epoch": "epoch_example",
+  "tool": "write",
+  "tool_schema_version": 1,
+  "operations": ["files"],
+  "arguments": {
+    "relative_path": "output/开票清单.xlsx",
+    "content": "…",
+    "expected_version": "opaque-version-example-0001"
+  },
+  "params_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "deadline_seconds": 120,
+  "expires_at": 1780000060
+}

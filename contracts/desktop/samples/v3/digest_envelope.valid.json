@@ -1,0 +1,29 @@
+{
+  "envelope": {
+    "tool": "write",
+    "tool_schema_version": 1,
+    "arguments": {
+      "relative_path": "output/开票清单.xlsx",
+      "content": "new content",
+      "expected_version": "opaque-version-example-0001"
+    },
+    "run_id": "run_example",
+    "tool_call_id": "call_example",
+    "session_id": "sess_example",
+    "agent_id": "agent_example",
+    "origin": "https://console.example.invalid",
+    "binding_id": "bind_example",
+    "workspace_id": "ws_example",
+    "device_id": "dev_example",
+    "grant_version": 3,
+    "selection_generation": 8,
+    "skill_resources": [],
+    "operations": [
+      "files"
+    ],
+    "runtime": null
+  },
+  "digest": "sha256:eeeb1698468a930fd1805913c51305be2d42c1f46c9da3e8b71278b5c132428e",
+  "algorithm_source": "contracts/desktop/v3.json#digest.fields",
+  "computed_by": "the contract field list plus canonical JSON; task 3.3 lands the runtime reader"
+}

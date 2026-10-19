@@ -1,0 +1,235 @@
+{
+  "contract": "desktop-project-execution",
+  "version": 3,
+  "note": "Machine-readable v3 of the desktop project-execution protocol (change add-windows-local-project-access, task 3.1). v1.json keeps describing the read-only remote workbench and is NOT widened; v2.json keeps describing the accepted POSIX execution end and is NOT widened either. What v3 adds on top of v2: an explicit Windows platform entry whose tools are named per platform, an opaque expected_version precondition on the file tools that can overwrite, an operations authorization set that is bound to the grant and covered by the digest, and an optional script tool with a declared runtime. Python reads it through auth/desktop_contracts_v3.py; the desktop client compiles the same constants through desktop/src/main/project-execution/generated-contract-v3.ts and tests/test_desktop_execution_v3_contract.py / tests/test_desktop_execution_contract_v3.cjs fail if any of them drifts from this document. Field names are snake_case; sizes are bytes; times are seconds unless the key says otherwise.",
+  "inherits": {
+    "note": "What v3 takes verbatim from v2 instead of restating. A key named here must not be restated in this document, so a bound or a code cannot be loosened in one document and tightened in the other. contract_problems() fails the build if that ever happens.",
+    "from": 2,
+    "limits": [
+      "ws_frame_max_bytes",
+      "heartbeat_seconds",
+      "offline_seconds",
+      "parallel_commands_per_device",
+      "pending_queue",
+      "offline_wait_seconds",
+      "transfer_chunk_max_bytes",
+      "script_timeout_default_seconds",
+      "script_timeout_max_seconds",
+      "start_permit_ttl_seconds",
+      "start_permit_single_use",
+      "run_heartbeat_seconds",
+      "run_liveness_seconds",
+      "effectful_per_project",
+      "readonly_parallel_per_project",
+      "preview_max_bytes",
+      "skill_package_transfer_max_bytes",
+      "skill_package_expanded_max_bytes",
+      "skill_package_files_max",
+      "worker_memory_bytes",
+      "journal_retain_days",
+      "inline_stdout_max_bytes",
+      "inline_stderr_max_bytes"
+    ],
+    "error_codes": true,
+    "phases": true,
+    "effects": true,
+    "artifact": true,
+    "journal": true,
+    "frames": true,
+    "start_permit": true
+  },
+  "protocol": {
+    "name": "project_execution",
+    "major": 3,
+    "minor": 0,
+    "required": false,
+    "absent_means": "the new entry point is unavailable; v2 stays the accepted POSIX execution end and a v3 operation is never downgraded into it or into v1's inspect/materialize"
+  },
+  "platforms": {
+    "note": "Whether this build's execution end has an accepted launcher for the platform. Unlike v2, both platforms are admitted here: the contract declares that a launcher KIND exists, while accepted/capability state decides availability at run time. Admitting the platform is not a claim that Windows execution is verified -- files_write_verified/scripts_verified and the capability slice still have to say so.",
+    "posix": {
+      "supported": true,
+      "launcher": "posix-spawn-launcher-v1",
+      "note": "macOS/Linux via the same sandbox path the local worker uses"
+    },
+    "win32": {
+      "supported": true,
+      "launcher": "windows-handle-file-launcher-v1",
+      "launcher_kinds": {
+        "files": "windows-handle-file-launcher-v1",
+        "scripts": ""
+      },
+      "note": "Windows admits the five file tools through the handle-anchored file helper. launcher_kinds.scripts is deliberately empty: no probed Windows isolation launcher exists yet, so run_script is not offered on win32 until that launcher and its probes are accepted. A platform is admitted here; the capability block and the accepted slice still decide whether anything is actually offered."
+    }
+  },
+  "tools": {
+    "note": "The master tool names a v3 frame may carry. The server proxies the *current* tool view, so the name, its description and its JSON schema stay the master's; only the execution end changes.",
+    "schema_version": 1,
+    "required": ["read", "write", "edit", "ls", "search_files", "bash", "run_script"],
+    "effectful": ["write", "edit", "bash", "run_script"],
+    "readonly": ["read", "ls", "search_files"],
+    "script_tools": ["bash", "run_script"],
+    "by_platform": {
+      "note": "The tools each admitted platform offers. win32 names no script tool because launcher_kinds.scripts is empty; that is a property of this document, not a runtime guess.",
+      "posix": ["read", "write", "edit", "ls", "search_files", "bash", "run_script"],
+      "win32": ["read", "write", "edit", "ls", "search_files"]
+    },
+    "arguments": {
+      "note": "The frozen argument shape of the tools v3 adds preconditions to or introduces. A field named 'required' must be present and non-empty; a field named 'forbidden' must never appear, in the frame or in arguments. The caller never names a cwd, a module, an interpreter path or a credential -- those come from the host's own resolution.",
+      "write": {
+        "required": [],
+        "optional": ["relative_path", "content", "encoding", "expected_version", "create"],
+        "forbidden": ["cwd", "root_path", "absolute_path", "env", "module", "argv_path"],
+        "precondition": "create=true requires the target to be absent and needs no version. Any other write is an overwrite and requires expected_version to name the version that was read. A missing or stale expected_version is refused with file_changed and no write happens.",
+        "conflict_code": "file_changed"
+      },
+      "edit": {
+        "required": ["expected_version"],
+        "optional": ["relative_path", "old_string", "new_string", "replace_all"],
+        "forbidden": ["cwd", "root_path", "absolute_path", "env", "module", "argv_path"],
+        "precondition": "expected_version SHALL name the version returned by the read this edit was built from. A missing or stale expected_version is refused with file_changed and no write happens.",
+        "conflict_code": "file_changed"
+      },
+      "run_script": {
+        "required": ["language", "script"],
+        "optional": ["timeout", "args", "skill_resources"],
+        "forbidden": ["cwd", "root_path", "absolute_path", "env", "module", "argv_path", "executable", "interpreter", "shell"],
+        "precondition": "language SHALL be one of runtime_languages, that language SHALL be verified on this platform, and the project's operations set SHALL contain this tool. The executable path, working directory and environment are resolved by the trusted local launcher and are never taken from arguments.",
+        "runtimes": ["python", "powershell"],
+        "input_forms": ["script_text", "skill_entry"],
+        "note": "The name run_script is provisional for this document's lifetime: it must be checked against the model tool registry, MCP/config names and internal helper names before the tool is registered, and the final name lives here only. An internal helper function of the same name is not a tool-registration conflict."
+      }
+    },
+    "platform_syntax": {
+      "posix": {
+        "bash": "sh -c with $VAR expansion and POSIX quoting, as the master bash tool documents"
+      },
+      "windows": {
+        "bash": "unsupported. A platform check admits win32 in v3, so this frame reaches the tool check and is refused with feature_unavailable (503) -- never translated into PowerShell or cmd syntax.",
+        "shell": "not offered in this version"
+      }
+    }
+  },
+  "operations": {
+    "note": "The explicit authorization the file tools and the script tool spend. v2 left this implicit: any tool in the allow-list could run once the project was bound. v3 makes it a first-class, grant-bound value, and the whole point is that the FILE operation and the SCRIPT operation are different names -- so 'this project is open for editing' can never authorize running code in it. The set is generated only by a native confirmation, is persisted with the binding/grant, and is covered by the start permit and the params digest.",
+    "names": ["files", "scripts"],
+    "sets": {
+      "files": ["read", "write", "edit", "ls", "search_files"],
+      "scripts": ["run_script", "bash"]
+    },
+    "default": [],
+    "absent_means": "no new v3 operation is authorized. A grant row written before v3 is read as the empty set and is never backfilled into one, so an old file grant cannot become a script grant by upgrade.",
+    "bound_to": ["origin", "user_id", "tenant_id", "device_id", "workspace_id", "grant_version", "protocol_major"],
+    "required_for": {
+      "files": ["read", "write", "edit", "ls", "search_files"],
+      "scripts": ["run_script", "bash"]
+    },
+    "independent": "The two operations do not imply each other. A frame that needs to read a file and then run a script asks for both, and the server checks the requested set against the grant's set as a whole.",
+    "requires_extra_confirmation": ["run_script", "bash"],
+    "digest_covered": ["operations", "grant_version", "runtime"],
+    "refusal_codes": {
+      "missing_operation": "permission_denied",
+      "unconfirmed_operations": "approval_required",
+      "stale_grant_version": "stale_context",
+      "runtime_not_verified": "runtime_unavailable"
+    }
+  },
+  "version_precondition": {
+    "note": "The opaque version value the file tools exchange. It is deliberately NOT a checksum the caller can compute: it binds the project, the relative path, the object identity and the content, so a caller cannot satisfy the precondition by hashing whatever it happens to be holding.",
+    "field": "expected_version",
+    "transport": "string",
+    "opaque": true,
+    "covers": ["workspace_id", "relative_path", "object_identity", "content_version"],
+    "returned_by": ["read", "write", "edit"],
+    "required_by": ["edit"],
+    "conditional_by": {"write": "required when create is false or absent"},
+    "stale_code": "file_changed",
+    "status": 409,
+    "no_write_on_refusal": true,
+    "note_not_checksum": "A client cannot mint an acceptable value from the file it holds; only a prior read through the same authorised root can produce one."
+  },
+  "frames": {
+    "note": "v3 keeps v2's frame types. What changes is which fields an execute_tool frame carries and what the digest covers.",
+    "execute_tool": {
+      "required": ["type", "protocol_major", "command_id", "run_id", "tool_call_id",
+                   "binding_id", "workspace_id", "device_id", "grant_version",
+                   "selection_generation", "connection_epoch", "tool",
+                   "tool_schema_version", "arguments", "params_digest", "expires_at",
+                   "operations"],
+      "optional": ["session_id", "agent_id", "skill_resources", "deadline_seconds",
+                   "background", "approval_id", "permission_mode", "origin",
+                   "runtime", "expected_version"],
+      "forbidden": ["cwd", "root_path", "absolute_path", "env", "server_url",
+                    "authorization", "token", "module", "class_name", "argv_path",
+                    "executable", "interpreter"],
+      "forbidden_note": "the project root comes from the main process resolving workspace_id; arguments never name a cwd, a module path, an interpreter or a credential, and the endpoint never accepts a caller-chosen URL or header",
+      "operations_note": "operations is REQUIRED and non-empty: a frame that cannot name the authorization it is spending is refused before any tool runs. The server intersects it with the grant's own set and does not trust the value."
+    },
+    "execution_result": {
+      "reuses": 2,
+      "optional_additions": ["operations", "expected_version", "returned_version"]
+    },
+    "execution_start_permit": {
+      "reuses": 2,
+      "required": ["permit_id", "command_id", "run_id", "params_digest", "workspace_id",
+                   "grant_version", "expires_at", "server_time", "operations"],
+      "optional_additions": ["runtime"],
+      "operations_note": "the permit names the operations it was issued for, so consuming a permit cannot spend an authorization that was never confirmed"
+    }
+  },
+  "digest": {
+    "note": "v3 changes what the params digest covers, which is exactly why it is a new major: a v2 digest and a v3 digest over 'the same' command are different strings by design.",
+    "algorithm": "sha256",
+    "encoding": "canonical JSON: object keys sorted by code point, no insignificant whitespace, UTF-8",
+    "prefix": "sha256:",
+    "fields": ["tool", "tool_schema_version", "arguments", "run_id", "tool_call_id",
+               "session_id", "agent_id", "origin", "binding_id", "workspace_id",
+               "device_id", "grant_version", "selection_generation", "skill_resources",
+               "operations", "runtime"],
+    "v2_fields": ["tool", "tool_schema_version", "arguments", "run_id", "tool_call_id",
+                  "session_id", "agent_id", "origin", "binding_id", "workspace_id",
+                  "device_id", "grant_version", "selection_generation", "skill_resources"],
+    "note_additions": "operations and runtime are appended. A client that speaks v2 must not send them and must not compute a digest with them; a v3 client must not omit them, so a downgrade cannot silently reuse a v2 digest.",
+    "conflict_code": "command_conflict"
+  },
+  "capability": {
+    "note": "The optional project_execution block a v3 client reads from meta/hello. v3 keeps v2's shape and its distinction between the two surfaces.",
+    "required": ["available", "reason", "protocol_major", "protocol_minor", "required",
+                 "tools", "tool_schema_version", "platform", "runtime",
+                 "files_write_verified", "scripts_verified", "limits",
+                 "artifact_protocol", "single_source", "launcher_kinds"],
+    "optional": ["surfaces", "operations_available"],
+    "surface_names": ["files", "scripts"],
+    "surface_required": ["available", "reason"],
+    "forbidden": ["user", "user_id", "tenant_id", "devices", "directories", "bindings",
+                  "workspaces", "roots", "tokens", "secrets"],
+    "reason_values": ["available", "not_implemented", "not_accepted",
+                      "disabled_by_deployment", "platform_unsupported",
+                      "runtime_unavailable", "feature_unavailable"],
+    "launcher_kinds_note": "Reports which launcher kind is actually accepted on the reporting platform, so a Windows client can show 'file tools available, scripts not verified' without inventing a platform flag.",
+    "artifact_protocol": "local-artifact-v1"
+  },
+  "meta_additions": {
+    "note": "Keys a v3 build adds to the existing meta envelope. The v1 required keys and forbidden keys are unchanged, and the payload stays inside the v1 byte cap.",
+    "keys": ["project_execution"]
+  },
+  "broker": {
+    "note": "v3 keeps v2's narrow broker endpoints and its checks, and adds the operations check the contract now names.",
+    "paths": {
+      "prepare": "/api/desktop/execution/prepare",
+      "start": "/api/desktop/execution/start",
+      "heartbeat": "/api/desktop/execution/heartbeat",
+      "status": "/api/desktop/execution/status",
+      "skill_package": "/api/desktop/execution/skill-package"
+    },
+    "methods": {"prepare": "POST", "start": "POST", "heartbeat": "POST", "status": "GET", "skill_package": "GET"},
+    "required": ["command_id", "device_id", "binding_id", "workspace_id", "grant_version",
+                 "params_digest"],
+    "checks": ["membership", "agent_use", "tool_eligibility", "skill_use", "approval",
+               "quota", "binding_ownership", "grant_version", "workspace_scope",
+               "protocol_major", "platform_support", "operations", "runtime_verified"],
+    "forbidden": ["server_url", "authorization_header", "module_path", "class_name",
+                  "cwd", "root_path", "executable", "interpreter"],
+    "single_use_start": true
+  }
+}

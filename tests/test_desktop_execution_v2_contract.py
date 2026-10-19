@@ -133,6 +133,12 @@ class AdvertisedLimitsTests(unittest.TestCase):
             os.path.join(repo, "scripts", "gen_desktop_execution_types.py"),
             os.path.join(repo, "desktop", "src", "main", "project-execution",
                          "generated-contract.ts"),
+            # The same tier for the next protocol major (change
+            # add-windows-local-project-access): a generated module that restates
+            # a bound is not a consumer of it, and the v3 module names every
+            # inherited limit by design.
+            os.path.join(repo, "desktop", "src", "main", "project-execution",
+                         "generated-contract-v3.ts"),
         }
         found = []
         for root, dirs, files in os.walk(repo):
