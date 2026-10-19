@@ -105,7 +105,17 @@ fn wrap_main(args: &[String]) {
         }
     }
 
-    match run_wrapped(&executable, &command_args, &cwd, &env, limits, access) {
+    // Directories the run needs beyond its working directory, one per line. The
+    // desktop puts the run's temp directory outside the project, so a confined run
+    // cannot write there without this.
+    let extra_grants: Vec<String> = std::env::var("COW_WRAP_GRANT_EXTRA")
+        .unwrap_or_default()
+        .lines()
+        .map(|line| line.trim().to_string())
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    match run_wrapped(&executable, &command_args, &cwd, &env, limits, access, &extra_grants) {
         Ok((_result, exit_code)) => std::process::exit(exit_code as i32),
         Err(err) => {
             // Reported on stderr, never stdout: the caller's stdout belongs to the

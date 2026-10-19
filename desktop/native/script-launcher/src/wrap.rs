@@ -49,6 +49,7 @@ pub fn run_wrapped(
     env: &[(String, String)],
     limits: Limits,
     access: crate::Access,
+    extra_grants: &[String],
 ) -> Result<(RunResult, u32), LaunchError> {
     if !Path::new(cwd).is_dir() {
         return Err(LaunchError::Unsupported(format!(
@@ -73,6 +74,16 @@ pub fn run_wrapped(
         Some(sid) => Some(crate::acl::activate(cwd, sid.as_ptr())?),
         None => None,
     };
+    // Directories the run also needs and that are not under `cwd` -- in practice the
+    // run's own temp directory, which the desktop creates outside the project. Each
+    // is granted and revoked on the same terms as the project: same SID, same one
+    // ACE, same refusal if the SID is already there.
+    let mut extra = Vec::new();
+    if let Some(sid) = &container_sid {
+        for path in extra_grants {
+            extra.push(crate::acl::activate(path, sid.as_ptr())?);
+        }
+    }
 
     unsafe {
         let stdin_handle = GetStdHandle(STD_INPUT_HANDLE);
