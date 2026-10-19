@@ -175,14 +175,25 @@ jobs:
             --manifest-path desktop/native/fs-guard/Cargo.toml
           cargo build --release --locked --features write-ops \
             --manifest-path desktop/native/fs-guard/Cargo.toml
+          # The script launcher. A third binary for the same reason: it is what
+          # owns a script's process tree (a Job Object on Windows), and a package
+          # without it still runs scripts -- just with no way to end the tree a
+          # run leaves behind, which is the failure this component exists to
+          # prevent. Building it here keeps "what CI ships" and "what the app
+          # looks for" the same list.
+          cargo build --release --locked \
+            --manifest-path desktop/native/script-launcher/Cargo.toml
           out=desktop/native/fs-guard/target/release
+          launcher=desktop/native/script-launcher/target/release
           mkdir -p desktop/resources
           case "${{ matrix.platform }}" in
             win)
               cp "$out/fs-guard.exe" "$out/project-fs-guard.exe" desktop/resources/
+              cp "$launcher/script-launcher.exe" desktop/resources/
               ;;
             *)
               cp "$out/fs-guard" "$out/project-fs-guard" desktop/resources/
+              cp "$launcher/script-launcher" desktop/resources/
               ;;
           esac
           ls -l desktop/resources/
@@ -210,8 +221,8 @@ jobs:
           set -euo pipefail
           missing=""
           case "${{ matrix.platform }}" in
-            win) names="fs-guard.exe project-fs-guard.exe" ;;
-            *)   names="fs-guard project-fs-guard" ;;
+            win) names="fs-guard.exe project-fs-guard.exe script-launcher.exe" ;;
+            *)   names="fs-guard project-fs-guard script-launcher" ;;
           esac
           for name in $names; do
             if [ ! -f "desktop/resources/$name" ]; then
