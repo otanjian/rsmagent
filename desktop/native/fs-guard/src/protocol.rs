@@ -63,6 +63,14 @@ pub enum Code {
     IoError,
     /// The request was cancelled by a later `cancel`.
     Cancelled,
+    /// A write's `expected_version` no longer matches what is on disk, so the
+    /// write was refused **and nothing was written**. Design D3: an overwrite
+    /// reports the conflict rather than applying on top of a newer file.
+    ///
+    /// The read-only entry point never constructs this -- it has no write
+    /// operations -- so the allow is for that build, not for sloppiness.
+    #[allow(dead_code)]
+    FileChanged,
     /// A bug. Reported rather than propagated as a panic.
     Internal,
 }
@@ -80,6 +88,7 @@ impl Code {
             Code::Unsupported => "unsupported",
             Code::IoError => "io_error",
             Code::Cancelled => "cancelled",
+            Code::FileChanged => "file_changed",
             Code::Internal => "internal",
         }
     }

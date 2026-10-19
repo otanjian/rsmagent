@@ -30,6 +30,15 @@ mod grants;
 mod ops;
 mod paths;
 mod protocol;
+#[cfg(feature = "write-ops")]
+mod temp;
+// Not feature-gated: **both** builds mint a file version, because the read helper
+// returns the one the write helper later checks (design D3, and the v3 contract's
+// ``returned_by``). Keeping it out of the write build would mean two recipes for
+// one exchanged value.
+mod version;
+#[cfg(feature = "write-ops")]
+mod write;
 
 use std::sync::mpsc::{self, Sender};
 
@@ -258,6 +267,66 @@ fn dispatch(
                     .unwrap_or("")
             }))
         }
+        // The write operations exist only in the build that has them. In the
+        // read-only binary this arm is absent, so a write frame falls through to
+        // `UnknownOp` -- the same answer as any other op the helper does not
+        // have, which is why the read-only entry needs no separate "write
+        // refused" check to be trustworthy.
+        #[cfg(feature = "write-ops")]
+        "write" => {
+            check_keys(
+                &request.params,
+                &["path", "content", "encoding", "expected_version", "create"],
+            )?;
+            let path = string_param(&request.params, "path")?;
+            let encoding = optional_string_param(&request.params, "encoding")?;
+            if let Some(name) = encoding.as_deref() {
+                if name != "utf8" {
+                    // Only UTF-8 text is accepted. Base64 or a binary channel
+                    // would be a second content path with its own bounds, and
+                    // this helper's job is a bounded text write.
+                    return Err(Code::InvalidParams);
+                }
+            }
+            let content = string_param(&request.params, "content")?;
+            let expected = optional_string_param(&request.params, "expected_version")?;
+            let create = optional_bool_param(&request.params, "create")?.unwrap_or(false);
+            if create && expected.is_some() {
+                // "create" and "overwrite this version" are contradictory
+                // instructions; refusing is the only answer that cannot be read
+                // as permission for the other one.
+                return Err(Code::InvalidParams);
+            }
+            let grant = registry.get(grant_id(request)?)?;
+            write::write(grant, &path, content.as_bytes(), expected.as_deref(), create)
+        }
+        #[cfg(feature = "write-ops")]
+        "edit" => {
+            check_keys(
+                &request.params,
+                &[
+                    "path",
+                    "old_string",
+                    "new_string",
+                    "replace_all",
+                    "expected_version",
+                ],
+            )?;
+            let path = string_param(&request.params, "path")?;
+            let old = string_param(&request.params, "old_string")?;
+            let new = string_param(&request.params, "new_string")?;
+            let replace_all = optional_bool_param(&request.params, "replace_all")?.unwrap_or(false);
+            let expected = string_param(&request.params, "expected_version")?;
+            let grant = registry.get(grant_id(request)?)?;
+            write::edit(grant, &path, &old, &new, replace_all, &expected)
+        }
+        #[cfg(feature = "write-ops")]
+        "mkdir" => {
+            check_keys(&request.params, &["path"])?;
+            let path = string_param(&request.params, "path")?;
+            let grant = registry.get(grant_id(request)?)?;
+            write::mkdir(grant, &path)
+        }
         _ => Err(Code::UnknownOp),
     }
 }
@@ -331,6 +400,7 @@ fn describe(code: Code) -> &'static str {
         Code::Unsupported => "the platform cannot enforce the required check",
         Code::IoError => "the filesystem reported an error",
         Code::Cancelled => "the request was cancelled",
+        Code::FileChanged => "the file changed since it was read; nothing was written",
         Code::Internal => "an internal error occurred",
     }
 }
@@ -360,11 +430,35 @@ mod tests {
             dispatch(&mut registry, &request("exec", json!({})), &cancel),
             Err(Code::UnknownOp),
         );
-        for op in ["write", "unlink", "rename", "shell", "chmod", "spawn"] {
+        // The operations that must not exist in *either* build: there is no way
+        // to delete, rename, change permissions, or start a process, and no
+        // request field can add one.
+        for op in ["unlink", "remove", "rename", "chmod", "shell", "spawn", "exec"] {
             assert_eq!(
                 dispatch(&mut registry, &request(op, json!({})), &cancel),
                 Err(Code::UnknownOp),
                 "{op} must not exist",
+            );
+        }
+        // `write` exists only in the build that has the limited write
+        // operations; this assertion is what makes "the read-only helper cannot
+        // write" a checked property of the read-only binary rather than a claim.
+        #[cfg(not(feature = "write-ops"))]
+        for op in ["write", "edit", "mkdir"] {
+            assert_eq!(
+                dispatch(&mut registry, &request(op, json!({})), &cancel),
+                Err(Code::UnknownOp),
+                "the read-only build must not have {op}",
+            );
+        }
+        // ...and in the write build those three are real operations, refused
+        // here only because the request names no grant and no parameters.
+        #[cfg(feature = "write-ops")]
+        for op in ["write", "edit", "mkdir"] {
+            assert_ne!(
+                dispatch(&mut registry, &request(op, json!({})), &cancel),
+                Err(Code::UnknownOp),
+                "{op} must exist in the write build",
             );
         }
     }

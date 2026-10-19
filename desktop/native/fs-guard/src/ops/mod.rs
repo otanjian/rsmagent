@@ -1,20 +1,24 @@
-//! The read-side operations: `list`, `stat`, `read`.
+//! The read-side operations: `list`, `stat`, `read`, `search`.
 //!
-//! Every operation is bounded by construction (task 7.5): a listing returns at
-//! most one page and reports how many entries it skipped, a read returns at
-//! most one chunk and says whether more remains, and both poll the cancel flag
-//! so a long enumeration cannot pin the UI.
+//! Every operation is bounded by construction: a listing returns at most one page
+//! and reports how many entries it skipped, a read returns at most one chunk and
+//! says whether more remains, and all of them poll the cancel flag so a long
+//! enumeration cannot pin the UI.
 //!
 //! Nothing here re-derives a path from a *string* that a caller supplied after
-//! the first validation: `resolve` opens each component with `openat`, and the
-//! metadata is read from the resulting descriptor. That is what makes the
-//! "listed it, then it was swapped" race a non-event.
+//! the first validation: `resolve` opens each component relative to the held
+//! root handle, and the metadata is read from the resulting handle. That is what
+//! makes the "listed it, then it was swapped" race a non-event.
+//!
+//! What is platform-independent is the whole of the logic below; the few
+//! primitives that need a syscall -- re-open a directory for its own offset,
+//! enumerate it, stat one entry through its parent -- live in [`crate::paths`]
+//! per platform. Splitting it there rather than here is what keeps one reviewed
+//! implementation of "list a directory, bounded and cancellable" for both.
 
 use std::collections::HashSet;
-use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
@@ -27,15 +31,15 @@ use crate::protocol::{Code, MAX_PAGE};
 ///
 /// Chosen so the base64 response still fits inside one 64 KiB frame: 32 KiB of
 /// raw bytes becomes ~43.7 KiB of base64, leaving room for the envelope. A
-/// larger chunk would make every read fail the frame bound instead of
-/// returning data.
+/// larger chunk would make every read fail the frame bound instead of returning
+/// data.
 pub const MAX_READ_CHUNK: u64 = 32 * 1024;
 
-/// Largest number of directory entries inspected in one `list` call.
+/// Largest number of directory entries inspected in one call.
 ///
 /// The page itself is smaller; this bounds the *scan* so a directory with
-/// millions of entries cannot make the helper allocate without limit. Hitting
-/// it is reported as `truncated` rather than silently returning a partial view.
+/// millions of entries cannot make the helper allocate without limit. Hitting it
+/// is reported as `truncated` rather than silently returning a partial view.
 pub const MAX_SCAN_ENTRIES: usize = 20_000;
 
 /// Shared cancellation set. `cancel` inserts; long operations poll.
@@ -52,25 +56,12 @@ fn is_cancelled(cancel: &CancelFlag, request_id: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Re-open the directory itself as an independent descriptor.
+/// Whether a request has been cancelled.
 ///
-/// This is `openat(parent, ".")`, **not** `dup(parent)`. The distinction is the
-/// whole reason this function exists: `dup` shares the file description, so the
-/// directory offset is shared too, and the second `readdir` pass would start
-/// where the first one stopped -- a directory listed twice would look empty the
-/// second time. A fresh open gets its own offset and its own stream.
-fn reopen_directory(parent: &File) -> Result<File, Code> {
-    let dot = CString::new(".").map_err(|_| Code::Internal)?;
-    let flags =
-        libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NONBLOCK | libc::O_NOFOLLOW;
-    // SAFETY: `dot` is a valid NUL-terminated string that outlives the call,
-    // and `parent` is a live descriptor.
-    let fd = unsafe { libc::openat(parent.as_raw_fd(), dot.as_ptr(), flags) };
-    if fd < 0 {
-        return Err(Code::IoError);
-    }
-    // SAFETY: `openat` returned a fresh descriptor we now own exclusively.
-    Ok(unsafe { File::from_raw_fd(fd) })
+/// Public because the per-platform enumeration loops poll it, and they must poll
+/// the *same* set the reader thread inserts into.
+pub fn is_cancelled_for(cancel: &CancelFlag, request_id: &str) -> bool {
+    is_cancelled(cancel, request_id)
 }
 
 /// Resolve a relative path against the grant.
@@ -82,10 +73,38 @@ fn resolve(grant: &Grant, relpath: &str, want_directory: bool) -> Result<(File, 
         if !want_directory {
             return Err(Code::InvalidParams);
         }
-        return Ok((reopen_directory(grant.root())?, Kind::Directory));
+        // A fresh handle rather than a duplicated one: see `reopen_directory`.
+        return Ok((paths::reopen_directory(&grant.root_ref())?, Kind::Directory));
     }
     let components = paths::validate_relative_path(relpath)?;
     paths::open_relative(grant.root(), &components, want_directory)
+}
+
+/// The walk for a caller that does not know whether the target is a file or a
+/// directory, and must find out (`stat`).
+///
+/// Separate from [`resolve`] because the difference is the *access intent*, not a
+/// flag: on Windows the intent decides whether the kernel is told to require a
+/// shape, and requiring one makes the other unreachable. On unix a plain
+/// `O_RDONLY` already opens both, so this is the same call there.
+#[cfg(windows)]
+fn resolve_any(grant: &Grant, relpath: &str) -> Result<(File, Kind), Code> {
+    if relpath.is_empty() || relpath == "." {
+        return Ok((paths::reopen_directory(&grant.root_ref())?, Kind::Directory));
+    }
+    let components = paths::validate_relative_path(relpath)?;
+    paths::open_relative_with(
+        grant.root(),
+        &components,
+        false,
+        paths::Access::ReadEither,
+    )
+}
+
+/// See [`resolve_any`]: unix needs no special intent, so this delegates.
+#[cfg(not(windows))]
+fn resolve_any(grant: &Grant, relpath: &str) -> Result<(File, Kind), Code> {
+    resolve(grant, relpath, false)
 }
 
 /// One `list` call.
@@ -101,13 +120,13 @@ pub fn list(
     let page_size = page_size.unwrap_or(200).clamp(1, MAX_PAGE) as usize;
     let (directory, _) = resolve(grant, relpath, true)?;
 
-    let mut names = read_names(&directory, request_id, cancel)?;
+    let mut names = paths::read_names(&directory, request_id, cancel)?;
     names.sort();
     let scanned = names.len();
     let scan_truncated = scanned >= MAX_SCAN_ENTRIES;
 
-    // The cursor is the last name of the previous page, so paging is stable
-    // even if the directory changes between calls: a name sorts where it sorts.
+    // The cursor is the last name of the previous page, so paging is stable even
+    // if the directory changes between calls: a name sorts where it sorts.
     let start = match cursor {
         Some(after) => names.partition_point(|name| name.as_str() <= after),
         None => 0,
@@ -130,22 +149,21 @@ pub fn list(
             skipped += 1;
             continue;
         }
-        // Metadata comes from the directory handle, never by following the
-        // name: `AT_SYMLINK_NOFOLLOW` is what keeps a link from being typed as
-        // whatever it points at.
-        let stat = match stat_at(&directory, &name) {
+        // Metadata comes from the directory handle, never by following the name:
+        // a link is classified as a link, not as whatever it points at.
+        let stat = match paths::stat_at(&directory, &name) {
             Some(stat) => stat,
             None => {
                 skipped += 1;
                 continue;
             }
         };
-        match classify_stat(&stat) {
+        match stat.kind {
             Some(kind) => entries.push(json!({
                 "name": name,
                 "kind": kind,
-                "size": if kind == "file" { Some(stat.st_size as u64) } else { None },
-                "modified": stat.st_mtime as i64,
+                "size": if kind == "file" { Some(stat.size) } else { None },
+                "modified": stat.modified,
             })),
             None => skipped += 1,
         }
@@ -167,113 +185,30 @@ pub fn list(
     }))
 }
 
-/// Read directory names, bounded and cancellable.
-fn read_names(
-    directory: &File,
-    request_id: &str,
-    cancel: &CancelFlag,
-) -> Result<Vec<String>, Code> {
-    // A fresh descriptor, so this enumeration has its own offset and repeating
-    // a listing is not affected by the previous one. `fdopendir` takes
-    // ownership of the descriptor, so the `File` is forgotten rather than
-    // closed twice.
-    let handle = reopen_directory(directory)?;
-    // SAFETY: `handle` is a live descriptor; ownership passes to the DIR stream.
-    let stream = unsafe { libc::fdopendir(handle.as_raw_fd()) };
-    if stream.is_null() {
-        return Err(Code::IoError);
-    }
-    // The stream owns the descriptor now.
-    std::mem::forget(handle);
-
-    let mut names = Vec::new();
-    loop {
-        if names.len() >= MAX_SCAN_ENTRIES {
-            break;
-        }
-        if names.len() % 256 == 0 && is_cancelled(cancel, request_id) {
-            // SAFETY: `stream` is a live DIR stream opened above.
-            unsafe { libc::closedir(stream) };
-            return Err(Code::Cancelled);
-        }
-        // SAFETY: `stream` is a live DIR stream.
-        let entry = unsafe { libc::readdir(stream) };
-        if entry.is_null() {
-            break;
-        }
-        // SAFETY: `readdir` returned a valid `dirent` for this stream.
-        let raw = unsafe { (*entry).d_name.as_ptr() };
-        // SAFETY: `d_name` is NUL-terminated within the dirent.
-        let name = unsafe { CStr::from_ptr(raw) };
-        let name = name.to_bytes();
-        if name == b"." || name == b".." {
-            continue;
-        }
-        names.push(paths::display_name(name));
-    }
-    // SAFETY: `stream` is a live DIR stream opened above and not used after this.
-    unsafe { libc::closedir(stream) };
-    Ok(names)
-}
-
-fn stat_at(directory: &File, name: &str) -> Option<libc::stat> {
-    let c_name = CString::new(name.as_bytes()).ok()?;
-    // SAFETY: `stat` is zeroed before use, `directory` is live and `c_name`
-    // outlives the call.
-    let mut stat: libc::stat = unsafe { std::mem::zeroed() };
-    let rc = unsafe {
-        libc::fstatat(
-            directory.as_raw_fd(),
-            c_name.as_ptr(),
-            &mut stat,
-            libc::AT_SYMLINK_NOFOLLOW,
-        )
-    };
-    if rc != 0 {
-        return None;
-    }
-    Some(stat)
-}
-
-/// Map a stat result to a reported kind, or `None` when V1 refuses the entry.
-fn classify_stat(stat: &libc::stat) -> Option<&'static str> {
-    let mode = stat.st_mode & libc::S_IFMT;
-    if mode == libc::S_IFDIR {
-        return Some("dir");
-    }
-    if mode != libc::S_IFREG {
-        // Symlinks (never followed), devices, FIFOs and sockets.
-        return None;
-    }
-    if stat.st_nlink > 1 {
-        // A hard-linked file is reachable under a name the user did not authorise.
-        return None;
-    }
-    Some("file")
-}
-
 /// One `stat` call.
 pub fn stat(grant: &Grant, relpath: &str) -> Result<Value, Code> {
-    let (file, _) = resolve(grant, relpath, false)?;
-    let stat = fstat_of(&file)?;
-    let kind = classify_stat(&stat).ok_or(Code::RejectedEntry)?;
+    // Not esolve: stat reports the kind, so it must not ask the kernel to
+    // require one. See esolve_any for why that is Windows-specific.
+    let (file, kind) = resolve_any(grant, relpath)?;
+    let stat = paths::stat_of(&file)?;
+    let kind = match kind {
+        Kind::Directory => "dir",
+        Kind::RegularFile => {
+            if !stat.regular || stat.links > 1 {
+                // A hard-linked file is reachable under a name the user did not
+                // authorise.
+                return Err(Code::RejectedEntry);
+            }
+            "file"
+        }
+    };
     Ok(json!({
         "path": relpath,
         "grant_version": grant.version,
         "kind": kind,
-        "size": if kind == "file" { Some(stat.st_size as u64) } else { None },
-        "modified": stat.st_mtime as i64,
+        "size": if kind == "file" { Some(stat.size) } else { None },
+        "modified": stat.modified,
     }))
-}
-
-fn fstat_of(file: &File) -> Result<libc::stat, Code> {
-    // SAFETY: `stat` is zeroed before use and `file` is a live descriptor.
-    let mut stat: libc::stat = unsafe { std::mem::zeroed() };
-    let rc = unsafe { libc::fstat(file.as_raw_fd(), &mut stat) };
-    if rc != 0 {
-        return Err(Code::IoError);
-    }
-    Ok(stat)
 }
 
 /// One `read` call: a bounded chunk, base64-encoded for the JSON frame.
@@ -288,12 +223,12 @@ pub fn read(
     if is_cancelled(cancel, request_id) {
         return Err(Code::Cancelled);
     }
-    let (mut file, _) = resolve(grant, relpath, false)?;
-    let stat = fstat_of(&file)?;
-    if classify_stat(&stat).is_none() {
+    let (mut file, kind) = resolve(grant, relpath, false)?;
+    let stat = paths::stat_of(&file)?;
+    if kind != Kind::RegularFile || !stat.regular || stat.links > 1 {
         return Err(Code::RejectedEntry);
     }
-    let total = stat.st_size.max(0) as u64;
+    let total = stat.size;
     if offset > total {
         return Err(Code::InvalidParams);
     }
@@ -328,6 +263,20 @@ pub fn read(
         "truncated": truncated,
         "encoding": "base64",
         "data": base64(&buffer),
+        // The opaque version of the object these bytes came from (task 4.2).
+        //
+        // Returned with *every* chunk, not only the first: a caller that reads a
+        // large file in pieces must be able to start editing from whatever it
+        // last saw, and making the version depend on which chunk it happened to
+        // end on would be a trap. It describes the object, so it is the same value
+        // each time until the object actually changes.
+        //
+        // This is what makes v3's ``expected_version`` precondition reachable at
+        // all: the contract requires that only a prior read through the same
+        // authorised root can produce an acceptable value, which is exactly what
+        // minting it here -- from the grant, the relative path and the open
+        // object's identity -- provides.
+        "version": crate::version::version_for(grant, relpath, &stat),
     }))
 }
 
@@ -398,8 +347,8 @@ pub struct SearchQuery<'a> {
 /// them apart will present a partial result as a complete one.
 ///
 /// Matching is literal on purpose: a regular expression over untrusted file
-/// content and untrusted names is a denial-of-service surface, and the spec
-/// asks for 字面量 search.
+/// content and untrusted names is a denial-of-service surface, and the spec asks
+/// for 字面量 search.
 pub fn search(
     grant: &Grant,
     query: &SearchQuery<'_>,
@@ -444,7 +393,7 @@ pub fn search(
         );
 
     let start = if relpath.is_empty() || relpath == "." {
-        reopen_directory(grant.root())?
+        paths::reopen_directory(&grant.root_ref())?
     } else {
         let components = paths::validate_relative_path(relpath)?;
         let (directory, kind) = paths::open_relative(grant.root(), &components, true)?;
@@ -452,9 +401,9 @@ pub fn search(
         directory
     };
 
-    // The starting base is what result paths are prefixed with. `.` (or an
-    // empty path, meaning the root) contributes nothing, so results read as
-    // paths relative to the authorised root rather than as `./x`.
+    // The starting base is what result paths are prefixed with. `.` (or an empty
+    // path, meaning the root) contributes nothing, so results read as paths
+    // relative to the authorised root rather than as `./x`.
     let base = if relpath.is_empty() || relpath == "." {
         String::new()
     } else {
@@ -475,7 +424,7 @@ pub fn search(
             return Err(Code::Cancelled);
         }
 
-        for name in read_names(&directory, request_id, cancel)? {
+        for name in paths::read_names(&directory, request_id, cancel)? {
             if std::time::Instant::now() >= deadline {
                 truncated = Some("deadline");
                 break 'walk;
@@ -489,19 +438,19 @@ pub fn search(
                 continue;
             }
             if paths::is_hidden(&name) {
-                // Search never descends into hidden entries, matching the
-                // default listing policy.
+                // Search never descends into hidden entries, matching the default
+                // listing policy.
                 skipped += 1;
                 continue;
             }
-            let stat = match stat_at(&directory, &name) {
+            let stat = match paths::stat_at(&directory, &name) {
                 Some(stat) => stat,
                 None => {
                     skipped += 1;
                     continue;
                 }
             };
-            let kind = match classify_stat(&stat) {
+            let kind = match stat.kind {
                 Some(kind) => kind,
                 None => {
                     skipped += 1;
@@ -521,9 +470,9 @@ pub fn search(
                     skipped += 1;
                     continue;
                 }
-                // Re-open the child *through this directory handle*, so the
-                // walk can never leave the authorised root even if a component
-                // was swapped since the parent was listed.
+                // Re-open the child *through this directory handle*, so the walk
+                // can never leave the authorised root even if a component was
+                // swapped since the parent was listed.
                 match paths::open_relative(&directory, std::slice::from_ref(&name), true) {
                     Ok((child, _)) => stack.push((child, relative, depth + 1)),
                     Err(_) => skipped += 1,
@@ -557,8 +506,8 @@ pub fn search(
             results.push(json!({
                 "path": relative,
                 "kind": kind,
-                "size": stat.st_size as u64,
-                "modified": stat.st_mtime as i64,
+                "size": stat.size,
+                "modified": stat.modified,
             }));
             if results.len() >= limit {
                 truncated = Some("results");
@@ -589,11 +538,11 @@ fn contains_literal(
     cancel: &CancelFlag,
     request_id: &str,
 ) -> Result<Option<u64>, Code> {
-    let stat = fstat_of(file)?;
-    let size = stat.st_size.max(0) as u64;
+    let stat = paths::stat_of(file)?;
+    let size = stat.size;
     if size > MAX_SEARCH_FILE_BYTES {
-        // Reported as "not searched" rather than "not found": the caller must
-        // not read a skipped file as a negative match.
+        // Reported as "not searched" rather than "not found": the caller must not
+        // read a skipped file as a negative match.
         return Ok(None);
     }
     if needle.is_empty() || size < needle.len() as u64 {
@@ -679,5 +628,230 @@ mod tests {
         assert!(encoded
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '='));
+    }
+
+    /// The four read-side operations, driven through one real directory.
+    ///
+    /// These run on both platforms: everything they touch goes through the
+    /// per-platform primitives, so a passing run here is what says the two
+    /// backends behave the same way.
+    #[test]
+    fn list_is_bounded_and_reports_kinds() {
+        let base = std::env::temp_dir().join(format!("fsguard-list-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("sub")).unwrap();
+        std::fs::write(base.join("top.txt"), b"hello").unwrap();
+
+        use crate::grants::GrantRegistry;
+        let mut registry = GrantRegistry::new();
+        let (id, _, _) = registry.open_root(base.to_str().unwrap()).unwrap();
+        let grant = registry.get(&id).unwrap();
+        let cancel = new_cancel_flag();
+
+        let page = list(grant, "", None, None, false, "req", &cancel).unwrap();
+        let entries = page["entries"].as_array().unwrap();
+        let names: Vec<&str> = entries
+            .iter()
+            .map(|e| e["name"].as_str().unwrap())
+            .collect();
+        assert!(names.contains(&"sub"), "{names:?}");
+        assert!(names.contains(&"top.txt"), "{names:?}");
+        let dir = entries.iter().find(|e| e["name"] == "sub").unwrap();
+        assert_eq!(dir["kind"], "dir");
+        assert!(dir["size"].is_null(), "a directory has no size");
+        let file = entries.iter().find(|e| e["name"] == "top.txt").unwrap();
+        assert_eq!(file["kind"], "file");
+        assert_eq!(file["size"], 5);
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn list_hides_dot_entries_unless_asked() {
+        let base = std::env::temp_dir().join(format!("fsguard-hidden-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join(".hidden"), b"x").unwrap();
+        std::fs::write(base.join("shown"), b"x").unwrap();
+
+        use crate::grants::GrantRegistry;
+        let mut registry = GrantRegistry::new();
+        let (id, _, _) = registry.open_root(base.to_str().unwrap()).unwrap();
+        let grant = registry.get(&id).unwrap();
+        let cancel = new_cancel_flag();
+
+        let default = list(grant, "", None, None, false, "req", &cancel).unwrap();
+        let names: Vec<String> = default["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["name"].as_str().unwrap().to_string())
+            .collect();
+        assert!(!names.contains(&".hidden".to_string()), "{names:?}");
+        assert!(names.contains(&"shown".to_string()), "{names:?}");
+
+        let all = list(grant, "", None, None, true, "req", &cancel).unwrap();
+        let names: Vec<String> = all["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["name"].as_str().unwrap().to_string())
+            .collect();
+        assert!(names.contains(&".hidden".to_string()), "{names:?}");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn read_returns_a_bounded_chunk_and_says_whether_more_remains() {
+        let base = std::env::temp_dir().join(format!("fsguard-read-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let payload = vec![b'a'; 100];
+        std::fs::write(base.join("big.txt"), &payload).unwrap();
+
+        use crate::grants::GrantRegistry;
+        let mut registry = GrantRegistry::new();
+        let (id, _, _) = registry.open_root(base.to_str().unwrap()).unwrap();
+        let grant = registry.get(&id).unwrap();
+        let cancel = new_cancel_flag();
+
+        let first = read(grant, "big.txt", 0, Some(40), "req", &cancel).unwrap();
+        assert_eq!(first["bytes"], 40);
+        assert_eq!(first["total"], 100);
+        assert_eq!(first["truncated"], true);
+        assert_eq!(first["encoding"], "base64");
+
+        let last = read(grant, "big.txt", 80, Some(40), "req", &cancel).unwrap();
+        assert_eq!(last["bytes"], 20);
+        assert_eq!(last["truncated"], false);
+
+        // A read past the end is a parameter error, not an empty success.
+        assert_eq!(
+            read(grant, "big.txt", 101, None, "req", &cancel).err(),
+            Some(Code::InvalidParams)
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn read_refuses_a_directory() {
+        let base = std::env::temp_dir().join(format!("fsguard-readdir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("sub")).unwrap();
+
+        use crate::grants::GrantRegistry;
+        let mut registry = GrantRegistry::new();
+        let (id, _, _) = registry.open_root(base.to_str().unwrap()).unwrap();
+        let grant = registry.get(&id).unwrap();
+        let cancel = new_cancel_flag();
+        assert!(read(grant, "sub", 0, None, "req", &cancel).is_err());
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn search_finds_a_name_and_a_literal_within_a_file() {
+        let base = std::env::temp_dir().join(format!("fsguard-search-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("sub")).unwrap();
+        std::fs::write(base.join("sub").join("deep.txt"), b"needle inside").unwrap();
+        std::fs::write(base.join("other.txt"), b"nothing here").unwrap();
+
+        use crate::grants::GrantRegistry;
+        let mut registry = GrantRegistry::new();
+        let (id, _, _) = registry.open_root(base.to_str().unwrap()).unwrap();
+        let grant = registry.get(&id).unwrap();
+        let cancel = new_cancel_flag();
+
+        let by_name = search(
+            grant,
+            &SearchQuery {
+                path: "",
+                name_contains: Some("deep"),
+                text_contains: None,
+                max_results: None,
+                deadline_ms: None,
+            },
+            "req",
+            &cancel,
+        )
+        .unwrap();
+        let results = by_name["results"].as_array().unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0]["path"], "sub/deep.txt");
+
+        let by_text = search(
+            grant,
+            &SearchQuery {
+                path: "",
+                name_contains: None,
+                text_contains: Some("needle"),
+                max_results: None,
+                deadline_ms: None,
+            },
+            "req",
+            &cancel,
+        )
+        .unwrap();
+        let results = by_text["results"].as_array().unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0]["path"], "sub/deep.txt");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn search_without_a_criterion_is_refused() {
+        let base = std::env::temp_dir().join(format!("fsguard-nocrit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+
+        use crate::grants::GrantRegistry;
+        let mut registry = GrantRegistry::new();
+        let (id, _, _) = registry.open_root(base.to_str().unwrap()).unwrap();
+        let grant = registry.get(&id).unwrap();
+        let cancel = new_cancel_flag();
+        assert_eq!(
+            search(
+                grant,
+                &SearchQuery {
+                    path: "",
+                    name_contains: None,
+                    text_contains: None,
+                    max_results: None,
+                    deadline_ms: None,
+                },
+                "req",
+                &cancel,
+            )
+            .err(),
+            Some(Code::InvalidParams)
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_cancelled_request_is_reported_as_cancelled() {
+        let base = std::env::temp_dir().join(format!("fsguard-cancel-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("a.txt"), b"data").unwrap();
+
+        use crate::grants::GrantRegistry;
+        let mut registry = GrantRegistry::new();
+        let (id, _, _) = registry.open_root(base.to_str().unwrap()).unwrap();
+        let grant = registry.get(&id).unwrap();
+        let cancel = new_cancel_flag();
+        cancel.lock().unwrap().insert("req".to_string());
+
+        assert_eq!(
+            read(grant, "a.txt", 0, None, "req", &cancel).err(),
+            Some(Code::Cancelled)
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

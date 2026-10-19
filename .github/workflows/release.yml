@@ -154,18 +154,75 @@ jobs:
         working-directory: desktop
         run: npm ci
 
-      - name: Build the macOS local file helper
+      # Both helpers, and they have to be *collected* as well as built.
+      #
+      # ``resourcesPath`` is where the packaged app looks for them
+      # (``fs-guard-binary.ts``: ``<install>/resources/fs-guard[.exe]``), and
+      # ``extraResources`` copies ``desktop/resources/`` there. So the artifact
+      # cargo produces under ``target/release/`` is not enough on its own: without
+      # the copy below it stays in the build tree, and the installed app finds
+      # nothing -- which is exactly how "read local files" worked in a dev tree and
+      # not from a package.
+      #
+      # Two binaries, not one: the read entry (``fs-guard``) and the write entry
+      # (``project-fs-guard``, behind the ``write-ops`` feature). They are separate
+      # on purpose, so the read helper cannot be talked into writing.
+      - name: Build the local file helpers
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --release --locked \
+            --manifest-path desktop/native/fs-guard/Cargo.toml
+          cargo build --release --locked --features write-ops \
+            --manifest-path desktop/native/fs-guard/Cargo.toml
+          out=desktop/native/fs-guard/target/release
+          mkdir -p desktop/resources
+          case "${{ matrix.platform }}" in
+            win)
+              cp "$out/fs-guard.exe" "$out/project-fs-guard.exe" desktop/resources/
+              ;;
+            *)
+              cp "$out/fs-guard" "$out/project-fs-guard" desktop/resources/
+              ;;
+          esac
+          ls -l desktop/resources/
+
+      - name: Verify the collected helper matches this job's target
         if: matrix.platform == 'mac'
         shell: bash
         run: |
-          cargo build --release --locked --manifest-path desktop/native/fs-guard/Cargo.toml
+          set -euo pipefail
           want=arm64
           [ "${{ matrix.arch }}" = "arm64" ] || want=x86_64
-          got="$(lipo -archs desktop/native/fs-guard/target/release/fs-guard)"
+          got="$(lipo -archs desktop/resources/fs-guard)"
+          echo "collected helper arch: $got (want $want)"
           if [ "$got" != "$want" ]; then
             echo "::error::file helper is $got but this job targets $want"
             exit 1
           fi
+
+      # A missing helper is not something the app can work around: the file tools
+      # simply refuse, so a release shipped without one looks like a permissions
+      # bug to every user. Fail the build here instead of in the field.
+      - name: Verify the helpers are in the packaged resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=""
+          case "${{ matrix.platform }}" in
+            win) names="fs-guard.exe project-fs-guard.exe" ;;
+            *)   names="fs-guard project-fs-guard" ;;
+          esac
+          for name in $names; do
+            if [ ! -f "desktop/resources/$name" ]; then
+              missing="$missing $name"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::the packaged resources are missing:$missing"
+            exit 1
+          fi
+          echo "both helpers collected: $names"
 
       # Bundle ripgrep on Windows so the grep tool has a fast backend out of the
       # box instead of falling back to PowerShell (slow, and prone to encoding /

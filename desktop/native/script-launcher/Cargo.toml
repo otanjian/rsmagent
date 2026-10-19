@@ -1,0 +1,39 @@
+[package]
+name = "script-launcher"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Native isolated launcher for desktop project scripts (design D8)"
+license = "UNLICENSED"
+publish = false
+
+# Two binaries from one source, like fs-guard: a CLI a human can run and a
+# library the desktop can embed. The isolation policy lives in the library, so
+# there is exactly one implementation of it.
+[lib]
+name = "script_launcher"
+path = "src/lib.rs"
+
+[[bin]]
+name = "script-launcher"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Isolation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_System_Console",
+] }
+
+[profile.release]
+panic = "abort"

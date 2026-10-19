@@ -1,29 +1,41 @@
 //! Root grants: the helper's memory of what the user authorised.
 //!
 //! A grant is the *only* thing that makes a path reachable. It holds the open
-//! directory descriptor for the user's chosen root plus the identity
-//! (device + inode) captured when it was opened. Two rules follow from D6:
+//! directory handle for the user's chosen root plus the identity (device +
+//! object id, spelled `st_dev`/`st_ino` on unix and volume serial/file index on
+//! Windows) captured when it was opened. Two rules follow from D6:
 //!
 //! * **The root is re-verified on every request.** If the identity no longer
-//!   matches, the grant fails and the user is asked to choose again, rather
-//!   than silently reading whatever now sits at that path (task 7.2).
+//!   matches, the grant fails and the user is asked to choose again, rather than
+//!   silently reading whatever now sits at that path.
 //! * **Grants live in memory only.** Nothing here is persisted, so quitting the
 //!   helper drops every authorisation. Persisting a candidate path is the main
 //!   process's job and is explicitly only a *candidate*, not an active grant.
 //!
 //! Version numbers increase per root and are echoed to the caller so a result
-//! produced against a stale grant can be discarded (task 7.5's
-//! `grant_version`-bound cursor).
+//! produced against a stale grant can be discarded (the `grant_version`-bound
+//! cursor).
+//!
+//! Everything here is platform-independent except where the entropy for a grant
+//! id comes from, which is why that one item is a per-platform function.
 
 use std::collections::HashMap;
-use std::ffi::CString;
 use std::fs::File;
 
-use crate::paths::{self, RootIdentity};
+use crate::paths::{self, RootIdentity, RootPath};
 use crate::protocol::Code;
 
 /// One authorised root.
 pub struct Grant {
+    /// The capability name the caller addresses this grant by.
+    ///
+    /// Held on the grant as well as in the registry map because it is part of the
+    /// material a file version is bound to: a value minted under one grant must
+    /// not match another, and the map key is not reachable from the grant itself.
+    ///
+    /// Read by `src/write.rs`, which only exists in the write build.
+    #[allow(dead_code)]
+    pub id: String,
     pub version: u32,
     root: File,
     identity: RootIdentity,
@@ -31,22 +43,49 @@ pub struct Grant {
     /// re-check below. It is never serialised into a response, a log line or an
     /// error message: callers address the grant by id, and the display label is
     /// returned from `open_root` instead of being echoed from here.
-    path: CString,
+    path: RootPath,
 }
 
 impl Grant {
-    /// The held root descriptor.
+    /// The held root handle.
     pub fn root(&self) -> &File {
         &self.root
+    }
+
+    /// The absolute path the user selected, for a backend that must re-open the
+    /// object by name rather than by handle. Never serialised or logged.
+    ///
+    /// Reached through [`Grant::root_ref`] by every caller; kept as its own
+    /// accessor so a future direct user has an obvious way in that does not
+    /// tempt anyone into making the field public.
+    #[allow(dead_code)]
+    pub fn root_path(&self) -> &RootPath {
+        &self.path
+    }
+
+    /// The identity captured when the grant was created, so a re-open by path can
+    /// be checked against it instead of being trusted.
+    #[allow(dead_code)]
+    pub fn root_identity(&self) -> RootIdentity {
+        self.identity
+    }
+
+    /// Everything a backend may need to reach this root again.
+    pub fn root_ref(&self) -> paths::RootRef<'_> {
+        paths::RootRef {
+            handle: &self.root,
+            path: &self.path,
+            identity: self.identity,
+        }
     }
 
     /// Fail unless the path still names the object the user selected.
     ///
     /// If the selected directory was renamed away, deleted, or replaced by a
     /// link to somewhere else, this fails and the caller must ask the user to
-    /// choose again. Note that the *held descriptor* keeps reading the original
-    /// object regardless -- that is the safe half of task 7.2 ("只访问原已打开
-    /// 的合法对象或失败"); this check is what stops a stale grant from being
+    /// choose again. Note that the *held handle* keeps reading the original
+    /// object regardless -- that is the safe half of the requirement ("只访问原已
+    /// 打开的合法对象或失败"); this check is what stops a stale grant from being
     /// treated as still authorising whatever now sits at that path.
     pub fn verify_identity(&self) -> Result<(), Code> {
         let current = paths::identity_of_path(&self.path)?;
@@ -70,13 +109,13 @@ impl GrantRegistry {
         }
     }
 
-    /// Authorise a root and return `(grant_id, version)`.
+    /// Authorise a root and return `(grant_id, version, label)`.
     ///
-    /// Refuses a network filesystem, a non-directory, and a symlinked root, so
-    /// a grant always names a real local directory object.
+    /// Refuses a network filesystem, a non-directory, and a reparse point or
+    /// symlink, so a grant always names a real local directory object.
     pub fn open_root(&mut self, absolute_path: &str) -> Result<(String, u32, String), Code> {
-        let c_path = paths::validate_root_path(absolute_path)?;
-        let file = paths::open_root(&c_path)?;
+        let path = paths::validate_root_path(absolute_path)?;
+        let file = paths::open_root(&path)?;
         paths::reject_network_root(&file)?;
         if paths::identity_of(&file).is_err() {
             return Err(Code::IoError);
@@ -91,10 +130,14 @@ impl GrantRegistry {
         self.grants.insert(
             id.clone(),
             Grant {
+                // The grant keeps its own copy of the id: it is part of the
+                // material a file version is bound to (see `write::version_for`),
+                // and the registry's map key is not reachable from the value.
+                id: id.clone(),
                 version,
                 root: file,
                 identity,
-                path: c_path,
+                path,
             },
         );
         Ok((id, version, label))
@@ -107,7 +150,7 @@ impl GrantRegistry {
         Ok(grant)
     }
 
-    /// Drop a grant and close its descriptor.
+    /// Drop a grant and close its handle.
     pub fn close(&mut self, grant_id: &str) -> Result<(), Code> {
         self.grants
             .remove(grant_id)
@@ -135,38 +178,21 @@ impl Default for GrantRegistry {
 
 /// A last path component, for display. Never the full absolute path: the helper
 /// does not echo host paths into diagnostics.
+///
+/// Both separators are treated as separators, because the label must not leak a
+/// whole path on either platform.
 fn label_for(absolute_path: &str) -> String {
     absolute_path
-        .trim_end_matches('/')
-        .rsplit('/')
+        .trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\'])
         .next()
         .unwrap_or("")
         .to_string()
 }
 
-/// 128 bits of entropy from the OS, hex-encoded.
-///
-/// A grant id is process-local, but it is still a capability name: guessing one
-/// must not be cheaper than reading the frame stream. `/dev/urandom` is the
-/// only source used; if it is unavailable the helper refuses to mint a grant
-/// rather than falling back to something predictable.
-fn new_grant_id() -> String {
-    use std::io::Read;
-    let mut bytes = [0u8; 16];
-    let mut source = match File::open("/dev/urandom") {
-        Ok(file) => file,
-        Err(_) => return fallback_grant_id(),
-    };
-    match source.read_exact(&mut bytes) {
-        Ok(()) => {}
-        Err(_) => return fallback_grant_id(),
-    }
-    hex(&bytes)
-}
-
-/// A non-cryptographic fallback, used only when `/dev/urandom` cannot be read.
-/// It mixes the clock, the pid and a process-local counter so two grants in one
-/// session cannot collide; it is not claimed to be unguessable.
+/// A non-cryptographic fallback, used only when the OS entropy source cannot be
+/// read. It mixes the clock, the pid and a process-local counter so two grants
+/// in one session cannot collide; it is not claimed to be unguessable.
 fn fallback_grant_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -191,6 +217,66 @@ fn hex(bytes: &[u8]) -> String {
     out
 }
 
+#[cfg(unix)]
+mod entropy {
+    use super::{fallback_grant_id, hex};
+
+    /// 128 bits of entropy from the OS, hex-encoded.
+    ///
+    /// A grant id is process-local, but it is still a capability name: guessing
+    /// one must not be cheaper than reading the frame stream. `/dev/urandom` is
+    /// the only source used; if it is unavailable the helper falls back to a
+    /// non-cryptographic value rather than failing every `open_root`.
+    pub fn new_grant_id() -> String {
+        use std::io::Read;
+        let mut bytes = [0u8; 16];
+        let mut source = match std::fs::File::open("/dev/urandom") {
+            Ok(file) => file,
+            Err(_) => return fallback_grant_id(),
+        };
+        match source.read_exact(&mut bytes) {
+            Ok(()) => {}
+            Err(_) => return fallback_grant_id(),
+        }
+        hex(&bytes)
+    }
+}
+
+#[cfg(windows)]
+mod entropy {
+    use super::{fallback_grant_id, hex};
+    use windows_sys::Win32::Security::Cryptography::{
+        BCryptGenRandom, BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+    };
+
+    /// 128 bits of entropy from the OS, hex-encoded.
+    ///
+    /// `BCryptGenRandom` with `BCRYPT_USE_SYSTEM_PREFERRED_RNG` is the documented
+    /// system RNG and needs no algorithm handle. It is the Windows counterpart
+    /// of reading `/dev/urandom`: a grant id is a capability name, so it must not
+    /// be cheaper to guess than reading the frame stream. If the call fails the
+    /// helper falls back to a non-cryptographic value rather than failing every
+    /// `open_root`.
+    pub fn new_grant_id() -> String {
+        let mut bytes = [0u8; 16];
+        // SAFETY: the buffer is owned and its exact length is passed.
+        let status = unsafe {
+            BCryptGenRandom(
+                std::ptr::null_mut(),
+                bytes.as_mut_ptr(),
+                bytes.len() as u32,
+                BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+            )
+        };
+        if status != 0 {
+            return fallback_grant_id();
+        }
+        hex(&bytes)
+    }
+}
+
+use entropy::new_grant_id;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,6 +293,8 @@ mod tests {
     fn a_label_never_contains_the_full_path() {
         assert_eq!(label_for("/Users/someone/secret-project"), "secret-project");
         assert_eq!(label_for("/Users/someone/reports/"), "reports");
+        assert_eq!(label_for(r"C:\Users\someone\secret-project"), "secret-project");
+        assert_eq!(label_for(r"C:\Users\someone\reports\"), "reports");
     }
 
     #[test]
@@ -226,28 +314,6 @@ mod tests {
     fn an_unknown_grant_is_refused() {
         let registry = GrantRegistry::new();
         assert_eq!(registry.get("nope").err(), Some(Code::NoSuchGrant));
-    }
-
-    #[test]
-    fn a_symlinked_root_is_refused() {
-        let base = std::env::temp_dir().join(format!("fsguard-symlink-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        std::fs::create_dir_all(&base).unwrap();
-        let real = base.join("real");
-        std::fs::create_dir_all(&real).unwrap();
-        let link = base.join("link");
-        std::os::unix::fs::symlink(&real, &link).unwrap();
-
-        let mut registry = GrantRegistry::new();
-        assert_eq!(
-            registry.open_root(link.to_str().unwrap()),
-            Err(Code::RejectedEntry),
-            "the selected root itself must not be a link",
-        );
-        // The real directory is accepted, so the refusal above is about the
-        // link and not about the parent path.
-        assert!(registry.open_root(real.to_str().unwrap()).is_ok());
-        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
@@ -301,6 +367,35 @@ mod tests {
         std::fs::remove_dir_all(&root).unwrap();
 
         assert_eq!(registry.get(&id).err(), Some(Code::Unsupported));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A root that is itself a link to a directory must be refused.
+    ///
+    /// Symlink creation needs a privilege on Windows that an ordinary user does
+    /// not hold, so the case that *is* reachable there -- a directory junction,
+    /// which any user can create -- is used instead. Both are reparse points and
+    /// the refusal is the same one.
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_root_is_refused() {
+        let base = std::env::temp_dir().join(format!("fsguard-symlink-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let real = base.join("real");
+        std::fs::create_dir_all(&real).unwrap();
+        let link = base.join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let mut registry = GrantRegistry::new();
+        assert_eq!(
+            registry.open_root(link.to_str().unwrap()),
+            Err(Code::RejectedEntry),
+            "the selected root itself must not be a link",
+        );
+        // The real directory is accepted, so the refusal above is about the
+        // link and not about the parent path.
+        assert!(registry.open_root(real.to_str().unwrap()).is_ok());
         let _ = std::fs::remove_dir_all(&base);
     }
 }

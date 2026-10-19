@@ -96,6 +96,13 @@ desktop/build/*
 # executable the way an installed app does and runs a real tool through it).
 !desktop/build/check-python-syntax.py
 !desktop/build/verify-backend-bundle.py
+# The script-runtime guard and the list it reads. Same rule as the guards above:
+# this one compares the packages the first-batch skills import against what the
+# bundle ships, so a missing entry fails the build instead of failing at output
+# time inside the shipped app -- which is how `xlsxwriter` went missing while
+# every deliverable was written through it.
+!desktop/build/check-script-runtime-deps.py
+!desktop/build/requirements-script-runtime.txt
 !desktop/build/build-feishu-vendor.py
 !desktop/build/entitlements.mac.plist
 !desktop/build/installer.nsh
@@ -114,6 +121,30 @@ desktop/resources/.icon-work/
 # Bundled ripgrep binary: downloaded by CI (release workflow) at build time,
 # never committed — it's a multi-MB platform-specific executable.
 desktop/resources/bin/
+
+# Bundled local-file helpers: built by CI from desktop/native/fs-guard and copied
+# into resources/ so the packaged app can find them (extraResources ships this
+# directory). Never committed: they are platform-specific ~1 MB executables built
+# from the source beside them, so a committed copy would go stale silently.
+# Copy them here locally with `cargo build --release [--features write-ops]` plus a
+# cp out of `target/release/` when you need a packaged layout in a dev tree.
+desktop/resources/fs-guard
+desktop/resources/fs-guard.exe
+desktop/resources/project-fs-guard
+desktop/resources/project-fs-guard.exe
+# The native script launcher (desktop/native/script-launcher). Same rule and the
+# same reason as the two helpers above: a ~1.5 MB platform-specific binary that CI
+# builds and that would go stale silently if it were committed.
+desktop/resources/script-launcher
+desktop/resources/script-launcher.exe
+
+# electron-builder output. `release/` sits outside `dist/`, so the whole tree --
+# the installer, its blockmap, win-unpacked (~1 GB) and latest.yml -- was one
+# `git add .` away from being committed. A versioned directory (`release-2.3.0`)
+# is how a build avoids overwriting the previous installer, so both the bare name
+# and the suffixed form are covered.
+desktop/release/
+desktop/release-*/
 
 .wrangler/
 
