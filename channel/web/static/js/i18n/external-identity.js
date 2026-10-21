@@ -9,6 +9,9 @@
         "zh": {
             "extid_title": "外部身份",
             "extid_bound_title": "已绑定身份",
+            "extid_stopped": "已停用",
+            "extid_restore": "恢复",
+            "extid_restored_ok": "已恢复该身份绑定",
             "extid_no_bindings": "该账号还没有绑定任何外部身份，绑定后对方发消息才会被识别。",
             "extid_add_title": "绑定新的外部身份",
             "extid_field_issuer": "应用 App ID（可留空）",
@@ -38,6 +41,9 @@
         "zh-Hant": {
             "extid_title": "外部身分",
             "extid_bound_title": "已綁定身分",
+            "extid_stopped": "已停用",
+            "extid_restore": "恢復",
+            "extid_restored_ok": "已恢復該身份綁定",
             "extid_no_bindings": "該帳號還沒有綁定任何外部身分，綁定後對方發訊息才會被識別。",
             "extid_add_title": "綁定新的外部身分",
             "extid_field_issuer": "應用 App ID（可留空）",
@@ -67,6 +73,9 @@
         "en": {
             "extid_title": "External identity",
             "extid_bound_title": "Bound identities",
+            "extid_stopped": "Stopped",
+            "extid_restore": "Restore",
+            "extid_restored_ok": "Binding restored",
             "extid_no_bindings": "No external identity is bound to this account yet. Until one is, messages from this person cannot be recognised.",
             "extid_add_title": "Bind a new external identity",
             "extid_field_issuer": "App ID (optional)",

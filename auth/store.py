@@ -3059,6 +3059,43 @@ def _migration_50(con: sqlite3.Connection) -> None:
 _migrations.append(_migration_50)
 
 
+def _migration_51(con: sqlite3.Connection) -> None:
+    """IM guest accounts (change add-im-guest-accounts, task 1.2).
+
+    Five columns, all additive and all defaulted so every existing row keeps its
+    current meaning:
+
+    * ``users.account_type`` -- ``normal`` for every account created before this
+      change. ``im_guest`` marks an account a tenant's shared bot created for an
+      unbound IM sender. It is a *type*, not a status: an inactive guest is still
+      a guest, and ``active`` keeps meaning "may use the things its type allows".
+    * ``tenant_channel_instances.unbound_user_policy`` -- ``require_binding`` for
+      every existing instance, which is exactly the pre-change behaviour.
+    * ``tenant_channel_instances.guest_role_id`` -- empty unless the policy is
+      ``auto_guest``; the ordinary role the guest's current channel narrows the
+      member's authorization with.
+    * ``tenant_channel_instances.guest_group_ids_json`` -- ``[]`` (private chats
+      only). Kept on the instance because the provider adapters install a global
+      ``ALL_GROUP`` whitelist, which cannot express "this tenant's groups".
+    * ``external_identities.active`` -- ``1`` for every existing binding. Guest
+      unbinding stops the binding instead of deleting it, because deleting the
+      triple would let the next message provision a brand-new guest account.
+    """
+    _add_missing_column(con, "users", "account_type",
+                        "TEXT NOT NULL DEFAULT 'normal'")
+    _add_missing_column(con, "tenant_channel_instances", "unbound_user_policy",
+                        "TEXT NOT NULL DEFAULT 'require_binding'")
+    _add_missing_column(con, "tenant_channel_instances", "guest_role_id",
+                        "TEXT NOT NULL DEFAULT ''")
+    _add_missing_column(con, "tenant_channel_instances", "guest_group_ids_json",
+                        "TEXT NOT NULL DEFAULT '[]'")
+    _add_missing_column(con, "external_identities", "active",
+                        "INTEGER NOT NULL DEFAULT 1")
+
+
+_migrations.append(_migration_51)
+
+
 class IdentityStoreError(RuntimeError):
     """Raised when the identity store cannot be opened or migrated."""
 

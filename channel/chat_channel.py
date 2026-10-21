@@ -222,8 +222,48 @@ class ChatChannel(Channel):
             if reply and reply.content:
                 reply = self._decorate_reply(context, reply)
 
+                # A guest's authorization is re-read at the delivery boundary
+                # (change add-im-guest-accounts, task 3.2): a channel closed, a
+                # mapping stopped or a role revoked while this turn ran must stop
+                # the reply instead of shipping it on the strength of the token
+                # that let the turn start.
+                if not self._guest_scope_still_valid(identity):
+                    from channel import external_identity as _ex
+
+                    self._send_reply(
+                        context,
+                        Reply(ReplyType.TEXT, _ex.deny_notice(_ex.IM_GUEST_STOPPED)),
+                    )
+                    return
                 # reply的发送步骤
                 self._send_reply(context, reply)
+
+    @staticmethod
+    def _guest_scope_still_valid(identity) -> bool:
+        """Whether this run's IM guest scope is still live right now.
+
+        ``load_guest_scope`` re-reads the instance policy, the mapping's active
+        flag, the account/member state and the role's current contents, so this
+        is the same decision a tool call would get -- asked once more at the
+        point where the answer is about to leave the process. It answers True for
+        every non-guest run, which includes the normal Web and member paths.
+        """
+        instance_id = str(getattr(identity, "im_instance_id", "") or "")
+        if not instance_id:
+            return True
+        try:
+            from auth.service import get_identity_service
+
+            get_identity_service().load_guest_scope(
+                user_id=str(getattr(identity, "user_id", "") or ""),
+                tenant_id=str(getattr(identity, "tenant_id", "") or ""),
+                instance_id=instance_id,
+                external_identity_id=str(
+                    getattr(identity, "external_identity_id", "") or ""),
+            )
+            return True
+        except Exception:  # noqa: BLE001 - a failed re-check is a refusal
+            return False
 
     def _needs_external_db_mapping(self, context: Context) -> bool:
         """True when this inbound message must be mapped to a tenant member.
@@ -555,7 +595,8 @@ class ChatChannel(Channel):
             if route is not None:
                 return self._serve_personal_route(context, route)
 
-        ctx, reason = ex.resolve_actor_for_context(context, agent_id, instance_tenant)
+        ctx, reason = ex.resolve_actor_for_context(
+            context, agent_id, instance_tenant, instance=instance)
         if reason is not None:
             # The notice tells the author to ask an administrator, so the log
             # has to tell the administrator what to bind. Without the triple the
@@ -607,6 +648,10 @@ class ChatChannel(Channel):
             "tenant_id": ctx.tenant_id,
             "agent_id": agent_id,
             "session_id": context.get("session_id") or "",
+            # A guest run carries its trusted IM source so the authorization
+            # layer can re-read the current ceiling on every tool/model call.
+            "im_instance_id": getattr(ctx, "im_instance_id", None),
+            "external_identity_id": getattr(ctx, "external_identity_id", None),
         }
         logger.info(
             f"[chat_channel] db external inbound mapped user={ctx.user_id} "
@@ -635,6 +680,8 @@ class ChatChannel(Channel):
                 tenant_id=rt.get("tenant_id"),
                 session_id=rt.get("session_id") or context.get("session_id"),
                 web_auth_session_id=rt.get("web_auth_session_id"),
+                im_instance_id=rt.get("im_instance_id"),
+                external_identity_id=rt.get("external_identity_id"),
             )
         return RuntimeIdentity(
             agent_id=context.get("agent_id"),

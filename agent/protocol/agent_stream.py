@@ -235,6 +235,18 @@ def _parse_tool_args(args_str: str, finish_reason: Optional[str],
         return {}, f"Invalid JSON in tool arguments: {e.msg}"
 
 
+#: Tools an IM guest must never run (change add-im-guest-accounts, task 3.4).
+#: A guest's authorization is scoped to one interactive IM conversation; it must
+#: not become a standing background job (which fires with no conversation) or a
+#: machine-level code execution capability. The check is by name *and* by the
+#: authorization resource id, because either one may be the name an
+#: administrator's grant quotes.
+_GUEST_FORBIDDEN_TOOLS = frozenset({"scheduler"})
+_GUEST_FORBIDDEN_RESOURCES = frozenset({
+    "builtin:bash", "builtin:shell", "builtin:python", "builtin:terminal",
+})
+
+
 def _fail_closed_denial(kind: str, tool_name: str, zh: str, en: str) -> str:
     """Record and describe a refusal caused by an unresolvable identity.
 
@@ -3019,6 +3031,15 @@ class AgentStreamExecutor:
                 "Tool call refused: the caller identity could not be resolved.",
             )
         resource_id = self._tool_resource_id(tool_name)
+        if getattr(ident, "im_instance_id", None) and (
+                tool_name in _GUEST_FORBIDDEN_TOOLS
+                or resource_id in _GUEST_FORBIDDEN_RESOURCES):
+            return _fail_closed_denial(
+                "guest_scope", tool_name,
+                "访客身份不能创建后台任务或执行本机代码。",
+                "IM guest access cannot create background tasks or run local"
+                " code.",
+            )
         try:
             from auth.service import PERSONAL_MEMORY_TOOLS, get_identity_service
             svc = get_identity_service()

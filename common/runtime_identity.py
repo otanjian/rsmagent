@@ -22,7 +22,8 @@ from typing import Any, Callable, Iterator, Optional
 
 _FIELDS = ("agent_id", "user_id", "tenant_id", "session_id", "run_id",
            "web_auth_session_id", "execution_target", "execution_cwd",
-           "local_execution_refusal")
+           "local_execution_refusal", "im_instance_id",
+           "external_identity_id")
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,15 @@ class RuntimeIdentity:
     # cwd would report "the project is unavailable" for a teammate that simply
     # may not use it.
     local_execution_refusal: Optional[str] = None
+
+    # The trusted IM source of an IM-guest run (change add-im-guest-accounts).
+    # Both are None for every non-IM run, and they are set by the server from
+    # the channel instance row and the external-identity binding -- never from
+    # the message, the model or a tool argument. The pair is what lets the
+    # authorization layer re-read the *current* guest ceiling on each call
+    # instead of trusting a snapshot taken at message entry.
+    im_instance_id: Optional[str] = None
+    external_identity_id: Optional[str] = None
 
     def execution_location(self) -> str:
         """``"backend"`` or ``"desktop"``; the safe default is the backend."""

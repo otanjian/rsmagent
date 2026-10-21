@@ -34,6 +34,13 @@ PERMISSION_DENIED = "external_permission_denied"
 UNSUPPORTED_CHANNEL = "external_channel_unsupported"
 AGENT_UNAVAILABLE = "external_agent_unavailable"
 
+#: Guest-only denials (change add-im-guest-accounts). Kept separate from
+#: ``UNBOUND`` because the recovery differs: "not bound" means an administrator
+#: can bind the sender, while these mean the administrator already decided the
+#: access and it was withdrawn or the message is outside the granted range.
+IM_GUEST_STOPPED = "external_im_guest_stopped"
+IM_GUEST_GROUP = "external_im_guest_group"
+
 #: Member-owned (personal) channel denials (change enable-member-personal-console,
 #: task 7.1). Kept distinct from the shared-instance reasons because the fix is
 #: different: the member completes their own binding in the console, rather than
@@ -119,6 +126,14 @@ def deny_notice(reason: str) -> str:
         AGENT_UNAVAILABLE: (
             "该组织尚未配置可用的智能体，请联系管理员。",
             "No Agent is available for this organization yet. Contact an administrator.",
+        ),
+        IM_GUEST_STOPPED: (
+            "该账号的访客访问已被停用，请联系管理员。",
+            "IM guest access for this account has been stopped. Contact an administrator.",
+        ),
+        IM_GUEST_GROUP: (
+            "本群未开放给访客使用，请联系管理员。",
+            "IM guest access is not open in this group. Contact an administrator.",
         ),
         PERSONAL_NOT_LINKED: (
             "你的账号尚未绑定这个个人渠道，请在网页端生成绑定码后从这里发送。",
@@ -449,22 +464,116 @@ def personal_owner_context(user_id: str, tenant_id: str):
     return ctx, None
 
 
+def guest_access_open(instance: Optional[dict]) -> bool:
+    """Whether this instance's policy lets an unbound sender provision a guest.
+
+    Every condition is re-read from the row: a shared instance that is active,
+    whose policy is ``auto_guest`` and whose guest role is still configured. A
+    personal instance can never be guest-open: its owner answers for it.
+    """
+    if not instance:
+        return False
+    return (str(instance.get("scope") or "") == "tenant"
+            and bool(instance.get("active"))
+            and str(instance.get("unbound_user_policy") or "require_binding")
+            == "auto_guest"
+            and bool(str(instance.get("guest_role_id") or "").strip()))
+
+
+def guest_group_ids(instance: Optional[dict]) -> list:
+    """The instance's explicit group allow-list (empty means private chats only)."""
+    import json
+
+    if not instance:
+        return []
+    try:
+        value = json.loads(instance.get("guest_group_ids_json") or "[]")
+    except (TypeError, ValueError):
+        return []
+    return [str(item) for item in value if str(item or "").strip()]
+
+
+def message_group_id(context: dict) -> str:
+    """The provider group id of this message, or ``""`` for a private chat.
+
+    ``receiver`` is composed by the channel's normal message pipeline as the
+    group id for a group message; the raw message's ``other_user_id`` is the
+    same value before composition. Never a display name: the allow-list is
+    matched by id, which is the only field a sender cannot choose.
+    """
+    group_id = str((context or {}).get("receiver") or "").strip()
+    if group_id:
+        return group_id
+    msg = (context or {}).get("msg")
+    return str(getattr(msg, "other_user_id", "") or "").strip()
+
+
+def guest_group_allowed(context: dict, instance: Optional[dict]) -> bool:
+    if not bool((context or {}).get("isgroup")):
+        return True
+    return message_group_id(context) in guest_group_ids(instance)
+
+
+def sender_display_name(context: dict) -> str:
+    """The sender's display name, bounded, for the provisioned account."""
+    return attempt_evidence(context).get("sender_name", "")
+
+
+def _guest_member_actor(svc, user: dict, tenant_id: str, instance: dict,
+                        binding_id: str, scope: dict, agent_id: Optional[str]):
+    """Build the narrowed context for a provisioned/reused IM guest.
+
+    The member context is the ordinary resolution (membership, tenant, active
+    account); the narrowing is the intersection with the instance's current
+    guest role. An empty intersection is a refusal, never "no restriction".
+    """
+    from auth.policy import resource_granted
+
+    try:
+        from auth.runtime import IdentityContextError, member_context
+
+        ctx = member_context(svc, user["id"], tenant_id)
+    except IdentityContextError as error:
+        if getattr(error, "code", "") == "password_change_required":
+            return None, PASSWORD_CHANGE_REQUIRED
+        return None, NOT_MEMBER
+    # A guest never carries administrative qualification, whatever the member
+    # roles currently say: the type gate is the ceiling.
+    ctx.is_tenant_admin = False
+    ctx.is_platform_admin = False
+    ctx.permissions = set(ctx.permissions or set()) & set(scope["permissions"])
+    ctx.im_instance_id = str(instance.get("id") or "")
+    ctx.external_identity_id = binding_id
+    if "chat.use" not in ctx.permissions:
+        return None, PERMISSION_DENIED
+    # The routed Agent must be granted by both the member's roles and the
+    # channel's guest role; the intersection is what stops another channel's
+    # broader role from widening this one.
+    resource_id = f"agent:{agent_id}"
+    member_grants = svc.grants_for(ctx.user_id, ctx.tenant_id)
+    if not (resource_granted(member_grants, "agent", resource_id, "use")
+            and resource_granted(scope["grants"], "agent", resource_id, "use")):
+        return None, PERMISSION_DENIED
+    return ctx, None
+
+
 def resolve_actor_for_context(context: dict, agent_id: Optional[str],
-                              instance_tenant_id: str = ""):
+                              instance_tenant_id: str = "",
+                              instance: Optional[dict] = None):
     """Resolve a DB-mode inbound context to its tenant member ``RequestContext``.
 
     Returns ``(ctx, None)`` on success and ``(None, reason_code)`` on a deny.
-    Every deny already implies "do not call the model". ``agent_id`` is the
-    channel-routed Agent (its binding fixes the tenant the member must belong
-    to). Only call this when ``is_database_mode()`` and the context carries a
-    stamped ``external_identity``.
+    Every deny already implies "do not call the model". Only call this when
+    ``is_database_mode()`` and the context carries a stamped
+    ``external_identity``.
 
     ``instance_tenant_id`` is the owning tenant of the channel instance that
     delivered the message, resolved from the store by the caller. When present
     it wins over the routed Agent's binding: an instance belongs to exactly one
     tenant, and a routing fallback (or a forged ``bound_agent_id``) must not be
-    able to move the conversation — and therefore the member's identity — into
-    a different organization.
+    able to move the conversation, and therefore the member's identity, into a
+    different organization. ``instance`` is the same row when the caller already
+    read it, so one message is decided against one snapshot.
     """
     from auth.service import get_identity_service
 
@@ -475,20 +584,95 @@ def resolve_actor_for_context(context: dict, agent_id: Optional[str],
     issuer = str(ext.get("issuer") or "").strip()
     subject = str(ext.get("subject") or "").strip()
     if not provider or not subject:
-        logger.warning("[external_identity] incomplete triple provider=%s subject=%s", provider, subject)
+        logger.warning(
+            "[external_identity] incomplete triple provider=%s subject=%s",
+            provider, subject)
         return None, UNBOUND
 
     svc = get_identity_service()
-    user = svc.find_user_for_external_identity(provider, issuer, subject)
-    if not user:
-        # Nobody has bound this account yet. On an instance that has *never* been
+    if instance is None:
+        instance = instance_row(context)
+
+    # The tenant anchor: the instance's owner when known, else the routed
+    # Agent's binding (legacy behaviour for platform channels).
+    tenant_id = str(instance_tenant_id or "").strip()
+    if not tenant_id:
+        binding = svc.get_agent_binding(agent_id) if agent_id else None
+        if not binding:
+            return None, TENANT_UNBOUND
+        tenant_id = binding["tenant_id"]
+
+    from auth.service import (
+        EXTERNAL_IDENTITY_ACCOUNT_INACTIVE,
+        EXTERNAL_IDENTITY_BOUND,
+        EXTERNAL_IDENTITY_MAPPING_INACTIVE,
+        IdentityServiceError,
+    )
+
+    resolution = svc.resolve_external_identity(provider, issuer, subject)
+    status = resolution["status"]
+    user = resolution["user"]
+    is_guest_user = bool(user and svc.account_type(user) == "im_guest")
+
+    if guest_access_open(instance):
+        # A guest's group range is decided before provisioning: a group outside
+        # the list is not "an unbound sender", it is out of scope, and must not
+        # create an account on the way to being refused.
+        if not guest_group_allowed(context, instance):
+            return None, IM_GUEST_GROUP
+        if status == EXTERNAL_IDENTITY_BOUND and not is_guest_user:
+            # An existing formal account keeps its own membership and roles; the
+            # guest policy never downgrades it to a narrower identity.
+            user_for_member = user
+        elif status == EXTERNAL_IDENTITY_MAPPING_INACTIVE and not is_guest_user:
+            return None, UNBOUND
+        elif status in (EXTERNAL_IDENTITY_MAPPING_INACTIVE,
+                        EXTERNAL_IDENTITY_ACCOUNT_INACTIVE):
+            # The administrator stopped this guest (or its mapping). The message
+            # is refused, and no amount of resending provisions it again.
+            return None, IM_GUEST_STOPPED
+        else:
+            try:
+                provisioned = svc.provision_im_guest(
+                    provider=provider, issuer=issuer, subject=subject,
+                    tenant_id=tenant_id,
+                    instance_id=str(instance.get("id") or ""),
+                    display_name=sender_display_name(context),
+                )
+            except IdentityServiceError as error:
+                code = getattr(error, "code", "")
+                if code == "guest_stopped":
+                    return None, IM_GUEST_STOPPED
+                if code == "guest_conflict":
+                    return None, NOT_MEMBER
+                logger.info(
+                    "[external_identity] guest provisioning refused code=%s"
+                    " instance=%s: %s", code, instance.get("id"), error)
+                return None, PERMISSION_DENIED
+            scope = svc.load_guest_scope(
+                user_id=provisioned["user_id"], tenant_id=tenant_id,
+                instance_id=str(instance.get("id") or ""),
+                external_identity_id=provisioned["binding_id"],
+            )
+            return _guest_member_actor(
+                svc, provisioned["user"], tenant_id, instance,
+                provisioned["binding_id"], scope, agent_id)
+
+    if status == EXTERNAL_IDENTITY_MAPPING_INACTIVE:
+        return None, UNBOUND
+    if status == EXTERNAL_IDENTITY_ACCOUNT_INACTIVE:
+        return None, UNBOUND
+    if status == EXTERNAL_IDENTITY_BOUND:
+        user_for_member = user
+    else:
+        user_for_member = None
+        # Nobody has bound this account yet. On an instance that has never been
         # bound, the first private sender claims it as the channel's own member
-        # (change auto-bind-channel-sender): the person who set the channel up
-        # should not have to prove their account with a binding code. The claim
-        # decides *whose* account is speaking — the instance's owner for a
-        # personal one, its creator for a shared one — and a group chat, an
-        # already-bound instance or a triple owned by someone else is refused, so
-        # the rule can never be used to take over an established channel.
+        # (change auto-bind-channel-sender). The claim decides *whose* account
+        # is speaking -- the instance's owner for a personal one, its creator for
+        # a shared one -- and a group chat, an already-bound instance or a triple
+        # owned by someone else is refused, so the rule can never be used to take
+        # over an established channel.
         instance_id = str((context or {}).get("instance_id") or "").strip()
         if instance_id:
             claim = svc.claim_instance_for_sender(
@@ -497,22 +681,14 @@ def resolve_actor_for_context(context: dict, agent_id: Optional[str],
             )
             if claim.get("claimed"):
                 logger.info(
-                    f"[external_identity] instance '{instance_id}' auto-bound its"
-                    f" first sender to {claim.get('user_id')}"
+                    f"[external_identity] instance '{instance_id}' auto-bound"
+                    f" its first sender to {claim.get('user_id')}"
                 )
-                user = svc.find_user_for_external_identity(
+                user_for_member = svc.find_user_for_external_identity(
                     provider, issuer, subject)
-    if not user:
-        return None, UNBOUND
-
-    # The tenant anchor: the instance's owner when known, else the routed
-    # Agent's binding (legacy behavior for platform/legacy channels).
-    tenant_id = str(instance_tenant_id or "").strip()
-    if not tenant_id:
-        binding = svc.get_agent_binding(agent_id) if agent_id else None
-        if not binding:
-            return None, TENANT_UNBOUND
-        tenant_id = binding["tenant_id"]
+        if not user_for_member:
+            return None, UNBOUND
+    user = user_for_member
 
     try:
         from auth.runtime import IdentityContextError, member_context

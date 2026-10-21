@@ -1128,6 +1128,12 @@ class TenantChannelsHandler:
                 display_name=str(data.get("display_name", "") or ""),
                 agent_id=str(data.get("agent_id", "") or ""),
                 credentials=data.get("credentials"),
+                # Guest access (change add-im-guest-accounts): the three fields
+                # live on the shared-instance card. Omission keeps the stored
+                # value, which is what an older console sends.
+                unbound_user_policy=_opt_str(data, "unbound_user_policy"),
+                guest_role_id=_opt_str(data, "guest_role_id"),
+                guest_group_ids=data.get("guest_group_ids"),
                 recent_password=str(data.get("recent_password", "") or ""),
                 scan_ticket=str(data.get("scan_ticket", "") or ""),
                 # The scan bound its grant to the login session that started it,
@@ -1170,6 +1176,9 @@ class TenantChannelHandler:
                 display_name=_opt_str(data, "display_name"),
                 agent_id=_opt_str(data, "agent_id"),
                 credentials=data.get("credentials"),
+                unbound_user_policy=_opt_str(data, "unbound_user_policy"),
+                guest_role_id=_opt_str(data, "guest_role_id"),
+                guest_group_ids=data.get("guest_group_ids"),
                 recent_password=str(data.get("recent_password", "") or ""),
                 # Owner-scoped callers take the self-service branch: the row's
                 # scope/owner are re-proved from storage under the write lock,

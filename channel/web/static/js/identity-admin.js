@@ -2847,7 +2847,9 @@
                     + '<div class="flex items-center gap-3"><div class="w-9 h-9 rounded-lg overflow-hidden shrink-0 bg-slate-100 dark:bg-white/10">'
                     + userAvatarHTML({ id: m.user_id, avatar: m.avatar }) + '</div>'
                     + '<div><div class="text-sm font-medium text-slate-800 dark:text-slate-100">' + escapeHtml(m.display_name) + '</div>'
-                    + '<div class="text-xs text-slate-400">' + escapeHtml(m.username) + ' · ' + fmtActive(m.active) + (roleNames ? ' · ' + escapeHtml(roleNames) : '') + '</div></div></div>'
+                    + '<div class="text-xs text-slate-400">' + escapeHtml(m.username) + ' · ' + fmtActive(m.active)
+                    + (m.account_type === 'im_guest' ? ' · <span class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300">' + escapeHtml(t('member_guest_badge')) + '</span>' : '')
+                    + (roleNames ? ' · ' + escapeHtml(roleNames) : '') + '</div></div></div>'
                     + '<div class="flex items-center gap-2"><div class="text-xs text-slate-400">' + escapeHtml(m.position_text || '') + '</div>'
                     + '<button class="admin-row-btn" onclick="adminRowAction(\'member\',\'edit\',\'' + escapeHtml(m.id) + '\')"><i class="fas fa-pen mr-1"></i>' + escapeHtml(t('admin_edit')) + '</button>'
                     + '<button class="admin-row-btn" onclick="openExternalIdentities(\'member\',\'' + escapeHtml(m.id) + '\')"><i class="fas fa-link mr-1"></i>' + escapeHtml(t('extid_title')) + '</button>'
@@ -3217,15 +3219,25 @@
     }
 
     function renderExternalIdentityBindingRow(st, b) {
-        return '<div class="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10">'
+        // A stopped binding is a guest identity an administrator withdrew. It
+        // stays visible so it can be restored on the same account, and the
+        // destructive action is replaced by restore: deleting it would let the
+        // next message provision a brand-new guest for the same sender.
+        const stopped = b.active === false;
+        return '<div class="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10' + (stopped ? ' opacity-70' : '') + '">'
             + '<div class="min-w-0">'
             + '<div class="text-sm text-slate-800 dark:text-slate-100 truncate"><i class="fas fa-comment-dots mr-1 text-indigo-400"></i>'
             + escapeHtml(externalIdentityProviderLabel(b.provider))
             + '<span class="text-slate-400"> · </span>' + escapeHtml(b.issuer || '—') + '</div>'
             + '<div class="text-xs text-slate-400 break-all">open_id: ' + escapeHtml(b.subject) + '</div>'
             + '</div>'
-            + '<button class="admin-row-btn" onclick="extidDelete(\'' + escapeHtml(b.id) + '\')">'
-            + '<i class="fas fa-unlink mr-1"></i>' + escapeHtml(t('admin_delete')) + '</button>'
+            + (stopped
+                ? '<div class="flex items-center gap-2">'
+                    + '<span class="px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400">' + escapeHtml(t('extid_stopped')) + '</span>'
+                    + '<button class="admin-row-btn" onclick="extidRestore(\'' + escapeHtml(b.id) + '\')">'
+                    + '<i class="fas fa-rotate-left mr-1"></i>' + escapeHtml(t('extid_restore')) + '</button></div>'
+                : '<button class="admin-row-btn" onclick="extidDelete(\'' + escapeHtml(b.id) + '\')">'
+                    + '<i class="fas fa-unlink mr-1"></i>' + escapeHtml(t('admin_delete')) + '</button>')
             + '</div>';
     }
 
@@ -3461,6 +3473,32 @@
             _extId.status = t('extid_unbound_ok');
             await extidRefresh();
         } catch (err) {
+            _extId.error = extidErrorMessage(err);
+            renderExtIdModal();
+        }
+    }
+
+    async function extidRestore(bindingId) {
+        // Restoring re-submits the binding's own triple to the existing bind
+        // surface: the server only reactivates a stopped mapping for the account
+        // it was stopped on, so this is "undo the withdrawal", not "re-bind
+        // somebody else's identity".
+        if (!_extId || !bindingId) return;
+        const binding = (_extId.bindings || []).find(function (b) { return b.id === bindingId; });
+        if (!binding) return;
+        _extId.busy = true;
+        _extId.error = '';
+        _extId.status = '';
+        renderExtIdModal();
+        try {
+            const routes = externalIdentityRoutes(_extId);
+            await apiFetch(routes.base, { method: 'POST', body: {
+                provider: binding.provider, issuer: binding.issuer, subject: binding.subject } });
+            _extId.busy = false;
+            _extId.status = t('extid_restored_ok');
+            await extidRefresh();
+        } catch (err) {
+            _extId.busy = false;
             _extId.error = extidErrorMessage(err);
             renderExtIdModal();
         }

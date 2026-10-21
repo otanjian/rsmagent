@@ -200,6 +200,11 @@
         const out = {};
         if (spec.display_name !== undefined) out.display_name = spec.display_name;
         if (spec.agent_id !== undefined) out.agent_id = spec.agent_id;
+        // Guest access (change add-im-guest-accounts): only sent when the caller
+        // supplied it, so an older console's edit keeps the stored policy.
+        if (spec.unbound_user_policy !== undefined) out.unbound_user_policy = spec.unbound_user_policy;
+        if (spec.guest_role_id !== undefined) out.guest_role_id = spec.guest_role_id;
+        if (spec.guest_group_ids !== undefined) out.guest_group_ids = spec.guest_group_ids;
         if (spec.credentials !== undefined) out.credentials = spec.credentials;
         if (spec.expected_version !== undefined) out.expected_version = spec.expected_version;
         out.recent_password = spec.recent_password || '';
