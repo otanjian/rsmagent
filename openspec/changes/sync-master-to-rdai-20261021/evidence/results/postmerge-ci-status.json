@@ -1,0 +1,41 @@
+{
+  "observed_at_utc": "2026-10-21T12:19:29.817318+00:00",
+  "runs": [
+    {
+      "id": 732,
+      "status": "queued",
+      "head_sha": "c7b981b0068e817cd0cef4fab28f19f0385e2bf1",
+      "event": "push",
+      "path": "production-readiness.yml@refs/heads/rdai"
+    },
+    {
+      "id": 731,
+      "status": "queued",
+      "head_sha": "f584e89eb504373386afc3efc7e9e6515eb07c57",
+      "event": "pull_request",
+      "path": "production-readiness.yml@refs/pull/2/head"
+    },
+    {
+      "id": 730,
+      "status": "queued",
+      "head_sha": "b45405b8b81ac4a44e66b1a3f8141bacd83d5258",
+      "event": "pull_request",
+      "path": "production-readiness.yml@refs/pull/2/head"
+    },
+    {
+      "id": 729,
+      "status": "queued",
+      "head_sha": "6396213e5cf396ad85d895aed65403820865986c",
+      "event": "pull_request",
+      "path": "production-readiness.yml@refs/pull/2/head"
+    },
+    {
+      "id": 728,
+      "status": "queued",
+      "head_sha": "c9bd4942261156f56c02ffd65e4d81c6153e1594",
+      "event": "push",
+      "path": "production-readiness.yml@refs/heads/rdai"
+    }
+  ],
+  "branch_protections": []
+}
