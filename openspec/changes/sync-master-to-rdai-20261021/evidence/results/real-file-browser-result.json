@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "errors": [],
+  "checks": {
+    "modelGeneratedArtifactIndexed": true,
+    "artifactPreviewMatches": true,
+    "sourceConversationRestored": true,
+    "workspaceReadsSameFile": true,
+    "downloadBytesMatch": true
+  },
+  "artifact": {
+    "id": 1,
+    "session_id": "session_f44f0e71-9585-472b-8c04-1b3837b3afdc",
+    "file_name": "sync-web-acceptance.md",
+    "can_jump": true
+  }
+}

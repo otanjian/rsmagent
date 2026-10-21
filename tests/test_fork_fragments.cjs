@@ -13,7 +13,7 @@ const path = require('node:path');
 
 const read = p => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
 const { readWebLayer } = require('./_web_layer.cjs');
-const chatHtml = read('channel/web/chat.html');
+const chatHtml = require('./support/console_sources.cjs').markup();
 const loader = read('channel/web/static/js/fragments.js');
 const fragment = read('channel/web/static/fragments/appearance-dialog.html');
 
@@ -25,15 +25,15 @@ test('chat.html keeps the appearance dialog mount point and drops the inline mar
     assert.doesNotMatch(chatHtml, /name="web-palette"/);
 });
 
-test('the loader script is deferred and runs before console.js', () => {
+test('the loader script is deferred and runs before fork/bootstrap.js', () => {
     assert.match(loader, /window\.CowFragments\s*=/);
     assert.match(loader, /querySelectorAll\('\[data-fork-fragment\]'\)/);
     assert.match(loader, /typeof window\.applyI18n === 'function'/);
     const loaderIdx = chatHtml.indexOf('assets/js/fragments.js');
-    const consoleIdx = chatHtml.indexOf('assets/js/console.js');
+    const consoleIdx = chatHtml.indexOf('assets/js/fork/bootstrap.js');
     assert.ok(loaderIdx >= 0, 'fragments.js script tag missing');
-    assert.ok(consoleIdx >= 0, 'console.js script tag missing');
-    assert.ok(loaderIdx < consoleIdx, 'fragments.js must load before console.js');
+    assert.ok(consoleIdx >= 0, 'fork/bootstrap.js script tag missing');
+    assert.ok(loaderIdx < consoleIdx, 'fragments.js must load before fork/bootstrap.js');
 });
 
 test('the fragment preserves the DOM contract JS and browser tests rely on', () => {

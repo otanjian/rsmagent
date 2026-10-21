@@ -1,0 +1,41 @@
+✔ startup: new browser, without implicit persistence (1.082541ms)
+✔ startup: legacy light, without implicit persistence (0.07175ms)
+✔ startup: legacy dark, without implicit persistence (0.05475ms)
+✔ startup: saved system without palette, without implicit persistence (0.052125ms)
+✔ startup: bad mode without palette, without implicit persistence (0.052542ms)
+✔ startup: bad palette preserves light, without implicit persistence (0.041708ms)
+✔ startup: bad palette preserves dark, without implicit persistence (0.041166ms)
+✔ startup: bad mode preserves palette, without implicit persistence (0.039708ms)
+✔ startup: missing mode preserves palette, without implicit persistence (0.0445ms)
+✔ startup: both invalid, without implicit persistence (0.075333ms)
+✔ all saved preset/mode combinations restore independently (0.108875ms)
+✔ system mode follows changes without overwriting the saved preference (0.090708ms)
+✔ explicit modes ignore system changes and selecting a palette preserves the mode (0.085375ms)
+✔ unavailable system detection falls back to light while retaining system (0.066959ms)
+✔ legacy media listeners follow system changes and detach on destruction (0.070833ms)
+✔ the first mode-only edit persists the migrated classic palette across refresh (0.091166ms)
+✔ the first palette-only edit persists the complete selection (0.040791ms)
+✔ partial write failure (cow_theme) preserves the local selection and reports failure (0.087958ms)
+✔ partial write failure (cow_web_palette) preserves the local selection and reports failure (0.030375ms)
+✔ denied reads and writes permit in-page selection and do not clobber it on storage events (0.112167ms)
+✔ successful writes cannot claim persistence when read-back remains unavailable (0.044167ms)
+✔ silently discarded writes retain the local choice but report persistence failure (0.037958ms)
+✔ reset touches only the two appearance keys and remains refreshable (0.05ms)
+✔ near-concurrent tabs converge to the final stored pair, ignoring stale event values and never writing back (0.040333ms)
+✔ remote removal of both keys and localStorage.clear events restore defaults without persisting (0.034833ms)
+✔ unrelated keys and another storage area cannot overwrite current appearance (0.028667ms)
+✔ subscribers observe applied state, snapshots do not mutate state and disposal releases listeners (0.042333ms)
+✔ controller can initialize and change preferences without an optional root element (0.021417ms)
+✔ the browser entry initializes even when accessing window.localStorage itself throws (0.595459ms)
+✔ every i18n key the page asks for from the markup resolves (9.896792ms)
+✔ every i18n key the loaded scripts ask for by name resolves (11.858458ms)
+✔ the coding Agent surface is translated, not shown as keys (2228.315917ms)
+✔ the actual master table merges every loaded fork namespace before lookup (6.714708ms)
+ℹ tests 33
+ℹ suites 0
+ℹ pass 33
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2298.453

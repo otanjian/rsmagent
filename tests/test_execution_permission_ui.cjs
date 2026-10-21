@@ -11,8 +11,8 @@ const root = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 
 test('web console has no session permission selector', () => {
-    const markup = read('channel/web/chat.html');
-    const consoleJs = read('channel/web/static/js/console.js');
+    const markup = require('./support/console_sources.cjs').markup();
+    const consoleJs = require('./support/console_sources.cjs').modules().filter(item => !item.name.includes('i18n')).map(item => item.source).join('\n');
     assert.doesNotMatch(markup, /permission-selector-btn/);
     assert.doesNotMatch(markup, /permission-selector-menu/);
     assert.doesNotMatch(consoleJs, /togglePermissionSelector/);
@@ -20,7 +20,7 @@ test('web console has no session permission selector', () => {
 });
 
 test('web refused-tool hint keeps its explanation but drops the action button', () => {
-    const consoleJs = read('channel/web/static/js/console.js');
+    const consoleJs = require('./support/console_sources.cjs').modules().filter(item => !item.name.includes('i18n')).map(item => item.source).join('\n');
     assert.match(consoleJs, /perm-denied-hint/);
     assert.match(consoleJs, /perm_denied_hint/);
     assert.match(consoleJs, /perm_denied_role_hint/);
@@ -62,7 +62,7 @@ test('the global default permission reads as owned by roles in database mode', (
     assert.match(handlers, /permission_mode_source/);
 
     // Web console: the dropdown is rendered read-only from that flag.
-    const consoleJs = read('channel/web/static/js/console.js');
+    const consoleJs = require('./support/console_sources.cjs').modules().filter(item => !item.name.includes('i18n')).map(item => item.source).join('\n');
     assert.match(consoleJs, /permission_mode_editable/);
     assert.match(consoleJs, /cfg-dropdown-readonly/);
     // The dictionary moved to a per-domain namespace file (task 8.5); the
@@ -72,7 +72,7 @@ test('the global default permission reads as owned by roles in database mode', (
         assert.ok(Object.prototype.hasOwnProperty.call(dicts[lang] || {}, 'config_permission_role_desc'),
             `config_permission_role_desc is missing from the ${lang} dictionary`);
     }
-    assert.match(read('channel/web/chat.html'), /cfg-permission-role-desc/);
+    assert.match(require('./support/console_sources.cjs').markup(), /cfg-permission-role-desc/);
 
     // Desktop settings page: same read-only treatment.
     const basic = read('desktop/src/renderer/src/pages/settings/BasicSettings.tsx');

@@ -92,6 +92,11 @@ class OpenAICompatibleBot:
             
             # Convert messages from Claude format to OpenAI format
             messages = self._convert_messages_to_openai_format(messages)
+            # "_"-prefixed keys are in-memory markers; strict endpoints reject them.
+            messages = [
+                {k: v for k, v in msg.items() if not k.startswith("_")}
+                for msg in messages
+            ]
             
             # Convert tools from Claude format to OpenAI format
             if tools:
@@ -229,7 +234,10 @@ class OpenAICompatibleBot:
             api_key=api_key, api_base=api_base, timeout=timeout,
             stream=False, **payload,
         )
-        return responses_adapter.responses_to_chat_completion(response)
+        result = responses_adapter.responses_to_chat_completion(response)
+        if result.get("error"):
+            raise OpenAIHTTPError(result.get("status_code") or 500, response, result.get("message") or "")
+        return result
 
     def _call_with_tools_responses(self, *, model_name, messages, tools, stream,
                                    api_config, kwargs):

@@ -210,6 +210,7 @@ async function open(options = {}) {
         sessionStorage.setItem('cow_tenant_id', 'fixture-tenant');
         localStorage.setItem('cow_lang', lang);
     }, options.lang || 'zh');
+    if (options.mode) await context.addInitScript(mode => { window.__COW_NAVIGATION_MODE__ = mode; }, options.mode);
     const page = await context.newPage();
     page.setDefaultTimeout(15000);
     if (options.mode) await page.route('**/*', async route => {
@@ -306,6 +307,13 @@ async function main() {
             const live = JSON.parse(fs.readFileSync(path.join(liveOutput,'results.json'),'utf8'));
             report.scenarios.push(...live.scenarios);
             report.pageErrors.push(...live.pageErrors);
+            const businessOutput = path.join(output, 'sync-business');
+            await require('node:util').promisify(require('node:child_process').execFile)(
+                process.execPath, [require.resolve('./test_sync_master_web_browser.cjs')],
+                {env:{...process.env, COW_SYNC_BROWSER_OUTPUT:businessOutput}, timeout:180000});
+            const business = JSON.parse(fs.readFileSync(path.join(businessOutput,'results.json'),'utf8'));
+            report.scenarios.push(...business.scenarios);
+            report.pageErrors.push(...business.pageErrors);
         }
     }
 

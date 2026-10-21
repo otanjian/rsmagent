@@ -463,6 +463,13 @@ class SchedulerUpdateHandler:
                 # a rename happened when the field they really wanted was ignored.
                 patch = {k: v for k, v in body.items()
                          if k not in ("task_id", "agent_id", "revision")}
+                if "action" in patch:
+                    action_patch = patch["action"]
+                    if not isinstance(action_patch, dict):
+                        raise ValueError("action must be an object")
+                    action_type = action_patch.get("type", (original.get("action") or {}).get("type"))
+                    if "type" in action_patch and action_type not in _CREATE_ACTION_TYPES:
+                        raise ValueError("unsupported action type")
                 if "schedule" in patch:
                     if not isinstance(patch["schedule"], dict) or not patch["schedule"].get("type"):
                         raise web.badrequest("schedule must be an object with a type")

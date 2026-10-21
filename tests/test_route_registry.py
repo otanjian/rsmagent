@@ -58,7 +58,7 @@ _GAP_ROUTES = (
 
 def _sample_path(pattern: str) -> str:
     """A concrete path a route's pattern matches, for first-match assertions."""
-    out = pattern.replace("([^/]+)", "a")
+    out = pattern.replace("[A-Za-z0-9_-]{1,40}/?", "example").replace("([^/]+)", "a")
     out = out.replace("(.*)", "a/b")
     out = out.replace("(.+)", "a/b")
     return out
@@ -155,8 +155,8 @@ class RegistryDerivationTests(unittest.TestCase):
         #: Upstream's table as adopted, and the origin/master commit it came
         #: from: ``git show 8f1b19f1:channel/web/web_channel.py``.
         UPSTREAM_URLS_SHA256 = \
-            "9022cd44eca2399861832d5a06a4f109dd20fd623537ffd82287452feccaf154"
-        UPSTREAM_URLS_SOURCE = "origin/master 48c0d79c"
+            "c57bebabe24c78eb0f6587178e5bf89a25f99ffc2a76003c6e022268e471f02e"
+        UPSTREAM_URLS_SOURCE = "origin/master ee2dc052"
 
         import ast
 

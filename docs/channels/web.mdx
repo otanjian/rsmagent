@@ -86,87 +86,60 @@ After starting the project, visit:
   Ensure the server firewall and security group allow the corresponding port.
 </Note>
 
-## OpenAI-Compatible API
+## HTTPS and Domain Access
 
-Create a service-account API key (`sak_…`) in the identity console to enable
-`POST /v1/chat/completions`. Pass it as `Authorization: Bearer`. This is
-independent from Web Console login sessions and replaces the retired
-`external_api_token` setting.
+To serve the console on a domain with HTTPS, use one of the two setups below.
 
-The first release accepts text messages and uses 容大AI's configured Agent and
-model. The request `model` is required for OpenAI client compatibility and is
-echoed in the response; it does not select a 容大AI model. The latest non-empty
-user message is submitted to the Agent. Set `conversation_id`, or `user` as a
-fallback, to reuse a stable 容大AI session across requests. Requests without
-either field use an isolated session.
+**Option 1: nginx reverse proxy (recommended).** Let nginx terminate TLS and forward plain HTTP to the console, and set `"web_host": "127.0.0.1"` so the console is only reachable through nginx:
 
-Non-streaming request:
+```nginx
+server {
+    listen 443 ssl;
+    server_name cow.example.com;
 
-```bash
-curl http://localhost:9899/v1/chat/completions \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "cowagent",
-    "conversation_id": "example-conversation",
-    "messages": [{"role": "user", "content": "Summarize this workspace."}]
-  }'
+    ssl_certificate     /etc/letsencrypt/live/cow.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/cow.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:9899;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # Replies stream over SSE: keep connections open and unbuffered
+        proxy_read_timeout 3600s;
+        proxy_buffering off;
+        # File uploads up to 512 MB
+        client_max_body_size 512m;
+    }
+}
 ```
 
-The standard response is returned in `choices[0].message.content`. 容大AI adds
-`reasoning_content` and `tool_trace` to the message when those traces are
-available.
+**Option 2: direct HTTPS.** The console serves TLS itself:
 
-Streaming request:
-
-```bash
-curl -N http://localhost:9899/v1/chat/completions \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "cowagent",
-    "stream": true,
-    "user": "example-user",
-    "messages": [{"role": "user", "content": "Inspect the workspace."}]
-  }'
+```json
+{
+  "web_https_enabled": true,
+  "web_ssl_certfile": "/etc/letsencrypt/live/cow.example.com/fullchain.pem",
+  "web_ssl_keyfile": "/etc/letsencrypt/live/cow.example.com/privkey.pem"
+}
 ```
 
-Streaming content uses standard `chat.completion.chunk` objects and
-`choices[0].delta.content`. Reasoning uses the additive
-`choices[0].delta.reasoning_content` field. Reasoning and tool-process chunks
-also include a top-level `cow_event` object. The stream ends with `data: [DONE]`.
+| Parameter | Description | Default |
+| --- | --- | --- |
+| `web_https_enabled` | Serve the console over HTTPS directly | `false` |
+| `web_ssl_certfile` | PEM certificate file (full chain recommended) | `""` |
+| `web_ssl_keyfile` | PEM private key file | `""` |
 
-OpenAI Python clients can use the endpoint by setting the base URL:
+A missing or unreadable certificate stops startup with an error instead of falling back to HTTP.
 
-```python
-from openai import OpenAI
+<Note>
+  The console must be served at the root path; use a dedicated subdomain rather than a sub-path such as `/cow/`. If you use MCP servers with OAuth, also set `"mcp_oauth_redirect_base": "https://cow.example.com"`.
+</Note>
 
-client = OpenAI(
-    base_url="http://localhost:9899/v1",
-    api_key="sak_your-service-account-key",
-)
-response = client.chat.completions.create(
-    model="cowagent",
-    messages=[{"role": "user", "content": "Hello from Python."}],
-    extra_body={"conversation_id": "python-example"},
-)
-print(response.choices[0].message.content)
-```
+## Chat API
 
-The API returns `400` for invalid requests, `401` for invalid or revoked
-credentials, and `503` when the identity store is unavailable. Non-streaming Agent failures
-return a structured JSON `500` response.
-
-For streaming requests, 容大AI waits up to 30 seconds for the Agent to produce
-the first event. An Agent failure before the first event returns a structured
-JSON `500` response because the SSE response has not started. If no first event
-arrives within 30 seconds, the API cancels only that request's in-flight Agent and
-returns the same JSON `500` shape with error code `timeout`.
-
-After the SSE response has started, its HTTP status can no longer change.
-A later Agent failure is therefore emitted as a `cow_event.type=error` chunk,
-followed by a terminal chunk with `finish_reason=error` and then
-`data: [DONE]`.
+Use a service-account key (`sak_…`) issued for an active tenant member. Requests resolve current Agent and model permissions on every call. See [Chat API](/extensions/chat-api).
 
 ## Features
 
@@ -287,6 +260,12 @@ The console file panel (workspace tree, search, preview, download and upload) an
 - **Trail**: assign, transfer, recall, and reject all append to the processing history with the actor, the receiver, and the time, and are written to the audit log (successful actions as `todo.assign` / `todo.transfer` / `todo.recall` / `todo.reject`, refusals as `result=denied`).
 - **Permission**: delegation is gated by "Delegate todos" (`todo.assign`), granted to Member and Tenant Admin by default and adjustable under Management → Roles. Without it the UI withholds the receiver picker and says so, while every other todo action keeps working. The receiver list returns only the username and display name of delegatable members in the same tenant — never roles, departments, or contact details.
 - **In conversation**: you can ask the Agent to assign a todo for you, but only when you **name the receiver explicitly in that turn**. The Agent will not infer a person from the participants of the conversation, the member directory, or history, and will not assign to several people at once.
+
+### Artifacts
+
+Collects the pages, documents, images and videos your agents create on one timeline, with preview, pinning, and a jump back to the original conversation. The page is hidden by default; show it from the [Custom Menu](/extensions/custom-menu) editor:
+
+<img width="850" src="https://cdn.jsdelivr.net/gh/zhayujie/cowagent-assets@main/screenshots/en/web-console-artifacts.png" />
 
 ### Model Management
 

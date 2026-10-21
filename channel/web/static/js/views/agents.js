@@ -12,13 +12,21 @@ let defaultAgentId = localStorage.getItem('cow_default_agent') || 'default';
 let selectedAdminAgentId = '';
 let selectedCoreRevision = '';
 let installedSkills = [];
+// What may follow a leading "@name"; keep in sync with _SEPARATORS in agent/team_addressing.py.
+const MENTION_BOUNDARY = '(?=[\\s,，:：、。！？；!?;]|$)';
 
 function findAgent(agentId) {
-    return agentCatalog.find(a => a.id === agentId) || null;
+    // The management catalogue is the richer record (it carries workspace and
+    // configuration state), so it wins when both know the Agent. The use range
+    // is the fallback that keeps a shared Agent resolvable for the chat
+    // surfaces of a member who does not manage it — the composer face, the
+    // message speakers and the session rows all read this.
+    return agentCatalog.find(a => a.id === agentId)
+        || (chatAgentCatalog || []).find(a => a.id === agentId) || null;
 }
 
 function enabledAgents() {
-    return agentCatalog.filter(a => a.enabled);
+    return agentCatalog.filter(a => a.enabled === true);
 }
 
 /* An uploaded avatar reuses the same URL every time, so the browser would keep
@@ -62,17 +70,14 @@ function agentAvatarHTML(agent, size) {
         agent = findAgent(defaultAgentId);
     }
     if (agent && agent.avatar === 'image') {
-        // Prefer the server's per-file token (avatar mtime): it changes on every
-        // upload, so replacing a picture busts the cache even after a hard reload
-        // when in-memory hints are gone and the roster revision hasn't moved.
-        const v = avatarVersions[agent.id] || agent.avatar_rev || rosterRevision || agent.id;
+        const v = avatarVersions[agent.id] || rosterRevision || agent.id;
         return `<img class="${cls}" src="/api/agents/${encodeURIComponent(agent.id)}/avatar?v=${encodeURIComponent(v)}" alt="">`;
     }
     // The default (first) Agent falls back to the product logo when it has no
-    // uploaded picture, so the instance's own Agent wears the CowAgent face.
+    // uploaded picture, so the instance's own Agent wears the product mark.
     // Added Agents keep the initial-disc fallback so a team stays distinguishable.
-    if (agent && agent.id && agent.id === defaultAgentId) {
-        return `<img class="${cls}" src="/assets/logo.jpg" alt="">`;
+    if (agent && agent.id && (agent.is_default || agent.id === defaultAgentId)) {
+        return `<img class="${cls} agent-avatar-brand" src="${effectiveLogoUrl()}" alt="">`;
     }
     const initial = avatarInitial(agent && (agent.name || agent.id));
     return `<span class="${cls} agent-avatar-tone-${avatarTone(agent && agent.id)}">${escapeHtml(initial)}</span>`;
@@ -106,22 +111,61 @@ function randomAgentId() {
 }
 
 function loadAgentCatalog() {
+    const epoch = _authEpoch, tenant = sessionStorage.getItem('cow_tenant_id');
+    const current = () => epoch === _authEpoch && tenant === sessionStorage.getItem('cow_tenant_id');
+    // The pickers' own roster, read in parallel: it is a separate projection
+    // (the use range) from the management catalogue this function returns, and
+    // a failure of it must not fail the catalogue read.
+    loadChatAgentCatalog().catch(() => {});
     return fetch('/api/agents')
         .then(r => r.json())
         .then(data => {
+            if (!current()) return;
             if (data.status !== 'success') throw new Error(data.message || 'Failed to load Agents');
-            agentCatalog = data.agents || [];
+            // Also handle a still-running backend or an older team file.
+            agentCatalog = (data.agents || []).map(normalizeAgentCatalogEntry);
             channelInstances = data.channel_instances || [];
             rosterRevision = data.revision || '';
-            defaultAgentId = data.default_agent_id || (agentCatalog[0] && agentCatalog[0].id) || 'default';
-            localStorage.setItem('cow_default_agent', defaultAgentId);
+            // The caller's own preference and the tenant-level capability, taken
+            // from the same payload as the roster so the detail pane's two
+            // "default" actions always agree with what the server would allow.
+            const pointer = data.user_default;
+            userDefault = (pointer && typeof pointer === 'object')
+                ? {
+                    agent_id: pointer.agent_id || '',
+                    revision: (typeof pointer.revision === 'number' ? pointer.revision : null),
+                    origin: pointer.origin || null,
+                }
+                : { agent_id: '', revision: null, origin: null };
+            tenantDefaultManageable = data.tenant_default_manageable === true;
+            // Why the anchor is the anchor (task 4.6). Server-decided, like every
+            // other authorization fact here: the pane must not re-derive the
+            // resolution rule, or a fallback could be presented as a decision.
+            const anchor = data.default_resolution;
+            defaultResolution = (anchor && typeof anchor === 'object')
+                ? { agent_id: anchor.agent_id || '', source: anchor.source || null }
+                : { agent_id: '', source: null };
+            // Never invent an Agent id. The global fetch wrapper copies the active
+            // id onto every /message and /api call, so a made-up fallback becomes a
+            // real request the server rejects ("agent not found") — a routing error
+            // reported where the truth is "you may not see any Agent". An empty id
+            // sends nothing and lets the server anchor the tenant's default Agent.
+            defaultAgentId = data.default_agent_id || agentCatalog.find(agent => agent.is_default === true)?.id
+                || (agentCatalog[0] && agentCatalog[0].id) || '';
+            writeScopedPreference('cow_default_agent', defaultAgentId);
             // The default Agent leads every list it appears in — menus, the grid,
             // the memory picker — so its position never depends on load order.
             agentCatalog.sort((a, b) => (b.id === defaultAgentId) - (a.id === defaultAgentId));
-            const enabled = enabledAgents();
-            if (!enabled.some(a => a.id === activeAgentId)) {
+            // A remembered Agent this catalogue no longer offers — deleted, unbound,
+            // or a literal written by an older build — must stop riding the requests.
+            // Reading configuration must not replace a bound session's owner, so an
+            // id the catalogue still offers always survives as the explicit choice.
+            if (activeAgentId && !(chatAgentCatalog || agentCatalog).some(agent => agent.id === activeAgentId)) {
+                activeAgentId = '';
+            }
+            if (!activeAgentId) {
                 activeAgentId = defaultAgentId;
-                localStorage.setItem('cow_active_agent', activeAgentId);
+                writeScopedPreference('cow_active_agent', activeAgentId);
             }
             if (!selectedAdminAgentId || !agentCatalog.some(a => a.id === selectedAdminAgentId)) {
                 selectedAdminAgentId = '';
@@ -138,16 +182,18 @@ function loadAgentCatalog() {
             if (selectedAdminAgentId) renderAgentDetail();
             else closeAgentDetail();
             renderComposerIdentity();
-            renderMemoryAgentSelect();
-            // The new-chat button only sprouts a menu (and its caret) once there
-            // is more than one Agent to choose between.
-            document.getElementById('new-chat-caret')?.classList.toggle('hidden', !multiAgentMode());
+            renderMemoryOwner();
+            // A launch control only sprouts a menu (and its caret) once there is
+            // more than one Agent to choose between.
+            syncNewChatControls();
             // A name or avatar may have changed; keep faces already on screen in
             // sync with the roster instead of only new bubbles.
             refreshBubbleAvatars();
+            if (typeof consumeScenarioOpenLink === 'function') consumeScenarioOpenLink();
             return data;
         })
         .catch(err => {
+            if (!current()) return;
             const status = document.getElementById('agent-editor-status');
             if (status) status.textContent = err.message;
         });
@@ -164,11 +210,18 @@ function renderAgentsGrid() {
         const selected = agent.id === selectedAdminAgentId;
         const desc = (agent.description || '').trim();
         // Status chips float in the top-right corner so a "default" or
-        // "archived" card is exactly as tall as every other card.
-        const corner = agent.id === defaultAgentId
-            ? `<span class="agent-card-badge agent-chip-on">${escapeHtml(t('agents_default'))}</span>`
-            : (!agent.enabled ? `<span class="agent-card-badge">${escapeHtml(t('agents_archived'))}</span>` : '');
-        return `<div class="agent-card${selected ? ' selected' : ''}${agent.enabled ? '' : ' archived'}" onclick="openAgentDetail('${escapeHtml(agent.id)}')">
+        // "archived" card is exactly as tall as every other card. The visibility
+        // chip stacks under them (`.agent-card-badges`) rather than replacing
+        // them: "私有" and "我的默认" are two facts about one object, and
+        // collapsing them into one branch would hide the second.
+        const badges = [
+            agent.id === defaultAgentId
+                ? `<span class="agent-card-badge agent-chip-on">${escapeHtml(t('agents_default'))}</span>`
+                : (!agent.enabled ? `<span class="agent-card-badge">${escapeHtml(t('agents_archived'))}</span>` : ''),
+            agentVisibilityBadgeHTML(agent),
+        ].filter(Boolean).join('');
+        const corner = badges ? `<span class="agent-card-badges">${badges}</span>` : '';
+        return `<div class="agent-card${selected ? ' selected' : ''}${agent.enabled ? '' : ' archived'}${agent.visibility ? ' has-visibility' : ''}" onclick="openAgentDetail('${escapeHtml(agent.id)}')">
             ${corner}
             <div class="agent-card-top">
                 ${agentAvatarHTML(agent, 32)}
@@ -215,10 +268,11 @@ function selectAgentDetailTab(tab) {
     document.querySelectorAll('.agent-detail-tab').forEach(el => {
         el.classList.toggle('active', el.dataset.tab === tab);
     });
-    ['profile', 'skills', 'files'].forEach(name => {
+    ['profile', 'skills', 'tasks', 'files'].forEach(name => {
         document.getElementById(`agent-detail-${name}`)?.classList.toggle('hidden', name !== tab);
     });
-    if (tab === 'skills') renderAgentSkillsPane();
+    if (tab === 'skills') renderAgentCapabilitiesPane();
+    if (tab === 'tasks') renderAgentTasksPane();
     if (tab === 'files') loadAgentCoreFile();
 }
 
@@ -301,18 +355,48 @@ document.addEventListener('mouseout', (e) => {
 });
 document.addEventListener('scroll', _hideFieldTip, true);
 
+function copyAgentId(agentId, btn) {
+    copyToClipboard(agentId).then(() => {
+        const icon = btn.querySelector('i');
+        icon.className = 'fas fa-check';
+        setTimeout(() => { icon.className = 'far fa-copy'; }, 1200);
+    }).catch(() => {});
+}
+
 function renderAgentDetail() {
     const agent = findAgent(selectedAdminAgentId);
     const identity = document.getElementById('agent-detail-identity');
     const profile = document.getElementById('agent-detail-profile');
     if (!agent || !identity || !profile) return;
+    const coding = agent.agent_type === 'coding';
+    // The service line is read through the guarded seam accessor: this region of
+    // the file runs on its own in the Agent tests, where the seam is absent.
+    const seam = (typeof codingSeam === 'function') ? codingSeam() : null;
+    const serviceLabel = (seam && seam.serviceLabel()) || t('agents_coding_service_unset');
     identity.innerHTML = `
         ${agentAvatarHTML(agent, 56)}
         <div class="min-w-0">
             <div class="text-lg font-semibold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(agent.name)}</div>
-            <div class="text-xs text-slate-400 font-mono truncate">${escapeHtml(agent.id)}</div>
+            <div class="flex items-center gap-1 text-xs text-slate-400 min-w-0">
+                <span class="font-mono truncate">ID: ${escapeHtml(agent.id)}</span>
+                <button type="button" class="flex-shrink-0 p-0.5 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer"
+                        onclick="copyAgentId('${escapeHtml(agent.id)}', this)" data-tooltip="${escapeHtml(t('agents_copy_id'))}" data-tip-float>
+                    <i class="far fa-copy"></i>
+                </button>
+            </div>
         </div>`;
     const isDefault = agent.id === defaultAgentId;
+    // *My* registered default, which is a different fact from `isDefault` above:
+    // that one is the resolved anchor, and a fallback (the tenant's choice, or
+    // the deterministic first shared Agent) is not a preference the user made.
+    // Offering "设为我的默认" only against the registered pointer is what keeps
+    // the button from claiming a choice nobody made.
+    const isMyDefault = !!userDefault.agent_id && userDefault.agent_id === agent.id;
+    // The Agent a *new session* would land on right now, which is what makes the
+    // hint below worth showing. `defaultAgentId` is the same fact for the
+    // catalogue ordering, but it is written with a defensive fallback chain, so
+    // the resolution's own answer is the one to trust here.
+    const isAnchor = !!defaultResolution.agent_id && defaultResolution.agent_id === agent.id;
     profile.innerHTML = `
         <div class="agent-field">
             <label class="agent-field-label">${escapeHtml(t('agents_avatar'))}</label>
@@ -323,10 +407,55 @@ function renderAgentDetail() {
             <input id="agent-edit-name" value="${escapeHtml(agent.name)}" class="agent-input">
         </div>
         <div class="agent-field">
+            ${fieldLabelWithTip(t('agents_type'), t('agents_type_locked'))}
+            <div id="agent-type-value" class="agent-field-hint">${escapeHtml(coding ? t('agents_type_coding') : t('agents_type_normal'))}</div>
+        </div>
+        ${coding ? `
+        <div class="agent-field">
+            ${fieldLabelWithTip(t('agents_coding_project'), t('agents_coding_project_hint'))}
+            <!-- Read-only: the project is part of the Agent's definition and the
+                 type cannot be changed after creation. -->
+            <div id="agent-coding-project" class="agent-input font-mono bg-slate-50 dark:bg-white/5">${escapeHtml(agent.coding_project_dir || '')}</div>
+        </div>
+        <div class="agent-field">
+            ${fieldLabelWithTip(t('agents_coding_service'), t('agents_coding_service_hint'))}
+            <div id="agent-coding-service" class="agent-field-hint">${escapeHtml(serviceLabel)}</div>
+        </div>` : ''}
+        <div class="agent-field">
             ${fieldLabelWithTip(t('agents_description'), t('agents_description_hint'))}
             <textarea id="agent-edit-description" rows="4"
                    placeholder="${escapeHtml(t('agents_description_placeholder'))}"
                    class="agent-input agent-textarea">${escapeHtml(agent.description || '')}</textarea>
+        </div>
+        <div class="agent-field">
+            <label class="agent-field-label">${escapeHtml(t('agents_position'))}</label>
+            <input id="agent-edit-position" value="${escapeHtml(agent.position || '')}" class="agent-input"
+                   placeholder="${escapeHtml(t('agents_position_placeholder'))}">
+        </div>
+        <div class="agent-field">
+            <label class="agent-field-label">${escapeHtml(t('agents_tags'))}</label>
+            <input id="agent-edit-tags" value="${escapeHtml((agent.tags || []).join(', '))}" class="agent-input"
+                   placeholder="${escapeHtml(t('agents_tags_placeholder'))}">
+        </div>
+        <div class="agent-field">
+            <label class="agent-field-label">${escapeHtml(t('agents_greeting'))}</label>
+            <input id="agent-edit-greeting" value="${escapeHtml(agent.greeting || '')}" class="agent-input">
+        </div>
+        <div class="agent-field">
+            ${fieldLabelWithTip(t('agents_usage_hint'), t('agents_usage_hint_hint'))}
+            <input id="agent-edit-usage-hint" maxlength="200" class="agent-input"
+                   value="${escapeHtml(agent.usage_hint || '')}">
+        </div>
+        <div class="agent-field">
+            ${fieldLabelWithTip(t('agents_suggested_questions'), t('agents_suggested_questions_hint'))}
+            ${[0, 1, 2, 3].map(i => `<input id="agent-edit-question-${i + 1}" maxlength="200"
+                   class="agent-input" value="${escapeHtml((agent.suggested_questions || [])[i] || '')}"
+                   placeholder="${escapeHtml(i === 0 ? t('agents_suggested_question_placeholder') : '')}">`).join('')}
+        </div>
+        <div class="agent-field">
+            ${fieldLabelWithTip(t('agents_persona'), t('agents_persona_hint'))}
+            <textarea id="agent-edit-persona" rows="3"
+                   class="agent-input agent-textarea">${escapeHtml(agent.persona_summary || '')}</textarea>
         </div>
         <div class="agent-field">
             <label class="agent-field-label">${escapeHtml(t('agents_model'))}</label>
@@ -356,18 +485,29 @@ function renderAgentDetail() {
                 <span id="agent-knowledge-status" class="agent-field-hint" style="margin-top:0"></span>
             </div>
         </div>`}
+        ${isAnchor ? `<p id="agent-anchor-hint" class="agent-field-hint agent-anchor-hint">${escapeHtml(agentAnchorHintText())}</p>` : ''}
         <div class="agent-detail-actions">
             <button type="button" onclick="saveAgentProfile()" class="agent-btn agent-btn-primary">${escapeHtml(t('save'))}</button>
             <button type="button" onclick="startChatWithAgent('${escapeHtml(agent.id)}')" class="agent-btn agent-btn-ghost">${escapeHtml(t('agents_chat'))}</button>
+            ${agentVisibilityActionsHTML(agent)}
+            ${isMyDefault || agent.enabled === false ? '' : `<button type="button" onclick="setAgentAsMyDefault('${escapeHtml(agent.id)}')" class="agent-btn agent-btn-ghost">${escapeHtml(t('agents_set_my_default'))}</button>`}
+            ${tenantDefaultManageable && !isDefault ? `<button type="button" onclick="setAgentAsDefault('${escapeHtml(agent.id)}')" class="agent-btn agent-btn-ghost">${escapeHtml(t('agents_set_tenant_default'))}</button>` : ''}
             ${isDefault ? '' : `<button type="button" onclick="deleteAgent('${escapeHtml(agent.id)}')" class="agent-btn agent-btn-danger agent-detail-delete">${escapeHtml(t('agents_delete'))}</button>`}
         </div>
+        <!-- 归属人选择区：只在 can_unshare 时由 startAgentUnshare 填出来，平常是空的，
+             所以「恢复为私有」的确认动作不会给不能做这件事的人留下任何残留控件。 -->
+        <div id="agent-visibility-owner" class="agent-visibility-owner hidden"></div>
         <div id="agent-profile-status" class="agent-field-hint mt-3"></div>`;
 
     renderAvatarPicker('agent-edit-avatar', agent, (file) => uploadAgentAvatar(agent.id, file));
 
+    // The service line is read through the same one-shot projection the create
+    // form uses; only a coding Agent has one to show.
+    if (coding && seam) seam.paintService('agent-coding-service');
+
     if (!isDefault) {
         const dd = document.getElementById('agent-edit-model');
-        const opts = agentModelDropdownOptions();
+        const opts = agentModelDropdownOptions(agent);
         const current = agent.model ? `${agent.bot_type || ''}|${agent.model}` : '';
         initDropdown(dd, opts, current, () => {}, { placeholder: t('agents_model_follows_global') });
     }
@@ -402,7 +542,7 @@ function renderAvatarPicker(containerId, agent, onUpload) {
 /* Flattened for the styled dropdown: one row per model, its provider carried in
    the value (a model asked of the wrong vendor is an error), its brand shown as
    a dim hint. The first row clears the choice back to the configured model. */
-function agentModelDropdownOptions() {
+function agentModelDropdownOptions(agent) {
     const opts = [{ value: '', label: t('agents_model_follows_global') }];
     const providers = (_sessCfg && _sessCfg.model && _sessCfg.model.providers) || [];
     providers.forEach(p => {
@@ -410,6 +550,16 @@ function agentModelDropdownOptions() {
             opts.push({ value: `${p.id}|${m}`, label: m, hint: localizedLabel(p.label) });
         });
     });
+    // A pinned model whose provider is no longer in the catalog (its key was
+    // removed, say) must still show as the selection. Otherwise the picker
+    // falls back to the "follow global" row and the next save silently clears
+    // the pin. Mirrors the desktop Agent editor.
+    if (agent && agent.model) {
+        const current = `${agent.bot_type || ''}|${agent.model}`;
+        if (!opts.some(o => o.value === current)) {
+            opts.push({ value: current, label: agent.model, hint: agent.bot_type || undefined });
+        }
+    }
     return opts;
 }
 
@@ -504,7 +654,7 @@ function renderAgentSkillsPane() {
                     <input type="checkbox" class="agent-skill-item" value="${escapeHtml(name)}" ${checked ? 'checked' : ''} ${all ? 'disabled' : ''}>
                     <div>
                         <div class="text-sm text-slate-700 dark:text-slate-200">${escapeHtml(skill.display_name || name)}</div>
-                        <div class="text-xs text-slate-400">${escapeHtml(skill.description || '')}</div>
+                        <div class="text-xs text-slate-400">${escapeHtml(skill.display_description || skill.description || '')}</div>
                     </div>
                 </label>`;
             }).join('')}`;
@@ -634,6 +784,15 @@ function openAgentCreateForm() {
         );
         initDropdown(clone, opts, '', () => {});
     }
+
+    // Type + project (change add-opencode-coding-agents, 4.3). A new Agent
+    // starts normal, which is the state the server assumes for an absent type;
+    // the project field only appears for the type that has one.
+    if (typeof _createAgentType !== 'undefined') _createAgentType = 'normal';
+    const project = document.getElementById('agent-create-project');
+    if (project) project.value = '';
+    if (typeof bindCreateAgentType === 'function') bindCreateAgentType();
+    if (typeof renderCreateCodingFields === 'function') renderCreateCodingFields();
 }
 
 function closeAgentCreateForm() {
@@ -681,6 +840,17 @@ function createAgentWorkspace() {
         status.textContent = t('agents_id_invalid');
         return;
     }
+    // The form's type, read defensively: this region can run without the
+    // declaration above it in the console's own section tests, where the type
+    // is then simply the normal one.
+    const createType = (typeof _createAgentType === 'undefined') ? 'normal' : _createAgentType;
+    // The same rule the server enforces for a coding Agent: the session has to
+    // have a directory to open, and the server would refuse the create anyway.
+    const projectDir = document.getElementById('agent-create-project')?.value.trim() || '';
+    if (createType === 'coding' && !projectDir) {
+        status.textContent = t('agents_coding_project_required');
+        return;
+    }
     fetch('/api/agents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -691,6 +861,10 @@ function createAgentWorkspace() {
             description: document.getElementById('agent-create-description')?.value.trim() || '',
             clone_from: getDropdownValue(document.getElementById('agent-create-clone')) || null,
             knowledge_mode: _createKnowledgeMode,
+            // Sent explicitly for every Agent so the type is never inferred from
+            // an absent field; the project only when there is one.
+            agent_type: createType,
+            coding_project_dir: createType === 'coding' ? projectDir : null,
             revision: rosterRevision,
         }),
     }).then(r => r.json()).then(data => {
@@ -711,9 +885,21 @@ function createAgentWorkspace() {
 function saveAgentProfile() {
     const agent = findAgent(selectedAdminAgentId);
     if (!agent) return;
+    const catEl = document.getElementById('agent-edit-category');
+    const sceneEl = document.getElementById('agent-edit-scene');
     const payload = {
         name: document.getElementById('agent-edit-name')?.value.trim(),
         description: document.getElementById('agent-edit-description')?.value.trim() || '',
+        position: document.getElementById('agent-edit-position')?.value.trim() || '',
+        category: catEl ? (getDropdownValue(catEl) || '') : agent.category || '',
+        tags: [...new Set((document.getElementById('agent-edit-tags')?.value || '').split(/[,，]/).map(s => s.trim()).filter(Boolean))],
+        greeting: document.getElementById('agent-edit-greeting')?.value.trim() || '',
+        usage_hint: document.getElementById('agent-edit-usage-hint')?.value.trim() || '',
+        suggested_questions: [1, 2, 3, 4]
+            .map(i => document.getElementById(`agent-edit-question-${i}`)?.value.trim() || '')
+            .filter(Boolean),
+        persona_summary: document.getElementById('agent-edit-persona')?.value.trim() || '',
+        scene_id: sceneEl ? (getDropdownValue(sceneEl) || '') : agent.scene_id || '',
     };
     // Absent for the default Agent, which follows the configured model.
     const picker = document.getElementById('agent-edit-model');
@@ -854,16 +1040,16 @@ function _performAgentDelete(agentId, _retried) {
         // A conversation owned by the deleted Agent falls back to the default.
         if (activeAgentId === agentId) {
             activeAgentId = defaultAgentId;
-            localStorage.setItem('cow_active_agent', activeAgentId);
+            writeScopedPreference('cow_active_agent', activeAgentId);
         }
         // Drop the deleted Agent's remembered session id — its conversations
         // went with the workspace, so the pinned id would only re-pin a ghost.
-        localStorage.removeItem(`${SESSION_ID_KEY}:${agentId}`);
+        removeScopedPreference(`${SESSION_ID_KEY}:${agentId}`);
         return loadAgentCatalog().then(() => {
             renderComposerIdentity();
             // The Agent's sessions were removed server-side; refresh the open
             // list so its rows don't linger until the next unrelated reload.
-            if (typeof loadSessionList === 'function') loadSessionList();
+            if (typeof _refreshHistoryList === 'function') _refreshHistoryList();
             return true;
         });
     }).catch(err => {
@@ -1000,13 +1186,54 @@ function saveAgentCoreFile() {
     });
 }
 
-function startChatWithAgent(agentId) {
-    if (!agentId) return;
-    activeAgentId = agentId;
-    localStorage.setItem('cow_active_agent', activeAgentId);
-    newChat(true);
-    navigateTo('chat');
-    renderComposerIdentity();
+async function startChatWithAgent(agentId) {
+    if (!agentId || _agentStartInFlight) return;
+    if (typeof wsGuardUnsaved === 'function'
+        && !wsGuardUnsaved(() => startChatWithAgent(agentId))) return;
+    const attempt = { context: _wbContext() };
+    _agentStartInFlight = attempt;
+    _agentStartAgentId = agentId;
+    _wbNoticeKey = '';
+    renderAgentWorkbench();
+    try {
+        // The use-page roster is independent of the management cache. A card
+        // created in another tab must work, and a removed target must not start.
+        const agents = await fetchAgentWorkbench();
+        if (_agentStartInFlight !== attempt || attempt.context !== _wbContext()) return;
+        const agent = agents.find(a => a.id === agentId);
+        applyAgentWorkbench(agents);
+        if (!agent || !agent.can_chat) {
+            refreshWorkbenchAfterUnavailable(agentId, agent?.unavailable_reason);
+            return;
+        }
+        // The user could edit a file while validation was in flight. Settle it
+        // once more before committing; no await occurs between this and newChat.
+        if (typeof wsGuardUnsaved === 'function'
+            && !wsGuardUnsaved(() => startChatWithAgent(agentId))) return;
+        const cached = findAgent(agentId);
+        if (cached) Object.assign(cached, agent, { enabled: true });
+        else agentCatalog.push({ ...agent, enabled: true });
+        if (agent.is_default) defaultAgentId = agent.id;
+        const seam = (typeof codingSeam === 'function') ? codingSeam() : null;
+        if (seam && agent.agent_type === 'coding') {
+            await seam.open(agentId, '');
+            return;
+        }
+        activeAgentId = agentId;
+        writeScopedPreference('cow_active_agent', activeAgentId);
+        newChat(true, false);
+        if (typeof resetWorkspaceToAgentRoot === 'function') resetWorkspaceToAgentRoot();
+        navigateTo('chat');
+        renderComposerIdentity();
+        focusChatComposer();
+    } catch (err) {
+        if (_agentStartInFlight === attempt && attempt.context === _wbContext()) {
+            showAgentStartNotice('agent_start_failed');
+        }
+    } finally {
+        if (_agentStartInFlight === attempt) cancelAgentStart();
+        if (currentView === 'agent-workbench') renderAgentWorkbench();
+    }
 }
 
 function conversationHasMessages() {
@@ -1016,13 +1243,13 @@ function conversationHasMessages() {
 /** A roster of one behaves exactly like the console did before Agents existed:
  *  no face on the composer, no faces in the session list, no @ mentions. */
 function multiAgentMode() {
-    return enabledAgents().length > 1;
+    return availableChatAgents().length > 1;
 }
 
 /** True once this conversation holds more than its owner. Until then it is an
  *  ordinary chat and is drawn like one. */
 function sharedConversation() {
-    return multiAgentMode() && currentTeamIds().length > 0;
+    return currentTeamIds().length > 0;
 }
 
 // Who is answering each in-flight request, as reported when it was accepted.
@@ -1077,7 +1304,7 @@ function highlightMentions(root) {
         .sort((a, b) => b.length - a.length)
         .map(label => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
         .join('|');
-    const re = new RegExp('@(' + alternation + ')(?=[\\s，,：:、]|$)', 'gi');
+    const re = new RegExp('@(' + alternation + ')' + MENTION_BOUNDARY, 'gi');
 
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
         acceptNode: node => node.parentElement
@@ -1122,19 +1349,20 @@ function highlightMentions(root) {
 }
 
 function renderComposerIdentity() {
+    const agent = findAgent(activeAgentId) || { id: activeAgentId || defaultAgentId, name: activeAgentId || 'Agent' };
+    paintChatAgentIdentity(agent);
+    if (typeof paintWelcomeAgentIntro === 'function') paintWelcomeAgentIntro();
     const wrap = document.getElementById('composer-identity');
     const btn = document.getElementById('composer-agent-btn');
     if (!wrap || !btn) return;
-    // A single-Agent install keeps the composer exactly as it always was: no
-    // avatar, no menu. The identity chip only appears once there is more than
-    // one Agent and thus an actual choice to make.
-    if (!multiAgentMode()) {
+    // A solo install has no choice to offer. Existing teammates still need
+    // their menu even if the available catalog shrinks after this chat began.
+    if (!multiAgentMode() && !currentTeamIds().length) {
         wrap.classList.add('hidden');
         document.getElementById('composer-agent-menu')?.classList.add('hidden');
         return;
     }
     wrap.classList.remove('hidden');
-    const agent = findAgent(activeAgentId) || { id: activeAgentId || defaultAgentId, name: activeAgentId || 'Agent' };
     const others = currentTeamIds().length;
     btn.innerHTML = agentAvatarHTML(agent, 22)
         + (others ? `<span class="composer-agent-count">${others + 1}</span>` : '');
@@ -1252,16 +1480,17 @@ function openAgentCreateFromComposer() {
 function inviteTeamMember(agentId) {
     // Keep the menu open so the invited Agent visibly moves from "+ add" to the
     // "× remove" list, and the user can invite several in a row without having
-    // to reopen it each time.
-    addTeamMember(agentId).then(refreshComposerAgentMenuIfOpen);
+    // to reopen it each time. A refused write must say so instead of leaving the
+    // menu looking as though the invite happened.
+    addTeamMember(agentId).then(refreshComposerAgentMenuIfOpen)
+        .catch(err => _wsToast((err && err.message) || t('session_settings_failed')));
 }
 
 /** Everyone addressable in this conversation, owner first. */
 function sessionRoster() {
     const owner = findAgent(activeAgentId);
-    const members = (_sessCfg && _sessCfg.team && _sessCfg.team.members) || [];
     const roster = owner ? [owner] : [];
-    members.forEach(m => {
+    validTeamMemberRows().forEach(m => {
         if (!roster.some(a => a.id === m.id)) roster.push(findAgent(m.id) || m);
     });
     return roster;
@@ -1280,7 +1509,7 @@ function addressedAgentId(text) {
     });
     labels.sort((a, b) => b[0].length - a[0].length);
     for (const [label, id] of labels) {
-        const re = new RegExp('^@' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=[\\s，,：:、]|$)', 'i');
+        const re = new RegExp('^@' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + MENTION_BOUNDARY, 'i');
         // The owner is addressable too; the server treats "@owner" as the owner
         // simply taking the turn, so no special-casing here.
         if (re.test(stripped)) return id;
@@ -1297,15 +1526,27 @@ function currentTeamIds() {
     return ((_sessCfg && _sessCfg.team && _sessCfg.team.members) || []).map(m => m.id);
 }
 
-function setTeamMembers(ids) {
-    const unique = Array.from(new Set(ids.filter(id => id && id !== activeAgentId)));
-    return fetch(`/api/sessions/${encodeURIComponent(sessionId)}/settings`, {
+function setTeamMembers(ids, target) {
+    const ownerId = (target && target.agentId) || activeAgentId || '';
+    const sid = (target && target.sessionId) || sessionId;
+    const unique = Array.from(new Set((ids || []).filter(id => id && id !== ownerId)));
+    const body = { members: unique.length ? unique : null };
+    if (ownerId) body.agent_id = ownerId;
+    // Spell the owner in the query too: the console's global fetch wrapper
+    // otherwise fills an absent ``agent_id`` from the page's current Agent.
+    const url = `/api/sessions/${encodeURIComponent(sid)}/settings`
+        + (ownerId ? `?agent_id=${encodeURIComponent(ownerId)}` : '');
+    return fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ members: unique.length ? unique : null }),
-    }).then(r => r.json()).then(data => {
-        if (data.status === 'success') {
-            _sessCfg = { model: data.model, permission: data.permission, team: data.team };
+        body: JSON.stringify(body),
+    }).then(r => r.json().catch(() => ({})).then(data => {
+        if (!r.ok || !data || data.status !== 'success') {
+            throw new Error((data && data.message) || t('session_settings_failed'));
+        }
+        // Only a write that targeted the conversation on screen may repaint it.
+        if (sid === sessionId && ownerId === activeAgentId) {
+            _sessCfg = { model: data.model, team: data.team };
             renderComposerIdentity();
             // Inviting or removing someone changes whether one model can speak
             // for this conversation, and whether @ can address an Agent.
@@ -1317,19 +1558,24 @@ function setTeamMembers(ids) {
                 setSessionParticipants(sessionId, data.team);
             }
         }
-    });
+        return data;
+    }));
 }
 
 function addTeamMember(agentId) {
     if (!agentId || agentId === activeAgentId) return Promise.resolve();
-    const ids = currentTeamIds();
+    const ids = validTeamMemberIds();
     if (ids.includes(agentId)) return Promise.resolve();
     return setTeamMembers([...ids, agentId]);
 }
 
 function removeTeamMember(agentId) {
-    return setTeamMembers(currentTeamIds().filter(id => id !== agentId))
-        .then(refreshComposerAgentMenuIfOpen);
+    return setTeamMembers(validTeamMemberIds().filter(id => id !== agentId))
+        .then(refreshComposerAgentMenuIfOpen)
+        .catch(err => {
+            refreshComposerAgentMenuIfOpen();
+            _wsToast((err && err.message) || t('session_settings_failed'));
+        });
 }
 
 /** Repaint the agent menu if it is still open, so add/remove show immediately. */
@@ -1341,7 +1587,13 @@ function refreshComposerAgentMenuIfOpen() {
 async function syncTeamFromText(text) {
     const extra = mentionedAgentIds(text);
     if (!extra.length) return;
-    await setTeamMembers([...currentTeamIds(), ...extra]);
+    try {
+        await setTeamMembers([...validTeamMemberIds(), ...extra]);
+    } catch (err) {
+        // A mention must not become a silent roster write that did not happen;
+        // the message still goes out, addressed to whoever is on the team.
+        _wsToast((err && err.message) || t('session_settings_failed'));
+    }
 }
 
 // Point a channel instance at an Agent. Binding lives on the instance itself

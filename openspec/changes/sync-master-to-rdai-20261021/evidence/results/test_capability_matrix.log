@@ -1,0 +1,22 @@
+...F................                                                     [100%]
+=================================== FAILURES ===================================
+_____ DeclarationInvariantTests.test_every_declared_capability_has_a_spec ______
+
+self = <test_capability_matrix.DeclarationInvariantTests testMethod=test_every_declared_capability_has_a_spec>
+
+    def test_every_declared_capability_has_a_spec(self):
+        """A slice must name a capability that exists as a main spec or a delta."""
+        from auth import capability_matrix
+
+        for spec in capability_matrix.SLICES:
+            main = os.path.join(REPO, "openspec", "specs", spec.capability, "spec.md")
+            deltas = glob.glob(os.path.join(
+                REPO, "openspec", "changes", "*", "specs", spec.capability, "spec.md"))
+>           self.assertTrue(os.path.isfile(main) or deltas,
+                            "%s names missing capability %r" % (spec.id, spec.capability))
+E           AssertionError: [] is not true : desktop_remote_web names missing capability 'desktop-remote-web-workbench'
+
+tests/test_capability_matrix.py:66: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_capability_matrix.py::DeclarationInvariantTests::test_every_declared_capability_has_a_spec
+1 failed, 19 passed in 1.04s

@@ -25,7 +25,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../channel/web/static/js/console.js'), 'utf8');
-const chatHtml = fs.readFileSync(path.join(__dirname, '../channel/web/chat.html'), 'utf8');
+const chatHtml = require('./support/console_sources.cjs').markup();
 
 function section(from, to) {
     const start = source.indexOf(from);
@@ -444,30 +444,19 @@ test('both surfaces derive their marker from the one shared helper', () => {
 
 /* --- structure (task 4.2) ------------------------------------------------ */
 
-test('the sidebar keeps one middle scroll region with the zones in order', () => {
-    const brand = chatHtml.indexOf('class="sidebar-brand"');
-    const launch = chatHtml.indexOf('class="sidebar-new-chat-wrap"');
-    const primary = chatHtml.indexOf('id="sidebar-new-chat"');
-    const caret = chatHtml.indexOf('id="sidebar-new-chat-caret"');
-    const menu = chatHtml.indexOf('id="sidebar-new-chat-menu"');
-    const nav = chatHtml.indexOf('id="sidebar-nav"');
-    const recent = chatHtml.indexOf('id="sidebar-recent"');
-    const footer = chatHtml.indexOf('id="sidebar-account-footer"');
-    assert.ok(brand < launch && launch < primary && primary < caret && caret < menu && menu < nav
-        && nav < recent && recent < footer,
-        'brand, launch control (button, caret, picker), navigation, recent preview and account card keep their order');
-
-    // The recent preview lives inside the navigation, which is the only
-    // scrolling container: the sidebar itself must not scroll a second region.
-    const navBlock = chatHtml.slice(nav, chatHtml.indexOf('</nav>', nav));
-    assert.ok(navBlock.includes('id="sidebar-recent"'), 'the preview shares the scrolling region');
-    assert.match(navBlock, /class="[^"]*flex-1 min-h-0 overflow-y-auto/);
-
-    const sidebarBlock = chatHtml.slice(chatHtml.indexOf('<aside id="sidebar"'), chatHtml.indexOf('</aside>'));
-    const scrollers = sidebarBlock.match(/overflow-y-auto/g) || [];
-    assert.equal(scrollers.length, 1, 'the refined sidebar scrolls in exactly one place');
-    const footerBlock = sidebarBlock.slice(sidebarBlock.indexOf('id="sidebar-account-footer"'));
-    assert.doesNotMatch(footerBlock, /overflow-y-auto/, 'the account card is not inside the scroller');
+test('the master sidebar keeps one navigation scroller and the account footer outside it', () => {
+    const sidebar = chatHtml.slice(chatHtml.indexOf('<aside id="sidebar"'), chatHtml.indexOf('</aside>'));
+    const brand = sidebar.indexOf('id="sidebar-brand-name"');
+    const nav = sidebar.indexOf('id="sidebar-nav"');
+    const footer = sidebar.indexOf('id="sidebar-account-footer"');
+    assert.ok(brand >= 0 && brand < nav && nav < footer);
+    assert.equal((sidebar.match(/overflow-y-auto/g) || []).length, 1);
+    assert.doesNotMatch(sidebar.slice(footer), /overflow-y-auto/);
+    // Master owns navigation/menu layout. Chat launch and its history are in
+    // the dedicated session panel; rdai retains identity and team semantics.
+    assert.doesNotMatch(sidebar, /id="sidebar-new-chat"|id="sidebar-recent"/);
+    const panel = chatHtml.slice(chatHtml.indexOf('<aside id="session-panel"'));
+    assert.ok(panel.indexOf('id="history-new-chat-btn"') < panel.indexOf('id="session-list"'));
 });
 
 test('the launch control and its picker carry their own styling hooks', () => {

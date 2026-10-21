@@ -1,0 +1,128 @@
+{
+  "passed": true,
+  "checks": {
+    "modelsAndRealToolFiles": true,
+    "sameConversationIdSeparatedByServiceIdentity": true,
+    "legacyUserIsStatelessAndNotPersisted": true,
+    "streamNonstreamUsageAndCompletion": true
+  },
+  "calls": [
+    {
+      "account": "api-alice",
+      "stream": false,
+      "persistent": true,
+      "usage": {
+        "prompt_tokens": 39956,
+        "completion_tokens": 141,
+        "total_tokens": 40097,
+        "prompt_tokens_details": {
+          "cached_tokens": 27136
+        }
+      },
+      "completed": true,
+      "events": [
+        {
+          "type": "tool_result",
+          "name": "write",
+          "status": "success"
+        },
+        {
+          "type": "artifact",
+          "name": null,
+          "status": null
+        },
+        {
+          "type": "tool_result",
+          "name": "read",
+          "status": "success"
+        }
+      ]
+    },
+    {
+      "account": "api-bob",
+      "stream": true,
+      "persistent": true,
+      "usage": {
+        "prompt_tokens": 39948,
+        "completion_tokens": 125,
+        "total_tokens": 40073,
+        "prompt_tokens_details": {
+          "cached_tokens": 28416
+        }
+      },
+      "completed": true,
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "write",
+          "status": null
+        },
+        {
+          "type": "tool_result",
+          "name": "write",
+          "status": "success"
+        },
+        {
+          "type": "artifact",
+          "name": null,
+          "status": null
+        },
+        {
+          "type": "tool_start",
+          "name": "read",
+          "status": null
+        },
+        {
+          "type": "tool_result",
+          "name": "read",
+          "status": "success"
+        }
+      ]
+    },
+    {
+      "account": "api-alice",
+      "stream": false,
+      "persistent": true,
+      "usage": {
+        "prompt_tokens": 13537,
+        "completion_tokens": 10,
+        "total_tokens": 13547,
+        "prompt_tokens_details": {
+          "cached_tokens": 5888
+        }
+      },
+      "completed": true,
+      "events": []
+    },
+    {
+      "account": "api-bob",
+      "stream": false,
+      "persistent": true,
+      "usage": {
+        "prompt_tokens": 13519,
+        "completion_tokens": 9,
+        "total_tokens": 13528,
+        "prompt_tokens_details": {
+          "cached_tokens": 5888
+        }
+      },
+      "completed": true,
+      "events": []
+    },
+    {
+      "account": "api-alice",
+      "stream": false,
+      "persistent": false,
+      "usage": {
+        "prompt_tokens": 13148,
+        "completion_tokens": 7,
+        "total_tokens": 13155,
+        "prompt_tokens_details": {
+          "cached_tokens": 12928
+        }
+      },
+      "completed": true,
+      "events": []
+    }
+  ]
+}

@@ -1,0 +1,770 @@
+ee2dc0521714fc144e0c9923f363147fe865ad2f fix: adapt multiline python -c spill to the merged rewrite
+5e5680f6176d16433b3ebb78da955f244b0350b0 Merge branch 'master' into fix/windows-multiline-python-20261021
+478603f23fbc8667c1a77e3e1480da17cf847ebd feat: let a product name the built-in default agent
+a40c7564e60af776c2885c97ba867f1cecb95d64 Merge branch 'fix/windows-bash-chcp-nonblocking'
+06ab32a1510b3a35643ec7451d834b7c05350606 fix: run multi-line python -c through a temp file on Windows
+1f5b3dd7d2687f31977b44659bc9ee71e062ca94 Merge branch 'master' of https://github.com/zhayujie/CowAgent
+78fdaffb4581d4e9cb406157156a6a4b87e4a533 feat: let a suggestion card send a message with a separate display text
+8e7070c60e8859bb063a173fb28738d21908b222 test(bash): always quote the Windows multiline program argument
+cec7433eea97477795923fa7c57e47ee63111bad fix(bash): preserve inline semantics and quoting in multiline spills
+040ce73e8dc1cacc21e24b02bddc02ddf8d005f8 fix(bash): preserve short multiline Python programs on Windows
+855f210a338c0a57fa6286a73fd0adf9f11f681a fix(bash): don't abort Windows commands when chcp 65001 fails
+c690a031947f78e1f9245fbe976ae7a14e892b7c Merge pull request #3792 from zkjqd/fix/web-chat-burst-render-freeze
+834e10557b6ac1c7215ca627f3f912a49bf2f835 fix(desktop): batch streamed deltas to stop chat freezing on bursts
+85040668aa4b1dd9e9904cac6525fe741c351ea9 fix: avoid web chat freeze when a reply arrives in one burst
+af7c622302754a5aa3edc9f679d85ca487cdde68 fix: parse files and locale-wrapped body in Feishu post messages
+49db276722499e709680b2df67b016933b3ea44f feat(desktop): add show-in-folder button to chat workspace preview
+cd6c04e85537b04b61c4fe5e779e18c39fb643ff feat(chat): align scroll-to-bottom button with composer and auto-load history
+39d53c4afb0b6928e4fe804c7f6960c9ce231b52 Merge branch 'master' into pr-3785
+b25001c3b011d1c337a2a590d678585d2ac390e1 Merge pull request #3786 from ningyixi/fix/docx-block-content-controls
+1ec1683cce7bb95038e0b301715abad0bacdfaef fix: retain block content controls in Word document extraction
+769ff9bb683960fecfd4887580daec3afad950b9 feat(chat): improve scroll following controls
+987a61ca6f332796f4fd1aa83602c32d4b74fe55 feat: make DeepSeek the default search provider with a base/key editor
+6e68a5be41bf2bcf44dee21b9c5b03086b069ec6 Merge pull request #3774 from anshlakhera048/feat/web-https-reverse-proxy
+1e863fa41b09677f8aa8785c2af70333cd62566c Merge pull request #3776 from anshlakhera048/feat/deepseek-search-fetch
+4bc020d51a60e30cfa6c93b83852dc67e8f1b766 Merge pull request #3709 from rudycelekli/fix/cow50-cli-daemon-detach-stdin-20261012
+a152644896295f90a78695f3b9ececd83dc29af3 Merge pull request #3754 from rudycelekli/fix/cow-net-new-skill-config-save-errors-20261013
+a031743199c9007759a8d8a3a275fe6f0a954f48 Merge pull request #3784 from rudycelekli/fix/web-config-save-transaction-20261017
+642d2a2cf75a3b091ceb2741a1783fe5b5f57727 Merge pull request #3769 from c020627/fix-chrome-launcher-pid-probe-timeout
+4addbbe563dd1d6d18e6e4baa2e113ea8af17268 Merge pull request #3748 from rudycelekli/fix/cow-net-new-workspace-agent-fallback-20261013
+217df8123f1481a108ed60bc50eba1a824c68698 Merge pull request #3782 from rudycelekli/fix/cow-scheduler-operation-status-20261017
+1990d263d6d858d431471ac71ecb27c06af34d68 Merge pull request #3781 from rudycelekli/fix/cow-mcp-transport-failure-status-20261017
+f49531e7a1a3de9d05cdba57e573941c96639f15 Merge pull request #3780 from rudycelekli/fix/cow-logger-stdout-ownership-20261017
+66e74bb03e39efbf3c018a70f2b52255f0ba270c Merge pull request #3779 from rudycelekli/fix/cow-bash-line-truncation-log-20261017
+690295e38e997d1672863f64fe269ed856e8bcca Merge pull request #3778 from rudycelekli/fix/cow-backup-file-modes-20261017
+7f856b3ee11f085d09024da8277b6eb9c9d81a10 Merge pull request #3777 from rudycelekli/fix/cowagent-net-new-20261017
+41653aff17b96b3e10e155cdeb65c3f87d56467b Merge pull request #3773 from rudycelekli/fix/excel-used-range-20261016
+edb622fdaddfbd2d111fadfd481aab02c016405c Merge pull request #3772 from rudycelekli/fix/cow-grep-path-filter-20261016
+ab17e24a27203b19953dded1f099562539fed5a0 Merge pull request #3770 from rudycelekli/fix/cow-fuzzy-leading-newline-20261016
+e518e552d353e03ebfce16376dec93deb98a4a44 fix: keep direct HTTPS only and move the deployment guide to the docs
+24c99e521c8e4bdc551459cf3e9e11f78b44464b fix: keep existing search routing and respect deepseek_api_base
+8e3e1177eb099b52b5494764096d42de0fbc73ba fix: keep the channel list annotation compatible with Python 3.7
+9f73ca9160b236fc05c9cbf64ac6004c0b313ede fix: simplify enabled-state rollback in set_skill_enabled
+fa376c1b16a4dc08bfc72d61450ebe332770d43c fix: use a plain lock and trim comments in config save
+2c0c6c4e6fea57d75c1d32ef9b2e76b654585d3a Merge remote-tracking branch 'origin/master' into pr-3709
+7e19a0e1c7a99a98ea7fcb31f325ff107b8ab1d7 fix(web): preserve running settings when a config save fails
+d617728d96bea3237578aaf68d4f7fecb4f54c11 fix(scheduler): report rejected operations as failed calls
+5b5a9e6963624d0bc7c2a169f90a46b88d7d63a1 fix: report MCP transport failures as failed tool calls
+d8bd97bf92b81cf41de900f0e222e4fb8a3d8022 fix: preserve stdout ownership when resetting logger
+aa9f4d9e735c5b1c93d4573a482cb577b3a465b8 fix: preserve full Bash output after line truncation
+0b0b4cd81043909e6849d5983d5c969c84cc133e fix: preserve executable skill permissions on restore
+845c3b915c00755fdb627af3dac1305a145e3de2 fix: read merged Word table cells once
+a401e2b8ef2726967b3a3a323c74ec026b28f0e5 feat: add DeepSeek Search and Fetch API support
+562b5658adfee2de26dbab22c295fbe6cceaace2 feat: support HTTPS domains and nginx reverse proxy for the web console
+233af22996393a0ba7a56319694c9f763ccdef6a fix(documents): read cells beyond stale Excel dimensions
+cf10620cc275da56fcaec785ae2b1d5fb920ec71 fix(search): honor directory filters without ripgrep
+694dd684268cff7a4f0636061e2af0b69d6900b3 fix(web): retain shared knowledge fallback for agent workspaces
+3526388799f8cdd2d29cee2611805a3caa7aeb7a fix(cli): preserve stdin for mixed terminal channels
+3bc0e7b1b250fb08de17f27382c404a32deb1da1 fix(edit): retain fuzzy block indentation after outer newlines
+a6538a2bb76a053511aef81c9bbc963ab4dbaa55 fix(skills): report failed enable/disable and restore the previous choice
+d802eabaf63342c861f4cc369597cbb2c8f65548 fix: avoid duplicate web chat history when artifact indexing fails
+b28d709df4b84170e6ec22792251431cc13dee05 fix(browser): give the win32 pid probe a timeout and an except\n\n_pid_alive runs on the terminate and adopt paths of the browser tool.\nIts win32 branch called tasklist with neither a timeout nor an except,\nwhile every other subprocess call in the same file has both: the posix\nps probe passes timeout=5 and degrades to "alive" on OSError, taskkill\npasses timeout=10, and the profile scan passes timeout=5.\n\nTwo consequences on Windows, both with a deterministic test:/n/n- A hung tasklist (a known Windows failure under a corrupted process\n  table or extreme load) blocked subprocess.run forever, wedging\n  terminate/adopt and leaking the caller's thread.\n- A missing or failing tasklist raised FileNotFoundError /\n  SubprocessError out of _terminate_pid and out of the adopt check,\n  where the posix branch would have answered "alive".\n\nThe win32 branch now mirrors the posix posture: timeout=5, and a probe\nthat cannot be completed degrades to "alive" instead of raising.\n\nAdds tests/test_chrome_launcher_pid_alive.py: the probe passes a\ntimeout, a hung tasklist and a missing tasklist both answer "alive",\na dead pid still answers "not alive", and the posix branch keeps its\ntimeout and zombie handling.
+8b7c32681c1ed50a3f43e23270b8ab06286ac9a2 Merge branch 'master' of https://github.com/zhayujie/CowAgent
+60e2f27f3c5cce5326bc3eee2e8bcdec38dccc38 Merge pull request #3724 from rudycelekli/fix/cow50-browser-snapshot-selector-20261012
+325b9b4c7e075919b4625158e361130074828eed Merge pull request #3712 from rudycelekli/fix/cow50-vision-empty-completion-20261012
+dfaa53e8af7c2867f89ca5717897a6ebcfb24f72 Merge pull request #3714 from rudycelekli/fix/cow50-voice-identical-text-filenames-20261012
+a54eea60fbcae002e792747519237d0cc9a2c71f Merge pull request #3705 from rudycelekli/fix/cow50-search-anonymous-opt-in-20261012
+84ca2d0169722065ffb9667223e480f22b89319f Merge pull request #3710 from rudycelekli/fix/cow50-minimax-tts-partial-error-20261012
+7e53bf16cc031b9a5280608d02d5fee5ba5dc0f1 Merge pull request #3690 from rudycelekli/fix/cow50-skill-metadata-booleans-20261012
+2046e9a2da24e6fa44e141738c34228e52e778f8 Merge pull request #3687 from rudycelekli/fix/cow50-cli-pid-permission-alive-20261012
+c0d6e5bb37b355517ecd04d073fa98230a8ec553 Merge pull request #3702 from rudycelekli/fix/cow50-responses-failed-status
+e4794f2e92a4dd7d5d523db6aee6200a53e40902 Merge pull request #3764 from rudycelekli/fix/discord-bound-inbound-attachment-size-20261014
+f1ee381b9d596d8c172e86e737a91f9fb64b790e Merge pull request #3753 from rudycelekli/fix/cow-net-new-skill-replacement-rollback-20261013
+44c9accf54e990f7d8094a92a57428dd1eb1d0df Merge pull request #3760 from c020627/fix-skills-confirm-display-fields
+ca1ee3ed392f50f9c4227b4d6fdd9f360e080e31 Merge pull request #3738 from c020627/fix-team-mention-boundary
+1967fb51d2da71dfa69e8aa45f17a1d2321bddea Merge pull request #3767 from xiao115255/fix/context-usage-survives-restart
+d8d2f6636524d01ee287f2cc21feba8cddecfe0a feat: raise default agent context to 200k tokens, 100 steps, 30 turns
+9d4cfeb2011964952b8057d0dd63f422f526c646 fix: share the anonymous search opt-in parsing between the tool and the console
+80418d5da6400e845b971fb489477a2144ce54f7 fix: report permission errors from cow stop instead of claiming success
+0a4a83a620edaa706303f40d91dff9a215518d7c fix: keep numeric skill metadata flags truthy as before
+f5871fbd4ea025ec090818ccbfc8f4b9f9196acc fix: use unique tts output filenames for the remaining voice vendors
+28870bc50283226270b6e1324a9f1be934f6a123 fix: keep minimax status_msg in the stream error log and drop the dead branch
+f9c1ad6489ad99da1978aa4fd29e736e12ad4c7d fix: raise OpenAIHTTPError for failed Responses in the chat-completion helper
+631c9dc0fdd6b4d3ddd5841b10a41a98b0e62713 fix: mention snapshot scoping in the browser selector description
+99f34d19f2575e7d32238aecfd08b7a00dba6f09 fix: keep list-shaped vision content from compatible gateways
+bef38a7a043571c16cf2cc2da300e6dbb81eeaef Merge remote-tracking branch 'origin/master' into pr-3705
+6db491fedf17dadd66164b144c8437341104380d Merge remote-tracking branch 'origin/master' into pr-3690
+7a9a57541c61a9c9a4c8211306f81c54620b1851 Merge remote-tracking branch 'origin/master' into pr-3687
+40e09406f149d4030db1cd037916b1e113f0572c Merge remote-tracking branch 'origin/master' into pr-3724
+62557a227081a43c48d86b8d41779a6c8de5c507 Merge remote-tracking branch 'origin/master' into pr-3712
+6d4f1f3b0a7abe68553169117968385baaeeebd1 Merge remote-tracking branch 'origin/master' into pr-3702
+95d5800675389f1b0f962c9cf7124c4d3f3dc372 Merge remote-tracking branch 'origin/master' into pr-3710
+8a1c0bc8cf2a551785ddb72b74f4e85eff45951b Merge remote-tracking branch 'origin/master' into pr-3714
+7637c8ab1a8555ff19ebf52d873a07c5ef3b53ac Merge pull request #3713 from rudycelekli/fix/cow50-mcp-token-record-shapes-20261012
+d46b98e4af4e271aab7be54717e6f279f06a26df Merge pull request #3723 from rudycelekli/fix/cow50-appdata-directory-race
+4f95b2bcaaac50ea0af233d4951405da2cea6627 Merge pull request #3711 from rudycelekli/fix/cow50-skill-list-name-types-20261012
+22ae4dc63b5208c2a71ab620a67f25fc3d7b2e20 Merge pull request #3707 from rudycelekli/fix/cow50-subscription-empty-prefix
+83e04629431919e569cd9d53fe213c6f73ba97c2 Merge pull request #3698 from rudycelekli/fix/cow50-skill-config-entry-shapes-20261012
+c70005332ac1889b3034815f1dd56d74fe2300ec Merge pull request #3696 from rudycelekli/fix/cow50-hidden-skill-setup-hints-20261012
+752f1b2116c5c7c1f1b5f77c18688972dacf6d06 Merge pull request #3695 from rudycelekli/fix/cow50-custom-provider-types-20261012
+b72666c112445517b0d6b2265b3127b06f35f7a6 Merge pull request #3686 from rudycelekli/fix/cow50-cli-config-object-root-20261012
+079b9a35925226aed8ee7b645e090e65e60ce9ba Merge pull request #3685 from rudycelekli/fix/cow50-skill-bom-20261012
+7c8f4e05b21eab3a49da0e931f87f7a6b56bcdda Merge pull request #3734 from rudycelekli/fix/cow50-bridge-step-write-retry
+8af61a374cf84cc5fa198ee83d189d2422a6b844 Merge pull request #3733 from rudycelekli/fix/cow50-web-request-cancel-agent-scope-20261012
+bf895f4d64303376a76017d17d5065d8daa3cb3a Merge pull request #3730 from rudycelekli/fix/cow50-workspace-template-create-race
+1a65dca5c92dd9803dc3012cd24bf42d2f1b36d7 Merge pull request #3727 from rudycelekli/fix/cow50-screenshot-project-directory-20261012
+7bcbee780930a2021997d821afe1258fd0ca6563 Merge pull request #3725 from rudycelekli/fix/cow50-browser-fill-required-text-20261012
+420f6d0238124b3c847a866b5705087c6372bab4 Merge pull request #3722 from rudycelekli/fix/cow50-onboarding-empty-profile
+1386a0d042bba83e43aff9bf7836c314cc36a2ac Merge pull request #3719 from rudycelekli/fix/cow50-log-sse-truncation-recovery-20261012
+117fadabfa881b524116c491c3bfad8148b467e7 Merge pull request #3717 from rudycelekli/fix/cow50-log-sse-error-json-20261012
+e49cca27cf4e2e57eec539742afa502772c9d738 Merge pull request #3716 from rudycelekli/fix/cow50-telegram-mention-username-boundary-20261012
+a685fc4d79872ffbda0931bd9979b1a28a118614 Merge pull request #3715 from rudycelekli/fix/cow50-edit-carriage-return-lines-20261012
+f16958e231866df92244a2e1e7ca442af039b648 Merge pull request #3689 from rudycelekli/fix/cow50-send-regular-file-20261012
+79d13942b50bcca560292f19a4ce468020790b8c Merge pull request #3726 from rudycelekli/fix/cow50-vision-compression-mime-20261012
+5c1d9860b6e1b133e9eaa1909f845109d5689893 Merge pull request #3706 from rudycelekli/fix/cow50-image-retry-routing
+05480f018fc39deb15d298f97ceb07c1e0fb36ba Merge pull request #3704 from rudycelekli/fix/cow50-model-catalog-copy
+8ea8ab0b948909ef8c12920b08cc3ac21de4a5d0 Merge pull request #3693 from rudycelekli/fix/cow50-minimax-stream-close
+c33ae954dca47d716f237c500edc803e7800ae8f Merge pull request #3692 from rudycelekli/fix/cow50-responses-incomplete-tools
+3933260ba49143972ef32a0beb6a79af40d0b2ce Merge pull request #3691 from rudycelekli/fix/cow50-responses-refusal
+3a73f34cb4683658cfdccb777d1ea0971eb79bcb Merge pull request #3688 from rudycelekli/fix/cow50-minimax-tts-response-cleanup-20261012
+00fe75e72095dfec4b29173da1585bf28f863f04 Merge pull request #3700 from rudycelekli/fix/cow50-google-asr-audio-file-errors-20261012
+9441b7609a43f0d36c2031e141424aa0c73dbe1c Merge pull request #3720 from rudycelekli/fix/cow50-asr-text-contract-validation-20261012
+887591dc46a622dee0318447f76f11274bc45251 Merge pull request #3708 from rudycelekli/fix/cow50-openai-voice-base-trailing-slash-20261012
+e7e50255a285d71d4e1dcec34cca32dec24abaac fix: correct the restored context-usage comment and trim docstrings
+c10c882d10bcaaa0bba4f98692aa5ab016e87aaf Merge remote-tracking branch 'origin/master' into pr-3767
+f36005b9bd4aed7d002195487a77115b572853e8 fix: share the @mention boundary across matcher, stripping, web and desktop
+48075563c39ac696c2cd1092bd099025066fb0fe Merge remote-tracking branch 'origin/master' into pr-3738
+4d6d42f02e195b5a1d458206a534b7149c5545f6 fix: only carry staged registry fields on skill confirm when the registry set them
+1b55d271d3152555274446b1461ec40254aaefb3 Merge remote-tracking branch 'origin/master' into pr-3760
+4ab738f463ed43000571f9a9f86d92e6a300ec4a fix: keep umask permissions on url-installed skills and drop replace locks
+dc6596aa89fb77cb527b8473faa1b315f557cf2e Merge remote-tracking branch 'origin/master' into pr-3753
+13d489e1ce680867ecf58e6b229b908877c60a74 fix: check discord attachment size in _parse_message to reuse its image detection
+8c439c94793d335891bd042a162b9fde4ec18d3e Merge remote-tracking branch 'origin/master' into pr-3764
+d7c5c12a6ef9b969b1573d1e9c963590a0d09ca7 Merge pull request #3752 from rudycelekli/fix/cow-net-new-special-file-targets-20261013
+65e9a4e287c63bd5263fed2e75c01761b68b9458 Merge pull request #3751 from rudycelekli/fix/cow-net-new-openai-default-session-lock-20261013
+dd6d221981a1b99e1e29265c13c1a38ba8c6e2c9 Merge pull request #3750 from rudycelekli/fix/cow-net-new-weixin-cdn-error-close-20261013
+dab1063b4bde6bf7e8a85e7e33580a77a3fedbec Merge pull request #3761 from c020627/fix-subagent-type-and-templates-robustness
+4b0d82f340aa2ca2bb76b6362f3c5fd7cc9b87fc Merge pull request #3749 from rudycelekli/fix/cow-net-new-project-save-errors-20261013
+ef8282c9abe489f25c9c39e39cf94b3c53b7ea94 Merge pull request #3747 from rudycelekli/fix/cow-net-new-workspace-read-snapshot-20261013
+2498ccd935590fa3bc5c39563f956f04301c1835 Merge pull request #3765 from rudycelekli/fix/slack-skip-system-message-subtypes-20261014
+692c7f81d34b6f580d65caa117cac7a03b6fa515 Merge pull request #3763 from rudycelekli/fix/linkai-admin-exact-match-20261014
+498925e0833f12e353dd81615d533fdacc0d9d71 Merge pull request #3759 from c020627/fix-chat-voice-to-text-guard
+e7476b5c4a935dadf1b282d827cb179af7b8f797 Merge pull request #3755 from rudycelekli/fix/cow-knowledge-publication-20261013
+f0011674c7696911ea78ee3f6554542fbfb965e4 Merge pull request #3746 from rudycelekli/fix/cow-mutable-file-refresh-20261013
+4a39757c49bf5d7d5e6c2136fbb983a1f7187256 Merge pull request #3745 from rudycelekli/fix/cow-net-new-scheduler-migration-commit-20261013
+13b8d91bd4f5760bdcaee6264dd2a434ceb66a8c Merge pull request #3762 from rudycelekli/fix/dingtalk-group-file-cache-per-sender-20261014
+6233467cb80b7c61bb89d3930b04eb5192a06c97 fix: keep the context-usage chart across a restart
+99be4c16bf741916542ad23023aa9a0d35a3e3bf fix: show sidebar nav scrollbar only on hover
+d6239f90d63941da6604075f29f9a75b3b88cefa fix(slack): do not answer workspace notices as user messages
+4a6edaa6abd699a22b040a65741f8c7faee1f331 fix(discord): refuse oversized inbound attachments before downloading
+d1dc104bb49bb282101a0f0c0e4765b81316aaf2 fix(linkai): match group admins by exact id, not substring
+be86907f2901027a49a7107315ca0079cbbe69aa fix(dingtalk): keep group file uploads with the member who sent them
+385b03acac191856c819d0ed60791d3d49dcf0aa fix(subagent): report a non-string type instead of crashing, and survive an unlistable templates dir
+382def47cbf5e1a44095d0a43148d981e60a0e19 fix(web): keep the registry's presentation fields on skill confirm
+4c055755d38a53707b8080cfb203c1270fa64251 fix(chat): guard the speech-to-text call the way TTS is guarded
+396d22618090659480650719cf236c57598a8b82 fix: run chat skill commands on the current agent's own skills
+31eaa80b7ad64d7b59f59439d04f4dfc71530904 Merge pull request #3758 from zhayujie/docs-desc-fill
+4823fd1fbd838bcdc7865a25453eabcae02b5531 docs: fill in short page descriptions across zh, en and ja
+f2b6767ad79bfb9a6794be5d5f4072311eb271a3 fix: narrow subagent delegation and wrap up before timeout
+14a1b36c657b5cb2a8f016155a017acde9a41a23 feat: install skills from a product catalogue in the add dialog
+395892b7ff81d66ebf8fd098da3bc4a510dc89cc feat: fall back to the default hub for unknown skills and keep display descriptions
+7d7012ee9e4921989ebf8d32afec5c1efb60e000 docs: rewrite page descriptions to summarize each page
+6d483bab521636cc8a4b79974d69a83305504a8c feat: add skill market and skills-first seams to the desktop skills page
+f72fae3371143b8d7461665b5d1eda74b01f4916 feat: let a configured skill registry serve installs by name
+f88ac0d973252edccfedd6e5b42b9856e54f6720 feat: keep display name, icon and version from skill installs in skills_config
+65d58c2802843cb1c6af7fed2db13a8e915b946c feat: show skill icon on the desktop skills page
+42d0b97dba4206e42d9e8ac97daa4098b8267bb3 docs: move token usage note under prompt caching in v2.2.1 notes
+254868efd4877ea5409e6a0b17b70ec495444718 fix(skills): preserve installed skills during replacement failures
+507954c6bed12f37eb3405f6f5f2190e7f8223d4 fix(weixin): close rejected CDN media responses
+a9d0602fd6a4568840b49c8d6dc2cb91a790a368 fix(tools): refuse special-file targets before reading or replacing them
+6029a745ca91a9118ffbd1d751dc130d89d5a2d8 fix(workspace): report failed project and session preference saves
+815926a1361f55bd3ae6cdbfced72053b62f9d07 fix(api): serialize equivalent default-agent conversation requests
+60161b7e7585993b290e44bac8763dc362ec0dbd fix(web): keep system-file fallbacks in the requested agent workspace
+33767891dfb8eb1397ef4f0fd9a80152058546df fix(workspace): bind editor metadata to the content read
+24d1ac30301a3dbbec487f027abd261bbbb835e9 fix(knowledge): stage document replacements before publication
+4ffa2b1e096e54309d94c31abe3225264a26b4ad fix(web): revalidate mutable generated file responses
+051b6275e56c79e23f20842430aaf9784e1a2af9 fix(scheduler): commit migrated reminders before retiring legacy stores
+61499724b195a4c3b1bac79a11957879d32c0351 docs: add chat API screenshot to v2.2.1 release notes
+a547c07f7b4a693364dffbd88600dd047d84c894 feat: bump version to 2.2.1
+21be66d893a642882032ef262839bd5089ad4d99 docs: add v2.2.1 release notes (en/ja) and screenshots
+90e8c0a3e1c3e8bc0ba7d9281ca750a2225f9679 fix: reload a custom menu page on every visit
+ba6d295c1fbd6a4fb4563736bc1cd972ff304d59 docs: add v2.2.1 release notes (zh)
+db130545910a05688c88da80c8c93f2f99115a1d Merge pull request #3744 from handoing/fix/install-browser-sudo
+f95f044b4a85f0df0aa17f419766c0cbd1b00ec8 Merge pull request #3743 from handoing/fix/browser-browsers-path
+76046ca860252bec88381ea9eccb717bcd904dda fix: align the sidebar footer with the menu items
+260b67cbdaf8e41baaa8c9429bdb32dd084d83f0 feat: complete the OpenAI-compatible chat API
+0a7dcb9b31195ee844a8b72b09d3dfad92622203 fix: honor PLAYWRIGHT_BROWSERS_PATH when locating Chromium
+3d8d51765c99a51ba69124e8e47266515d43bafb fix: do not require sudo to run `cow install-browser`
+a63c8a315d7b521c3032f7f328c9c1e7c92ba3d9 fix(team): treat sentence-ending punctuation as an @mention boundary
+e58d0819e3ebe1fa491a19a302510941efaf3489 fix: restore missing shortcuts on a manual reinstall
+b6d50d13ef1277bc55cbe092baf3c631cc73361e Merge pull request #3732 from rudycelekli/fix/cow50-visible-turn-tool-history-scan-20261012
+5898ca2ef593c89be113a8fa77f003712e18b927 Merge pull request #3728 from rudycelekli/fix/cow50-role-override-atomic-validation-20261012
+f7f1b1cc30114b030d7b82da34412130d0f572ad fix(bridge): retry finished steps after transient history write failures
+84a2aa9041d1ed97937c928a8d2c1262c5fe7690 fix(web): scope request cancellation to the resolved agent
+5636d02aef80382a53fb383cde60e7c0c7aa0273 fix(memory): retain originating turns after long tool workflows
+1ebc260189dea2c10f32cdcb92c8ea285b5b9a46 test(role): register plugin through explicit module import
+aac8d40f3c3bf85b1f644081b3ed9af8ed3acab4 fix(agent): avoid overwriting profiles during concurrent initialization
+20c0c8447a9e710f2a1487cf1d35ae7ff57ef9a7 fix(browser): save screenshots in the current project
+dc4bc18866954167cf51ecfa74c3605c5a6bbba5 test(role): document plugin registration import
+638530cda68588f8d6ea081e34989103ea6a29f6 fix(vision): match compressed image bytes and MIME type
+3581d0145080f9ce75890c1e02a7394f142dd41e fix(browser): require explicit text before filling inputs
+6e24fd0112023e60fb0603e5d9a3fc2836e23908 fix(config): tolerate concurrent app data directory creation
+3359c7ad5e33ca82b28fbbecd4ed0b35c69284b1 fix(agent): keep onboarding pending for empty profile files
+3f7c64bae8b1b53b65f1c782ca6a93ebb0d92e81 fix(browser): scope snapshots to the requested selector
+e7143e7b1a9342caddabe42db68cfdb2cb4a4467 fix(voice): reject non-string transcription payloads
+a806d39391f2cad67b8de14c8b2076fafaa8c9b4 fix(role): retain consistent tags when importing overrides
+6e9d3c99ec5a8a7f6439465b4720148b507ef8d3 fix(web): resume live log streaming after file truncation
+f3055bc37fe255c23a6de62157c2ee7f167b631f fix(web): serialize log replay failures as valid SSE JSON
+081fbafc120d65a7377b7d2316b3941bc06c0eba fix(minimax): close streaming responses on every exit
+7fd8d2f7e9aa2045e1a53142d170df0e8277abdb fix(edit): preserve carriage-return line separators
+e0791e54ff3fd014da1e8f9f7dfeacc23d6c69db fix(telegram): match complete bot usernames in group mentions
+2875cf02c8b295e4a19d089adc80428460211cdd fix(mcp): ignore malformed persisted OAuth records
+aeef2579bea3564b9937baf877d91aae410656f0 fix(voice): isolate output files for repeated identical speech
+c7c4010b782f3ac783c8cfc68ea259e36dc75e33 fix(vision): fall back after an empty completion
+7987e13a4f4cf8ccd588d157ae04d9e2e04a1a46 fix(voice): reject MiniMax audio streams that finish with an API error
+f3ea386b3223b96574a56a9dee22cbb645ef1719 fix(cli): detach standard input when starting the background service
+a8efa397a584dd2d9065fb40f851a061f6fc365b fix(skills): normalize list-based names before cataloging
+3a12efcfe1a591ecbbb957a58710c6cd1e02a41f fix(config): render subscription messages with no chat prefixes
+e2b8abe84844eca4d09cc9e7eef4516a74f8f175 fix(openai): retain image endpoint overrides during retries
+5dea990d739f4c011eeab93cb9386895725ff061 fix(models): detach capability lists returned by catalog readers
+8828442f9781bef473534ff6d6be17a666d47e10 fix(voice): normalize OpenAI audio endpoint trailing slashes
+dea5acb2609c01beb6b1724055c8cd9778e3f23b fix(search): require explicit anonymous provider opt-in
+e2b0510bd1a34f9dbcb45c6f63bcd52b1308edd5 fix(skills): preserve runtime choices in BOM configs
+ebc824dd7344eeb2d0b548116a245990c036b408 fix(openai): surface failed Responses objects as provider errors
+39cfe238929bb8eb80c828d84e20321b29ba7e88 test(cli): cover BOM skill enable and uninstall paths
+eb55651ff57cf5b86024618464fb468d454c2700 fix(voice): return error replies for unreadable Google ASR input
+60270d48d1f11bb833951d20896758cf8a7f6181 fix(cli): preserve BOM-prefixed skill registrations during install
+a86e51d49d4fe5ed482679bea3a4b45f996bcc2f fix(skills): isolate malformed persisted config entries
+2553010bedc18dd973142b91297ac9fdfc40727b fix(skills): honor model visibility in setup hints
+87fe90289c1e333bb7e61a855a8c69b8bce371e2 fix(skills): validate custom provider credential types
+9b1cd6daad28c0c56bcd1840df2a4064ce2d20a0 fix(openai): report truncated Responses tool arguments as length
+cce78ea4ae05e077f92d813fb491e0d91a9e4425 fix(openai): preserve Responses refusal text
+fdcd326323a06be5fa582f8336bd9a882849c267 fix(skills): normalize metadata boolean flags
+da3eca622dee48b580857339a04d78b97909410a fix(send): refuse directories and special files
+b72ccf820502b40a6ba5ef3b15abae5390461d65 fix(voice): close MiniMax synthesis responses on every exit
+f0c2923a379f398d683b63729a300d32057a2fa0 fix(cli): retain process IDs when signal permission is denied
+9ad4028ee22670161c4a61584a11e7ef1043a6a2 fix(skills): recognize UTF-8 BOM before frontmatter
+e24b67a9c3265f17e0fb0c30c4ca76f76847d348 fix(cli): ignore JSON configuration with a non-object root
+aa5f4c92cc3143841edeabaf1c834ee151228d6f Merge pull request #3415 from aniruddhaadak80/fix/slack-discord-send-retry
+083360327f619f860b131926884b084dc9e426bd Merge pull request #3365 from aniruddhaadak80/fix/read-coerce-numeric-args
+70691d3627863bede36ae907f579650a6346aa67 Merge pull request #3359 from aniruddhaadak80/fix/scheduler-unknown-action-type
+a0b3564e3ba9fe5c783f9cabb625c0358d280d84 fix: only retry a Slack/Discord send when nothing went out
+c3c37f9e2491abef458c33b94e39d9138d5c6575 Merge branch 'master' into pr-3415
+788607b5d614fcf67ebcc539a7ace1b3037c75c2 fix: convert integer tool arguments once in BaseTool.execute_tool
+1d1581eef6f4d6e3e1963fd9b65382c044f96179 Merge branch 'master' into pr-3365
+8d2069702719a5929c0e775dd13fd314849dded6 fix: keep an unknown action type out of the retry loop, record the run as error
+ad1c53d60c9cf94ea99f8b8d512bf0a6d685cd77 Merge branch 'master' into pr-3359
+254a5d435b706844f54b538abd43898968777055 Merge pull request #3682 from c020627/fix-skill-frontmatter-quoting
+c06e8c1a33335289807a19535914c35a46e82eed fix: drop the regex fallback, PyYAML is required and the fallback parser keeps strings
+7a53d89e88ef1b8830034d89a6d94641e9df8a7d Merge pull request #3684 from c020627/fix-chat-channel-tts-fallback
+5f98cae79dd364f02845584e7315dddef49a4715 Merge pull request #3683 from c020627/fix-scheduler-once-past-time
+93d6a0fff80ae9ba29ef89ee4983830109bf8468 Merge pull request #3681 from pratikgx/docs/ja-models-locale-links
+6ac5957fb7becc472877716e3e202f68bff805ec Merge pull request #3441 from Harbor404/feat/3386-model-auto-discovery
+b36296c717437e0a40a8a6427045c3b7c510e4c6 feat: refine model discovery and default sidebar groups
+77f566330b6ded33ab979f92b4deb426842702a5 chore(scheduler): drop unused imports the F-class CI gate flags
+c89823968c4f0d27b159af6f95187ea44650782b fix(chat): deliver the text answer when text-to-voice fails
+3193e9539334c150933cf6ca558d946b0a85ac4a fix(scheduler): refuse once tasks whose run time has already passed
+01d6e02c0f572406ed2908b9d871551952c1850e fix(skills): keep YAML 1.1 keyword frontmatter values as strings
+3ff0bfebb948a5bc154d9942e8284fd2e7ce621b Merge branch 'pr-3441' into test-3441
+8cd776071bf22745a922fdaecb85d091f4540693 Merge pull request #3440 from Harbor404/feat/web-message-token-usage
+1ab74c4fbdc5e9af7d1f0378c148b9f9f9a9fae9 fix: show per-reply usage as a hover icon and sync it to desktop
+df85b0debd5ab302e4aa49ecd4716d87a6a8af08 Merge branch 'master' into feat/web-message-token-usage
+520e4edc274d82a09397ed5e55360f6025e2eac7 fix(skills): simplify built-in skill read-only hint
+9cf583237376f56614e634dadb1abc0d847acb3b Merge pull request #3377 from zkjqd/feat/knowledge-document-edit
+4266327e6a5fdab7c8d6bfb846380126efb6d832 fix(docker): leave MODEL empty in the compose template
+aef5a48ec50cedc78efcbed843f3955f5f7073c9 fix(docker): default CHANNEL_TYPE to the web console in the compose template
+b9e29a28258b4003191ce803a2d0c6ac96c67528 docs: point Japanese models page links to Japanese pages
+137cbb1adbfa1b572730b484ca863fb0dad336dc Merge pull request #3680 from Frank-zhu2000/fix/3591-docker-upgrade-data
+2f996297329565f069d4accfbed62bafa5c867b1 fix(config): keep saved settings when an env var is blank
+9596275ad884873164e55fc162187f13a753b8c4 feat: merge origin/master into feat/knowledge-document-edit
+e1d92bacde5589ad52270a493265ff06ac3fb51c Merge branch 'master' of https://github.com/zhayujie/CowAgent
+dfb5562a3636cb917afc4a44cc04d5040ec1c80f docs: add utm params in docs
+995389be32d3575a577d4dca89aebf03487c6350 fix: drop batch-12 ADR files and compact their tests
+73868aa1d05a269285d1549d50db63e7d891fd42 Merge pull request #3657 from rudycelekli/fix/cow32-evolution-backup-collisions-20261011
+f1b6bcbbe5477cda91215fd9c21bd93677a97f32 Merge pull request #3674 from rudycelekli/fix/cow32-mcp-execution-error-20261011
+ef70220e27374420b187c9df718b121f5ce5c960 Merge pull request #3679 from rudycelekli/fix/cow32-search-path-glob-20261011
+600c22e44dcd424e1f926a00cd37951a187bc7c2 Merge pull request #3678 from rudycelekli/fix/cow32-minimax-session-chat-schema-20261011
+1883fe82b81e63ae18215025a11982c3b52a9445 Merge pull request #3677 from rudycelekli/fix/cow32-wechat-kf-cursor-flush-retry-20261011
+9b5e4913b85621723fcf39aea07455fb729accff Merge pull request #3675 from rudycelekli/fix/cow32-search-special-files-20261011
+9c09d4e383da66b410c2708719ae4a3ac0d0ebd4 Merge pull request #3673 from rudycelekli/fix/cow32-mcp-tool-pagination-20261011
+9e01e17504dca5702e9f6d6cb00d8aa9600d2cfb Merge pull request #3672 from rudycelekli/fix/cow32-mcp-structured-result-20261011
+11d6a344688634f78039083470d6a63f8a8553b6 Merge pull request #3671 from rudycelekli/fix/cow32-document-read-deadline-20261011
+856644df944bdbe9f50c48434d64367c0529983e Merge pull request #3670 from rudycelekli/fix/cow32-webpage-plain-text-20261011
+f4936e06083f1622b40a239559c343b300a2b846 Merge pull request #3669 from rudycelekli/fix/cow32-document-content-length-20261011
+6265055cf5c1ee4e8fff9c5f5434542eec203736 Merge pull request #3668 from rudycelekli/fix/cow32-bash-bare-dotenv-20261011
+269c74b77b5413cf8ae55db88d1f424d561d41f2 Merge pull request #3667 from rudycelekli/fix/cow32-write-memory-notify-20261011
+ae35dda0dfe6726d59d1c35aadad3ec087c1913a Merge pull request #3666 from rudycelekli/fix/cow32-catalog-concurrent-provider-edits-20261011
+4ea5577f80c3f9d424542d04eb7cf9c577c4ce97 Merge pull request #3665 from rudycelekli/fix/cow32-telegram-literal-link-targets-20261011
+4c5a4b964d27fda2c7f0dbb1aa12f13ef55f64c3 Merge pull request #3664 from rudycelekli/fix/cow32-keyword-unique-document-downloads-20261011
+bb53901e4157618e864c71b4e0510b53282da0e4 Merge pull request #3663 from rudycelekli/fix/cow32-responses-json-schema-format-20261011
+a35db39c9ec8975b8500c0263b0293e998d415bb Merge pull request #3662 from rudycelekli/fix/cow32-catalog-malformed-field-recovery-20261011
+405a736eeddf0b5808908689f01a2f20288da20c Merge pull request #3661 from rudycelekli/fix/cow32-openai-failed-stream-close-20261011
+bc54ebf758f62a4a3d253d03422cb1eba9defd7d Merge pull request #3660 from rudycelekli/fix/cow32-responses-function-contract-20261011
+942c31a2365c00d9b0546ab6bbc4fe2f9fcc4325 Merge pull request #3659 from rudycelekli/fix/cow32-openai-sse-line-endings-20261011
+d3172f82f2028c0a17315c7e6c42855c7744a695 Merge pull request #3658 from rudycelekli/fix/cow32-vector-row-corruption-20261011
+21c07d267c5375925c370408d0b2eda1f0659ed3 Merge pull request #3656 from rudycelekli/fix/cow32-embedding-batch-cardinality-20261011
+e676405cae8fb7d69690f41ca942fbe2461f109e Merge pull request #3655 from rudycelekli/fix/cow32-utf8-split-progress-20261011
+0ae6ec6cdc5f63be037db03c9f4e7d28399a015f Merge pull request #3654 from rudycelekli/fix/cow32-session-prefs-root-shape-20261011
+6b52fbe5ae2983f573e0f21b1ade579477e94ca2 Merge pull request #3653 from rudycelekli/fix/cow32-openai-tool-result-id-20261011
+cb8859e725fd703a76c376cdd4f3fa639250a440 Merge pull request #3652 from rudycelekli/fix/cow32-claude-preserve-matched-results-20261011
+4c64f4ad45b45997de525d1e496d5778207bb9c4 Merge pull request #3651 from rudycelekli/fix/cow32-knowledge-tree-symlinks-20261011
+e85ccae9306c9fb40c401f89212ecbf5d33bfeaf Merge pull request #3650 from rudycelekli/fix/cow32-sorted-dict-mutations-20261011
+a80f5679f64b2b2cfb641a7c029d74b4e67b042c Merge pull request #3649 from rudycelekli/fix/cow32-knowledge-symlink-destination-20261011
+7934267753e0902d8bc1ae6c64d7ac2c7299cc60 Merge pull request #3648 from rudycelekli/fix/cow32-token-wait-deadline-20261011
+4c6ecb98054df6da3b3378d49f0455a63ee18cb9 Merge branch 'pr-3672' into pr-3674
+a61d9aab84bb20e64690c70106f9081beaf8ba16 fix(evolution): keep backup ids short and retry on a taken directory
+d3d7ca286feabefd9b5178deb8a24bf8db789f64 docs: document COW_DATA_DIR and cow-data volume for Docker upgrades (#3591)
+34335f7a955c2555a669ba2f718979162d3bcb5d perf(web): build folded history step bodies on first expand
+366ba041a80a4e900409ac2296c03ccb8998c40f fix(search): honor path globs in the Python fallback
+8a0d3da1460bac333aa940a8ecd96092e22fa120 fix(minimax): align retained sessions with the chat completions schema
+7f5d7b98c2cb840195569bbbf17fdfb63684a315 fix(wechat-kf): retry cursor persistence after transient write failures
+cd73478e46a29162ac448533b877801386287a4f fix(memory): isolate malformed vectors during retrieval
+283aafabf80fd3013b2ac136eaa0e571ce573d0d fix(evolution): give each undo snapshot a unique directory
+d8a1cd436a3d41b1fb1c6e0e9650d700b4f8270d fix(common): reject UTF-8 split budgets that cannot make progress
+6ad9a6c49fd22332c1c73f1faaa1b1d4a59955c3 fix(models): serialize catalog edits and cache publication
+18421bbf96dc506999a8cb553effe4af829d81b3 fix(models): recover malformed catalog provider fields independently
+804b66cc04e0d9b6c77f0cb87fb1462b9a3c09da fix(knowledge): exclude symlink children from tree traversal
+db40426cb6a77d4f33d32a88e5b06b7cf1402512 fix(search): skip special files before Python content reads
+5cc72cff23225b50d656b36e1bc0cfed3fbf1c0e fix(keyword): retain distinct downloaded document replies
+7eeef2112457dbcb2f62a3a643fc0f9466aa71e2 fix(mcp): propagate server tool execution errors
+4a822a1a16513f2b26b4595020a2f58ba940d4b1 fix(mcp): follow paginated tool discovery cursors
+939b2f151f8d967ced344cf34faa6b3418ac01c8 fix(telegram): keep link targets literal during Markdown rendering
+b325b335fc46f6712d5874a069cad2cebe798b62 fix(mcp): retain structured-only tool results
+aa6aeeb5d49614bd4d174f619e1fbaae49e35e86 fix(memory): reject incomplete or ambiguously indexed embedding batches
+7e3e965f22ba9f499a46e198b63169485f6949a2 fix(agent): preserve matched results when removing orphan blocks
+1afa8c0d764a82792bd53455227e7640ddc75b90 fix(agent): drop tool results without a call identifier
+c2737e56e6487cc18c29842c3d99f527ca2b4526 fix(workspace): recover session preferences from non-object JSON
+a2f815f5aa8d8da183d31f4ef74407183b3fff29 fix(web-fetch): bound the whole document transfer time
+38152a121267f2bb8b03004c7e8797fbb8ef47a0 fix(web-fetch): preserve literal text responses without HTML parsing
+de890581387e0e730891edc64d178a4539fe441c fix(openai): retain JSON schema output constraints on Responses
+d5936231b01692e94a2a2a4ceac40eef16e5a1c7 fix(web-fetch): tolerate malformed document length headers
+a169aaa5f00ca21436e9888016fbb1f85b7b799c fix(openai): preserve function controls when adapting Responses requests
+3e338021663005842f51d7cb0e34edb7542c80b7 fix(openai): frame SSE events by valid line endings
+8a77d0244e467fac8fdca435ec2ff3370f2cf732 fix(knowledge): validate resolved import destinations before writing
+faa554ea3191bfab2ae4bd6dc8c5da6127f76cdb fix(bash): skip dotenv entries without values
+b690651dd2c748fc48450d8c5429c2cdf98639a9 fix(write): preserve success when memory notification fails
+cffc2b5faf3eb9ee632c766a6f2c83771998aeb9 fix(openai): close HTTP responses after failed streaming requests
+731eea6101f1141d153117811a347d099672592b fix(common): honor one deadline across token wait notifications
+6558ab1290c8aef330b5d4e316386667e02b027c fix(common): keep sorted mappings consistent after bulk mutations
+5f54fc5beb55e522091ebfbe3a11aece9bb7d502 fix: log weixin send failures with non-zero ret/errcode as ERROR
+100b391394b7af088188cd7f35da0da6c9708f56 Merge branch 'master' of https://github.com/zhayujie/CowAgent
+0291e6ff3066ba200c2ef3a90867d388392717d0 fix(vision): honor catalog vision ticks and gateway-prefixed main models
+49e352f64ae97e2bcf253c36cd7a79663eb79d8a Merge pull request #3621 from foreverjix/feat/memory-hit-metadata
+28c2b0fe1108e05681726f5b9ddebce3e68205c0 refactor(memory): keep the hit boost config-only and add tests
+6e88cce21738c784f8d37e1689a6483a2c383ed1 fix: compact batch-11 tests and trim QQ upload comments
+ab5a7e1cfd1366231e13b907e818ce6c3ff814be Merge pull request #3647 from HnBigVolibear/master
+4a35bb2b6966015ea3ac84fe6e19815c5369f4f7 Merge pull request #3643 from rudycelekli/fix/singleton-first-initialization-20261010
+34c34d87760ef9a90dbe13122f795415ec2e14cf Merge pull request #3638 from rudycelekli/fix/subagent-parent-cancellation-20261010
+017c037c947b352723ee6fbad41229073cd1a286 Merge pull request #3637 from rudycelekli/fix/screenshot30-template-frontmatter-body-20261010
+5159871777ecf7cd4f0539977e3fa9d07a312c8b Merge pull request #3636 from rudycelekli/fix/scheduler-preserve-unrecoverable-store-20261010
+fd7a1339c0daad86db29749b601e1fcfe3f8d62e Merge pull request #3634 from tsumon/fix-3633-compaction-breadcrumb
+1a3a8529b8d8b7cc067ce811f26fd5c467849140 Merge pull request #3645 from rudycelekli/fix/wecom-atomic-callback-dedup-20261010
+7b9e2cfda732d435c252de353ba21f1f38cd5c21 Merge pull request #3644 from rudycelekli/fix/file-cache-concurrent-first-files-20261010
+2b336d5e4b1d1e8e4beaf1f38f04f6d6cf566808 Merge pull request #3642 from rudycelekli/fix/log-stream-initial-gap-20261010
+74c1c5c254ea601b928866c5eb06c65277afa008 Merge pull request #3641 from rudycelekli/fix/env-hot-reload-dotenv-20261010
+d1c18e821c51d0ef24ce3fe6fa72b0eb88bd6bfa Merge pull request #3640 from rudycelekli/fix/projects-preserve-literal-paths-20261010
+82afba992e7ca1177d31381e38f6a9f19c58ac27 Merge pull request #3639 from rudycelekli/fix/subagent-template-decoding-20261010
+75c08420c130d7148537e9ac147cf6bfa11f048b Merge pull request #3635 from rudycelekli/fix/weixin-same-named-files-20261010
+a699fb9ce5b08e05c6ea1d1d68350b234b1477c7 Merge pull request #3632 from rudycelekli/fix/web-fetch-html-text-20261010
+bc5409ab677130817d2cd015484ede90073b5fb2 Merge pull request #3631 from rudycelekli/fix/read-array-formula-text-20261010
+93979c30bf7abcd870a8f519c28262e62821cd3f Merge pull request #3630 from rudycelekli/fix/search-long-line-preview-20261010
+30890e84d3dbb7533b1539a43ac53f9f4bd26e07 Merge pull request #3629 from rudycelekli/fix/read-docx-nested-tables-20261010
+98a86677e7867ff90cc061d378f6906288e35ca0 test: cover the tool note kept by turn compression
+26750cafede6ccf60e39434befed2fba375ff309 refactor(subagent): collect results in one polling loop
+ed5e59d7acdfcb92bf51181260e24e30bc998a8c refactor(subagent): share the frontmatter boundary with skills
+447a335c11d0cfc25e0d0fb6cdaee9f9b69a53a0 refactor(scheduler): reuse load_tasks in strict mode for add_task
+5f734bbca167d9b0936176ca79878b6a7ab7ed20 fix(singleton): make the first-init lock reentrant
+284d45fe8aaf3d113c93f16e8fe491ed11b3db35 refactor(qq): share the upload base URL across upload paths
+c4e5e2195e1e9da4338c37c53c4232600bb83e83 fix(qq): send local files over 5MB through the chunked upload API
+2697b533088b22e79895031acfc9196ec9611fbb feat: expose memory hit boost toggle in web settings
+9d14bd9449d0f90eec78d1d36ff1133e6ae047b7 refactor: address review (opt-in boost, drop inline markers)
+32a1425cdbeba6ce0c6d727604920c79f33031d7 feat: boost memory retrieval with hit-count feedback
+b8f1efc4537fcfc7c901f5aa8777936bfb4d35d6 fix: ruff F541 - remove f-prefix from placeholder-less f-strings
+1987f1f42041e97857e143319ef0427f1d179ef5 test: isolate idle-stream cancellation registries
+fe54859819779677e74c2fda4e8b18d34fce7a5d fix: atomically filter repeated WeCom callbacks
+ad8e64c39fae72598407c75ba89151102551fa54 fix: retain concurrently cached first attachments
+39c78168de12ec791c27e784cdceb2d8aa351614 fix: serialize first singleton initialization
+9e1c8a8c2069db196a05fecf2db19e1ce67d1042 fix(logs): preserve lines between replay and live tail
+5730af6caca75a3d36da291c97cb2ba15ee93485 fix(env): use startup dotenv parsing during hot reload
+a4db71dadfb4f38b591d18d1f8f7135a010b43e0 fix(projects): preserve literal workspace path identities
+8dd2471251742d49e656fd4ed171a58683b5e4f6 fix(subagent): skip undecodable user templates
+3c348e432b8493576f463d073c0602ea90fcd9cf Propagate parent cancellation to spawned subagents
+e07ce1276c36d90f6bf934d08900657aebccc143 Keep subagent prompt extraction aligned with frontmatter boundaries
+c5a94d4d066c53c69a4583e976a08cdda00862c6 fix(scheduler): preserve unrecoverable stores when adding tasks
+0f5fd5beb3bad67f0eaab7e83ab2958baf653432 fix(weixin): initialize attachment path cache lazily
+d663f29e9f131207db7e4d251edbe38f5e10d47a fix(weixin): keep same-named inbound files separate
+871c53e82b6561685fa790035a5280a8178f7aff fix: keep tool-call breadcrumb through context compaction
+93d43e6b4b93b4708ff0c7c80d0cc4d4676481d5 fix: apply context budget changes to live agents instead of clearing sessions
+c8b1dd8c148c4d49449a69965f35977866110cbb fix: move README images to jsDelivr so they render on GitHub
+0ebde3ae71ebb6ea218644ec04c81cd258eab00e fix(web_fetch): preserve readable HTML page text
+00668c18d213ec8f38290ae29cd2688cf7f8a818 fix(read): preserve uncached Excel array formula source
+ceeddc2ae03debc19b4b0289588e7665717a9710 fix(search): retain previews for long matching source lines
+86ede46aff49bf0d837acc05afc9228191a91971 fix(read): preserve nested Word table content
+c1c88fade4193ac003ee48892dd7ebdde5ebe741 fix: keep MCP config and session settings unwritable outside full-access
+236f69a16fecc178afe6fbe6c796fc7f1dbd8540 fix: coerce the ls limit to a positive integer
+4c97822d2541e1b2e84d11bd65ed61e9649107cd fix: only check HTTP calls in the model request timeout test
+d00179f3e43f7b1f55d7b74baa3fe0ca2bc6305d Merge branch 'master' of https://github.com/zhayujie/CowAgent
+eea7931b57df9f29e2d728a0ab8269f17591ef39 Merge pull request #3625 from 6vision/fix/session-title-early
+cc4b21fd33d9d419d0b66cb78b7df2b3f99ff10c fix: share media temp-file helpers and trim verbose comments
+933dab072784448d62087df6a49bbf7723a74bde Merge pull request #3620 from akushonkamen/feat/console-mermaid-rendering
+e9df90dd8adcd4e3cad8a17f700355e18edc7652 feat(web): preview mermaid diagrams on demand
+df33fc621be6bdc6f7b5c914f017e07a7f4cdaa9 fix(sessions): keep a new chat's title when it lands before the first turn is stored
+05f3508392c04d0425a75da8d47d999c21a7c9ba Merge pull request #3616 from rudycelekli/fix/cow-fts-sync-triggers-20261008
+f137c5f76d0bfd6b70abc609aafed3ce059cceff Merge pull request #3612 from rudycelekli/fix/cow-knowledge-markdown-case-20261008
+dcd34be6d940989d54170e6ad58e4d0de0dd7190 Merge pull request #3622 from c020627/fix-weixin-credentials-cleanup-on-delete
+e269612ece828dd8b0e00a45a9a55c055385c290 Merge pull request #3613 from c020627/fix-session-delete-fanout
+c816d930c09e8ad31856dd630eca069be85b4676 Merge pull request #3601 from a1094174619/fix/agent-stream-reasoning-field
+b3d96036a2930d33c5d28b49ef5fe6869f7033c6 Merge pull request #3587 from c020627/fix-conversation-page-window
+35fcf251db6cb8e86feae182ee22ed01c27dc49a Merge pull request #3602 from c020627/fix-permission-shell-substitution
+87dc51df5eef5f4bb1b14cca511bb007158cba51 fix: replace the legacy FTS triggers without forcing a full rebuild
+26849199e1612fdcb4fdab6b117de61cb5cfbd71 Merge pull request #3624 from 6vision/fix/linkai-stream-usage
+3326bfcd6120a92ef140c0ea14ff62903d7c7361 fix(linkai): request stream usage so the context indicator uses real token counts
+7ae2142f0a51f1d0d3159be06f9f0919509b057d Merge remote-tracking branch 'origin/master' into pr-3612
+8b3ba07dec39aee0d0028297196f45ba9552ed50 Merge pull request #3623 from zkjqd/fix/browser-viewport-fill-window
+1e38f69270669073d1c0b84997002d14b063bf62 Merge pull request #3615 from c020627/fix-mcp-tool-vector-teardown
+5279da461138c8d34f9954be97446b92ef7d7775 Merge pull request #3614 from c020627/fix-wechatcom-file-tmp-leak
+69a7256506998cb8fcae86de7512742eedcf4319 Merge pull request #3611 from c020627/fix-wecom-bot-media-lifecycle
+6fbb3cb0fcdc7b4eac7c09764695d2795d8c6433 Merge pull request #3610 from c020627/fix-mcp-sse-send-budget
+9983ae9696dae4fa4f4e6ba43abeab307139515f Merge pull request #3607 from rudycelekli/fix/cow-foreground-directory-20261008
+25adfa95b7d3e3812dec13bfa3c9d283b156673b Merge pull request #3606 from c020627/fix-wechatmp-claim-and-cache-leak
+d41b4c7c25a828cc41f8729805096cb3b76e6324 Merge pull request #3604 from c020627/fix-scheduler-update-identity
+ae893ebd527d2fb76d1ffc10fc494464cc51755e Merge pull request #3603 from c020627/fix-admin-delete-agent-conversations
+fe2ee856f667a4e9afb2042ad32ad1e4f3db2364 Merge pull request #3600 from c020627/fix-evolution-backup-orphan-slot
+b6b18a62d7213ebb8e9ea9a003e7f0515a730b90 Merge pull request #3599 from rudycelekli/fix/cow-cli-config-duplicate-keys-20261008
+de817475047456c02eb0983fe668165f08e0e458 Merge pull request #3598 from rudycelekli/fix/cow-cli-yaml-frontmatter-20261007
+d088fcdb6456871fa99af4456fa12b77850540db Merge pull request #3597 from rudycelekli/fix/cow-github-fallback-layout-20261007
+ca9783da272134a3d11a00d5100d23cfafb7e6bb Merge pull request #3596 from rudycelekli/fix/cow-update-gitfile-detection-20261007
+2b880d0fc2688fea1ae979983efb4d02d41a1b21 Merge pull request #3595 from rudycelekli/fix/cow-knowledge-tree-pages-20261007
+8ff0d10414e2f1f8305627fc254559324ee00872 Merge pull request #3594 from rudycelekli/fix/cow-local-copy-overlap-20261007
+fdf874e2721a9ae3fe79ae02982148a29ee08df9 Merge pull request #3593 from rudycelekli/fix/cow-scheduler-valid-backup-20261007
+441218d5b87318b4716de92a4f600c6630c76332 Merge pull request #3592 from rudycelekli/fix/cow-backup-effective-default-20261007
+e2afdb669dd37ada0e96e1379cb2c6ab94ea5d59 Merge pull request #3590 from c020627/fix-daily-summary-hash-retry
+9cbb3802613e1d3de9f35f1c5a80577cfb8a0e5d Merge pull request #3589 from c020627/fix-wechat-attachment-ghost-path
+c29e1e4872342db522591ce4b34e1e13e4e5a727 Merge pull request #3588 from c020627/fix-openai-stream-idle-budget
+9069429312723b240f77743caf20589d795acdc2 Merge pull request #3586 from c020627/fix-dingtalk-card-finalize-wait
+8a7707fa8a1d6b91f3305820bf9ab4028d5eb75e fix: keep the weixin login when an instance is only disabled
+9fb5f527a59aa0f56a6bdb419511eca6fb05e9db fix: read the team roster before the delete drops it, and fan out from the web too
+414e798bbcd345bb975f886f07071cbb95b39732 fix: fail closed when a substituted command cannot be parsed
+bfa17babc08ec80a19fdfccf4773a1fbe825214c fix: ignore a non-string reasoning delta
+6779659c19ab4ed7a9a14929b17fdbe53b002c1c fix: keep the cross-agent session listing uncapped
+11da53d9e87983f3ccbdcf29623166eda4cdf7e9 fix: let headed browser pages fill the window
+1811e5428f7ba791b258c12d4ee02a4fe472f492 fix: keep Claude streams alive during long thinking and recover from stalls
+d2a331fadbdbd3760a80413150708f57ce46325a fix(cloud): clear per-instance weixin credentials on instance deletion
+01520640e9eb0ad503cdd9f0a71355b0e3e75875 feat: support extra headers for custom providers and OpenCode Go session header
+e52e928f19f0657be71690213b52760b8d910560 feat(web): render mermaid code blocks as diagrams
+978259ae36ee673e2e4a6ee67aba1a33c3ecdd05 Merge pull request #3617 from 6vision/fix/session-default-agent-alias
+62af3878521fe715ade79f0d394d28000a4d0d47 fix(session): resolve reserved 'default' agent alias in SessionService
+5c6b22031b64d33d3e770cad48fb0787aa768419 fix: synchronize external-content search indexes
+fdd44d054c2ad75a35b15b6408d5afe94fbd82a5 fix(mcp): drop a retired server's description vectors with its tools
+747d5cad696492393f1a3cecb217167efd5354b9 fix(wechatcom): remove the temp file a remote document reply fetched
+e8259e12691464b5f0274922061e55366fbca3f0 fix(session): delete a team conversation for every participant
+2ac0bc117121fb45fa518bdc32dbc22038c1ba4b fix(wecom): clean up downloaded reply media, and bound the download
+eefdeeed092eabeb9d38c2ef884ee49e98f3c4c7 fix(mcp): give the POSTed SSE response the budget its siblings have
+33872743814a7cb915856e98f5cf5a50e422e49b fix: keep admitted Markdown extension cases visible
+fc3960e5a85ae4fc0f9317ffbf9db9ef2eb2f8a4 feat: let a product build hide the release notes entry
+e5616ee1ef250c5b76bf78beeb858560b6111328 Merge pull request #3609 from 6vision/fix/weixin-relogin-same-account
+f46f00914404b7cabcf24beb78ecd97ca2ec9b89 fix(weixin): keep relogin token on GBK consoles and surface dropped logins in console
+bd33850a645837c41ac879bcd1d5b3197d320aac fix: keep the packaged update channel when the feed URL is overridden
+5ac8b2b9570915bbad720796e034b7af55c166f8 fix(cli): launch foreground from the project directory
+222273d977b7163cc37cf943d4f0e6a938509701 fix(wechatmp): do not leave a passive-reply user silenced for good
+c19e4d9c64ff24cee82f536474cf9e35f4c5cb65 fix(scheduler): take a task's delivery identity from the store, always
+020632e8d50447476b4b6f8e959e487e8e879910 test(permission): keep the escape fixture off the filesystem root
+5ce33689e054d615798caed60bf2584881c51ed5 fix(admin): sweep a deleted Agent's conversations too
+6bc9dd57bbfe7150394cf0db155873aae23fbb99 fix(permission): classify the commands a shell substitution runs
+d7fa36ea87a3a8eeec3f0b0b914285fa51f89a51 feat(agent): accept reasoning/thinking delta fields in the stream parser
+14a6fd2bc83569e8eb8e675abdbc5d02df38d085 fix(evolution): stop a failed backup from costing an undo slot
+835df0f98729e1f6e525fb33e14adda08ff53bdc fix(cli): preserve canonical config lists in backup and restore
+714263198a1d6125e9121c2e3e695b047ce159ff fix: let a custom nav footer host the menu editor entry
+b7834b99590b50345918946577a4e7f4ea3f513b fix(cli): share canonical duplicate configuration parsing
+9ff24279bc83d6fab10b47f0a17f7afe1f490e69 fix(cli): use canonical YAML skill frontmatter parser
+6e00f8a6d242841d4e4fa75fce5fb4da057e0c63 fix(skills): preserve Contents API fallback directories
+2b2e966852f3a914b5290cc152e79c5c846fbc1f fix(update): recognize validated Git worktree checkouts
+18785821d0873c52295b6205a4a9d7378d8c5cb1 fix(cli): bound canonical parent aliases in knowledge trees
+13de0be1a4d792675d5b3ef06a97826de1e12842 fix(cli): show root and nested knowledge documents
+9541189ab3250546c0ed2be1b3af66e7c3196264 fix(skills): refuse overlapping local install copies
+e05cb1486c01e49902f1ffb1a6d8aeb842fb5974 fix(scheduler): retain valid backup when primary repair fails
+75dd350b8b3d2d96e60ea81dd55d7b68fec7b0f5 fix(backup): use the effective registry default agent
+44cb0491f1be5c0ed8af1a51b3f2e782238d8513 test(openai): read the cancel entry from the driving thread
+9c824a2ff06a31a7582de8f322a104cc3de8c082 fix(memory): do not spend the day's dedup hash on a dispatch that failed
+3cbd4465c574b80d85e23f039f077114463923c5 fix(wechat): do not cache an attachment the download never wrote
+7f77e75fc6454650367c9b7f82b9ce7efaddffd6 fix(openai): give the rest of the stream the idle budget the first event has
+744f4c2b3328e27a02b8d6d58563a3692cca1f34 fix(memory): clamp page_size before it reaches the conversation store
+17e192f191b76642d04c47adcba60aafe6bd4d21 fix(dingtalk): do not claim a card reply that never landed
+23afdd100d6df2d3b4ee737c169953891caca63e fix: trim batch comments and condense the batch tests
+73ce0c550c93cf3a357f2dd23fb8a6671805a505 Merge pull request #3582 from c020627/fix-parallel-cancel-budget
+25be567f8d6995ddbb0b6f5298359aff9a59d2ef Merge pull request #3579 from c020627/fix-permission-readonly-mutating-flags
+b0fd6416bb95d5326f9df67dd290cc6aec6220d7 Merge pull request #3555 from c020627/fix-feishu-image-url-ssrf
+ff0dbafa9f38a298fdae323cc6dac3c4ae0128a2 Merge pull request #3557 from c020627/fix-dingtalk-media-ssrf
+c69e96c6b0131fec2006d726ce5b2408b8450322 Merge pull request #3556 from c020627/fix-wecom-remote-media-ssrf
+ac3203e00b4885326dff9c42d412955e3c5aa690 Merge pull request #3552 from c020627/fix-peer-inbound-permission-mode
+20605731e70f4d9a382af65ae87fc7ff19d9040e Merge pull request #3585 from fly0sheep-1734/pr/chunk-id-hard-split
+908b147686f8d588de8ee86238724343e64dec04 Merge pull request #3584 from c020627/fix-plugin-scan-new-detection
+6d9db60a1f66ee5bc9cec9a7ee61b45dcad1da86 Merge pull request #3583 from c020627/fix-memory-pagination-clamp
+42a282f2574ab7d36269c13c242a30d4b2a393c6 Merge pull request #3581 from c020627/fix-weixin-media-tmp-cleanup
+e73395ac9cfc2af365f2133ec8884bffd9862bdb Merge pull request #3580 from c020627/fix-agent-avatar-residue
+977b168f6eae5589b1cea3cafab9184339c90a31 Merge pull request #3578 from rudycelekli/fix/cow-memory-empty-note-reconcile-20261006
+d380b8e33080edbc7b69b6e7bb3d7a3d36bb049f Merge pull request #3577 from rudycelekli/fix/cow-custom-main-model-selection-20261006
+096ac1b05f6bb6bf70c3f59283e7c7703123807b Merge pull request #3576 from rudycelekli/fix/cow-scheduler-relative-store-20261006
+baa6fdd6ea6a2954cc2056dd9871bb34d3545a7d Merge pull request #3575 from rudycelekli/fix/cow-scheduler-idle-stop-20261006
+59fb40a7e00a2c09f0ed764d39856a50cae6c691 Merge pull request #3574 from rudycelekli/fix/cow-encoded-document-suffix-20261006
+d7dc4914301c097002c29be1f35a7730fc602dc5 Merge pull request #3573 from rudycelekli/fix/cow-empty-browser-option-20261006
+74a75a4cd3450e4625853e89bfea3224459d5e84 Merge pull request #3571 from rudycelekli/fix/cow-content-single-file-20261006
+b484ba537288eff5190edccf744c6f6b1e6cba17 Merge pull request #3570 from rudycelekli/fix/cow-search-brace-globs-20261006
+6540fe1aad0888ebb5f36994cceea0ec6fdc5e68 Merge pull request #3569 from rudycelekli/fix/cow-download-text-charset-20261006
+4808e8ba78762e54e38a6d3946fcccba6b37787c Merge pull request #3568 from rudycelekli/fix/cow-vision-no-upscale-20261006
+b039ed66ef810675bdb2e6e8c1d0746e1cdeacac Merge pull request #3567 from rudycelekli/fix/cow-zero-entry-listing-20261006
+8a6807840ee0484340cac18a095486ee6675ac22 Merge pull request #3566 from rudycelekli/fix/cow-backward-file-timestamps-20261006
+5102f739fdee7698e15de16fee998081fab33d33 Merge pull request #3564 from rudycelekli/fix/cow-conditional-exit-status-20261006
+4a43066c9d247737a3ef76e976e126f1867aedbf Merge pull request #3563 from rudycelekli/fix/cow-edit-whitespace-replace-20261006
+532ee7e62b88ddb14d48cbcec2737416fa103416 Merge pull request #3562 from rudycelekli/fix/cow-browser-ref-actions-20261006
+0a31bf1c769c2032b9fb698fc8eaaee3c1f46d1a Merge pull request #3561 from rudycelekli/fix/cow-local-path-suffix-20261006
+a808cbe75e22916c3512a4246ef446eebb0c34a1 Merge pull request #3560 from rudycelekli/fix/cow-pptx-container-text-20261006
+9e826b762bb7d650da08834b623dd3dc77054ce3 Merge pull request #3559 from rudycelekli/fix/cow-memory-unicode-keywords-20261006
+d977bfb9fd026a617419a2a07dcfbbb3760b8044 Merge pull request #3558 from rudycelekli/fix/cow-search-null-filenames-20261006
+e5d3ffb9a8db1fe9d0d102aaeb5b7180867c0210 Merge pull request #3554 from c020627/fix-shared-history-alias
+7d1a97c701a5ad7ed7536913b29f15ead173f180 Merge pull request #3553 from c020627/fix-inbound-reserved-alias
+c439b3378e77c0d689439cd2c151a30e8247a8c6 Merge pull request #3551 from c020627/fix-project-store-shape-guard
+df2323b0d3bd87e2a4f569931c26efa05abe76c9 Merge pull request #3550 from c020627/fix-dispatch-delete-side-stores
+63325e4cecce5d476fee6d6db0fe52e4e6db4b49 Merge pull request #3549 from c020627/fix-session-delete-agent-scope
+f8af01da3dca78c2019ae3c94bedcf01fd1675e1 fix: catch clustered and attached write flags in the permission check
+0d5d10a0f73d3013170756c85335f05df7af2443 fix: drop the parallel prefetch budget and keep only the cancel poll
+44792f033cd5fced7bb9f4056a4dff31abfbd8a7 fix: let a remote caller only narrow the inbound permission mode
+d8c52177311d65a1454e6ca24693af572b084ca8 fix: guard Feishu image URLs through the shared download and the SSRF switch
+b2dad70df1969e7c895e03d77da0abe5dd5b4421 fix: guard DingTalk reply media through the shared download and the SSRF switch
+f737d266967e4acaf3f4e4d5033d014caec08a56 fix: guard reply media through the shared download and the SSRF switch
+423eb5dc26c1fec4b32521b593550d36d38e4bdf Merge branch 'master' of https://github.com/zhayujie/CowAgent
+20f9f2922f228070b48864daa4c657d893ebce45 fix(qq): reconnect even when the websocket library skips on_close
+cb1a40058066fcd680d87a1ecdc47173582ea7ab fix: give hard-split line pieces a distinct chunk id
+6e284b149efc8886e4b6e5295135a921b452052d test(plugins): restore the registry the scan tests hand over
+284f1e139a2fdbebdb132605311cc06c46ae95ca fix(plugins): decide what counts as a new plugin by name, not by class
+ca5a3757d5f26de4eb947035e4eaeb80faca0f87 fix(memory): clamp the page numbers before they reach the slice
+37fde7c8ebd7aecda0b1dc2809f1bf3a45b0b237 fix(agent): let a cancel end the parallel-tool prefetch
+bcd072742ce4bf33548a4f1ae2b47963bed7f205 fix(weixin): delete a reply's media download once it has been uploaded
+caa9df149da4a092db38c135293e9121cd08ce89 fix(agents): take an Agent's uploaded avatar with it when it is deleted
+473bf9ba5ca355ad3be2965b13e728541a896d42 fix(permission): refuse writes that arrive as a flag instead of a redirect
+83169891486289b0fb04804adf60c9eeaa371f61 fix(memory): reconcile readable empty notes with the index
+7ff68601602ff92e75bea758fca01dc90834b178 fix(models): persist the selected custom main model
+29d5a586b2fb860e2c672adcffa7fc7d43bc1a64 fix(scheduler): wake stopped workers without reviving old generations
+6b201b9488086897dbd508c57a4825173f40afd3 fix(scheduler): allow task stores in the current directory
+aa9e5b11cabaf9b350780a2b5857e23dd16a776a fix(web_fetch): decode URL path before choosing document parser
+6c17148ba0023579e9befa60571fb3e4614ca111 fix(browser): accept explicitly empty option values
+4cb743140be1d6a56a7e4e160ebf6e0ea5c8d609 fix: scope fallback content searches to selected files
+8324269fffc70da3877945b8b4c5c1f2c0b7c9ac fix: honor documented brace filters in fallback searches
+21ad5399c1ed97dfc45859fc49c1b4706accbf6b fix: honor declared charset in plain text downloads
+a29ecce0ace2f2ea9323acbb902d7e7ae559497c fix(vision): avoid upscaling images during sips compression
+3546b9d5d343c1f35b7c1b89318bae1a85c4a28a fix(ls): distinguish a zero limit from an empty directory
+8ca6ddb0bb1b5beca35734b152cec51114712cef fix(files): warn after preserved timestamp restores
+7c46bf91417e69aa896d5cb3178f542ca1d02f7d fix(bash): avoid attributing skipped conditional command exits
+82ee04e49073cbf3ed6ee817544a7d2e1fca350a fix(edit): replace nonempty whitespace instead of appending
+191a3fa7cd368ab313ac335ea5c7ee9ebfc85576 fix(browser): use native actions for snapshot references
+f940a485abe20cb1a021af1ee3f9869c4c85513b fix(files): preserve suffixes of local attachment names
+c3542007c6d6b8fb64ab61a53328ad45759352eb fix(office): retain PowerPoint table and grouped text
+b81294e3a39ee96e1ec0c5f31e503b6e8c9795e9 fix(memory): preserve Unicode words in keyword searches
+032f60a2d3118ece3839c964731b4f1fb01c1253 fix(search_files): preserve external filename record boundaries
+f000998dc95fca15055a1354cc32721e013d783e test: re-run the suite; the subagent budget test is timing sensitive
+b0d31868e1b269b6332a2382741cf8817c146b75 fix(dingtalk): check the address before fetching reply media
+ed07384e5fcbca0ee4195420ab61b2330d46edcf fix(wecom-bot): check the address before fetching reply media
+84eb4ff37e6439fad6a9a9d475531c05bc1f65e7 fix(feishu): fetch a replied image through the public-image guard
+1de2a96496a415ab5c310e8286ff551260eb4e35 test(chat): compare the two naming exits against the same roster
+b32bb2765d3083e2708f9d98477a4a1fbcb4be2f fix(chat): name the owner by its alias in a handed-over transcript
+7395c29d57681c02f1852bff6dca3d906ad5dc03 fix(multiagent): fold the reserved alias onto the default Agent's real id
+f9ba5ec60d3b934cebac9e5ef598a247a3368334 fix(multiagent): carry the caller's permission mode across a peer hand-off
+b98ee26b7d9c6af6d18c5e56b90aa9ecb59f2de5 fix(workspace): check the stored shapes in project_store, not just their absence
+c9d91fc81d68de321a35bff155cc23b732dbf459 fix(sessions): clear the side stores when a session is deleted via dispatch
+c13bd6cef18caed9abb78c581e9cfde7640e5aa0 fix(sessions): drop the deleted session's side stores under its own Agent
+5e29e033bddaa9f2a46dba6bef94bcdb81d6f11d fix: trim batch comments and consolidate the peer inbound tests
+cffe61febbbd0de9ec0fec7b123e1a86fc0be570 Merge pull request #3543 from c020627/fix-wechatmp-unsupported-message-reason
+f46198786c52db6cded1072b9390589bdced0a03 Merge pull request #3548 from c020627/fix-peer-inbound-timeout
+358ca3660e0f1ccf771b3ded6c538708a4ccb4b1 Merge pull request #3547 from c020627/fix-peer-inbound-depth
+244874d4a9d7f18bfbc9a89a49efc8b446a8541a Merge pull request #3546 from c020627/fix-peer-inbound-acl
+b18f6acddf5279d658b6db380535dc2d71b33712 Merge pull request #3545 from c020627/fix-openai-nonstream-cancellable
+bccdb85d5e730725dddac0ddbd6006bef60c0be8 Merge pull request #3544 from c020627/fix-weixin-qr-refresh-empty-code
+16d2ea6b7fe3f3ddd367ba5d5e1621e850c43ec9 Merge pull request #3542 from c020627/fix-mcp-transport-normalize
+6513a4a8161c4133b83c7bd7813609bb2be4bfaf Merge pull request #3541 from c020627/fix-delegate-inherit-permission-mode
+f3a2b24f34bf42fc9b94bb6dbfc29e1e2961f325 Merge pull request #3540 from c020627/fix-scheduler-update-action-type
+02ebc04b1670188d6d8f95c37b43b191ef77e877 Merge pull request #3539 from c020627/fix-feishu-register-stale-worker
+787108bc95ec9bcc982a8e6c6652e99f8260dc33 fix(multiagent): clamp the inbound relay wait to the local policy
+20ee30107df7df362ebc8bad90982b8bcf775d39 fix(multiagent): derive the inbound delegation depth from the chain
+57ddc6d0a5b0b1515854eb7a764307b5292b8438 fix(multiagent): re-check the delegation allowlist on the receiving side
+fa2a47f4f3cb6b859950fefa179220163ce1ac8d fix(openai): make a non-streaming completion cancellable
+0db929e022f67797208f7380460e7585d821597b fix(weixin): a QR refresh with no code ends the login
+ba5604b20cb8790f461de32942a2ee7b26021ba7 fix(wechatmp): name the unsupported message type instead of "not handled"
+3e5f04df21027f00a430feaac5690dcd8b617962 fix(mcp): resolve the transport the way the console validates it
+bb52ed68ee90d0c09d0c504276c3ba27bfda3bce fix(delegate): carry the permission mode into a delegated run
+a6c66b53732f5bdf8a7374d8fab7e5c33cb3735a fix(scheduler): keep the edit route on the same action types as create
+864e23a0b832b422ae6ac2e6d2daffd80cdd9546 fix(channels): stop a superseded Feishu register worker writing into the new session
+e350c71138a1d86a05efd8b9de3deed719ed9f35 Merge pull request #3537 from c020627/fix-session-settings-model-source
+f069da04721d05c3dd2dd089aecc4932e83b65df fix: trim batch comments and tests, drop the unused think-tag flag
+207be809e29b9d630bd484618e041f3d5cb36af1 Merge pull request #3527 from rudycelekli/fix/cow-atomic-private-staging-20261004
+dd24c281dc47d7f8655be148b0fef6b0b2cffc80 Merge pull request #3517 from c020627/fix-dingtalk-image-caption-once
+73e5291c7dfe1e5e523c167b0fa8a7e6e19362d9 Merge pull request #3538 from fly0sheep-1734/fix/think-tag-unclosed-swallow
+3e037f881daea83f12b672cf204626ec1ca31664 Merge pull request #3536 from c020627/fix-wechatmp-fail-callback-drains
+e8f84604afa2f677097b914d590ab194806f412a Merge pull request #3534 from rudycelekli/fix/cow-filename-single-path-20261004
+1c343b0667b0b4f2f96d78784cd39a846eaa4046 Merge pull request #3533 from rudycelekli/fix/cow-filename-ignore-case-20261004
+48805bad2a703d3277e80b2dcc63ce1c37c5f4fc Merge pull request #3532 from rudycelekli/fix/cow-recipient-key-collision-20261004
+82ef045a6a9116205fedaf7088b86c357daaa018 Merge pull request #3531 from rudycelekli/fix/cow-edit-concurrency-20261004
+0aeff05ef11c78c3b400c3731c7dfd8132a72525 Merge pull request #3530 from rudycelekli/fix/cow-background-utf8-split-20261004
+bed99cbb86fe0090acbfe46ee8344095dda6fb5b Merge pull request #3529 from c020627/fix-wecom-image-format-failure
+1dd498f9c7de7e62bffaf2c0ecf1398959014b01 Merge pull request #3528 from rudycelekli/fix/cow-memory-credential-guard-20261004
+bbcd31852c48cc514e27c4494d68c56f93e091ab Merge pull request #3526 from rudycelekli/fix/cow-scheduler-missing-primary-20261004
+4dd119975a605f2a4b2e3ea6011a56eb4be7d151 Merge pull request #3525 from rudycelekli/fix/cow-read-special-files-20261004
+d53da6874462adaee1c331601c2bfcbe59d83266 Merge pull request #3524 from c020627/fix-browser-launch-failure-cleanup
+d57e15dd769f22d21e4a62b88c4eec2c781e91d9 Merge pull request #3523 from c020627/fix-mcp-empty-server-map
+4aae6802ec06ad958760c6015922194d0a19d62b Merge pull request #3522 from fly0sheep-1734/fix/telegram-entities-concat
+ed8ff5b8b89f86da59a8ba4aef3abceae94117cc Merge pull request #3521 from c020627/fix-time-check-offhours-alias
+d29debf1f4c37dfeb8df14629b49919f1b780a2b Merge pull request #3520 from c020627/fix-reload-plugin-keeps-config
+29c4176549a01cee00e1438d86d8aa04ea262902 Merge pull request #3519 from c020627/fix-steer-session-key-scope
+62f635dec5ee08dc2e54115d5fe9b54f37852ba5 Merge pull request #3518 from c020627/fix-compact-context-concurrent-turn
+7674b7f1cd84d00cf0bc0d8d3cbfc73f4ae0a914 Merge pull request #3516 from c020627/fix-skill-install-kind-type
+f3b45d76e6e49ffe72ccb1b748022698125da890 Merge pull request #3515 from c020627/fix-channel-mask-width
+ae1aeeb744d07de58fdfeb040f66315bc9500274 Merge pull request #3514 from Lesereingrape/fix/artifact-rel-path-separator
+4ba66c524d1d4eb3eb574f682ec1c40abf517e4a fix: stage atomic writes with the target's own mode
+3d3ebf4f54c0cb8911773afd4df1d6c8b2992b72 fix: send the image without its caption instead of flagging the context
+4300f62982273316cc7c22bb5777dce9f8eb95dc fix(agent_stream): don't let unclosed think tags swallow replies
+890c5acaa0de3f9b63daf0f9fd869a8791d996fe fix(sessions): do not report a model pin a team conversation ignores
+031018f448183e3be07791d49ac739d14d561957 fix(wechatmp): drop the undrained reply when a task fails
+f19320ae491385c7ca0b0a6bc8ddfb5bebf678bd fix(search): respect an explicit file path in filename searches
+6b38b2b4ca54eeb5cac509f55c174c3be06e7cc0 fix(search): honor filename ignore_case on every platform
+6ffcb27b03979b44212245bb27d88d034512dfa6 fix(scheduler): prevent recipient identity key collisions
+6aff23be27ff4c2066471754a10c4273602a3d8f fix(edit): preserve updates from parallel in-process edits
+2635c0a27c48c9181b0ea41293e28a60cb010f71 fix: trim context with headroom so the prompt prefix stays cacheable
+3966a6237aed500f5fcddc3e8180366c4240a0b0 fix(bash): retain incomplete UTF-8 characters between background polls
+9c8ba78fb5d2dc9e6962f1dddde318a101755c88 fix(wecom): report an image that could not be converted instead of sending it
+ed551cd7d1f23ef272e7bfe678230f497bb9bb44 fix(memory): apply the shared credential guard to memory reads
+c91a9d73115be9575c123bb0448e01f27ac9e560 fix(storage): keep atomic staging files private while writing
+44009e39249351d27e433b6b9c8466f15dcf574c fix(scheduler): recover a missing primary from the retained backup
+8311524215ffb8589a7bc64d51c696249be26065 fix(read): reject FIFOs before opening their contents
+75c82c6f593f43562ccc54cd338a59fa22e0dc4d fix(browser): reclaim the driver and Chrome when a launch fails
+592abf59f5c5152b0f72c23ac31d4a5da6a74237 fix(mcp): read an empty server map as no servers, not as one named after it
+896e76a45544e1414bc1138f1d03115d6efbc18c feat: enable prompt caching for Claude agent requests
+64342c11672db500207d5badfb288d5c2d24b2d4 fix(telegram): don't crash on messages carrying entities
+9b5a7bc59ebcf197fb06a0338808ddcd488288ce feat: start the artifacts page hidden in the menu
+b5f1b406a68ea2870473c940cd40eae0fa1e56ab fix(time_check): let #重载配置 through off hours like #reconf
+ef3a07cdb3852d1f3f97f0e55ea9eabedc7ed63f fix(plugins): keep a plugin's configuration when reloading it
+384a93c24ca5ba9ad506ec680fd8e0ca3b0cf5bd fix(bridge): key the steer registry by the scoped session id
+d1905add749f4f54f7d9b1bdb13eca6eeda22651 fix(agent): keep a turn that lands during context compaction
+677b01319e963d2548664a06794909a58ff74b93 fix: trim batch-6 comments and tests, clean up kf voice segments
+47514a5c150364a1759db19a5f4692678161a731 fix(dingtalk): send the image caption once, not twice
+1a4a472f1d3ac254fc8e619ebd0996fe4e85163b fix(skills): read a non-string install kind as unset instead of raising
+6fc57ed7eb522dc7dce3aa99e370992e42f97441 fix(channels): keep a short masked credential from overwriting the real one
+e097a48c26093a8fa841334e743d88a4cfe37105 fix(artifact): keep a relative artifact path POSIX on Windows
+334652225faebdc617f503d8f7560bcb78702024 fix: keep the saved key on its own base during model discovery
+382efcff1e8c03d1196549f4e8a338f3d7ae2994 fix: persist reply usage through the step writer
+2b2d11270ae6472358242e4926fbf1d8f0d21b11 Merge pull request #3464 from aniruddhaadak80/fix/minimax-http-code-type
+a6dc358394f738853c1c48c3cb55f423b86730b3 Merge pull request #3483 from aniruddhaadak80/fix/memory-list-tie-break-prefers-evolution
+b8e6818eb7098591e4d5c65afa9546ffb7bf6743 Merge pull request #3481 from aniruddhaadak80/fix/memory-search-honour-explicit-zero-min-score
+5ceec3abddd512e6c9ecd95291e350bd29e801a6 Merge pull request #3501 from aniruddhaadak80/fix/model-catalog-compare-lowercased-capability
+521b77b05c406a1a3f45a89e0f318e4755f3c1a8 Merge pull request #3448 from c020627/fix-web-search-config-shape
+1031f17da91be9dc4aabd5224072c46b0af15299 Merge pull request #3499 from aniruddhaadak80/fix/config-log-rejected-env-value
+78220cfb2d100f02d498f81ae4302300dcb6db2d Merge pull request #3461 from aniruddhaadak80/fix/evolution-contain-backup-restore-path
+b124f8baabc688df5b1e7a1afdacd552b52967e6 Merge pull request #3507 from aniruddhaadak80/fix/cloud-config-guard-linkai-lookup
+0c5d98615888caf5221cda88d4bb7c4a0312ca2f Merge pull request #3444 from c020627/fix-baidu-token-not-logged
+b5ba99f33e55068d2e12cc9b676afb2ef2472665 Merge pull request #3478 from aniruddhaadak80/fix/web-fetch-webpage-size-cap
+77a21538bb9b3046658a2c67a5c2c19643fb97b5 Merge pull request #3454 from aniruddhaadak80/fix/workspace-save-nondefault-agent
+b18c675271cd6e9d5f55f22f1e50548ca2123b76 Merge pull request #3445 from c020627/fix-provider-error-body
+914404b02fa745ac93cb92422f6f6c4e2dcd3805 Merge pull request #3498 from aniruddhaadak80/fix/weixin-pkcs7-unpad-zero-length
+8d046cec72515581e31853c8678b29aa89184d66 Merge pull request #3491 from aniruddhaadak80/fix/voice-xunfei-error-path-binds-filename
+3ca88cd56f7ef11d3abf934b79580cde9885d950 Merge pull request #3488 from aniruddhaadak80/fix/web-config-save-atomic-on-bad-value
+d0dc7c25824460b02cacc8cc18e8c7f840627706 Merge pull request #3442 from c020627/fix-linkai-business-code
+18c02129b812b7549402e6d1d3c5a74fcf8abe7c Merge pull request #3479 from aniruddhaadak80/fix/baidu-wenxin-read-credentials-at-call
+1d449f77eeebbc4020fe27afa5f7ea0321a2ff6f Merge pull request #3505 from aniruddhaadak80/fix/linkai-check-status-before-writing-download
+f30bbbd2a45f31ff9b9759d781d990ff04d5513a Merge pull request #3463 from aniruddhaadak80/fix/web-contain-static-asset-path
+00a1de71f91789afacbed0cbbcec7df9e572ae65 Merge pull request #3506 from aniruddhaadak80/fix/bash-rm-long-flags-reach-the-operand
+6ecebcff5776ead99839fd6fab83c4ad3634ce0c Merge pull request #3490 from aniruddhaadak80/fix/browser-scroll-not-read-from-timeout-field
+4638e3805acd20102b1204835f19fd6821a3c5bc Merge pull request #3482 from aniruddhaadak80/fix/embedding-batch-honour-response-index
+07f27d3ba7aa50339f1104b833e09302f79e5b33 Merge pull request #3447 from c020627/fix-embedding-factory-config-shape
+b0b405d0ee3e115c24651c7ee27e67b16c03c28e Merge pull request #3497 from aniruddhaadak80/fix/wechatcom-remove-split-audio-segments
+0b79645a8b2e1dcc1aed3b52e7502942d5534afc Merge pull request #3450 from Lesereingrape/fix/artifacts-schema-evolution
+a8312c4924f94cd149a577712c43a42f977dcd07 Merge pull request #3469 from aniruddhaadak80/fix/mcp-bound-stdio-read-by-total-time
+a6a460351c69f2da063b8df0db42b605401f073c Merge pull request #3452 from aniruddhaadak80/fix/mcp-sse-total-deadline
+52389b320bbf9005dc17a84b42a4ea37895d4fe5 Merge pull request #3466 from aniruddhaadak80/fix/mcp-stop-process-after-failed-handshake
+d070f5cadef1c34f2c5eeda588f9f1a6f8b8aca0 Merge pull request #3480 from aniruddhaadak80/fix/memory-search-fall-back-to-like
+f958dbcb56b268578902d67f28172bfc2a54f2bf Merge pull request #3443 from c020627/fix-linkai-error-envelope
+d614955d15193195bc5164c5236e48bc658a6773 Merge pull request #3476 from aniruddhaadak80/fix/azure-dalle-config-fallback
+361416c2683a430771f43dc0838d9759698e3d08 Merge pull request #3496 from aniruddhaadak80/fix/dingtalk-temp-name-includes-message-discriminator
+89ffc51c365c90c16ee1a72f4e8e230848c29f1f Merge pull request #3503 from aniruddhaadak80/fix/image-gen-keep-source-format-after-resize
+dd26d62be5acbc287c60354b081aae66656924a2 Merge pull request #3486 from aniruddhaadak80/fix/openai-compat-drop-private-message-marker
+33fbf181873be3575f69355587f42c6ef4376a56 Merge pull request #3504 from aniruddhaadak80/fix/image-gen-stop-rewriting-typographic-quotes
+2b3c3b17dc65c19b386d4f219e2fc7629eb32a25 Merge pull request #3512 from aniruddhaadak80/fix/modelscope-stream-error-generator-returned-not-yielded
+9301fc4f9b92983ed0ea91fc5b9ce96483b5a451 Merge pull request #3511 from aniruddhaadak80/fix/config-mask-env-override-value-in-log
+bce54d2a2af336180a12dd9b2c21e66b410c1be8 Merge pull request #3477 from aniruddhaadak80/fix/voice-verify-xunfei-spark-tls
+d94c227ea174a18c683e73f0e22533f1ce5e82ed Merge pull request #3457 from aniruddhaadak80/fix/voice-fetch-aliyun-token-over-https
+6dd7664b6e2de5717199e472b300a23b12e06884 Merge pull request #3446 from c020627/fix-send-credential-path
+1f4f91142ad5dba6a7d13d73b676dd73b096b013 Merge pull request #3460 from aniruddhaadak80/fix/cow-cli-reject-skill-path-traversal
+52aa3dbbe0098a87eeba4f75a8743f6786a38d65 fix: drop the test for the one-line http_code cast
+24c9d203a878b44612810cec61f0e8d5ffa88486 fix: drop the comment and test for the one-line sort fix
+0aa16d13508c9637753d188c3e5fc04f1422d5f2 fix: keep the max_results fallback, only min_score needs a None check
+1fa5b30951948ebe6f85f3e7ed70b806a6c69af5 fix: fold the capability case fix into one line and the catalog tests
+cb7ca99d9563055d171017fcd753859e3e9d2e0e fix: keep the default for blank web_search config strings
+7d50d118b253cd79c1c560868bcb782c5017a0c6 fix: only reject non-numeric env overrides for numeric keys
+555d1d62e83e825beda88151931e5e9866457fad fix: also keep the undo payload and backup id inside the backup dir
+c2b1dedda8c1d7a6cbb63f3e8cdd98f1308cb932 fix: also default an empty chat session_id, trim the config push test
+4801e24fdcb6895b1f6b82dd32692fed586fab56 fix: share scrub_secrets with the wechat_kf channel
+bf4597d59f39a92f3c950bcf41c4e1b6921ea772 fix: bound the web page read with the shared media reader
+8ca93918d7ea2182408ac04a0b6d4774098e5c70 fix: read the workspace agent from agent_id on every handler
+bf7381a79f57a0a29488ccae0b99d3dadf62c571 fix: share one failure-body reader across the reply_text bots
+b23408a335391ae5ae0874da0d6820d8848ed637 fix: keep the send credential guard comment short
+283aeec3703c2f6098965f78e8b0cd3b6046093f fix: verify the Xunfei ASR and TTS websocket certificates too
+4595148fefb7b54ab124f8d9166bec56fd2b657a feat: bring the artifact center to the desktop app
+0fa42e59477586c145f8dafa93ddf149347be818 fix: keep previewed pages from scrolling the page around them
+22959853d9a6ceab5e2a47d6996adafb08bdf919 Merge pull request #3474 from HnBigVolibear/master
+3fb765b888c1cc42ba1bb04c5a6940a3db0fd7e5 Merge branch 'zhayujie:master' into master
+845e5e297ed3a28f170ce3b0878201dbfe5260b2 style(browser): drop the placeholder-free f prefixes the ruff gate flags
+cc40b91c2fae26a680216305f3e26b04e12d1535 feat: let users customize the menu on web and desktop
+4b2c7bbb166e231c081cd5ab98cca856d0af15ce fix(modelscope): yield the stream error chunk instead of returning a generator
+b519030d795db56cdf4220049accc8f594a89f61 fix(config): mask secret values in the environment override log line
+59b4f1bc5236b6fbfd347c8bebb6bbaa66e8ac55 fix(linkai): check status before writing download
+f68218951ec022f9a482ac5e923f152083153c4a fix(image-gen): stop rewriting typographic quotes
+4fab33ca3b20b166b9419ebcee245a675cbac2e1 fix(cloud): guard the linkai lookup in the dall-e config branch
+6bb3fa408f610343d2c90bd5a6995cf0183293b5 fix(image-gen): keep source format after resize
+6d69a4df45df29d67b55ff44c0f1629e0929b1f0 fix(bash): let rm's recursive and force flags reach the root operand
+5ca2bb7942b7e478a8ecfc826c48a6bfd4b5d274 fix(models): compare capability tags after normalizing them
+6e7b10b91c959adcc550d2d2f56f0265a5044799 fix(weixin): keep the plaintext when the last byte decrypts to zero
+94783176cc476a9605bcbfaa19720b4c5d36a762 fix(config): reject env override that is not the documented type
+917fe9425df7ed23fdd82ff68772d9f177fd0ec3 fix(wechatcom): remove the audio segments a long voice reply creates
+12b7d829843ad6f968b277a581c821dfa90baa66 fix(dingtalk): discriminate HTTP media temp names per message
+28922da3fa3d13a1b427c4840963e2aef7c88376 fix(voice): log the exception in the xunfei textToVoice error path
+6f80901897e4e31ff13709ac9df764af6f4eeff3 fix(memory): list the evolution log before the dream diary on a tie
+d8a7709f11cb3029d30fc798403bd54c30b5e72b fix(embedding): order batch results by their response index
+9a17e559f8e6e5d0052eea4f3bcc811ffad9e313 fix(openai-compat): keep private message markers off the wire
+5fd5d62fbae94beda22abd7755829d52990f5ba2 fix(browser): read scroll distance from amount, not the timeout field
+f4314c9b0942a5e4c43631a8871884761510cddf fix(memory): honour an explicit zero min_score or max_results in search
+75250d73c99322dc6a55334baebc3bcdb7125939 fix(memory): fall back to LIKE search when FTS5 returns nothing
+55d0d9fc0b4512cf5a8ea27b799f1ef3990ade95 fix(web): apply accepted config values to the live config together
+d7259bd7b2e925984ac1cf69cc3f6612228f6717 fix(baidu): read the wenxin credentials when the token is requested
+15eab64a2c4c87a898734f2735da6a12e2a0848c fix(web_fetch): bound the webpage response by the same size limit as documents
+3673362f3d79bd2bfb7939dc09f8a819137458ff fix(voice): verify the Xunfei Spark websocket certificate
+b76501428e0ab10e428335bb51cb091747e87e99 fix(chatgpt): fall back to the openai config values for azure dalle
+3067c8d4920ace4323ec5017caebdd04ea26348e fix(agent_bridge): Fix fallback logic incorrectly removing same-model entries across multiple providers
+81f3bc53910bc97a62ee69d36f13fe9c0b04f1eb feat(cow_cli): add display loaded MCP servers (ready/total) in `/status` and `cow status` commands; and update `status` command description examples in 3 documentation locations
+b7c9eee878bb901694f93f0b7df91fd44ee8e02c style(minimax): drop the placeholder-free f prefixes the ruff gate flags
+7e0813166472313379a61698243878ce8939cfc3 fix(minimax): accept a numeric http_code in stream error chunks
+074177f85e80025e0bc8f5385efbba4c88349bf7 fix(evolution): keep backup restore destinations inside the workspace
+b511123ca558fe8474ac7212b23bfa482e8d3786 fix(web): contain the static asset handler by path separator, not by prefix
+fadf840a76ec2b2ffbc4fdb9dd14a29f4bad1c6a fix(voice): fetch the Aliyun NLS token over https
+e19e0714bda30d285e6cff0c03336f5ab690f97f fix(mcp): bound the stdio read by total time, not per line read
+4cf42868a8e281d1f79d9ffebfe8391406b3e31f fix(cow_cli): reject traversal skill names in the chat uninstall path
+94efc331d85325eaa3a5477c747fa30f347c4ec7 fix(mcp): stop the stdio child process after a failed handshake
+583da8861cd5ae7744b9cebb01d192c7e4c65980 fix(memory): add missing artifact columns to databases created before pin/rename
+74cc1a7fcda1afb1f164ed9ae9d219273afe96ce feat: pin and rename artifacts in the artifact center
+6f62118674782c07fbe36be9e6713ba386cfd5fc fix: treat files written under plans/ as artifacts
+5e9efba6756cfbe6f7c56c94a86cc98b124270e9 fix(web_search): read a non-string config value as unset instead of raising
+c6de5fca8af0218c1e5a4bc000acae85e46a83ad fix(memory): treat a non-string embedding config as unset instead of raising
+26d9185dba9af50dedb02534ce2c5c6e4072772e fix(send): refuse credential paths like the other file tools
+e9bff3ddebe0b6aa9146f7b9ca9661b6b9b52922 feat: add an artifact center to the web console
+aa9c273c353ab578d78308330a2bf53d5f08142a feat: collapse the web console sidebar to an icon rail
+f22758fd7e26edafd64116988a253495100c952a fix: reset chat fallback at the start of every top-level turn
+3b571d9728bbf2cc0c4b26a7a59e3dd70b8610e8 fix(models): answer a refused call instead of re-sending it
+9129b23d9adc294bb68fe2719f5fa3283c253e4f fix(baidu): mask the access token before it reaches the log or the user
+37cdbc1964b0c2418e5ed3ba14ced401e48f2498 fix(linkai): read the model provider's error envelope the way the API writes it
+eacefd7d728a1be23a495eee143f5da75cf15272 fix(linkai): treat a 200 with a non-200 business code as a rejection
+fdd56971f8eb46401c816038f0ec802b18609ecd feat(models): discover provider models automatically
+3fc757b6fac4c60784e83f10cdc7d1a3c084e98b feat(web): show provider token usage per reply
+6bc176f8bb7a31800022e6b5660c545b846fdbe2 fix(mcp): bound the total time spent reading an SSE response
+df1aa65435070c72471d5793cbafb1f054cf5fdf fix(web): resolve the workspace save target from the agent_id the client sends
+545df78d1bd210add00d2fa4a02f9cdab50a2e9a fix(scheduler): do not report an unknown action type as delivered
+d845eb53b47a1410a75d60354285f0fbb54ff97b fix(read): accept a numeric string for offset and limit
+2a4dc8edd7d5eb64d2cacb2db01568b0606aa488 fix(read): stop the zero limit from suggesting an offset that repeats itself
+d9e1423333cf15ecd248ea129306d473a3db20f1 fix(slack,discord): let a send failure reach the channel retry
+9bfdfdf7350014d692d7ca26ac534c4a4f5eef16 feat: fold the create form into the add skill dialog as a tab
+34908b020c16d746108b9bcc8b234759f2362466 feat: merge origin/master into feat/knowledge-document-edit
+81ddaa106004107aee91083a5dfed5a6f336a7dc feat: merge origin/master into feat/knowledge-document-edit
+107dc6dbcd0c5dd6eba5dbb39741e754b70252d1 feat: restyle the skill viewer around one card with a border-mounted file switch
+389c14d496b0e3d6bef59078cb09c455078c89db feat: reach every file of a skill, in the viewer and when creating one
+404ba3290c9b6829c6d6a0292393c4c34ce22dc2 feat: create a skill from the console, by form or by upload
+697688f054d84bee51ea88218e0cdc78a0184137 fix: close the gaps found reviewing the knowledge editor
+ac85da2078cf487373652c81dff1a325e31e7312 fix: open the document editor where the reader was
+ab2884f3891b783e2f49c24abbfb57dd90e67dfa feat: reindex knowledge writes behind the console's response
+00818825aec3091eb6b49363abb0d5ff3c7ffdc0 fix: detach a trigram index the running SQLite cannot open
+ff20cac9dbf4aa4478e4a606f061656a7ecc53c0 feat: edit knowledge pages from the desktop client
+426603d076eae6cb2262c829db371f5289e26fe6 feat: edit knowledge pages from the console and reindex them

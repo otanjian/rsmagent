@@ -340,7 +340,7 @@ class SkillContentHandler:
         try:
             with _db_scope() as ctx:
                 _require_catalog_read(ctx, "skill.read")
-                params = web.input(name='', resource_id='', agent_id='')
+                params = web.input(name='', resource_id='', agent_id='', path='')
                 name = (getattr(params, 'name', '') or '').strip()
                 resource_id = (getattr(params, 'resource_id', '') or '').strip()
                 if not name and not resource_id:
@@ -353,7 +353,7 @@ class SkillContentHandler:
                 # write path (POST) still requires ``skill.edit`` and a grant.
                 if not (ctx is not None and ctx.is_tenant_admin):
                     _require_resource_action(ctx, "skill", rid, "read", "skill.read")
-                result = service.read_content(entry.skill.name, resource_id=rid)
+                result = service.read_content(entry.skill.name, path=params.path or None, resource_id=rid)
             return json.dumps({"status": "success", **result}, ensure_ascii=False)
         except (ValueError, FileNotFoundError) as e:
             _raise_if_skill_name_ambiguous(e)
@@ -400,7 +400,7 @@ class SkillContentHandler:
                 try:
                     result = service.write_content(
                         name or None, content, expected_mtime=body.get("expected_mtime"),
-                        resource_id=rid,
+                        resource_id=rid, path=body.get("path"),
                     )
                 except WorkspaceConflictError as e:
                     return json.dumps({"status": "error", "code": "conflict", "message": str(e)})
@@ -418,3 +418,56 @@ class SkillContentHandler:
             logger.error(f"[WebChannel] Skill write error: {e}")
             return json.dumps({"status": "error", "message": str(e)})
 
+
+
+class SkillFilesHandler:
+    """The file tree of the exact authorized skill resource."""
+    def GET(self):
+        from channel.web.web_channel import _db_scope, _require_catalog_read, _require_resource_action
+        from channel.web.fork.authorization import _resolved_skill
+        from channel.web.fork.runtime import _request_agent_id
+        from channel.web.web_channel import _skill_service
+        with _db_scope() as ctx:
+            _require_catalog_read(ctx, 'skill.read')
+            params = web.input(name='', resource_id='', agent_id='', path='')
+            service = _skill_service(_request_agent_id(params))
+            try:
+                entry, rid = _resolved_skill(service, params.name, params.resource_id)
+                if not ctx.is_tenant_admin:
+                    _require_resource_action(ctx, 'skill', rid, 'read', 'skill.read')
+                result = service.list_files(entry.skill.name, resource_id=rid)
+            except (ValueError, FileNotFoundError):
+                web.header('Content-Type', 'application/json; charset=utf-8')
+                return json.dumps({'status': 'error', 'message': 'Skill not found'})
+            web.header('Content-Type', 'application/json; charset=utf-8')
+            return json.dumps({'status': 'success', **result}, ensure_ascii=False)
+
+
+class SkillCreateHandler:
+    """Create with the same package, scope and management checks as installation."""
+    def POST(self):
+        from agent.skills.service import SkillService
+        from channel.web.auth_handlers import require_management_write
+        from channel.web.api.skills import _oversize_body, _multipart_lists, _first_value, _uploaded_files
+        from channel.web.fork.authorization import _db_scope
+        from channel.web.fork.runtime import _scoped_agent_id, _skill_service
+        from channel.web.fork.skill_lifecycle import _authorize
+        require_management_write()
+        with _db_scope() as ctx:
+            oversize = _oversize_body(SkillService.MAX_UPLOAD_TOTAL_SIZE)
+            if oversize:
+                return oversize
+            params = _multipart_lists(SkillService.MAX_UPLOAD_FILES * 2 + 16)
+            agent_id = _authorize(ctx, _scoped_agent_id(params))
+            service = _skill_service(agent_id)
+            try:
+                result = service.create({
+                    'name': _first_value(params, 'name', ''),
+                    'description': _first_value(params, 'description', ''),
+                    'body': _first_value(params, 'body', ''),
+                    'files': _uploaded_files(params, SkillService.MAX_UPLOAD_FILE_SIZE),
+                })
+            except ValueError as e:
+                raise web.badrequest(str(e))
+            web.header('Content-Type', 'application/json; charset=utf-8')
+            return json.dumps({'status': 'success', **result}, ensure_ascii=False)

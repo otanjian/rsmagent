@@ -1,6 +1,6 @@
 ---
 title: MCP Tools
-description: Integrate external tool ecosystems via the Model Context Protocol
+description: "CowAgent supports the Model Context Protocol (MCP). Add servers in mcp.json or the console and the agent can call thousands of community MCP tools just like built-in ones."
 ---
 
 容大AI supports the [Model Context Protocol (MCP)](https://modelcontextprotocol.io), allowing the Agent to directly invoke tens of thousands of community MCP tools. Configure `mcp.json` once and the tools are exposed to the LLM in exactly the same way as built-in tools — automatically selected and invoked.
@@ -117,6 +117,10 @@ The Agent will:
 
 1. Read the existing MCP config and merge the new server entry, preserving existing ones
 2. Hot-reload the new MCP server, so the corresponding tools become available on the next message
+
+<Note>
+Commands in `mcp.json` start with the Agent process's privileges, so the Agent may only change `mcp.json` in a **full-access** session. Read-only and workspace-write sessions refuse it: switch the session's permission, or add the server from the console.
+</Note>
 
 ## Web Authorization (OAuth)
 

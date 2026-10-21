@@ -1,0 +1,82 @@
+[
+  {
+    "file": "tests/test_sync_report.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_upstream_core_seams.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_no_resurrection_legacy_identity.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_conversation_schema_seam.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_scheduler_identity_seam.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_startup_hook_seam.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_channel_signature_seam.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_route_registry.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_http_policy.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_identity_resource_authorization.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_scheduler_web_update.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_upstream_drift_guards.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_recovered_entry_acceptance.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_desktop_auth_flow.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_rdai_simplification.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_artifact_index.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_web_history_artifacts_agent_scope.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_openai_chat_api.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_openai_default_session_lock.py",
+    "exit_code": 0
+  },
+  {
+    "file": "tests/test_sync_master_web_contract.py",
+    "exit_code": 0
+  }
+]

@@ -36,6 +36,39 @@
         "test_skip_xfail_missing_and_zero_collection_are_not_passes",
         "test_actual_assembly_detects_removed_route_script_and_style"
       ]
+    },
+    {
+      "file": "tests/test_sync_master_web_contract.py",
+      "ids": [
+        "test_menu_is_personal_preserves_unknown_and_rejects_cross_origin",
+        "test_menu_atomic_failure_keeps_saved_value_and_reset_is_private",
+        "test_artifact_index_scopes_before_pagination_and_mutations",
+        "test_artifact_failure_retries_committed_messages_once",
+        "test_device_history_never_indexes_server_same_named_file",
+        "test_api_key_management_uses_existing_iam_and_one_shot_secret",
+        "test_menu_keeps_existing_business_entries_and_denies_management",
+        "test_artifact_all_scope_skips_foreign_agents_without_http_error",
+        "test_artifact_recovery_keeps_tool_use_before_persisted_result",
+        "test_real_service_key_directory_rotation_and_identity_outage",
+        "test_api_default_model_respects_pins_roles_and_live_grants",
+        "test_runtime_model_authorization_service_failure_does_not_allow_provider",
+        "test_fallback_cannot_reuse_a_same_named_model_grant_from_another_provider",
+        "test_model_save_failure_keeps_live_config_and_file[payload0]",
+        "test_model_save_failure_keeps_live_config_and_file[payload1]",
+        "test_model_save_failure_keeps_live_config_and_file[payload2]",
+        "test_model_save_failure_keeps_live_config_and_file[payload3]",
+        "test_model_save_failure_keeps_live_config_and_file[payload4]",
+        "test_relative_artifacts_resolve_each_owners_actual_tool_directory",
+        "test_actual_chat_api_accepts_service_key_without_browser_tenant_header"
+      ]
+    },
+    {
+      "file": "tests/test_sync_master_tls.py",
+      "ids": [
+        "test_fork_startup_serves_tls_with_the_configured_certificate",
+        "test_fork_tls_errors_do_not_start_plain_http[missing]",
+        "test_fork_tls_errors_do_not_start_plain_http[malformed]"
+      ]
     }
   ],
   "node": [
@@ -73,6 +106,24 @@
         "a qualified member reaches /admin and its granted page without a new denial marker",
         "without the route module a registered deep path falls back to the workbench"
       ]
+    },
+    {
+      "file": "tests/test_sync_master_context_frontend.cjs",
+      "names": [
+        "master context card refuses compaction without the authoritative capability",
+        "late compaction completion cannot repaint or unlock a different session",
+        "reset invalidates a pending operation even when returning to the same session",
+        "restored context renders its snapshot while live-only compaction stays disabled"
+      ]
+    },
+    {
+      "file": "tests/test_console_i18n_coverage.cjs",
+      "names": [
+        "every i18n key the page asks for from the markup resolves",
+        "every i18n key the loaded scripts ask for by name resolves",
+        "the coding Agent surface is translated, not shown as keys",
+        "the actual master table merges every loaded fork namespace before lookup"
+      ]
     }
   ],
   "browser": {
@@ -100,7 +151,18 @@
       "parity: SAP iframe navigation preserves deep shell and identity teardown",
       "http: console-created tasks dispatch into two owned sessions",
       "http: long completion, 205 rows, reconnect and two windows",
-      "http: preference off consumes event and revoked grant rejects notification click"
+      "http: preference off consumes event and revoked grant rejects notification click",
+      "sync: personal menu saves, reloads and isolates two browser identities",
+      "sync: actual menu write failure retains the committed layout and reports error",
+      "sync: artifacts read real files, rename without rewriting and isolate owners",
+      "sync: HTML preview cannot escape its sandbox and missing files stay unavailable",
+      "sync: skill creation uses the rendered form and persists an authorized resource",
+      "sync: knowledge category and document create, edit and reload through the master UI",
+      "sync: Web service keys are one-shot, authorized and revoked on rotation",
+      "sync: tenant switches, logout and re-login restore only the selected personal layout",
+      "sync: workspace upload, search, edit and download persist real file bytes",
+      "sync: master history launcher creates a scoped team before switching conversation",
+      "sync: header language reflects the personal choice without changing instance configuration"
     ]
   }
 }

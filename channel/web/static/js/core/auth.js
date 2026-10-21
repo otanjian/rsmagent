@@ -43,135 +43,137 @@ function toggleLoginPassword() {
 window.toggleLoginPassword = toggleLoginPassword;
 
 function showLoginScreen() {
-    const overlay = document.getElementById('login-overlay');
-    if (!overlay) return;
-    overlay.classList.remove('hidden');
-    document.getElementById('app').classList.add('hidden');
-
-    const subtitle = document.getElementById('login-subtitle');
-    const loginBtn = document.getElementById('login-btn');
-    if (currentLang === 'en') {
-        subtitle.textContent = 'Enter password to access the console';
-        loginBtn.textContent = 'Login';
-    } else if (currentLang === 'zh-Hant') {
-        subtitle.textContent = '請輸入密碼以存取控制台';
-        loginBtn.textContent = '登入';
-    } else {
-        subtitle.textContent = '请输入密码以访问控制台';
-        loginBtn.textContent = '登录';
-    }
-
-    const form = document.getElementById('login-form');
-    const pwdInput = document.getElementById('login-password');
-    pwdInput.focus();
-
-    form.onsubmit = function(e) {
-        e.preventDefault();
-        const pwd = pwdInput.value;
-        if (!pwd) return;
-        const btn = document.getElementById('login-btn');
-        const errEl = document.getElementById('login-error');
-        btn.disabled = true;
-        errEl.classList.add('hidden');
-
-        fetch('/auth/login', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({password: pwd})
-        }).then(r => r.json()).then(data => {
-            if (data.status === 'success') {
-                overlay.classList.add('hidden');
-                document.getElementById('app').classList.remove('hidden');
-                const logoutBtn = document.getElementById('logout-btn-header');
-                if (logoutBtn) logoutBtn.classList.remove('hidden');
-                // Now that the auth cookie is set, release the parked pollers.
-                openAuthGate();
-                initApp();
-            } else {
-                if (currentLang === 'zh-Hant') {
-                    errEl.textContent = '密碼錯誤';
-                } else if (currentLang === 'zh') {
-                    errEl.textContent = '密码错误';
-                } else {
-                    errEl.textContent = 'Wrong password';
-                }
-                errEl.classList.remove('hidden');
-                pwdInput.value = '';
-                pwdInput.focus();
-            }
-            btn.disabled = false;
-        }).catch(() => {
-            if (currentLang === 'zh-Hant') {
-                errEl.textContent = '網路錯誤，請重試';
-            } else if (currentLang === 'zh') {
-                errEl.textContent = '网络错误，请重试';
-            } else {
-                errEl.textContent = 'Network error, please retry';
-            }
-            errEl.classList.remove('hidden');
-            btn.disabled = false;
-        });
-        return false;
-    };
+    if (typeof closeAppearancePreferences === 'function') closeAppearancePreferences(false);
+    _invalidateAccountIdentity('unauthenticated');
+    _accountAppVisible = false;
+    // Leaving the account app: the context panel belongs to a signed-in tenant.
+    if (typeof disposeContextModule === 'function') disposeContextModule();
+    _resetHistorySearch();
+    _accountState.authRequired = true;
+    _accountState.authenticated = false;
+    _accountHidden('login-overlay', false);
+    _accountHidden('app', true);
+    _accountHidden('auth-check-panel', true);
+    _desktopLoginMode();
+    _accountHidden('login-error', true);
+    _accountHidden('login-username-wrap', false);
+    const password = document.getElementById('login-password');
+    if (password) { password.value = ''; password.type = 'password'; }
+    const icon = document.querySelector('#login-toggle-pwd i');
+    if (icon) icon.classList.replace('fa-eye-slash', 'fa-eye');
+    const btn = document.getElementById('login-btn');
+    if (btn) btn.disabled = !!_accountWritePending;
+    const recoveryBtn = document.getElementById('login-recovery-btn');
+    if (recoveryBtn) recoveryBtn.disabled = !!_accountWritePending;
+    _renderSidebarAccount();
+    // A container's only way in is the shell's own login, so the password field
+    // must not steal the focus it cannot use (task 2.4).
+    if (_desktopLoginRecovery()) return;
+    document.getElementById('login-username')?.focus();
 }
 
-function handleLogout() {
-    fetch('/auth/logout', {
-        method: 'POST'
-    }).then(r => r.json()).then(data => {
-        if (data.status === 'success') {
-            window.location.reload();
+async function handleLogout() {
+    if (_accountWritePending || !((_accountState.authRequired && _accountState.authenticated)
+            || _accountState.phase === 'logout_error')) return;
+    _accountWritePending = 'logout';
+    _invalidateHistoryCache();
+    _invalidateAccountIdentity('logout_pending');
+    _resetHistorySearch();
+    const epoch = _authEpoch;
+    _renderSidebarAccount();
+    // Suspend the host's local context *before* the session ends: after the
+    // logout call the page may still be alive for a moment, and a host holding
+    // the previous tenant's context must not be used (task 5.2).
+    if (window.CowDesktopHost) window.CowDesktopHost.suspendLocalContext('logout');
+    // The reference belongs to the tenant that minted it; a later turn must not
+    // carry it into whatever session comes next (task 2.6).
+    _desktopContextClear();
+    const onDesktop = _desktopLoginRecovery();
+    // The Web end, sequenced by the adapter (task 2.3). The container may retry
+    // an already-revoked session; a browser keeps 401 as the failure it was.
+    const endWebSession = async (alreadyGoneOk) => {
+        const response = await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
+        const data = await response.json().catch(() => ({}));
+        if (epoch !== _authEpoch) return { ok: false };
+        const ended = (response.ok && data && data.status === 'success')
+            || Boolean(alreadyGoneOk && response.status === 401);
+        return { ok: ended, status: response.status };
+    };
+    try {
+        if (onDesktop) {
+            // Serial sign-out, and the reason there is no reload here: a page that
+            // reloads into the ordinary password form looks signed in while the
+            // native host holds no session, and the next directory bind says
+            // "not signed in". The adapter ends the account; the shell draws login.
+            const reply = await CowDesktopAccount.logout({ webLogout: () => endWebSession(true) });
+            if (epoch !== _authEpoch) return;
+            // Not confirmed: keep everything as it is and let the account menu
+            // offer the retry, rather than pretending the session ended.
+            if (!reply.ok) _accountState = _emptyAccount('logout_error');
+            return;
         }
-    }).catch(() => {
+        const ended = await endWebSession(false);
+        if (epoch !== _authEpoch) return;
+        if (!ended.ok) throw new Error('Logout unconfirmed');
         window.location.reload();
-    });
+    } catch (_) {
+        if (epoch === _authEpoch) _accountState = _emptyAccount('logout_error');
+    } finally {
+        _accountWritePending = null;
+        _renderSidebarAccount();
+    }
 }
 window.handleLogout = handleLogout;
 
 // Intercept 401 responses globally to show login screen on session expiry
-const _originalFetch = window.fetch;
-window.fetch = function(...args) {
-    return _originalFetch.apply(this, args).then(response => {
-        if (response.status === 401) {
-            const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
-            if (!url.startsWith('/auth/')) {
-                showLoginScreen();
-            }
-        }
-        return response;
-    });
-};
+
+
 
 function initApp() {
     applyI18n();
     _applyInputTooltips();
-    _restoreSessionPanel();
-    refreshWorkspaceSelector();
-    refreshSessionSettings();
-
-    fetch('/api/knowledge/list').then(r => r.json()).then(data => {
-        if (data.status === 'success') {
-            _knowledgeTreeData = data.tree || [];
-            _knowledgeRootFiles = data.root_files || [];
-        }
-    }).catch(() => {});
-
-    fetch('/api/version').then(r => r.json()).then(data => {
-        APP_VERSION = `v${data.version}`;
-        UPDATE_META = {
-            version: data.version || '',
-            install_kind: data.install_kind || 'unknown',
-            update_supported: !!data.update_supported,
-            unsupported_reason: data.unsupported_reason || ''
-        };
-        _setSidebarVersionLabel(`CowAgent ${APP_VERSION}`);
-    }).catch(() => {
-        _setSidebarVersionLabel('CowAgent');
+    const epoch = _authEpoch;
+    // Top-level variables were read before authentication. Restore the actual
+    // account/tenant selections only now, then resolve the Agent before any
+    // session/history request can capture an old owner or default.
+    if (_identityMode() === 'database') {
+        activeAgentId = readScopedPreference('cow_active_agent') || '';
+        defaultAgentId = readScopedPreference('cow_default_agent') || '';
+        resetMemoryView();
+        removeScopedPreference('cow_memory_agent');
+        knowledgeAgentId = readScopedPreference('cow_knowledge_agent') || '';
+    }
+    const chatReady = loadChatAgentCatalog().then(agents => {
+        if (epoch !== _authEpoch) return;
+        // The chat owner is selected from the use range, not the narrower
+        // management range. An empty roster must never invent an Agent id.
+        defaultAgentId = agents.find(agent => agent.is_default)?.id || '';
+        writeScopedPreference('cow_default_agent', defaultAgentId);
+        if (!agents.some(agent => agent.id === activeAgentId)) activeAgentId = defaultAgentId;
+        writeScopedPreference('cow_active_agent', activeAgentId);
+        renderComposerIdentity();
+        sessionId = loadOrCreateSessionId();
+        refreshWorkspaceSelector();
+        // Then resume whatever local project this chat already has open on this
+        // machine (task 9.3). After the selector read, so the restored entry is
+        // not overwritten by the server's answer, and after the session id, so
+        // the host is asked about the chat that is actually being shown.
+        _desktopRestoreContext();
+        // History waits for these settings before rendering team authors.
+        // Let that path issue the single initial read.
+        _sessCfg = null;
+        restoreChatState();
+        startPolling();
     });
-    chatInput.focus();
-    // Last, and only from here: initApp() runs once auth has settled, on all
-    // three paths into the app. Opening the routed view any earlier would
-    // switch views behind the login overlay.
-    routeApply();
+
+    fetch('/api/version').then(async response => {
+        if (!response.ok) throw new Error('Version unavailable');
+        const data = await response.json();
+        if (!data || (data.status && data.status !== 'success')
+                || typeof data.version !== 'string' || !data.version.trim()) throw new Error('Invalid version');
+        APP_VERSION = 'v' + data.version.trim().replace(/^v/i, '');
+        renderAccountVersion();
+    }).catch(() => renderAccountVersion());
+    return chatReady;
 }
 

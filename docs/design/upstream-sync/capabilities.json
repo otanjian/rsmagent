@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "source_sha": "48c0d79c36146950667f8d1884ab823deae62305",
-  "target_base_sha": "64858d585b427ec4697dc0fb5d2ccb5911d35769",
-  "change": "restore-upstream-web-parity-and-sync-gates",
+  "source_sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+  "target_base_sha": "c9bd4942261156f56c02ffd65e4d81c6153e1594",
+  "change": "sync-master-to-rdai-20261021",
   "capabilities": [
     {
       "id": "GAP-001",
       "behavior": "路径路由与历史",
       "source": {
-        "sha": "48c0d79c36146950667f8d1884ab823deae62305",
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
         "paths": [
           "channel/web/static/js/core/router.js",
           "channel/web/static/js/core/nav.js"
@@ -16,9 +16,9 @@
       },
       "entrypoints": [
         "channel/web/route_registry.py",
-        "channel/web/static/js/console.js",
+        "channel/web/static/js/fork/extensions.js",
         "channel/web/chat.html",
-        "channel/web/static/js/fork/router.js",
+        "channel/web/static/js/core/router.js",
         "Scene/sap_workbench/frontend/workbench.js"
       ],
       "dependencies": [
@@ -30,7 +30,7 @@
       ],
       "identity": "既有 database 主体、租户与对象授权；页面状态不得跨身份复用",
       "disposition": "adapt",
-      "verification": "passed",
+      "verification": "pending",
       "owner": "rdai-maintainers",
       "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#3.1",
       "supported_forms": [
@@ -45,28 +45,26 @@
       "evidence": [
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
-        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "candidate": {
-        "source_tree_digest_from": "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
-      },
-      "results": [
-        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
-      ],
-      "verification_scope": "本地实际装配及必要行为；远端 CI、生产部署和最终安装包不在此结果范围"
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "previous_verification": "passed",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "GAP-002",
       "behavior": "SSE 错误与清理",
       "source": {
-        "sha": "48c0d79c36146950667f8d1884ab823deae62305",
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
         "paths": [
           "channel/web/static/js/chat/send.js",
           "channel/web/static/js/chat/scheduler-notify.js"
         ]
       },
       "entrypoints": [
-        "channel/web/static/js/console.js"
+        "channel/web/static/js/fork/extensions.js"
       ],
       "dependencies": [
         "isSchedulerRequest",
@@ -75,7 +73,7 @@
       ],
       "identity": "既有 database 主体、租户与对象授权；页面状态不得跨身份复用",
       "disposition": "adapt",
-      "verification": "passed",
+      "verification": "pending",
       "owner": "rdai-maintainers",
       "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#2.1",
       "supported_forms": [
@@ -88,21 +86,19 @@
       "evidence": [
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
-        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "candidate": {
-        "source_tree_digest_from": "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
-      },
-      "results": [
-        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
-      ],
-      "verification_scope": "本地实际装配及必要行为；远端 CI、生产部署和最终安装包不在此结果范围"
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "previous_verification": "passed",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "GAP-003",
       "behavior": "跨会话任务提醒",
       "source": {
-        "sha": "48c0d79c36146950667f8d1884ab823deae62305",
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
         "paths": [
           "channel/web/static/js/chat/scheduler-notify.js",
           "channel/web/static/js/core/notify.js"
@@ -111,7 +107,7 @@
       "entrypoints": [
         "channel/web/fork/handlers/scheduler.py",
         "agent/tools/scheduler/run_repository.py",
-        "channel/web/static/js/console.js",
+        "channel/web/static/js/fork/extensions.js",
         "channel/web/static/js/fork/scheduler-notifications.js",
         "agent/tools/scheduler/terminal_order.py"
       ],
@@ -122,7 +118,7 @@
       ],
       "identity": "既有 database 主体、租户与对象授权；页面状态不得跨身份复用",
       "disposition": "adapt",
-      "verification": "passed",
+      "verification": "pending",
       "owner": "rdai-maintainers",
       "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#4.1",
       "supported_forms": [
@@ -138,28 +134,26 @@
       "evidence": [
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
-        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "candidate": {
-        "source_tree_digest_from": "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
-      },
-      "results": [
-        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
-      ],
-      "verification_scope": "本地实际装配及必要行为；远端 CI、生产部署和最终安装包不在此结果范围"
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "previous_verification": "passed",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "GAP-004",
       "behavior": "流式滚动意图",
       "source": {
-        "sha": "48c0d79c36146950667f8d1884ab823deae62305",
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
         "paths": [
           "channel/web/static/js/chat/state.js",
           "channel/web/static/js/chat/render.js"
         ]
       },
       "entrypoints": [
-        "channel/web/static/js/console.js"
+        "channel/web/static/js/fork/extensions.js"
       ],
       "dependencies": [
         "scroll-events",
@@ -168,7 +162,7 @@
       ],
       "identity": "既有 database 主体、租户与对象授权；页面状态不得跨身份复用",
       "disposition": "adapt",
-      "verification": "passed",
+      "verification": "pending",
       "owner": "rdai-maintainers",
       "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#2.3",
       "supported_forms": [
@@ -181,27 +175,25 @@
       "evidence": [
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
-        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "candidate": {
-        "source_tree_digest_from": "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
-      },
-      "results": [
-        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
-      ],
-      "verification_scope": "本地实际装配及必要行为；远端 CI、生产部署和最终安装包不在此结果范围"
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "previous_verification": "passed",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "GAP-005",
       "behavior": "知识库互斥面板及迟到响应",
       "source": {
-        "sha": "48c0d79c36146950667f8d1884ab823deae62305",
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
         "paths": [
           "channel/web/static/js/views/knowledge.js"
         ]
       },
       "entrypoints": [
-        "channel/web/static/js/console.js"
+        "channel/web/static/js/fork/extensions.js"
       ],
       "dependencies": [
         "knowledge-tab",
@@ -211,7 +203,7 @@
       ],
       "identity": "既有 database 主体、租户与对象授权；页面状态不得跨身份复用",
       "disposition": "adapt",
-      "verification": "passed",
+      "verification": "pending",
       "owner": "rdai-maintainers",
       "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#2.4",
       "supported_forms": [
@@ -225,27 +217,25 @@
       "evidence": [
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
-        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "candidate": {
-        "source_tree_digest_from": "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
-      },
-      "results": [
-        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
-      ],
-      "verification_scope": "本地实际装配及必要行为；远端 CI、生产部署和最终安装包不在此结果范围"
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "previous_verification": "passed",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "GAP-006",
       "behavior": "长文本布局",
       "source": {
-        "sha": "48c0d79c36146950667f8d1884ab823deae62305",
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
         "paths": [
           "channel/web/static/css/markdown.css"
         ]
       },
       "entrypoints": [
-        "channel/web/static/css/console.css",
+        "channel/web/static/css/markdown.css",
         "channel/web/chat.html"
       ],
       "dependencies": [
@@ -255,7 +245,7 @@
       ],
       "identity": "既有 database 主体、租户与对象授权；页面状态不得跨身份复用",
       "disposition": "adapt",
-      "verification": "passed",
+      "verification": "pending",
       "owner": "rdai-maintainers",
       "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#2.6",
       "supported_forms": [
@@ -268,21 +258,19 @@
       "evidence": [
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
-        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "candidate": {
-        "source_tree_digest_from": "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
-      },
-      "results": [
-        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
-      ],
-      "verification_scope": "本地实际装配及必要行为；远端 CI、生产部署和最终安装包不在此结果范围"
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "previous_verification": "passed",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "GAP-007",
       "behavior": "fork 源码更新",
       "source": {
-        "sha": "48c0d79c36146950667f8d1884ab823deae62305",
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
         "paths": [
           "channel/web/static/js/core/version.js",
           "channel/web/api/update.py",
@@ -319,14 +307,19 @@
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/source-update.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
-        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
-      ]
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+      ],
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "GAP-008",
       "behavior": "普通成员模型目录逻辑存在但页面面板丢失（本轮路径权限验收追加发现）",
       "source": {
-        "sha": "48c0d79c36146950667f8d1884ab823deae62305",
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
         "paths": [
           "channel/web/templates/views/config.html"
         ]
@@ -334,7 +327,7 @@
       "restored_from": "9850e453",
       "entrypoints": [
         "channel/web/templates/views/config.html",
-        "channel/web/static/js/console.js"
+        "channel/web/static/js/fork/extensions.js"
       ],
       "dependencies": [
         "member-model-catalog",
@@ -342,7 +335,7 @@
       ],
       "identity": "普通成员只读其获权模型目录，不能读取平台供应商密钥配置",
       "disposition": "adapt",
-      "verification": "passed",
+      "verification": "pending",
       "owner": "rdai-maintainers",
       "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#3.7",
       "supported_forms": [
@@ -356,15 +349,1233 @@
       "evidence": [
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/browser-routing.json",
-        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "candidate": {
-        "source_tree_digest_from": "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "previous_verification": "passed",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+    },
+    {
+      "id": "SYNC-009",
+      "behavior": "Startup configuration and deployment scripts",
+      "source": {
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+        "paths": [
+          "config-template.json",
+          "config.py",
+          "docker/docker-compose.yml",
+          "run.sh",
+          "scripts/run.ps1"
+        ]
       },
-      "results": [
-        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+      "entrypoints": [
+        "config.py",
+        "app.py",
+        "config-template.json"
       ],
-      "verification_scope": "本地实际装配及必要行为；远端 CI、生产部署和最终安装包不在此结果范围"
+      "dependencies": [
+        "W09",
+        "identity-and-owner-boundaries",
+        "source-classification.json"
+      ],
+      "identity": "Existing trusted tenant/user/resource and execution contracts; no shared token fallback.",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/sync-master-to-rdai-20261021/tasks.md",
+      "supported_forms": [
+        "web/shared-backend"
+      ],
+      "required_tests": [
+        "tests/test_web_tls.py",
+        "tests/test_http_policy.py"
+      ],
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+      ],
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+    },
+    {
+      "id": "SYNC-001",
+      "behavior": "Web assembly, menu, artifacts, API, skills and TLS",
+      "source": {
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+        "paths": [
+          "channel/web/README.md",
+          "channel/web/api/agents.py",
+          "channel/web/api/artifacts.py",
+          "channel/web/api/channels.py",
+          "channel/web/api/config.py",
+          "channel/web/api/files.py",
+          "channel/web/api/knowledge.py",
+          "channel/web/api/logs.py",
+          "channel/web/api/menu.py",
+          "channel/web/api/models.py",
+          "channel/web/api/openai_compat.py",
+          "channel/web/api/pages.py",
+          "channel/web/api/scheduler.py",
+          "channel/web/api/sessions.py",
+          "channel/web/api/skills.py",
+          "channel/web/api/workspace.py",
+          "channel/web/chat.html",
+          "channel/web/core/_common.py",
+          "channel/web/core/channel.py",
+          "channel/web/core/providers.py",
+          "channel/web/core/tls.py",
+          "channel/web/static/css/artifacts.css",
+          "channel/web/static/css/base.css",
+          "channel/web/static/css/chat.css",
+          "channel/web/static/css/components.css",
+          "channel/web/static/css/knowledge.css",
+          "channel/web/static/css/markdown.css",
+          "channel/web/static/css/menu.css",
+          "channel/web/static/css/sessions.css",
+          "channel/web/static/css/workspace.css",
+          "channel/web/static/js/chat/context-usage.js",
+          "channel/web/static/js/chat/render.js",
+          "channel/web/static/js/chat/send.js",
+          "channel/web/static/js/chat/state.js",
+          "channel/web/static/js/chat/timeline.js",
+          "channel/web/static/js/core/auth.js",
+          "channel/web/static/js/core/confirm.js",
+          "channel/web/static/js/core/i18n.js",
+          "channel/web/static/js/core/markdown.js",
+          "channel/web/static/js/core/menu.js",
+          "channel/web/static/js/core/nav.js",
+          "channel/web/static/js/core/router.js",
+          "channel/web/static/js/core/theme.js",
+          "channel/web/static/js/core/utils.js",
+          "channel/web/static/js/core/version.js",
+          "channel/web/static/js/doc-editor.js",
+          "channel/web/static/js/views/agents.js",
+          "channel/web/static/js/views/artifacts.js",
+          "channel/web/static/js/views/channels-weixin.js",
+          "channel/web/static/js/views/channels.js",
+          "channel/web/static/js/views/config.js",
+          "channel/web/static/js/views/doc-viewers.js",
+          "channel/web/static/js/views/knowledge.js",
+          "channel/web/static/js/views/menu-editor.js",
+          "channel/web/static/js/views/models.js",
+          "channel/web/static/js/views/sessions.js",
+          "channel/web/static/js/views/skills.js",
+          "channel/web/static/js/workspace.js",
+          "channel/web/static/vendor/README.md",
+          "channel/web/templates/layout/header.html",
+          "channel/web/templates/layout/sidebar.html",
+          "channel/web/templates/modals/confirm-dialog.html",
+          "channel/web/templates/modals/custom-provider.html",
+          "channel/web/templates/modals/menu-editor.html",
+          "channel/web/templates/modals/skill-add.html",
+          "channel/web/templates/modals/vendor.html",
+          "channel/web/templates/views/artifacts.html",
+          "channel/web/templates/views/chat.html",
+          "channel/web/templates/views/config.html",
+          "channel/web/templates/views/custom.html",
+          "channel/web/templates/views/knowledge.html",
+          "channel/web/templates/views/skills.html",
+          "channel/web/web_channel.py"
+        ]
+      },
+      "entrypoints": [
+        "channel/web/route_registry.py",
+        "channel/web/fork/runtime.py",
+        "channel/web/chat.html"
+      ],
+      "dependencies": [
+        "W01",
+        "identity-and-owner-boundaries",
+        "source-classification.json"
+      ],
+      "identity": "Existing trusted tenant/user/resource and execution contracts; no shared token fallback.",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/sync-master-to-rdai-20261021/tasks.md",
+      "supported_forms": [
+        "web/shared-backend"
+      ],
+      "required_tests": [
+        "tests/test_sync_master_web_contract.py",
+        "tests/test_sync_master_tls.py",
+        "tests/test_console_parity_browser.cjs"
+      ],
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+      ],
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+    },
+    {
+      "id": "SYNC-002",
+      "behavior": "Desktop source integration; runtime validation deferred",
+      "source": {
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+        "paths": [
+          "desktop/build/installer.nsh",
+          "desktop/package-lock.json",
+          "desktop/package.json",
+          "desktop/src/main/index.ts",
+          "desktop/src/main/preload.ts",
+          "desktop/src/main/updater.ts",
+          "desktop/src/renderer/index.html",
+          "desktop/src/renderer/src/App.tsx",
+          "desktop/src/renderer/src/api/client.ts",
+          "desktop/src/renderer/src/components/AgentScopeSelect.tsx",
+          "desktop/src/renderer/src/components/ChatInput.tsx",
+          "desktop/src/renderer/src/components/ChatTimeline.tsx",
+          "desktop/src/renderer/src/components/ConfirmDialog.tsx",
+          "desktop/src/renderer/src/components/DocEditor.tsx",
+          "desktop/src/renderer/src/components/FileCard.tsx",
+          "desktop/src/renderer/src/components/Markdown.tsx",
+          "desktop/src/renderer/src/components/MenuEditor.tsx",
+          "desktop/src/renderer/src/components/MessageBubble.tsx",
+          "desktop/src/renderer/src/components/Tooltip.tsx",
+          "desktop/src/renderer/src/components/UpdateBanner.tsx",
+          "desktop/src/renderer/src/components/WorkspacePanel.tsx",
+          "desktop/src/renderer/src/i18n.ts",
+          "desktop/src/renderer/src/index.css",
+          "desktop/src/renderer/src/layout/NavRail.tsx",
+          "desktop/src/renderer/src/lib/chatScroll.ts",
+          "desktop/src/renderer/src/lib/menu.ts",
+          "desktop/src/renderer/src/pages/AgentsPage.tsx",
+          "desktop/src/renderer/src/pages/ArtifactsPage.tsx",
+          "desktop/src/renderer/src/pages/ChatPage.tsx",
+          "desktop/src/renderer/src/pages/CustomPage.tsx",
+          "desktop/src/renderer/src/pages/KnowledgePage.tsx",
+          "desktop/src/renderer/src/pages/MemoryPage.tsx",
+          "desktop/src/renderer/src/pages/SkillsPage.tsx",
+          "desktop/src/renderer/src/pages/artifacts/ArtifactCard.tsx",
+          "desktop/src/renderer/src/pages/artifacts/ArtifactPreview.tsx",
+          "desktop/src/renderer/src/pages/artifacts/format.ts",
+          "desktop/src/renderer/src/pages/settings/BasicSettings.tsx",
+          "desktop/src/renderer/src/pages/settings/ChatApiCard.tsx",
+          "desktop/src/renderer/src/pages/settings/ModelCatalogEditor.tsx",
+          "desktop/src/renderer/src/pages/settings/ModelsTab.tsx",
+          "desktop/src/renderer/src/pages/settings/primitives.tsx",
+          "desktop/src/renderer/src/pages/skills/SkillAddModal.tsx",
+          "desktop/src/renderer/src/pages/skills/SkillCreateForm.tsx",
+          "desktop/src/renderer/src/pages/skills/frontmatter.ts",
+          "desktop/src/renderer/src/pages/skills/skillLabel.ts",
+          "desktop/src/renderer/src/product/types.ts",
+          "desktop/src/renderer/src/store/agentStore.ts",
+          "desktop/src/renderer/src/store/artifactStore.ts",
+          "desktop/src/renderer/src/store/chatStore.ts",
+          "desktop/src/renderer/src/store/confirmStore.ts",
+          "desktop/src/renderer/src/store/menuStore.ts",
+          "desktop/src/renderer/src/store/sessionStore.ts",
+          "desktop/src/renderer/src/store/timelineStore.ts",
+          "desktop/src/renderer/src/store/workspaceStore.ts",
+          "desktop/src/renderer/src/types.ts",
+          "desktop/tests/chat-scroll.test.mjs"
+        ]
+      },
+      "entrypoints": [
+        "desktop/src/renderer/src/api/client.ts",
+        "desktop/src/renderer/src/pages/SkillsPage.tsx",
+        "desktop/src/renderer/src/pages/settings/ChatApiCard.tsx"
+      ],
+      "dependencies": [
+        "W02",
+        "identity-and-owner-boundaries",
+        "source-classification.json"
+      ],
+      "identity": "Existing trusted tenant/user/resource and execution contracts; no shared token fallback.",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/sync-master-to-rdai-20261021/tasks.md",
+      "supported_forms": [
+        "desktop-source-only"
+      ],
+      "required_tests": [
+        "tests/test_desktop_auth_flow.py"
+      ],
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+      ],
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。"
+    },
+    {
+      "id": "SYNC-003",
+      "behavior": "Agent, memory, tools, scheduler and lifecycle",
+      "source": {
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+        "paths": [
+          "agent/admin.py",
+          "agent/chat/service.py",
+          "agent/chat/session_service.py",
+          "agent/evolution/backup.py",
+          "agent/evolution/executor.py",
+          "agent/knowledge/service.py",
+          "agent/memory/chunker.py",
+          "agent/memory/config.py",
+          "agent/memory/conversation_store.py",
+          "agent/memory/embedding/factory.py",
+          "agent/memory/embedding/provider.py",
+          "agent/memory/manager.py",
+          "agent/memory/service.py",
+          "agent/memory/storage.py",
+          "agent/memory/summarizer.py",
+          "agent/memory/vector_backend.py",
+          "agent/multiagent/inbound.py",
+          "agent/multiagent/transport.py",
+          "agent/permission/policy.py",
+          "agent/prompt/builder.py",
+          "agent/prompt/workspace.py",
+          "agent/protocol/agent.py",
+          "agent/protocol/agent_stream.py",
+          "agent/protocol/artifact.py",
+          "agent/protocol/message_utils.py",
+          "agent/protocol/step_writer.py",
+          "agent/skills/archive.py",
+          "agent/skills/config.py",
+          "agent/skills/formatter.py",
+          "agent/skills/frontmatter.py",
+          "agent/skills/loader.py",
+          "agent/skills/manager.py",
+          "agent/skills/service.py",
+          "agent/subagent/runner.py",
+          "agent/subagent/templates.py",
+          "agent/team_addressing.py",
+          "agent/tools/agent_delegate/agent_delegate.py",
+          "agent/tools/base_tool.py",
+          "agent/tools/bash/background.py",
+          "agent/tools/bash/bash.py",
+          "agent/tools/bash/exit_codes.py",
+          "agent/tools/browser/browser_env.py",
+          "agent/tools/browser/browser_service.py",
+          "agent/tools/browser/browser_tool.py",
+          "agent/tools/browser/chrome_launcher.py",
+          "agent/tools/edit/edit.py",
+          "agent/tools/env_config/env_config.py",
+          "agent/tools/ls/ls.py",
+          "agent/tools/mcp/mcp_client.py",
+          "agent/tools/mcp/mcp_oauth.py",
+          "agent/tools/memory/memory_get.py",
+          "agent/tools/read/read.py",
+          "agent/tools/scheduler/integration.py",
+          "agent/tools/scheduler/recipient_store.py",
+          "agent/tools/scheduler/scheduler_service.py",
+          "agent/tools/scheduler/scheduler_tool.py",
+          "agent/tools/scheduler/task_store.py",
+          "agent/tools/search_files/search_files.py",
+          "agent/tools/send/send.py",
+          "agent/tools/subagent/subagent.py",
+          "agent/tools/tool_manager.py",
+          "agent/tools/utils/diff.py",
+          "agent/tools/utils/file_state.py",
+          "agent/tools/vision/vision.py",
+          "agent/tools/web_fetch/web_fetch.py",
+          "agent/tools/web_search/web_search.py",
+          "agent/tools/write/write.py",
+          "agent/workspace/project_store.py",
+          "agent/workspace/service.py",
+          "agent/workspace/session_prefs.py",
+          "bridge/agent_bridge.py",
+          "bridge/agent_initializer.py"
+        ]
+      },
+      "entrypoints": [
+        "agent/chat/service.py",
+        "bridge/agent_bridge.py",
+        "channel/web/fork/handlers/chat.py"
+      ],
+      "dependencies": [
+        "W03",
+        "identity-and-owner-boundaries",
+        "source-classification.json"
+      ],
+      "identity": "Existing trusted tenant/user/resource and execution contracts; no shared token fallback.",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/sync-master-to-rdai-20261021/tasks.md",
+      "supported_forms": [
+        "web/shared-backend"
+      ],
+      "required_tests": [
+        "tests/test_chat_model_fallback.py",
+        "tests/test_artifact_index.py"
+      ],
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+      ],
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+    },
+    {
+      "id": "SYNC-004",
+      "behavior": "Provider, Responses and voice transports",
+      "source": {
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+        "paths": [
+          "models/baidu/baidu_wenxin.py",
+          "models/bot.py",
+          "models/chatgpt/chat_gpt_bot.py",
+          "models/claudeapi/claude_api_bot.py",
+          "models/custom_provider.py",
+          "models/deepseek/deepseek_bot.py",
+          "models/doubao/doubao_bot.py",
+          "models/linkai/link_ai_bot.py",
+          "models/mimo/mimo_bot.py",
+          "models/minimax/minimax_bot.py",
+          "models/minimax/minimax_session.py",
+          "models/model_catalog.py",
+          "models/modelscope/modelscope_bot.py",
+          "models/moonshot/moonshot_bot.py",
+          "models/openai/open_ai_image.py",
+          "models/openai/openai_http_client.py",
+          "models/openai/responses_adapter.py",
+          "models/openai_compatible_bot.py",
+          "models/xunfei/xunfei_spark_bot.py",
+          "voice/ali/ali_api.py",
+          "voice/azure/azure_voice.py",
+          "voice/baidu/baidu_voice.py",
+          "voice/custom/custom_voice.py",
+          "voice/edge/edge_voice.py",
+          "voice/elevent/elevent_voice.py",
+          "voice/google/google_voice.py",
+          "voice/minimax/minimax_voice.py",
+          "voice/openai/openai_voice.py",
+          "voice/pytts/pytts_voice.py",
+          "voice/tencent/tencent_voice.py",
+          "voice/xunfei/xunfei_asr.py",
+          "voice/xunfei/xunfei_tts.py",
+          "voice/xunfei/xunfei_voice.py"
+        ]
+      },
+      "entrypoints": [
+        "models/openai_compatible_bot.py",
+        "bridge/agent_bridge.py",
+        "voice/voice.py"
+      ],
+      "dependencies": [
+        "W04",
+        "identity-and-owner-boundaries",
+        "source-classification.json"
+      ],
+      "identity": "Existing trusted tenant/user/resource and execution contracts; no shared token fallback.",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/sync-master-to-rdai-20261021/tasks.md",
+      "supported_forms": [
+        "web/shared-backend"
+      ],
+      "required_tests": [
+        "tests/test_openai_chat_api.py",
+        "tests/test_chat_model_fallback.py"
+      ],
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+      ],
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+    },
+    {
+      "id": "SYNC-005",
+      "behavior": "IM and attachment lifecycle with guest authorization retained",
+      "source": {
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+        "paths": [
+          "channel/chat_channel.py",
+          "channel/dingtalk/dingtalk_channel.py",
+          "channel/dingtalk/dingtalk_message.py",
+          "channel/dingtalk/dingtalk_stream_card.py",
+          "channel/discord/discord_channel.py",
+          "channel/feishu/feishu_channel.py",
+          "channel/feishu/feishu_message.py",
+          "channel/file_cache.py",
+          "channel/qq/qq_channel.py",
+          "channel/slack/slack_channel.py",
+          "channel/telegram/telegram_channel.py",
+          "channel/telegram/telegram_markdown.py",
+          "channel/wechat_kf/README.md",
+          "channel/wechat_kf/wechat_kf_channel.py",
+          "channel/wechat_kf/wechat_kf_cursor_store.py",
+          "channel/wechat_kf/wechat_kf_message.py",
+          "channel/wechatcom/wechatcomapp_channel.py",
+          "channel/wechatmp/active_reply.py",
+          "channel/wechatmp/passive_reply.py",
+          "channel/wechatmp/wechatmp_channel.py",
+          "channel/wechatmp/wechatmp_message.py",
+          "channel/wecom_bot/wecom_bot_channel.py",
+          "channel/weixin/weixin_api.py",
+          "channel/weixin/weixin_channel.py",
+          "channel/weixin/weixin_message.py"
+        ]
+      },
+      "entrypoints": [
+        "channel/chat_channel.py",
+        "channel/wecom_bot/wecom_bot_channel.py"
+      ],
+      "dependencies": [
+        "W05",
+        "identity-and-owner-boundaries",
+        "source-classification.json"
+      ],
+      "identity": "Existing trusted tenant/user/resource and execution contracts; no shared token fallback.",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/sync-master-to-rdai-20261021/tasks.md",
+      "supported_forms": [
+        "web/shared-backend"
+      ],
+      "required_tests": [
+        "tests/test_route_registry.py"
+      ],
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+      ],
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+    },
+    {
+      "id": "SYNC-006",
+      "behavior": "CLI, atomic config, backup and shared dependencies",
+      "source": {
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+        "paths": [
+          "cli/VERSION",
+          "cli/commands/backup.py",
+          "cli/commands/install.py",
+          "cli/commands/knowledge.py",
+          "cli/commands/process.py",
+          "cli/commands/skill.py",
+          "cli/config_json.py",
+          "cli/update_service.py",
+          "cli/utils.py",
+          "common/atomic_write.py",
+          "common/cloud_client.py",
+          "common/directory_replace.py",
+          "common/log.py",
+          "common/media_download.py",
+          "common/office_text.py",
+          "common/singleton.py",
+          "common/sorted_dict.py",
+          "common/state_dir.py",
+          "common/time_check.py",
+          "common/token_bucket.py",
+          "common/utils.py",
+          "plugins/cow_cli/cow_cli.py",
+          "plugins/keyword/keyword.py",
+          "plugins/linkai/README.md",
+          "plugins/linkai/midjourney.py",
+          "plugins/linkai/summary.py",
+          "plugins/linkai/utils.py",
+          "plugins/plugin_manager.py",
+          "plugins/role/role.py",
+          "skills/image-generation/scripts/generate.py"
+        ]
+      },
+      "entrypoints": [
+        "config.py",
+        "bridge/agent_initializer.py"
+      ],
+      "dependencies": [
+        "W06",
+        "identity-and-owner-boundaries",
+        "source-classification.json"
+      ],
+      "identity": "Existing trusted tenant/user/resource and execution contracts; no shared token fallback.",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/sync-master-to-rdai-20261021/tasks.md",
+      "supported_forms": [
+        "web/shared-backend"
+      ],
+      "required_tests": [
+        "tests/test_cli_backup.py",
+        "tests/test_http_policy.py"
+      ],
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+      ],
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+    },
+    {
+      "id": "SYNC-007",
+      "behavior": "Upstream behavior assertions and regression fixtures",
+      "source": {
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+        "paths": [
+          "tests/test_agent_avatar_residue.py",
+          "tests/test_agent_delegation.py",
+          "tests/test_agent_delete_sweeps_conversations.py",
+          "tests/test_agent_stream_reasoning_field.py",
+          "tests/test_agent_trim_budget.py",
+          "tests/test_ali_token_https.py",
+          "tests/test_appdata_directory_race.py",
+          "tests/test_artifact_index.py",
+          "tests/test_atomic_private_staging.py",
+          "tests/test_azure_dalle_config_fallback.py",
+          "tests/test_background_utf8_split.py",
+          "tests/test_backup_executable_skills.py",
+          "tests/test_backward_file_timestamps.py",
+          "tests/test_baidu_wenxin_credentials_at_call_time.py",
+          "tests/test_baidu_wenxin_token_not_logged.py",
+          "tests/test_bash_bare_dotenv.py",
+          "tests/test_bash_exit_codes.py",
+          "tests/test_bash_full_output.py",
+          "tests/test_bash_multiline_python.py",
+          "tests/test_bash_rm_safety_flags.py",
+          "tests/test_bash_streaming.py",
+          "tests/test_bridge_step_write_retry.py",
+          "tests/test_browser_empty_option_native.py",
+          "tests/test_browser_env_browsers_dir.py",
+          "tests/test_browser_fill_required_text.py",
+          "tests/test_browser_launch_failure_cleanup.py",
+          "tests/test_browser_ref_actions_native.py",
+          "tests/test_browser_screenshot_project_directory.py",
+          "tests/test_browser_scroll_amount.py",
+          "tests/test_browser_snapshot_selector.py",
+          "tests/test_channel_masked_secret_roundtrip.py",
+          "tests/test_chat_channel_stt_fallback.py",
+          "tests/test_chat_channel_voice_fallback.py",
+          "tests/test_chat_model_fallback.py",
+          "tests/test_chat_persist_failure_retry.py",
+          "tests/test_chat_service_tool_cards.py",
+          "tests/test_chrome_launcher_pid_alive.py",
+          "tests/test_chunker_long_line_ids.py",
+          "tests/test_claude_eager_tool_streaming.py",
+          "tests/test_claude_preserve_matched_results.py",
+          "tests/test_claude_prompt_cache.py",
+          "tests/test_claude_stream_stall.py",
+          "tests/test_clawhub_owner.py",
+          "tests/test_cli_backup.py",
+          "tests/test_cli_config_duplicate_keys.py",
+          "tests/test_cli_config_root_shape.py",
+          "tests/test_cli_daemon_stdin.py",
+          "tests/test_cli_foreground_directory.py",
+          "tests/test_cli_install_browser_sudo.py",
+          "tests/test_cli_knowledge_tree.py",
+          "tests/test_cli_pid_permission.py",
+          "tests/test_cli_skill_register_bom.py",
+          "tests/test_cloud_config_linkai_guard.py",
+          "tests/test_cloud_weixin_credentials_cleanup.py",
+          "tests/test_compact_context_concurrency.py",
+          "tests/test_compress_turn_tool_note.py",
+          "tests/test_config_blank_env_override.py",
+          "tests/test_config_env_override_redaction.py",
+          "tests/test_config_env_rejected_value.py",
+          "tests/test_console_mermaid.py",
+          "tests/test_content_single_file_native.py",
+          "tests/test_conversation_long_tool_turn.py",
+          "tests/test_conversation_store_page_window.py",
+          "tests/test_cow_cli_config_atomic_write.py",
+          "tests/test_cow_cli_skill_agent_scope.py",
+          "tests/test_cow_cli_skill_uninstall_traversal.py",
+          "tests/test_custom_chat_selection_native.py",
+          "tests/test_custom_provider_headers.py",
+          "tests/test_dingtalk_bounded_media_download.py",
+          "tests/test_dingtalk_card_finalize_claim.py",
+          "tests/test_dingtalk_group_context_guard.py",
+          "tests/test_dingtalk_image_caption_once.py",
+          "tests/test_dingtalk_temp_name_collision.py",
+          "tests/test_directory_replace.py",
+          "tests/test_discord_inbound_attachment_size_cap.py",
+          "tests/test_dispatch_delete_side_stores.py",
+          "tests/test_doc_edit.py",
+          "tests/test_edit_carriage_return_lines.py",
+          "tests/test_edit_concurrent_native.py",
+          "tests/test_edit_fuzzy_blank_line_indent.py",
+          "tests/test_edit_whitespace_oldtext.py",
+          "tests/test_embedding_batch_cardinality.py",
+          "tests/test_embedding_batch_order.py",
+          "tests/test_embedding_factory_config_shape.py",
+          "tests/test_env_config_dotenv_reload.py",
+          "tests/test_evolution_backup_collisions.py",
+          "tests/test_evolution_backup_containment.py",
+          "tests/test_evolution_backup_failed_create.py",
+          "tests/test_excel_used_dimensions.py",
+          "tests/test_external_api_switch.py",
+          "tests/test_feishu_image_upload_url.py",
+          "tests/test_feishu_post_attachments.py",
+          "tests/test_feishu_register_session_ownership.py",
+          "tests/test_file_cache_concurrency.py",
+          "tests/test_file_reveal.py",
+          "tests/test_file_serving_refresh.py",
+          "tests/test_filename_ignore_case_native.py",
+          "tests/test_filename_single_path_native.py",
+          "tests/test_google_voice_input_errors.py",
+          "tests/test_image_gen_compress_format.py",
+          "tests/test_image_gen_prompt_quotes.py",
+          "tests/test_image_retry_routing.py",
+          "tests/test_inbound_media_download_bounds.py",
+          "tests/test_inbound_reserved_alias.py",
+          "tests/test_keyword_attachment_urls.py",
+          "tests/test_keyword_unique_document_downloads.py",
+          "tests/test_knowledge_markdown_case.py",
+          "tests/test_knowledge_publication_failure.py",
+          "tests/test_knowledge_service.py",
+          "tests/test_knowledge_symlink_destination.py",
+          "tests/test_knowledge_tree_symlinks.py",
+          "tests/test_knowledge_web.py",
+          "tests/test_linkai_admin_exact_match.py",
+          "tests/test_linkai_download_status.py",
+          "tests/test_linkai_error_envelope.py",
+          "tests/test_linkai_media_urls.py",
+          "tests/test_linkai_response_envelope.py",
+          "tests/test_local_path_suffix.py",
+          "tests/test_log_stream_boundary.py",
+          "tests/test_log_stream_error_json.py",
+          "tests/test_log_stream_truncation.py",
+          "tests/test_logger_stream_ownership.py",
+          "tests/test_ls_zero_limit.py",
+          "tests/test_mcp_call_failure_status.py",
+          "tests/test_mcp_client_native_results.py",
+          "tests/test_mcp_client_rpc_error.py",
+          "tests/test_mcp_empty_server_map.py",
+          "tests/test_mcp_failed_handshake_cleanup.py",
+          "tests/test_mcp_session_recovery.py",
+          "tests/test_mcp_sse_response_deadline.py",
+          "tests/test_mcp_sse_send_read_budget.py",
+          "tests/test_mcp_stdio_read_deadline.py",
+          "tests/test_mcp_token_record_shapes.py",
+          "tests/test_mcp_tool_vector_teardown.py",
+          "tests/test_mcp_transport_normalization.py",
+          "tests/test_media_download.py",
+          "tests/test_media_download_guarded.py",
+          "tests/test_memory_empty_note_native.py",
+          "tests/test_memory_fts_sync.py",
+          "tests/test_memory_get_credentials.py",
+          "tests/test_memory_hit_boost.py",
+          "tests/test_memory_keyword_like_fallback.py",
+          "tests/test_memory_list_pagination.py",
+          "tests/test_memory_search_threshold_overrides.py",
+          "tests/test_memory_unicode_keywords.py",
+          "tests/test_message_usage.py",
+          "tests/test_minimax_session_chat_schema.py",
+          "tests/test_minimax_stream_lifecycle.py",
+          "tests/test_minimax_voice_partial_error.py",
+          "tests/test_minimax_voice_response_cleanup.py",
+          "tests/test_model_catalog_api.py",
+          "tests/test_model_catalog_concurrent_edits.py",
+          "tests/test_model_catalog_copy.py",
+          "tests/test_model_catalog_malformed_fields.py",
+          "tests/test_model_discovery.py",
+          "tests/test_model_request_timeouts.py",
+          "tests/test_modelscope_stream_error_not_yielded.py",
+          "tests/test_native_provider_stream_lifecycle.py",
+          "tests/test_onboarding_empty_profile.py",
+          "tests/test_openai_chat_api.py",
+          "tests/test_openai_compat_private_marker.py",
+          "tests/test_openai_default_session_lock.py",
+          "tests/test_openai_failed_stream_close.py",
+          "tests/test_openai_nonstream_cancel.py",
+          "tests/test_openai_sse_line_endings.py",
+          "tests/test_openai_stream_idle_timeout.py",
+          "tests/test_openai_tool_result_id.py",
+          "tests/test_openai_voice_base_slash.py",
+          "tests/test_parallel_tool_cancel.py",
+          "tests/test_peer_inbound_permission_mode.py",
+          "tests/test_peer_inbound_policy.py",
+          "tests/test_permission_flag_driven_writes.py",
+          "tests/test_permission_protected_files.py",
+          "tests/test_permission_shell_substitution.py",
+          "tests/test_plugin_scan_new_detection.py",
+          "tests/test_pptx_container_text.py",
+          "tests/test_preview_chrome.py",
+          "tests/test_project_literal_paths.py",
+          "tests/test_project_save_errors.py",
+          "tests/test_project_store_shape_guard.py",
+          "tests/test_provider_error_body.py",
+          "tests/test_qq_channel_session.py",
+          "tests/test_qq_chunked_upload.py",
+          "tests/test_read_special_files.py",
+          "tests/test_read_zero_limit.py",
+          "tests/test_recipient_key_collision.py",
+          "tests/test_reload_plugin_keeps_config.py",
+          "tests/test_responses_failed_status.py",
+          "tests/test_responses_function_contract.py",
+          "tests/test_responses_incomplete_tools.py",
+          "tests/test_responses_json_schema_format.py",
+          "tests/test_responses_refusal.py",
+          "tests/test_role_override_validation.py",
+          "tests/test_scheduler_idle_stop.py",
+          "tests/test_scheduler_migration_commit.py",
+          "tests/test_scheduler_missing_primary.py",
+          "tests/test_scheduler_once_past_time.py",
+          "tests/test_scheduler_operation_status.py",
+          "tests/test_scheduler_relative_store.py",
+          "tests/test_scheduler_unknown_action_type.py",
+          "tests/test_scheduler_unrecoverable_mutation.py",
+          "tests/test_scheduler_update_identity_fields.py",
+          "tests/test_scheduler_web_update.py",
+          "tests/test_search_files_brace_globs_native.py",
+          "tests/test_search_files_long_line_preview.py",
+          "tests/test_search_files_tool.py",
+          "tests/test_search_grep_path_filters.py",
+          "tests/test_search_path_glob.py",
+          "tests/test_search_special_files.py",
+          "tests/test_security_send_env_bypass.py",
+          "tests/test_security_ssrf_path_traversal.py",
+          "tests/test_security_ssrf_web_fetch.py",
+          "tests/test_send_regular_file.py",
+          "tests/test_session_context_usage.py",
+          "tests/test_session_delete_agent_scope.py",
+          "tests/test_session_delete_team_fanout.py",
+          "tests/test_session_prefs_root_shape.py",
+          "tests/test_session_settings_model_source.py",
+          "tests/test_shared_db_recovery.py",
+          "tests/test_shared_history_alias.py",
+          "tests/test_singleton_bridge_initialization.py",
+          "tests/test_skill_cli_yaml_frontmatter.py",
+          "tests/test_skill_config_entry_shapes.py",
+          "tests/test_skill_config_save_errors.py",
+          "tests/test_skill_confirm_staged_fields.py",
+          "tests/test_skill_create.py",
+          "tests/test_skill_custom_provider_types.py",
+          "tests/test_skill_frontmatter_roundtrip.py",
+          "tests/test_skill_github_fallback_layout.py",
+          "tests/test_skill_hidden_setup_hints.py",
+          "tests/test_skill_hub_config.py",
+          "tests/test_skill_install_display.py",
+          "tests/test_skill_install_kind_type.py",
+          "tests/test_skill_list_name_types.py",
+          "tests/test_skill_local_copy_overlap.py",
+          "tests/test_skill_metadata_booleans.py",
+          "tests/test_skill_replacement_rollback.py",
+          "tests/test_skill_utf8_bom.py",
+          "tests/test_skill_zip_tempdir_cleanup.py",
+          "tests/test_slack_discord_send_retry.py",
+          "tests/test_slack_system_subtype_events.py",
+          "tests/test_sorted_dict_mutations.py",
+          "tests/test_special_file_targets.py",
+          "tests/test_spreadsheet_array_formula_text.py",
+          "tests/test_state_dir.py",
+          "tests/test_static_assets_path_containment.py",
+          "tests/test_steer_session_key_scope.py",
+          "tests/test_subagent.py",
+          "tests/test_subagent_fallback_scope.py",
+          "tests/test_subagent_parent_cancel.py",
+          "tests/test_subagent_template_body.py",
+          "tests/test_subscription_empty_prefix.py",
+          "tests/test_summarizer_daily_hash_retry.py",
+          "tests/test_task_store_atomic_save.py",
+          "tests/test_task_store_concurrency.py",
+          "tests/test_team_addressing.py",
+          "tests/test_telegram_is_mentioned.py",
+          "tests/test_telegram_markdown_link_targets.py",
+          "tests/test_telegram_mention_boundary.py",
+          "tests/test_think_tag_filter.py",
+          "tests/test_time_check_offhours_alias.py",
+          "tests/test_token_wait_deadline.py",
+          "tests/test_tool_integer_args.py",
+          "tests/test_user_display_text.py",
+          "tests/test_utf8_split_progress.py",
+          "tests/test_vector_row_corruption.py",
+          "tests/test_vision_compression_mime.py",
+          "tests/test_vision_empty_completion.py",
+          "tests/test_vision_main_model_detection.py",
+          "tests/test_vision_native_resize.py",
+          "tests/test_voice_asr_text_shape.py",
+          "tests/test_voice_identical_text_files.py",
+          "tests/test_voice_xunfei_error_path.py",
+          "tests/test_web_config_bad_value_atomicity.py",
+          "tests/test_web_config_save_transaction.py",
+          "tests/test_web_console_update.py",
+          "tests/test_web_fetch_deepseek.py",
+          "tests/test_web_fetch_encoded_document_url.py",
+          "tests/test_web_fetch_html_text.py",
+          "tests/test_web_fetch_native_documents.py",
+          "tests/test_web_fetch_text_charset.py",
+          "tests/test_web_fetch_webpage_size_cap.py",
+          "tests/test_web_menu.py",
+          "tests/test_web_multi_file_upload.py",
+          "tests/test_web_multipart_agent_scope.py",
+          "tests/test_web_request_cancel_scope.py",
+          "tests/test_web_search.py",
+          "tests/test_web_search_config_shape.py",
+          "tests/test_web_search_explicit_anonymous.py",
+          "tests/test_web_tls.py",
+          "tests/test_wechat_attachment_download_not_cached.py",
+          "tests/test_wechat_kf_cursor_flush_retry.py",
+          "tests/test_wechat_kf_token_not_logged.py",
+          "tests/test_wechatcom_file_tmp_cleanup.py",
+          "tests/test_wechatcom_voice_segment_cleanup.py",
+          "tests/test_wechatmp_fail_callback_drains.py",
+          "tests/test_wechatmp_passive_claim_and_cache_leak.py",
+          "tests/test_wechatmp_unsupported_message.py",
+          "tests/test_wecom_bot_media_tmp_cleanup.py",
+          "tests/test_wecom_bot_remote_media_bounds.py",
+          "tests/test_wecom_callback_dedup.py",
+          "tests/test_wecom_image_format_guard.py",
+          "tests/test_wecom_remote_media_ssrf.py",
+          "tests/test_weixin_cdn_error_close.py",
+          "tests/test_weixin_media_tmp_cleanup.py",
+          "tests/test_weixin_pkcs7_zero_pad.py",
+          "tests/test_weixin_qr_refresh_empty_code.py",
+          "tests/test_weixin_same_named_files.py",
+          "tests/test_word_content_controls.py",
+          "tests/test_word_merged_cells.py",
+          "tests/test_word_nested_table_text.py",
+          "tests/test_workspace_agent_fallback.py",
+          "tests/test_workspace_edit.py",
+          "tests/test_workspace_read_snapshot.py",
+          "tests/test_workspace_template_create_race.py",
+          "tests/test_write_memory_notify.py",
+          "tests/test_xunfei_spark_websocket_tls.py",
+          "tests/web_scroll.test.cjs"
+        ]
+      },
+      "entrypoints": [
+        "tests/test_upstream_sync_gate.py",
+        "scripts/check-upstream-sync.py"
+      ],
+      "dependencies": [
+        "W07",
+        "identity-and-owner-boundaries",
+        "source-classification.json"
+      ],
+      "identity": "Existing trusted tenant/user/resource and execution contracts; no shared token fallback.",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/sync-master-to-rdai-20261021/tasks.md",
+      "supported_forms": [
+        "web/shared-backend"
+      ],
+      "required_tests": [
+        "tests/test_upstream_sync_gate.py"
+      ],
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+      ],
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+    },
+    {
+      "id": "SYNC-008",
+      "behavior": "Documentation, packaging and vendored resources",
+      "source": {
+        "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+        "paths": [
+          "README.md",
+          "docs/channels/dingtalk.mdx",
+          "docs/channels/discord.mdx",
+          "docs/channels/feishu.mdx",
+          "docs/channels/index.mdx",
+          "docs/channels/qq.mdx",
+          "docs/channels/slack.mdx",
+          "docs/channels/telegram.mdx",
+          "docs/channels/web.mdx",
+          "docs/channels/wechat-kf.mdx",
+          "docs/channels/wechatmp.mdx",
+          "docs/channels/wecom-bot.mdx",
+          "docs/channels/wecom.mdx",
+          "docs/channels/weixin.mdx",
+          "docs/cli/backup.mdx",
+          "docs/cli/general.mdx",
+          "docs/cli/index.mdx",
+          "docs/cli/memory-knowledge.mdx",
+          "docs/cli/process.mdx",
+          "docs/cli/skill.mdx",
+          "docs/docs.json",
+          "docs/extensions/agent-mail.mdx",
+          "docs/extensions/chat-api.mdx",
+          "docs/extensions/custom-menu.mdx",
+          "docs/guide/desktop.mdx",
+          "docs/guide/manual-install.mdx",
+          "docs/guide/quick-start.mdx",
+          "docs/guide/upgrade.mdx",
+          "docs/intro/architecture.mdx",
+          "docs/intro/features.mdx",
+          "docs/intro/index.mdx",
+          "docs/ja/README.md",
+          "docs/ja/channels/dingtalk.mdx",
+          "docs/ja/channels/discord.mdx",
+          "docs/ja/channels/feishu.mdx",
+          "docs/ja/channels/index.mdx",
+          "docs/ja/channels/qq.mdx",
+          "docs/ja/channels/slack.mdx",
+          "docs/ja/channels/telegram.mdx",
+          "docs/ja/channels/web.mdx",
+          "docs/ja/channels/wechat-kf.mdx",
+          "docs/ja/channels/wechatmp.mdx",
+          "docs/ja/channels/wecom.mdx",
+          "docs/ja/channels/weixin.mdx",
+          "docs/ja/cli/general.mdx",
+          "docs/ja/cli/index.mdx",
+          "docs/ja/cli/memory-knowledge.mdx",
+          "docs/ja/cli/process.mdx",
+          "docs/ja/cli/skill.mdx",
+          "docs/ja/extensions/chat-api.mdx",
+          "docs/ja/extensions/custom-menu.mdx",
+          "docs/ja/guide/desktop.mdx",
+          "docs/ja/guide/manual-install.mdx",
+          "docs/ja/guide/quick-start.mdx",
+          "docs/ja/guide/upgrade.mdx",
+          "docs/ja/intro/architecture.mdx",
+          "docs/ja/intro/index.mdx",
+          "docs/ja/knowledge/index.mdx",
+          "docs/ja/memory/context.mdx",
+          "docs/ja/memory/deep-dream.mdx",
+          "docs/ja/memory/index.mdx",
+          "docs/ja/models/claude.mdx",
+          "docs/ja/models/coding-plan.mdx",
+          "docs/ja/models/custom.mdx",
+          "docs/ja/models/deepseek.mdx",
+          "docs/ja/models/doubao.mdx",
+          "docs/ja/models/gemini.mdx",
+          "docs/ja/models/glm.mdx",
+          "docs/ja/models/index.mdx",
+          "docs/ja/models/kimi.mdx",
+          "docs/ja/models/linkai.mdx",
+          "docs/ja/models/mimo.mdx",
+          "docs/ja/models/minimax.mdx",
+          "docs/ja/models/openai.mdx",
+          "docs/ja/models/qianfan.mdx",
+          "docs/ja/multi-agent/delegation.mdx",
+          "docs/ja/multi-agent/subagent.mdx",
+          "docs/ja/multi-agent/team.mdx",
+          "docs/ja/releases/overview.mdx",
+          "docs/ja/releases/v2.0.0.mdx",
+          "docs/ja/releases/v2.0.1.mdx",
+          "docs/ja/releases/v2.0.2.mdx",
+          "docs/ja/releases/v2.0.3.mdx",
+          "docs/ja/releases/v2.0.4.mdx",
+          "docs/ja/releases/v2.0.5.mdx",
+          "docs/ja/releases/v2.0.8.mdx",
+          "docs/ja/releases/v2.1.0.mdx",
+          "docs/ja/releases/v2.1.3.mdx",
+          "docs/ja/releases/v2.2.1.mdx",
+          "docs/ja/skills/create.mdx",
+          "docs/ja/skills/hub.mdx",
+          "docs/ja/skills/index.mdx",
+          "docs/ja/skills/install.mdx",
+          "docs/ja/skills/knowledge-wiki.mdx",
+          "docs/ja/skills/skill-creator.mdx",
+          "docs/ja/tools/bash.mdx",
+          "docs/ja/tools/browser.mdx",
+          "docs/ja/tools/delegate.mdx",
+          "docs/ja/tools/edit.mdx",
+          "docs/ja/tools/env-config.mdx",
+          "docs/ja/tools/index.mdx",
+          "docs/ja/tools/ls.mdx",
+          "docs/ja/tools/mcp.mdx",
+          "docs/ja/tools/memory.mdx",
+          "docs/ja/tools/read.mdx",
+          "docs/ja/tools/scheduler.mdx",
+          "docs/ja/tools/search-files.mdx",
+          "docs/ja/tools/send.mdx",
+          "docs/ja/tools/subagent.mdx",
+          "docs/ja/tools/vision.mdx",
+          "docs/ja/tools/web-fetch.mdx",
+          "docs/ja/tools/web-search.mdx",
+          "docs/ja/tools/write.mdx",
+          "docs/knowledge/index.mdx",
+          "docs/memory/context.mdx",
+          "docs/memory/deep-dream.mdx",
+          "docs/memory/index.mdx",
+          "docs/memory/self-evolution.mdx",
+          "docs/models/claude.mdx",
+          "docs/models/coding-plan.mdx",
+          "docs/models/custom.mdx",
+          "docs/models/deepseek.mdx",
+          "docs/models/doubao.mdx",
+          "docs/models/gemini.mdx",
+          "docs/models/glm.mdx",
+          "docs/models/index.mdx",
+          "docs/models/kimi.mdx",
+          "docs/models/linkai.mdx",
+          "docs/models/mimo.mdx",
+          "docs/models/minimax.mdx",
+          "docs/models/openai.mdx",
+          "docs/models/qianfan.mdx",
+          "docs/models/qwen.mdx",
+          "docs/multi-agent/delegation.mdx",
+          "docs/multi-agent/subagent.mdx",
+          "docs/multi-agent/team.mdx",
+          "docs/releases/overview.mdx",
+          "docs/releases/v2.0.0.mdx",
+          "docs/releases/v2.0.1.mdx",
+          "docs/releases/v2.0.2.mdx",
+          "docs/releases/v2.0.3.mdx",
+          "docs/releases/v2.0.4.mdx",
+          "docs/releases/v2.0.5.mdx",
+          "docs/releases/v2.1.3.mdx",
+          "docs/releases/v2.1.9.mdx",
+          "docs/releases/v2.2.1.mdx",
+          "docs/skills/create.mdx",
+          "docs/skills/hub.mdx",
+          "docs/skills/image-generation.mdx",
+          "docs/skills/index.mdx",
+          "docs/skills/install.mdx",
+          "docs/skills/knowledge-wiki.mdx",
+          "docs/skills/skill-creator.mdx",
+          "docs/tools/bash.mdx",
+          "docs/tools/browser.mdx",
+          "docs/tools/delegate.mdx",
+          "docs/tools/edit.mdx",
+          "docs/tools/env-config.mdx",
+          "docs/tools/index.mdx",
+          "docs/tools/ls.mdx",
+          "docs/tools/mcp.mdx",
+          "docs/tools/memory.mdx",
+          "docs/tools/read.mdx",
+          "docs/tools/scheduler.mdx",
+          "docs/tools/search-files.mdx",
+          "docs/tools/send.mdx",
+          "docs/tools/subagent.mdx",
+          "docs/tools/vision.mdx",
+          "docs/tools/web-fetch.mdx",
+          "docs/tools/web-search.mdx",
+          "docs/tools/write.mdx",
+          "docs/zh/README-Hant.md",
+          "docs/zh/README.md",
+          "docs/zh/channels/dingtalk.mdx",
+          "docs/zh/channels/discord.mdx",
+          "docs/zh/channels/feishu.mdx",
+          "docs/zh/channels/index.mdx",
+          "docs/zh/channels/qq.mdx",
+          "docs/zh/channels/slack.mdx",
+          "docs/zh/channels/telegram.mdx",
+          "docs/zh/channels/web.mdx",
+          "docs/zh/channels/wechat-kf.mdx",
+          "docs/zh/channels/wechatmp.mdx",
+          "docs/zh/channels/wecom-bot.mdx",
+          "docs/zh/channels/wecom.mdx",
+          "docs/zh/channels/weixin.mdx",
+          "docs/zh/cli/backup.mdx",
+          "docs/zh/cli/general.mdx",
+          "docs/zh/cli/index.mdx",
+          "docs/zh/cli/memory-knowledge.mdx",
+          "docs/zh/cli/process.mdx",
+          "docs/zh/cli/skill.mdx",
+          "docs/zh/extensions/agent-mail.mdx",
+          "docs/zh/extensions/chat-api.mdx",
+          "docs/zh/extensions/custom-menu.mdx",
+          "docs/zh/guide/desktop.mdx",
+          "docs/zh/guide/manual-install.mdx",
+          "docs/zh/guide/quick-start.mdx",
+          "docs/zh/guide/upgrade.mdx",
+          "docs/zh/intro/architecture.mdx",
+          "docs/zh/intro/features.mdx",
+          "docs/zh/intro/index.mdx",
+          "docs/zh/knowledge/index.mdx",
+          "docs/zh/memory/context.mdx",
+          "docs/zh/memory/deep-dream.mdx",
+          "docs/zh/memory/index.mdx",
+          "docs/zh/memory/self-evolution.mdx",
+          "docs/zh/models/claude.mdx",
+          "docs/zh/models/coding-plan.mdx",
+          "docs/zh/models/custom.mdx",
+          "docs/zh/models/deepseek.mdx",
+          "docs/zh/models/doubao.mdx",
+          "docs/zh/models/gemini.mdx",
+          "docs/zh/models/glm.mdx",
+          "docs/zh/models/index.mdx",
+          "docs/zh/models/kimi.mdx",
+          "docs/zh/models/linkai.mdx",
+          "docs/zh/models/mimo.mdx",
+          "docs/zh/models/minimax.mdx",
+          "docs/zh/models/openai.mdx",
+          "docs/zh/models/qianfan.mdx",
+          "docs/zh/models/qwen.mdx",
+          "docs/zh/multi-agent/subagent.mdx",
+          "docs/zh/multi-agent/team.mdx",
+          "docs/zh/releases/overview.mdx",
+          "docs/zh/releases/v2.0.0.mdx",
+          "docs/zh/releases/v2.0.1.mdx",
+          "docs/zh/releases/v2.0.2.mdx",
+          "docs/zh/releases/v2.0.3.mdx",
+          "docs/zh/releases/v2.0.4.mdx",
+          "docs/zh/releases/v2.0.5.mdx",
+          "docs/zh/releases/v2.0.6.mdx",
+          "docs/zh/releases/v2.0.7.mdx",
+          "docs/zh/releases/v2.0.9.mdx",
+          "docs/zh/releases/v2.1.1.mdx",
+          "docs/zh/releases/v2.1.5.mdx",
+          "docs/zh/releases/v2.1.6.mdx",
+          "docs/zh/releases/v2.1.7.mdx",
+          "docs/zh/releases/v2.2.1.mdx",
+          "docs/zh/skills/create.mdx",
+          "docs/zh/skills/hub.mdx",
+          "docs/zh/skills/image-generation.mdx",
+          "docs/zh/skills/index.mdx",
+          "docs/zh/skills/install.mdx",
+          "docs/zh/skills/knowledge-wiki.mdx",
+          "docs/zh/skills/skill-creator.mdx",
+          "docs/zh/tools/bash.mdx",
+          "docs/zh/tools/browser.mdx",
+          "docs/zh/tools/delegate.mdx",
+          "docs/zh/tools/edit.mdx",
+          "docs/zh/tools/env-config.mdx",
+          "docs/zh/tools/index.mdx",
+          "docs/zh/tools/ls.mdx",
+          "docs/zh/tools/mcp.mdx",
+          "docs/zh/tools/memory.mdx",
+          "docs/zh/tools/read.mdx",
+          "docs/zh/tools/scheduler.mdx",
+          "docs/zh/tools/search-files.mdx",
+          "docs/zh/tools/send.mdx",
+          "docs/zh/tools/subagent.mdx",
+          "docs/zh/tools/vision.mdx",
+          "docs/zh/tools/web-fetch.mdx",
+          "docs/zh/tools/web-search.mdx",
+          "docs/zh/tools/write.mdx"
+        ]
+      },
+      "entrypoints": [
+        "docs/extensions/chat-api.mdx",
+        "channel/web/chat.html",
+        "requirements.txt"
+      ],
+      "dependencies": [
+        "W08",
+        "identity-and-owner-boundaries",
+        "source-classification.json"
+      ],
+      "identity": "Existing trusted tenant/user/resource and execution contracts; no shared token fallback.",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/sync-master-to-rdai-20261021/tasks.md",
+      "supported_forms": [
+        "web/shared-backend"
+      ],
+      "required_tests": [
+        "tests/test_upstream_sync_gate.py"
+      ],
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+      ],
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     }
   ],
   "reviewed_existing": [
@@ -384,6 +1595,1147 @@
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md"
       ],
       "note": "已核对入口；其中模型接口/局部逻辑和弹窗定向用例已通过，其余不声称全形态验收。本轮实际页面追加发现成员模型目录模板缺失，另记 GAP-008；不据此重复否定已验收接口。"
+    }
+  ],
+  "source_reviews": [
+    {
+      "path": "channel/web/README.md",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/api/agents.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "2d096d52f09e44523e0979edb491d1a3f29db54a",
+        "candidate_sha256": "101892be1aae40c14fcb1f6cc305d5622389a89ecf0c73cd5e4c6fd57b949bbf",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/route_registry.py",
+          "channel/web/fork/runtime.py"
+        ],
+        "tests": [
+          "tests/test_route_registry.py",
+          "tests/test_sync_master_web_contract.py"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/api/artifacts.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/api/auth.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/api/channels.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/api/chat.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/api/config.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/api/files.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/api/knowledge.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/api/logs.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/api/memory.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/api/menu.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "35beeeb44dc0ebbbe9dd57273fb27455e0f0a4d9",
+        "candidate_sha256": "f58accde7b722a3b3f41694aa2001c8b1d90c5ea5cbfe5a8ed5ffcaa9ca2b8bf",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/route_registry.py",
+          "channel/web/fork/runtime.py"
+        ],
+        "tests": [
+          "tests/test_route_registry.py",
+          "tests/test_sync_master_web_contract.py"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/api/models.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "3e02c66798cd2d7b7bcdf4007d137066973847fa",
+        "candidate_sha256": "5a908e33b65519113aa78489155bf43182f0b7664ce568406e21fe3a9bb11076",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/route_registry.py",
+          "channel/web/fork/runtime.py"
+        ],
+        "tests": [
+          "tests/test_route_registry.py",
+          "tests/test_sync_master_web_contract.py"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/api/openai_compat.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/api/pages.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/api/scheduler.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/api/sessions.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/api/skills.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/api/update.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/api/workspace.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/chat.html",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/core/_common.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/core/channel.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/core/providers.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/core/template.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/core/tls.py",
+      "classification": "reference",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/css/artifacts.css",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/css/base.css",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/css/chat.css",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/css/components.css",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/css/knowledge.css",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/css/markdown.css",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/css/menu.css",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/css/sessions.css",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/css/workspace.css",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/js/chat/composer-input.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/js/chat/context-usage.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "130adea14801ce5911a1dbb552c6737619121a66",
+        "candidate_sha256": "bd6d2e95261b5a5377890d85c1da9361e5d0d51ba07fdb4a1e35c090a6362767",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/chat/message-actions.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "645735f8e051134f9aafc2226feac52138be4574",
+        "candidate_sha256": "ed39aad1252ae7a7c72cac9333f085efcc6f0f49c7237c33fd2210e2a96259f2",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/chat/new-chat.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "b5c9b1f852360102121645c11bc3a2b12c5f9ba5",
+        "candidate_sha256": "c1304f6f31cb96a72be44c82f188632248b8278b4ed59e1ddf6788ca3ba6ac65",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/chat/render.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "f4f205318921fe262378de7ab75568b78a64c2ed",
+        "candidate_sha256": "83679fe4d420f3dd5b7fdb5e0d7e78fa606c2d28aba070adb97868ef0e556d46",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/chat/scheduler-notify.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "607b2bf7823ef65c0f5d9819f108526e1356db09",
+        "candidate_sha256": "cbab18c727bb9485f71f98b18188eb2e22aee1cd478024728c5b7345eac51ab6",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/chat/send.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "f4fb6ae045aacfe310556ab6484e116b584ce4bb",
+        "candidate_sha256": "e68a227a0cb17bf58ebd16c6e8047d3dc4070864dd03db36736e0f92ae5186bb",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/chat/session-settings.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "edf27378727f5745b17ca14067597a9d163aff20",
+        "candidate_sha256": "47d3893405e4ede0db9aced0cd3f5ec1234b7e15598b2de55ba7d46e4e752239",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/chat/state.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "ccec72544b9686f083361bfeb77d200bdfbbd5b1",
+        "candidate_sha256": "911ac2f44c66f83776ecb971d3a6732eb69b5f7a383a4a46f92f67fb17d6fbdc",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/chat/timeline.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "12f8be3ed32f523ae7ae36040bb712f623edd2a5",
+        "candidate_sha256": "88bc4df8360f0f2e7b6431e8aeb4fc391732bb52f2a9cc5df7c130c7e2b7c90d",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/chat/workspace-selector.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "7f8a3fd251bc354350338d86413a0af91e872bd1",
+        "candidate_sha256": "b79764df1a7bcf8f32ac0775c5017feb6506615d1d840c13f76fff54a2644af3",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/core/auth.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "0430189168967b906b8b062375b2b9d8e4dbb697",
+        "candidate_sha256": "266cbd847c16cb565d133470c175ebadc596fbd8c1a3af4c0e24cb75fab9a070",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/core/confirm.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/js/core/i18n.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "76b3f70fbfaae4a0e24fdf2f65dcee20d38d3e39",
+        "candidate_sha256": "c3654ce72203fc802a62d0040e4805160011030c5725c0f433f1ae13d0c3cab3",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/core/markdown.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/js/core/menu.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "9cd39db57a3eee90c1bff1c5e279bdc768235551",
+        "candidate_sha256": "b66fd0098f9884eb64238c3c14f5c6ef54b68a04f6e44bf3a5c8bff93d4dc907",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/core/nav.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "7246433c7e7a78c61055438d72176f01b7e2f7d0",
+        "candidate_sha256": "45ed3bb921d991b5b6613aa287b3002aab502992a6a280466b8836c83b6dc7d7",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/core/notify.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/js/core/router.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "3c5408be847c0168474131fac1213ee58594ad0b",
+        "candidate_sha256": "0ff1f426478dfa7afd32fd733d06a77063c8d5cffbb17ffa58f63f02b435df36",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/core/theme.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "815a58c664d9c8c602cbba2175a16cbdc8cf5c29",
+        "candidate_sha256": "d6fafb0447709d947533b0f6375878ab55cb1f967931161eb13c3b8fc4607a02",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/core/utils.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/js/core/version.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/js/doc-editor.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/js/views/agents.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "2e5f83b974120c0da00a79313002465d77f0ba02",
+        "candidate_sha256": "a2b31a26b512c368a8d327687e3b5b11a4485662cc3670c3d34462e583121b98",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/views/artifacts.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "d45dddbc6ea58ec6ec9d536e2c91ee4cf58d5209",
+        "candidate_sha256": "01e96c685294f6bbe161d0ad85d414b7d296f25d62a359f5bdd785df03863ac5",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/views/channels-feishu.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "09552ba82cd6322aa6914025165941f8bd7558ed",
+        "candidate_sha256": "376f34144dd0bb8ddd2d4cae46e715acaba1d1d728d44395982d3270e5ed4925",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/views/channels-wecom.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/js/views/channels-weixin.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/js/views/channels.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "8600a0f260d7979431f60e5440fe78b9568b0941",
+        "candidate_sha256": "8d2aea1b94787e12b479b9b14daa7015991e63d4afa948b9101112f6cdac05ff",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/views/config.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "3213d617ddb5d716004a8b923b32a6539b8ca51d",
+        "candidate_sha256": "70acdf7f85eee314a3fdfd47e939ad8c5f32e0d33d4340b76af799b4799917dd",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/views/doc-viewers.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "dd97c20296cd2bbff7fa82e66175b5ca6043cef4",
+        "candidate_sha256": "b928d5705cfece6ff181aea418795fef3e2f6d8bbb4e9064b2bb1d1b8cf2989a",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/views/knowledge.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "9521881032991425f2808afddf226322c6d009cb",
+        "candidate_sha256": "304280f0b7e89bcac49ff7198e319bbd586c728d59917ddc9f96cfee5038c2b0",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/views/logs.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/js/views/memory.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/js/views/menu-editor.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "7fa1f0c53f35e85163f7ab67d368625d5a8fb6e2",
+        "candidate_sha256": "f0a66153cf37499b0534aea6f4f77d22dadabdad16d108b5d065f18fd85c83ba",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/views/models-custom-provider.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/js/views/models.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "cea29c1012e02f9f4ae8db239a54817ed19c4905",
+        "candidate_sha256": "15d49bfdbb5c1428b1d3758255639c616a945d5e8cabb02ebb2b907fb61494a6",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/views/sessions.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "2397ba99e26dfd5866b8f5353e5653146ca72e5f",
+        "candidate_sha256": "feef92549e1d42a6dec63f2058ec1a70de16b3f906c559621fb923b4deffd01c",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/views/skills.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "7a4b351700f6a471cafba3170ca545bb64593339",
+        "candidate_sha256": "2b0955e7f25f00256c71e2dd4b67f8b17b334d091a89d6d747d6ab919ecd29cc",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/views/tasks-modal.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ],
+      "integration": {
+        "source_blob": "7dc1b3c4ae788795408575b3907582f79e961062",
+        "candidate_sha256": "6c33e54a2044aacfda1d873a2023d5bacefc5e215c07847c623b688b6238b783",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/test_console_parity_browser.cjs",
+          "tests/test_session_history_refresh_frontend.cjs",
+          "tests/test_knowledge_console_frontend.cjs"
+        ]
+      }
+    },
+    {
+      "path": "channel/web/static/js/views/tasks.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/js/workspace.js",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/static/vendor/README.md",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/templates/layout/header.html",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/templates/layout/sidebar.html",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/templates/modals/confirm-dialog.html",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/templates/modals/custom-provider.html",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/templates/modals/menu-editor.html",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/templates/modals/skill-add.html",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/templates/modals/vendor.html",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/templates/views/artifacts.html",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/templates/views/chat.html",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/templates/views/config.html",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/templates/views/custom.html",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/templates/views/knowledge.html",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/templates/views/skills.html",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
+    },
+    {
+      "path": "channel/web/web_channel.py",
+      "classification": "behavior",
+      "owner": "rdai-maintainers",
+      "evidence": [
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+      ]
     }
   ]
 }

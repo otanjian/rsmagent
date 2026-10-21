@@ -8,6 +8,7 @@ import hashlib
 import shutil
 import zipfile
 import tempfile
+import time
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Optional, List
@@ -22,6 +23,8 @@ from cli.utils import (
     get_skills_dir,
     get_builtin_skills_dir,
     load_skills_config,
+    custom_skill_hub,
+    skill_hub,
     SKILL_HUB_API,
 )
 
@@ -68,6 +71,13 @@ _staging_dir: ContextVar[Optional[str]] = ContextVar("skill_staging_dir", defaul
 
 def _target_skills_dir(agent_id: str = None) -> str:
     return _staging_dir.get() or get_skills_dir(agent_id)
+
+
+def _replace_skill_dir(source: str, target: str) -> None:
+    _ensure_project_on_path()
+    from common.directory_replace import replace_directory
+
+    replace_directory(source, target)
 
 
 def _parse_github_url(url: str):
@@ -224,7 +234,7 @@ def _download_github_dir(owner, repo, branch, subpath, dest_dir):
         elif item["type"] == "dir":
             os.makedirs(local_path, exist_ok=True)
             child_subpath = item["path"]
-            _download_github_dir(owner, repo, branch, child_subpath, dest_dir)
+            _download_github_dir(owner, repo, branch, child_subpath, local_path)
 
 
 # Directories to search for skills following the Agent Skills convention
@@ -299,6 +309,21 @@ def _scan_skills_in_dir(directory: str) -> list:
     return found
 
 
+def _check_skill_copy_paths(source_dir: str, target_dir: str) -> None:
+    """Refuse copies that would delete their source or recurse into themselves."""
+    source = os.path.normcase(os.path.realpath(source_dir))
+    target = os.path.normcase(os.path.realpath(target_dir))
+    try:
+        common = os.path.commonpath((source, target))
+    except ValueError:
+        # Paths on different Windows drives cannot overlap.
+        return
+    if common in (source, target):
+        raise SkillInstallError(
+            "Skill source and destination overlap; use a separate source directory."
+        )
+
+
 def _batch_install_skills(discovered, spec, skills_dir, source, result: InstallResult, display_name: str = "", agent_id: str = None):
     """Install a list of discovered skills into skills_dir."""
     single = len(discovered) == 1
@@ -309,9 +334,8 @@ def _batch_install_skills(discovered, spec, skills_dir, source, result: InstallR
             result.messages.append(f"  Skipping '{sname}' (invalid name)")
             continue
         target_dir = os.path.join(skills_dir, safe_name)
-        if os.path.exists(target_dir):
-            shutil.rmtree(target_dir)
-        shutil.copytree(sdir, target_dir)
+        _check_skill_copy_paths(sdir, target_dir)
+        _replace_skill_dir(sdir, target_dir)
         _register_installed_skill(safe_name, source=source, display_name=display_name if single else "", agent_id=agent_id)
         result.installed.append(safe_name)
         result.messages.append(f"  + {safe_name}")
@@ -346,9 +370,8 @@ def _install_local(path: str, result: InstallResult, agent_id: str = None):
         skill_name = re.sub(r'[^a-zA-Z0-9_\-]', '-', skill_name)[:64]
         _check_skill_name(skill_name)
         target_dir = os.path.join(skills_dir, skill_name)
-        if os.path.exists(target_dir):
-            shutil.rmtree(target_dir)
-        shutil.copytree(path, target_dir)
+        _check_skill_copy_paths(path, target_dir)
+        _replace_skill_dir(path, target_dir)
         _register_installed_skill(skill_name, source="local", agent_id=agent_id)
         result.installed.append(skill_name)
         result.messages.append(f"Installed '{skill_name}' from local path.")
@@ -380,7 +403,7 @@ def _register_installed_skill(name: str, source: str = "cowhub", display_name: s
     config = {}
     if os.path.exists(config_path):
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, "r", encoding="utf-8-sig") as f:
                 config = json.load(f)
         except Exception:
             config = {}
@@ -403,6 +426,7 @@ def _register_installed_skill(name: str, source: str = "cowhub", display_name: s
         "source": source,
         "enabled": True,
         "category": "skill",
+        "installed_at": int(time.time()),
     }
     if display_name:
         entry["display_name"] = display_name
@@ -416,17 +440,11 @@ def _register_installed_skill(name: str, source: str = "cowhub", display_name: s
 
 def _parse_skill_frontmatter(content: str) -> dict:
     """Parse YAML frontmatter from SKILL.md content and return a dict with name/description."""
-    result = {}
-    match = re.match(r'^---\s*\n(.*?)\n---\s*\n', content, re.DOTALL)
-    if not match:
-        return result
-    for line in match.group(1).split('\n'):
-        line = line.strip()
-        for key in ('name', 'description'):
-            if line.startswith(f'{key}:'):
-                val = line[len(key) + 1:].strip()
-                result[key] = val.strip('"').strip("'")
-    return result
+    from agent.skills.frontmatter import parse_frontmatter
+
+    frontmatter = parse_frontmatter(content)
+    return {key: frontmatter[key] for key in ('name', 'description')
+            if isinstance(frontmatter.get(key), str)}
 
 
 def _read_skill_description(skill_dir: str) -> str:
@@ -514,25 +532,14 @@ def _install_targz_bytes(content: bytes, name: str, skills_dir: str, result: Ins
             f.write(content)
 
         import tarfile
+        from agent.skills.archive import ArchiveError, extract_tar
         extract_dir = os.path.join(tmp_dir, "extracted")
         os.makedirs(extract_dir)
-        with tarfile.open(tar_path, "r:gz") as tf:
-            extraction_root = os.path.realpath(extract_dir)
-            for member in tf.getmembers():
-                resolved = os.path.realpath(os.path.join(extract_dir, member.name))
-                try:
-                    inside_root = (
-                        os.path.commonpath((extraction_root, resolved)) == extraction_root
-                    )
-                except ValueError:
-                    inside_root = False
-                if not inside_root:
-                    raise SkillInstallError("Archive contains path traversal, aborting.")
-                if member.issym() or member.islnk():
-                    raise SkillInstallError("Archive contains a link, aborting.")
-                if not (member.isfile() or member.isdir()):
-                    raise SkillInstallError("Archive contains a special file, aborting.")
-            tf.extractall(extract_dir)
+        try:
+            with tarfile.open(tar_path, "r:gz") as tf:
+                extract_tar(tf, extract_dir)
+        except ArchiveError as e:
+            raise SkillInstallError(str(e))
 
         top_items = [d for d in os.listdir(extract_dir) if not d.startswith(".")]
         pkg_root = extract_dir
@@ -551,18 +558,14 @@ def _install_targz_bytes(content: bytes, name: str, skills_dir: str, result: Ins
             if not _SAFE_NAME_RE.match(safe_name):
                 safe_name = name
             target = os.path.join(skills_dir, safe_name)
-            if os.path.exists(target):
-                shutil.rmtree(target)
-            shutil.copytree(sdir, target)
+            _replace_skill_dir(sdir, target)
             _register_installed_skill(safe_name, source=source_label, agent_id=agent_id)
             result.installed.append(safe_name)
             result.messages.append(f"Installed '{safe_name}' from URL.")
             return
 
         target = os.path.join(skills_dir, name)
-        if os.path.exists(target):
-            shutil.rmtree(target)
-        shutil.copytree(pkg_root, target)
+        _replace_skill_dir(pkg_root, target)
         _register_installed_skill(name, source=source_label, agent_id=agent_id)
         result.installed.append(name)
         result.messages.append(f"Installed '{name}' from URL.")
@@ -660,26 +663,15 @@ def _check_github_spec(spec: str):
         raise SkillInstallError(f"Invalid GitHub spec '{spec}'. Expected format: owner/repo")
 
 
-_JUNK_NAMES = {'.DS_Store', 'Thumbs.db', 'desktop.ini'}
-
-
-def _is_junk_entry(filename: str) -> bool:
-    parts = filename.replace('\\', '/').split('/')
-    return any(p in _JUNK_NAMES or p == '__MACOSX' or p.startswith('._.') for p in parts)
-
-
 def _safe_extractall(zf: zipfile.ZipFile, dest: str):
-    """Extract zip while guarding against Zip Slip and filtering junk files."""
-    dest = os.path.realpath(dest)
-    members = []
-    for member in zf.infolist():
-        if _is_junk_entry(member.filename):
-            continue
-        target = os.path.realpath(os.path.join(dest, member.filename))
-        if not target.startswith(dest + os.sep) and target != dest:
-            raise ValueError(f"Unsafe zip entry detected: {member.filename}")
-        members.append(member)
-    zf.extractall(dest, members=members)
+    """Extract a zip, refusing the entries ``agent.skills.archive`` describes.
+
+    The checks live there because the console installs uploaded packages through
+    the same rules, and a guard that exists twice is a guard that ends up
+    applied in one place only.
+    """
+    from agent.skills.archive import extract_zip
+    extract_zip(zf, dest)
 
 
 def _verify_checksum(content: bytes, expected: str):
@@ -713,6 +705,38 @@ def _check_checksum(content: bytes, expected: str):
             f"Checksum mismatch! Expected: {expected}, Actual: {actual}. "
             "The downloaded package may have been tampered with."
         )
+
+
+def _hub_error_message(error: requests.HTTPError) -> str:
+    """The reason a hub gave for refusing a request, falling back to the HTTP error."""
+    try:
+        message = error.response.json().get("message")
+    except Exception:
+        message = None
+    return message if isinstance(message, str) and message.strip() else str(error)
+
+
+def _record_hub_fields(names: List[str], data: dict, agent_id: str = None) -> None:
+    """Keep what a configured registry says about a single installed skill:
+    category, title, description, icon, version."""
+    if len(names) != 1 or not isinstance(data, dict):
+        return
+    _ensure_project_on_path()
+    from agent.skills.manager import apply_install_fields
+
+    skills_dir = _target_skills_dir(agent_id)
+    config_path = os.path.join(skills_dir, "skills_config.json")
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+    except Exception:
+        return
+    entry = config.get(names[0])
+    if isinstance(entry, dict) and apply_install_fields(entry, data):
+        try:
+            _write_skills_config(config, skills_dir)
+        except Exception:
+            pass
 
 
 @click.group()
@@ -775,6 +799,7 @@ def _merge_builtin_into_config(config: dict, builtin_dir: str, skills_dir: str):
                 "source": source,
                 "enabled": True,
                 "category": "skill",
+                "installed_at": int(time.time()),
             }
             dirty = True
     if dirty:
@@ -806,7 +831,7 @@ def _print_skill_table(entries):
     for e, label in zip(entries, labels):
         enabled = e.get("enabled", True)
         source = e.get("source", "")
-        desc = e.get("description", "") or ""
+        desc = " ".join((e.get("description", "") or "").split())
         if len(desc) > desc_w:
             desc = desc[:desc_w - 3] + "..."
 
@@ -821,10 +846,12 @@ _REMOTE_PAGE_SIZE = 10
 
 def _list_remote(page: int = 1):
     """List skills from remote Skill Hub with server-side pagination."""
+    hub_api, hub_headers = skill_hub()
     try:
         resp = requests.get(
-            f"{SKILL_HUB_API}/skills",
+            f"{hub_api}/skills",
             params={"page": page, "limit": _REMOTE_PAGE_SIZE},
+            headers=hub_headers,
             timeout=10,
         )
         resp.raise_for_status()
@@ -868,7 +895,9 @@ def _list_remote(page: int = 1):
     if nav_parts:
         click.echo(f"  Navigate: {' | '.join(nav_parts)}")
     click.echo("  Install:  cow skill install <name>")
-    click.echo("  Browse:   https://www.rsm.global/china/zh-hans\n")
+    if not custom_skill_hub():
+        click.echo("  Browse:   https://www.rsm.global/china/zh-hans")
+    click.echo()
 
 
 # ------------------------------------------------------------------
@@ -878,8 +907,9 @@ def _list_remote(page: int = 1):
 @click.argument("query")
 def search(query):
     """Search skills on Skill Hub."""
+    hub_api, hub_headers = skill_hub()
     try:
-        resp = requests.get(f"{SKILL_HUB_API}/skills/search", params={"q": query}, timeout=10)
+        resp = requests.get(f"{hub_api}/skills/search", params={"q": query}, headers=hub_headers, timeout=10)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
@@ -1099,9 +1129,11 @@ def stage_skill_upload(files, staging_dir: str) -> InstallResult:
     ``files`` is a list of ``(relative_path, bytes)``: one archive, one
     SKILL.md, or every file of a folder with its path inside that folder.
     """
+    from agent.skills.archive import is_junk_entry
+
     os.makedirs(staging_dir, exist_ok=True)
     result = InstallResult()
-    files = [(rel, content) for rel, content in files if rel and not _is_junk_entry(rel)]
+    files = [(rel, content) for rel, content in files if rel and not is_junk_entry(rel)]
     token = _staging_dir.set(staging_dir)
     try:
         if not files:
@@ -1179,9 +1211,7 @@ def commit_staged(staging_dir: str, names=None, agent_id: str = None, *, skills_
         if not _SAFE_NAME_RE.match(entry):
             continue
         target = os.path.join(skills_dir, entry)
-        if os.path.exists(target):
-            shutil.rmtree(target)
-        shutil.copytree(src, target)
+        _replace_skill_dir(src, target)
         meta = config.get(entry) if isinstance(config.get(entry), dict) else {}
         _register_installed_skill(
             entry,
@@ -1241,27 +1271,37 @@ def _install_hub(name, result: InstallResult, provider=None, agent_id: str = Non
     os.makedirs(skills_dir, exist_ok=True)
 
     result.messages.append(f"Fetching skill info for '{name}'...")
+    hub_api, hub_headers = skill_hub(provider)
+    custom_hub = not provider and custom_skill_hub()
 
-    try:
-        body = {}
-        if provider:
-            body["provider"] = provider
-        if owner:
-            body["owner"] = owner
-        resp = requests.post(
-            f"{SKILL_HUB_API}/skills/{name}/download",
-            json=body,
-            timeout=15,
-        )
-        resp.raise_for_status()
-    except requests.HTTPError as e:
-        if e.response is not None and e.response.status_code == 404:
-            raise SkillInstallError(f"Skill '{name}' not found on Skill Hub.")
-        raise SkillInstallError(f"Failed to fetch skill: {e}")
-    except SkillInstallError:
-        raise
-    except Exception as e:
-        raise SkillInstallError(f"Failed to connect to Skill Hub: {e}")
+    body = {}
+    if provider:
+        body["provider"] = provider
+    if owner:
+        body["owner"] = owner
+    while True:
+        try:
+            resp = requests.post(
+                f"{hub_api}/skills/{name}/download",
+                json=body,
+                headers=hub_headers,
+                timeout=15,
+            )
+            resp.raise_for_status()
+            break
+        except requests.HTTPError as e:
+            not_found = e.response is not None and e.response.status_code == 404
+            if not_found and custom_hub:
+                # Unknown to the configured registry: the default hub may
+                # still have it, and it never receives the registry's key.
+                result.messages.append(f"'{name}' not found on the configured registry, trying Skill Hub...")
+                hub_api, hub_headers, custom_hub = SKILL_HUB_API, {}, False
+                continue
+            if not_found:
+                raise SkillInstallError(f"Skill '{name}' not found on Skill Hub.")
+            raise SkillInstallError(f"Failed to fetch skill: {_hub_error_message(e)}")
+        except Exception as e:
+            raise SkillInstallError(f"Failed to connect to Skill Hub: {e}")
 
     content_type = resp.headers.get("Content-Type", "")
     hub_display_name = ""
@@ -1297,8 +1337,9 @@ def _install_hub(name, result: InstallResult, provider=None, agent_id: str = Non
             result.messages.append(f"GitHub download failed ({gh_err}), trying mirror...")
             try:
                 mirror_resp = requests.post(
-                    f"{SKILL_HUB_API}/skills/{name}/download",
+                    f"{hub_api}/skills/{name}/download",
                     json={"mirror": True},
+                    headers=hub_headers,
                     timeout=30,
                 )
                 mirror_resp.raise_for_status()
@@ -1372,14 +1413,17 @@ def _install_hub(name, result: InstallResult, provider=None, agent_id: str = Non
                         _register_installed_skill(name, source=src_provider, display_name=hub_display_name, agent_id=agent_id)
                         result.installed.append(name)
                         result.messages.append(f"Installed '{name}' from {src_provider}.")
+                    if custom_hub:
+                        _record_hub_fields(result.installed[installed_before:], data, agent_id=agent_id)
                     return
 
                 # Fallback: download mirror from Skill Hub
                 result.messages.append(f"Direct download failed ({dl_err}), trying mirror...")
                 try:
                     mirror_resp = requests.post(
-                        f"{SKILL_HUB_API}/skills/{name}/download",
+                        f"{hub_api}/skills/{name}/download",
                         json={"mirror": True},
+                        headers=hub_headers,
                         timeout=30,
                     )
                     mirror_resp.raise_for_status()
@@ -1489,9 +1533,7 @@ def _install_github(spec, result: InstallResult, subpath=None, skill_name=None, 
             api_dest = os.path.join(api_tmp, skill_name)
             os.makedirs(api_dest)
             _download_github_dir(owner, repo, branch, subpath.strip("/"), api_dest)
-            if os.path.exists(target_dir):
-                shutil.rmtree(target_dir)
-            shutil.copytree(api_dest, target_dir)
+            _replace_skill_dir(api_dest, target_dir)
         _register_installed_skill(skill_name, source=source, agent_id=agent_id)
         result.installed.append(skill_name)
         result.messages.append(f"Installed '{skill_name}' from GitHub.")
@@ -1515,9 +1557,7 @@ def _install_from_repo_root(repo_root, spec, subpath, skill_name, skills_dir, so
             _check_skill_name(skill_name)
 
             target_dir = os.path.join(skills_dir, skill_name)
-            if os.path.exists(target_dir):
-                shutil.rmtree(target_dir)
-            shutil.copytree(source_dir, target_dir)
+            _replace_skill_dir(source_dir, target_dir)
             _register_installed_skill(skill_name, source=source, agent_id=agent_id)
             result.installed.append(skill_name)
             result.messages.append(f"Installed '{skill_name}' from {source}.")
@@ -1539,9 +1579,7 @@ def _install_from_repo_root(repo_root, spec, subpath, skill_name, skills_dir, so
                 skill_name = spec.split("/")[-1]
                 _check_skill_name(skill_name)
             target_dir = os.path.join(skills_dir, skill_name)
-            if os.path.exists(target_dir):
-                shutil.rmtree(target_dir)
-            shutil.copytree(repo_root, target_dir)
+            _replace_skill_dir(repo_root, target_dir)
             _register_installed_skill(skill_name, source=source, agent_id=agent_id)
             result.installed.append(skill_name)
             result.messages.append(f"Installed '{skill_name}' from {source}.")
@@ -1634,9 +1672,7 @@ def _install_zip_bytes(content, name, skills_dir, result: InstallResult = None, 
             if not _SAFE_NAME_RE.match(safe_name):
                 safe_name = name
             target = os.path.join(skills_dir, safe_name)
-            if os.path.exists(target):
-                shutil.rmtree(target)
-            shutil.copytree(sdir, target)
+            _replace_skill_dir(sdir, target)
             _register_installed_skill(safe_name, source=source_label, display_name=display_name, agent_id=agent_id)
             if result is not None:
                 result.installed.append(safe_name)
@@ -1644,9 +1680,7 @@ def _install_zip_bytes(content, name, skills_dir, result: InstallResult = None, 
             return
 
         target = os.path.join(skills_dir, name)
-        if os.path.exists(target):
-            shutil.rmtree(target)
-        shutil.copytree(pkg_root, target)
+        _replace_skill_dir(pkg_root, target)
 
 
 
@@ -1675,7 +1709,7 @@ def uninstall(name, yes):
     config_path = os.path.join(skills_dir, "skills_config.json")
     if os.path.exists(config_path):
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, "r", encoding="utf-8-sig") as f:
                 config = json.load(f)
             config.pop(name, None)
             _write_skills_config(config, skills_dir)
@@ -1719,7 +1753,7 @@ def _set_enabled(name, enabled):
         sys.exit(1)
 
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, "r", encoding="utf-8-sig") as f:
             config = json.load(f)
     except Exception as e:
         click.echo(f"Error: Failed to read skills config: {e}", err=True)

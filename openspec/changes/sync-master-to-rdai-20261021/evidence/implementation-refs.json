@@ -1,0 +1,9 @@
+{
+  "source": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+  "target": "c9bd4942261156f56c02ffd65e4d81c6153e1594",
+  "branch": "codex/sync-master-to-rdai-20261021-web",
+  "clone": "/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021",
+  "original_workspace": "/Users/jiantan/ai_assistant/rsmagent",
+  "checked_at": "2026-10-21T10:09:00.202595+00:00",
+  "isolation": "independent clone; fresh .sync-test data; no business data or credentials copied"
+}

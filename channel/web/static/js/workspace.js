@@ -5,7 +5,6 @@
  * ===================================================================== */
 
 const WS_WIDTH_KEY = 'cow_workspace_width';
-const WS_DEFAULT_WIDTH = 420;
 const WS_MIN_WIDTH = 280;
 
 // Panel state
@@ -693,7 +692,7 @@ function wsUpdateHeaderActions() {
     const onFile = wsActiveTab === 'preview' && !!wsCurrentFile;
     // While editing, the viewer actions would act on the saved file rather than
     // on what is in the text area, which reads as a bug. Hide them instead.
-    ['ws-btn-external', 'ws-btn-download', 'ws-btn-copy'].forEach(id => {
+    ['ws-btn-external', 'ws-btn-download'].forEach(id => {
         document.getElementById(id)?.classList.toggle('hidden', !onFile || wsEditing);
     });
     // The same three buttons mean something *else* for a file on this machine
@@ -707,6 +706,7 @@ function wsUpdateHeaderActions() {
     wsRetitle('ws-btn-copy', local ? 'ws_local_copy_path' : 'ws_copy_path');
     document.getElementById('ws-btn-reveal')
         ?.classList.toggle('hidden', !local || wsEditing);
+    document.getElementById('ws-btn-artifacts')?.classList.toggle('hidden', !onFile || wsEditing || !wsCurrentFile.artifact);
     document.getElementById('ws-btn-edit')
         ?.classList.toggle('hidden', !onFile || wsEditing || !wsIsEditable(wsCurrentFile));
     ['ws-btn-save', 'ws-btn-edit-cancel'].forEach(id => {
@@ -728,9 +728,12 @@ function wsRetitle(id, key) {
     el.title = t(key);
 }
 
-function initWorkspaceResizer() {
-    const resizer = document.getElementById('ws-resizer');
-    const panel = document.getElementById('workspace-panel');
+/**
+ * Let a right-hand panel be widened by dragging the handle on its left edge.
+ * The width is remembered under `opts.key`; `opts.content` is the part that
+ * may hold an iframe, which would otherwise swallow the drag.
+ */
+function wsBindResizer(resizer, panel, opts) {
     if (!resizer || !panel) return;
 
     let startX = 0;
@@ -738,18 +741,18 @@ function initWorkspaceResizer() {
 
     function onMove(e) {
         const delta = startX - e.clientX;
-        const next = Math.max(WS_MIN_WIDTH, Math.min(window.innerWidth * 0.7, startWidth + delta));
+        const next = Math.max(opts.min, Math.min(opts.max(), startWidth + delta));
         panel.style.width = `${next}px`;
     }
 
     function onUp() {
         resizer.classList.remove('dragging');
         document.body.style.userSelect = '';
-        // The preview iframe swallows mousemove while dragging over it.
-        document.getElementById('ws-preview-content')?.style.removeProperty('pointer-events');
+        opts.content?.style.removeProperty('pointer-events');
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
-        localStorage.setItem(WS_WIDTH_KEY, String(parseInt(panel.style.width, 10) || WS_DEFAULT_WIDTH));
+        const width = parseInt(panel.style.width, 10);
+        if (width) localStorage.setItem(opts.key, String(width));
     }
 
     resizer.addEventListener('mousedown', (e) => {
@@ -758,9 +761,18 @@ function initWorkspaceResizer() {
         startWidth = panel.offsetWidth;
         resizer.classList.add('dragging');
         document.body.style.userSelect = 'none';
-        document.getElementById('ws-preview-content')?.style.setProperty('pointer-events', 'none');
+        opts.content?.style.setProperty('pointer-events', 'none');
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onUp);
+    });
+}
+
+function initWorkspaceResizer() {
+    wsBindResizer(document.getElementById('ws-resizer'), document.getElementById('workspace-panel'), {
+        key: WS_WIDTH_KEY,
+        min: WS_MIN_WIDTH,
+        max: () => window.innerWidth * 0.7,
+        content: document.getElementById('ws-preview-content'),
     });
 }
 
@@ -839,8 +851,13 @@ function wsRenderPreviewTitle() {
     title.classList.remove('hidden');
 }
 
-async function wsRenderPreview(meta) {
-    const body = document.getElementById('ws-preview-content');
+/**
+ * Render a file into the preview area.
+ * @param {HTMLElement} [target] - render here instead of the panel's preview
+ *   tab; the artifacts view reuses the same viewers this way.
+ */
+async function wsRenderPreview(meta, target) {
+    const body = target || document.getElementById('ws-preview-content');
     if (!body) return;
     const kind = meta.kind || wsKindOf(meta.file_name || meta.name || meta.path);
     const name = meta.file_name || meta.name || (meta.path || '').split('/').pop();
@@ -1002,7 +1019,14 @@ async function wsRenderPreview(meta) {
             }
         } catch (e) {
             if (wsScopeStale(epoch)) return;
-            wsSetPreviewEmpty(wsErrorMessage(e), 'fa-triangle-exclamation');
+            if (target) {
+                body.innerHTML = `<div class="workspace-empty">
+                    <i class="fas fa-triangle-exclamation"></i>
+                    <span>${escapeHtml(t('ws_preview_failed') + ': ' + e.message)}</span>
+                </div>`;
+            } else {
+                wsSetPreviewEmpty(t('ws_preview_failed') + ': ' + e.message, 'fa-triangle-exclamation');
+            }
         }
         return;
     }
@@ -1293,6 +1317,24 @@ function downloadPreviewFile() {
     document.body.appendChild(a);
     a.click();
     a.remove();
+}
+
+/** Whether the server can open this machine's file manager for the user. */
+function wsCanReveal() {
+    return !!(typeof appConfig !== 'undefined' && appConfig && appConfig.can_reveal_files);
+}
+
+/** Show a file in the system file manager. Resolves when the OS was asked to. */
+function wsRevealPath(path) {
+    return fetch('/api/file/reveal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status !== 'success') throw new Error(data.message || t('ws_reveal_failed'));
+        });
 }
 
 /** Show a local file in the system's file manager (task 9.4). */
@@ -1600,6 +1642,7 @@ function renderFileCard(meta) {
         // *different* project is open -- the relative path would otherwise be
         // resolved against the project open now, which may hold a same-named
         // file that is not the one the run produced.
+        artifact: true,
         workspace_id: meta.workspace_id || '',
         resolution: meta.resolution || 'ok',
     }));
@@ -1615,6 +1658,9 @@ function renderFileCard(meta) {
             <div class="file-card-btn" data-action="local-copy-path" title="${escapeHtml(t('ws_local_copy_path'))}"><i class="fas fa-link"></i></div>
             <div class="file-card-btn" data-action="local-save-as" title="${escapeHtml(t('ws_save_as'))}"><i class="fas fa-download"></i></div>`
         : `<div class="file-card-btn" data-action="download" title="${escapeHtml(t('ws_download'))}"><i class="fas fa-download"></i></div>`;
+    const btn = (action, tipKey, icon) =>
+        `<div class="file-card-btn" data-action="${action}" data-tip-key="${tipKey}" data-tip-float
+              data-tooltip="${escapeHtml(t(tipKey))}"><i class="fas ${icon}"></i></div>`;
     return `<div class="file-card" data-file='${payload}'>
         <i class="file-card-icon ${wsIconClass(kind)}"></i>
         <div class="file-card-info">
@@ -1624,8 +1670,17 @@ function renderFileCard(meta) {
         <div class="file-card-actions">
             ${canPreview ? `<div class="file-card-btn" data-action="preview" title="${escapeHtml(t('ws_preview'))}"><i class="fas fa-eye"></i></div>` : ''}
             ${actions}
+            ${!wsIsLocalFile(meta) ? btn('artifacts', 'artifacts_view_in', 'fa-layer-group') : ''}
         </div>
     </div>`;
+}
+
+/** The turn a message element belongs to: seq of the user message opening it. */
+function wsTurnSeqOf(el) {
+    let node = el && el.closest('.bot-message-group, .user-message-group');
+    while (node && !node.classList.contains('user-message-group')) node = node.previousElementSibling;
+    const seq = node ? parseInt(node.dataset.seq, 10) : NaN;
+    return Number.isNaN(seq) ? null : seq;
 }
 
 /** Append an artifact card to a live bot bubble and remember it for auto-open. */
@@ -1638,7 +1693,7 @@ function appendArtifactCard(container, item) {
     wrap.dataset.artifactPath = item.abs_path || '';
     wrap.innerHTML = renderFileCard(item);
     container.appendChild(wrap);
-    wsTurnArtifacts.push(item);
+    wsTurnArtifacts.push(Object.assign({ artifact: true }, item));
 }
 
 function resetTurnArtifacts() {
@@ -1723,8 +1778,15 @@ document.addEventListener('click', async (e) => {
     e.preventDefault();
     let meta;
     try { meta = JSON.parse(card.dataset.file); } catch (_) { return; }
+    // Where the card sits, so the artifacts view can attribute the file to
+    // this turn if it has to index it again.
+    meta.origin = { session_id: sessionId, agent_id: activeAgentId, turn_seq: wsTurnSeqOf(card) };
 
     const action = e.target.closest('[data-action]')?.dataset.action;
+    if (action === 'artifacts') {
+        openArtifactsFor(meta);
+        return;
+    }
     if (action === 'download') {
         if (meta.raw_url) {
             wsTriggerDownload(meta.raw_url, meta.file_name);
@@ -1766,9 +1828,11 @@ const WS_PATH_EXTS = Object.values(WS_KIND_BY_EXT).flat().join('|');
 // (websites/report.html) paths, always anchored on a known file extension and
 // containing at least one separator, which keeps prose like "see report.html"
 // from turning into chips. Excluding `:` and `/` before the match is what stops
-// the tail of an http(s) URL from being picked up.
+// the tail of an http(s) URL from being picked up. Excluding every path char
+// (CJK included) means a match only starts where a path-like run starts; else
+// each CJK char is a start and long Chinese paragraphs scan in quadratic time.
 const WS_PATH_RE = new RegExp(
-    '(^|[^\\w/\\\\.~:-])((?:~\\/|\\/|[A-Za-z]:\\\\)?(?:[\\w.\\-\\u4e00-\\u9fa5]+[\\/\\\\])+[\\w.\\-\\u4e00-\\u9fa5]+\\.(?:'
+    '(^|[^\\w/\\\\.~:\\-\\u4e00-\\u9fa5])((?:~\\/|\\/|[A-Za-z]:\\\\)?(?:[\\w.\\-\\u4e00-\\u9fa5]+[\\/\\\\])+[\\w.\\-\\u4e00-\\u9fa5]+\\.(?:'
     + WS_PATH_EXTS + '))(?=$|[^\\w.\\-\\u4e00-\\u9fa5]|$)',
     'gi'
 );

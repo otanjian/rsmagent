@@ -1,0 +1,345 @@
+{
+  "accepted": true,
+  "errors": [],
+  "http": [
+    {
+      "path": "/message",
+      "status": 200
+    }
+  ],
+  "events": [
+    {
+      "type": "message_end",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "tool_start",
+      "tool": "write",
+      "id": "call_00_UYl7mKStDkUVieHFfgeu2437",
+      "targetFile": true,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "tool_end",
+      "tool": "write",
+      "id": "call_00_UYl7mKStDkUVieHFfgeu2437",
+      "status": "success",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "artifact",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "message_end",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "tool_start",
+      "tool": "read",
+      "id": "call_00_esrJuERzLqcyiso6IB2f1472",
+      "targetFile": true,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "tool_end",
+      "tool": "read",
+      "id": "call_00_esrJuERzLqcyiso6IB2f1472",
+      "status": "success",
+      "targetFile": false,
+      "resultContainsMarker": true
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "delta",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "done",
+      "targetFile": false,
+      "resultContainsMarker": false
+    },
+    {
+      "type": "stream_end",
+      "targetFile": false,
+      "resultContainsMarker": false
+    }
+  ],
+  "toolLoopPassed": true,
+  "streamPassed": true,
+  "session": "session_f44f0e71-9585-472b-8c04-1b3837b3afdc"
+}

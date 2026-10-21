@@ -1,0 +1,427 @@
+✖ entering chat with several Agents anchors the default, no picker (2.77ms)
+✔ the new-chat button starts a chat instead of forcing a choice (0.763083ms)
+✔ the caret opens the optional switch / team picker (0.762959ms)
+✔ a single Agent behaves like the console before Agents existed (0.667625ms)
+✔ re-clicking the caret closes the picker again (0.670833ms)
+✔ an empty Agent catalogue anchors nothing instead of inventing "default" (0.661125ms)
+✔ a remembered Agent the catalogue no longer offers is dropped (0.620458ms)
+✔ a remembered Agent the catalogue still offers is kept (0.605292ms)
+✔ the picker offers the shared Agents the caller may use (0.625209ms)
+✔ a shared Agent resolves for the chat identity it names (0.657333ms)
+✔ the management grid is not widened by the use-range roster (0.841542ms)
+✔ an unusable Agent in the use range is not offered for chat (0.606708ms)
+✔ the sidebar launch control is the panel control in another place (0.613584ms)
+✔ the team entry leads the picker, ahead of the solo roster (0.573333ms)
+✖ the sidebar caret rides the presentation switch, the panel caret does not (0.858625ms)
+✔ one usable Agent leaves both launch controls without a caret (0.883ms)
+✔ a coding Agent is marked in the picker with the card’s glyph (0.907208ms)
+✔ keyword/tag intersection, per-agent facet counts and legacy untagged records (3.841625ms)
+✔ search and tag selection only narrow cards, not the shared chat roster or owner (1.961833ms)
+✔ unmatched filters differ from an empty roster and a failed refresh (0.9735ms)
+✔ refresh removing the selected tag falls back to All while preserving the search (0.825333ms)
+✔ IME composition waits for committed input without replacing the search input (0.721208ms)
+✔ the committed word filters even when the event carries the pre-edit text (0.676209ms)
+✔ a dropped compositionend cannot freeze later keystrokes (0.686375ms)
+✔ Enter commits the search and IME Enter still picks the candidate (1.293125ms)
+✔ identity changes clear previous filters and invalidate delayed list replies (0.994458ms)
+✔ a newer response uses the latest search and cannot resurrect old tags (0.771042ms)
+✔ custom labels stay text, special tag names cannot collide with synthetic filters (0.710333ms)
+✔ only the first tag row remains focusable when collapsed; expanding and resizing restore access (0.610208ms)
+✔ fresh workbench Agent starts even when absent from management cache (0.728084ms)
+✔ removed target is rejected despite stale enabled management entry (0.613292ms)
+✔ permission-denied target cannot launch and explains why (0.974792ms)
+✔ double-click while validation is pending submits one session (0.758042ms)
+✔ navigation away and back discards a late start result (0.691625ms)
+✔ cancel before validation preserves all state (0.585292ms)
+✔ content becomes dirty while validating: do not partially switch (0.672291ms)
+✔ network failure keeps context and allows retry (0.660416ms)
+✔ newer list wins over an older response without changing owner (0.616292ms)
+✔ tenant switch discards list response (0.573167ms)
+✔ empty state is visible and full management fallback is rejected (0.716625ms)
+✔ a transient read failure is retried once instead of showing a dead page (1.119292ms)
+✔ a persistent refusal names its cause instead of a generic failure (0.625542ms)
+✔ an unselected tenant is reported as such, not as a generic failure (0.581292ms)
+✔ a render fault is not reported as a load failure (0.622958ms)
+✔ a render fault while painting the loading state cannot escape the loader (0.63675ms)
+✔ an empty list that hides Agents says so instead of "no Agents available" (0.557875ms)
+✔ a tenant with no Agents keeps the plain empty message (0.549333ms)
+✔ an empty reason is cleared when a later read returns cards (0.607916ms)
+✔ an old backend with no reason code still shows the plain empty message (0.535334ms)
+✔ default card leads even when its ID sorts last (0.578417ms)
+✔ chat header follows composer changes, including single-Agent mode (0.538042ms)
+✔ composer switch shares cancellation and fresh target validation (0.565833ms)
+✔ old session model and project responses cannot overwrite new context (0.578333ms)
+✔ the workbench read carries the Agent type through to the card (0.641833ms)
+✔ the workbench card says when an Agent is a coding one (0.62625ms)
+✔ the icon hint is a square chip, not a text pill (0.116875ms)
+✔ concurrent chat roster reads share a request but later refreshes are fresh (1.530209ms)
+✔ an old tenant reply cannot repaint a new tenant or clear its in-flight read (0.459167ms)
+✔ a failed chat roster read rejects startup and can be retried (0.701ms)
+✔ management data loads on demand without painting a view the user already left (0.268542ms)
+✔ tenant projection restores all selectable Agents without enabled or a global default (1.880541ms)
+✔ legacy enabled flags remain authoritative and archived Agents are not offered (0.709459ms)
+✔ runtime-unavailable and malformed capabilities do not become chat choices (1.592875ms)
+✔ an existing group keeps the member controls of members it can still run (1.291958ms)
+✔ a member that can no longer take part is a generic warning, never a named row (1.142709ms)
+✔ a late catalog from the previous tenant cannot restore its Agents (1.026375ms)
+✔ the picker offers team candidates, never a coding Agent (4.234916ms)
+✔ a coding conversation can still open the picker and keeps its session (1.4035ms)
+✔ search filters on name or role without clearing the selection (1.877291ms)
+✔ dropping the default responder leaves the field empty rather than reassigning it (0.846292ms)
+✔ two members and a default responder are required before anything is written (0.824334ms)
+✔ Escape closes the picker and hands focus back to the launch action (0.769375ms)
+✔ focus comes back to the launch control, not to the row that closed (0.711709ms)
+✔ the session panel hands focus back to its own button, not the composer (0.708792ms)
+✔ a picker opened from the phone drawer closes the drawer behind it (0.736042ms)
+✔ the Escape key is inert while no picker is open, and cannot eat another dialog (0.704583ms)
+✔ on a phone the focus returns to the visible drawer toggle, not into the collapsed drawer (1.156417ms)
+✔ the roster is written to the prepared session, not the one on screen (1.2745ms)
+✔ a refused write leaves the conversation, the draft and the picker alone (0.855875ms)
+✔ a lost response after the user cancels never commits (0.783042ms)
+✔ a second click while saving cannot write a second roster (0.717917ms)
+✔ a tenant switch while saving drops the stale commit (0.724042ms)
+✔ a member that stopped being eligible is refused before the write (1.880458ms)
+✔ the saved roster is what the composer renders (0.795125ms)
+✔ an arbitrary member set cannot start a team without a default responder (0.739125ms)
+✔ edit made while the roster saves gets its say before the view moves (0.74375ms)
+✔ declining the coding leave guard keeps the coding conversation (0.703458ms)
+✔ a withheld menu grant denies workbench.history and hides the block (1.95075ms)
+✔ a role with no menu grant keeps the functional-permission behaviour (1.437458ms)
+✔ platform "all" is never restricted by a menu denial (2.266542ms)
+✔ an unknown projection never hides or blocks the block (1.701458ms)
+✔ legacy mode never hides or blocks the block (1.770041ms)
+✖ the recent-sessions request is skipped when the grant is withheld (0.696208ms)
+✖ the recent-sessions request runs when the block is visible (0.397709ms)
+✖ chat.html keeps the recent block addressable without a competing data-view (1.241459ms)
+✔ the recent block has a CSS rule that honours the hidden class (0.444208ms)
+✔ the refined sidebar is off unless the flag is exactly 1 (4.051208ms)
+✔ offscreen rendering cannot throw: the switch is inert without a document (0.234625ms)
+✔ the switch gates layout only, never a team rule (0.373042ms)
+✔ the launch control carries no picker while the switch is off (0.785125ms)
+✔ the one launch control sits above the navigation when on (0.456042ms)
+✔ there is exactly one launch control: no separate team button (1.492125ms)
+✔ the launch controls keep distinct ids on the page (0.726375ms)
+✔ the workbench navigation takes the promised order and keeps unknown entries (0.724583ms)
+✔ the body starts a chat and the caret opens the shared picker (1.239125ms)
+✔ a roster of one leaves neither launch control with a caret (0.768625ms)
+✔ the marker helper states what a conversation is, from the roster (0.798ms)
+✔ both surfaces derive their marker from the one shared helper (0.447542ms)
+✔ the master sidebar keeps one navigation scroller and the account footer outside it (0.228542ms)
+✔ the launch control and its picker carry their own styling hooks (0.883708ms)
+ℹ tests 110
+ℹ suites 0
+ℹ pass 105
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 72.096958
+
+✖ failing tests:
+
+test at tests/test_agent_chat_launch_frontend.cjs:99:1
+✖ entering chat with several Agents anchors the default, no picker (2.77ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  true !== false
+
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/tests/test_agent_chat_launch_frontend.cjs:109:12)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/test_agent_chat_launch_frontend.cjs:315:1
+✖ the sidebar caret rides the presentation switch, the panel caret does not (0.858625ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  true !== false
+
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/tests/test_agent_chat_launch_frontend.cjs:319:12)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/test_workbench_menu_grant_frontend.cjs:141:1
+✖ the recent-sessions request is skipped when the grant is withheld (0.696208ms)
+  AssertionError [ERR_ASSERTION]: Missing loadSidebarRecentSessions
+      at fnSource (/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/tests/test_workbench_menu_grant_frontend.cjs:21:12)
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/tests/test_workbench_menu_grant_frontend.cjs:157:24)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests/test_workbench_menu_grant_frontend.cjs:163:1
+✖ the recent-sessions request runs when the block is visible (0.397709ms)
+  AssertionError [ERR_ASSERTION]: Missing loadSidebarRecentSessions
+      at fnSource (/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/tests/test_workbench_menu_grant_frontend.cjs:21:12)
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/tests/test_workbench_menu_grant_frontend.cjs:182:24)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests/test_workbench_menu_grant_frontend.cjs:187:1
+✖ chat.html keeps the recent block addressable without a competing data-view (1.241459ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /id="sidebar-recent"/. Input:
+
+  '<!DOCTYPE html>\n' +
+    '<html lang="zh" class="">\n' +
+    '<head>\n' +
+    '    <meta charset="UTF-8">\n' +
+    '    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+    '    <script type="application/json" id="console-page-routes">{{COW_CONSOLE_ROUTES}}</script>\n' +
+    '<script src="/assets/js/fork/auth-check-prefetch.js"></script>\n' +
+    '<title>容大AI · 业务工作台</title>\n' +
+    '    <link rel="icon" href="/assets/rongda-ai-mark.svg" type="image/x-icon">\n' +
+    '    <!-- Vendored third-party assets (no external CDN dependency).\n' +
+    '         See channel/web/static/vendor/README.md for sources & versions. -->\n' +
+    '    <link rel="stylesheet" href="/assets/vendor/fontawesome/css/all.min.css">\n' +
+    '    <link rel="stylesheet" href="/assets/vendor/fonts/inter/inter.css">\n' +
+    '    <script src="/assets/vendor/tailwind/tailwind.min.js"></script>\n' +
+    '    <script src="/assets/vendor/markdown-it/markdown-it.min.js"></script>\n' +
+    '    <link id="hljs-light" rel="stylesheet" href="/assets/vendor/highlightjs/styles/github.min.css">\n' +
+    '    <link id="hljs-dark" rel="stylesheet" href="/assets/vendor/highlightjs/styles/github-dark.min.css" disabled>\n' +
+    '    <script src="/assets/vendor/highlightjs/highlight.min.js"></script>\n' +
+    '    <script src="/assets/vendor/highlightjs/languages/python.min.js"></script>\n' +
+    '    <script src="/assets/vendor/highlightjs/languages/javascript.min.js"></script>\n' +
+    '    <script src="/assets/vendor/highlightjs/languages/java.min.js"></script>\n' +
+    '    <script src="/assets/vendor/highlightjs/languages/go.min.js"></script>\n' +
+    '    <script src="/assets/vendor/highlightjs/languages/bash.min.js"></script>\n' +
+    '    <script>\n' +
+    '    tailwind.config = {\n' +
+    "        darkMode: 'class',\n" +
+    '        theme: {\n' +
+    '            extend: {\n' +
+    '                fontFamily: {\n' +
+    "                    sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],\n" +
+    `                    mono: ['"JetBrains Mono"', '"Fira Code"', 'Consolas', 'monospace'],\n` +
+    '                },\n' +
+    '                colors: {\n' +
+    '                    primary: {\n' +
+    "                        50: '#EDFDF3', 100: '#D4FAE2', 200: '#ABF4C7', 300: '#74E9A4',\n" +
+    "                        400: '#4ABE6E', 500: '#35A85B', 600: '#228547', 700: '#1C6B3B',\n" +
+    "                        800: '#1A5532', 900: '#16462A',\n" +
+    '                    }\n' +
+    '                },\n' +
+    '                animation: {\n' +
+    "                    'pulse-dot': 'pulseDot 1.4s infinite ease-in-out both',\n" +
+    '                }\n' +
+    '            }\n' +
+    '        }\n' +
+    '    }\n' +
+    '    </script>\n' +
+    '    <!-- Split out of a single console.css. The order is load-bearing: later\n' +
+    '         sheets override earlier ones, so keep it as-is and see\n' +
+    '         channel/web/README.md before inserting anything. -->\n' +
+    '    <link rel="stylesheet" href="/assets/css/base.css">\n' +
+    '    <link rel="stylesheet" href="/assets/css/sessions.css">\n' +
+    '    <link rel="stylesheet" href="/assets/css/components.css">\n' +
+    '    <link rel="stylesheet" href="/assets/css/markdown.css">\n' +
+    '    <link rel="stylesheet" href="/assets/css/chat.css">\n' +
+    '    <link rel="stylesheet" href="/assets/css/workspace.css">\n' +
+    '    <link rel="stylesheet" href="/assets/css/knowledge.css">\n' +
+    '    <link rel="stylesheet" href="/assets/css/agents.css">\n' +
+    '    <link rel="stylesheet" href="/assets/css/artifacts.css">\n' +
+    '    <link rel="stylesheet" href="/assets/css/menu.css">\n' +
+    '<link rel="stylesheet" href="/assets/css/fork/extensions.css">\n' +
+    '<link rel="stylesheet" href="/assets/css/appearance.css">\n' +
+    '<link rel="stylesheet" href="/assets/css/coding.css">\n' +
+    '<script src="/assets/js/appearance.js"></script>\n' +
+    '    <!-- Apply theme/lang before first paint to avoid flash of unstyled content.\n' +
+    '         This runs synchronously in <head> so the correct class is on <html>\n' +
+    '         before any CSS or body rendering occurs. -->\n' +
+    '    <script>\n' +
+    "    // Map an arbitrary locale string (zh-CN, en-US, fr ...) to 'zh' / 'zh-Hant' / 'en',\n" +
+    "    // or '' when unrecognized so callers can fall through to the next source.\n" +
+    '    window.__cowNormalizeLang__ = function(raw) {\n' +
+    "        if (!raw) return '';\n" +
+    "        var v = String(raw).trim().toLowerCase().replace('_', '-');\n" +
+    "        if (v === 'auto') return '';\n" +
+    '        // Handle Traditional Chinese variants first (more specific)\n' +
+    "        if (v === 'zh-hant' || v.indexOf('zh-hant-') === 0 || v === 'zh-tw' || v === 'zh-hk') return 'zh-Hant';\n" +
+    '        // Then Simplified Chinese\n' +
+    "        if (v.indexOf('zh') === 0) return 'zh';\n" +
+    "        if (v.indexOf('en') === 0) return 'en';\n" +
+    "        return '';\n" +
+    '    };\n' +
+    '    // Resolve the console language by priority:\n' +
+    "    //   user choice (localStorage) -> backend-detected -> browser -> 'zh'.\n" +
+    '    window.__cowResolveLang__ = function() {\n' +
+    "        return window.__cowNormalizeLang__(localStorage.getItem('cow_lang'))\n" +
+    '            || window.__cowNormalizeLang__(window.__COW_DEFAULT_LANG__)\n' +
+    '            || window.__cowNormalizeLang__(navigator.language || (navigator.languages && navigator.languages[0]))\n' +
+    "            || 'zh';\n" +
+    '    };\n' +
+    '    (function() {\n' +
+    '        // Backend-resolved default language (from cow_lang config / auto-detect).\n' +
+    "        window.__COW_DEFAULT_LANG__ = '{{COW_DEFAULT_LANG}}';\n" +
+    "        var theme = localStorage.getItem('cow_theme') || 'dark';\n" +
+    "        if (theme === 'dark') document.documentElement.classList.add('dark');\n" +
+    "        if (localStorage.getItem('cow_sidebar_collapsed') === '1') {\n" +
+    "            document.documentElement.classList.add('sidebar-collapsed');\n" +
+    '        }\n' +
+    '        // A customised menu is drawn by menu.js; keep the built-in one in\n' +
+    '        // sidebar.html from showing first. The timer is the way out should\n' +
+    '        // that script never run.\n' +
+    "        if (localStorage.getItem('cow_menu_cache')) {\n" +
+    "            document.documentElement.classList.add('menu-pending');\n" +
+    "            setTimeout(function () { document.documentElement.classList.remove('menu-pending'); }, 3000);\n" +
+    '        }\n' +
+    "        document.documentElement.setAttribute('lang', window.__cowResolveLang__());\n" +
+    '    })();\n' +
+    '    </script>\n' +
+    '</head>\n' +
+    '<body class="h-screen overflow-hidden bg-gray-50 dark:bg-[#111111] text-slate-800 dark:text-slate-200 font-sans">\n' +
+    '\n' +
+    '<!--#include templates/auth/login.html-->\n' +
+    '<!--#include templates/fork/layout/account-modals.html-->\n' +
+    '\n' +
+    '    <div id="app" class="flex h-screen hidden">\n' +
+    '\n' +
+    '<!--#include templates/layout/sidebar.html-->\n' +
+    '\n' +
+    '<!--#include templates/layout/session-panel.html-->\n' +
+    '\n' +
+    '<!--#include templates/modals/team-chat.html-->\n' +
+    '\n' +
+    '        <!-- Mobile overlay for session panel (click to close) -->\n' +
+    '        <div id="session-panel-overlay" class="session-panel-overlay hidden" onclick="closeSessionPanel()"></div>\n' +
+    '\n' +
+    '        <!-- ================================================================ -->\n' +
+    '        <!-- MAIN CONTENT                                                     -->\n' +
+    '        <!-- ================================================================ -->\n' +
+    '        <div id="main-content" class="flex-1 flex flex-col min-w-0 h-screen">\n' +
+    '<!--#include templates/layout/header.html-->\n' +
+    '\n' +
+    '            <!-- Content Area -->\n' +
+    '            <div id="content-area" class="flex-1 overflow-hidden">\n' +
+    '\n' +
+    '<!--#include templates/views/chat.html-->\n' +
+    '\n' +
+    '<!--#include templates/views/artifacts.html-->\n' +
+    '\n' +
+    '<!--#include templates/views/agents.html-->\n' +
+    '\n' +
+    '<!--#include templates/views/config.html-->\n' +
+    '\n' +
+    '<!--#include templates/views/skills.html-->\n' +
+    '\n' +
+    '<!--#include templates/fork/views/memory.html-->\n' +
+    '\n' +
+    '<!--#include templates/views/knowledge.html-->\n' +
+    '\n' +
+    '<!--#include templates/views/channels.html-->\n' +
+    '\n' +
+    '<!--#include templates/views/tasks.html-->\n' +
+    '\n' +
+    '<!--#include templates/views/logs.html-->\n' +
+    '\n' +
+    '<!--#include templates/views/custom.html-->\n' +
+    '\n' +
+    '            <!--#include templates/fork/views/business.html-->\n' +
+    '            </div><!-- /content-area -->\n' +
+    '        </div><!-- /main-content -->\n' +
+    '    </div><!-- /app -->\n' +
+    '\n' +
+    '<!--#include templates/modals/knowledge-dialog.html-->\n' +
+    '\n' +
+    '<!--#include templates/modals/mcp-editor.html-->\n' +
+    '\n' +
+    '<!--#include templates/modals/skill-add.html-->\n' +
+    '\n' +
+    '<!--#include templates/modals/confirm-dialog.html-->\n' +
+    '\n' +
+    '<!--#include templates/modals/rename-dialog.html-->\n' +
+    '\n' +
+    '<!--#include templates/modals/folder-picker.html-->\n' +
+    '\n' +
+    '<!--#include templates/modals/vendor.html-->\n' +
+    '\n' +
+    '<!--#include templates/modals/custom-provider.html-->\n' +
+    '\n' +
+    '<!--#include templates/modals/task-edit.html-->\n' +
+    '\n' +
+    '<!--#include templates/modals/run-detail.html-->\n' +
+    '\n' +
+    '<!--#include templates/modals/menu-editor.html-->\n' +
+    '\n' +
+    '    <!-- Split out of a single console.js. These are classic scripts, not\n' +
+    '         modules: they share one global scope and `defer` runs them in this\n' +
+    '         order. The order is load-bearing - see channel/web/README.md before\n' +
+    '         adding, removing or moving a line. -->\n' +
+    '\n' +
+    '    <!-- doc-editor first: views/doc-viewers.js builds its editors at load time. -->\n' +
+    '    <script defer src="/assets/js/doc-editor.js"></script>\n' +
+    '\n' +
+    '    <script defer src="/assets/js/i18n/account.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/admin-console.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/agents.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/appearance.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/audit-console.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/branding.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/core.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/memory-account.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/external-connections.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/external-identity.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/home-scenes.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/identity-admin.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/models-config.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/navigation.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/personal-console.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/resource-detail.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/tasks-records.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/tenant-channel.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/todos.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/coding.js"></script>\n' +
+    '<script defer src="/assets/js/i18n/master-sync.js"></script>\n' +
+    '<script defer src="/assets/js/fragments.js"></script>\n' +
+    '<script defer src="/assets/js/functional-capabilities.js"></script>\n' +
+    '<script defer src="/assets/js/functional-models.js"></script>\n' +
+    '<script defer src="/assets/js/fork/desktop-host.js"></script>\n' +
+    '<scri'... 4813 more characters
+
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/tests/test_workbench_menu_grant_frontend.cjs:189:12)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '<!DOCTYPE html>\n<html lang="zh" class="">\n<head>\n    <meta charset="UTF-8">\n    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n    <script type="application/json" id="console-page-routes">{{COW_CONSOLE_ROUTES}}</script>\n<script src="/assets/js/fork/auth-check-prefetch.js"></script>\n<title>容大AI · 业务工作台</title>\n    <link rel="icon" href="/assets/rongda-ai-mark.svg" type="image/x-icon">\n    <!-- Vendored third-party assets (no external CDN dependency).\n         See channel/web/static/vendor/README.md for sources & versions. -->\n    <link rel="stylesheet" href="/assets/vendor/fontawesome/css/all.min.css">\n    <link rel="stylesheet" href="/assets/vendor/fonts/inter/inter.css">\n    <script src="/assets/vendor/tailwind/tailwind.min.js"></script>\n    <script src="/assets/vendor/markdown-it/markdown-it.min.js"></script>\n    <link id="hljs-light" rel="stylesheet" href="/assets/vendor/highlightjs/styles/github.min.css">\n    <link id="hljs-dark" rel="stylesheet" href="/assets/vendor/highlightjs/styles/github-dark.min.css" disabled>\n    <script src="/assets/vendor/highlightjs/highlight.min.js"></script>\n    <script src="/assets/vendor/highlightjs/languages/python.min.js"></script>\n    <script src="/assets/vendor/highlightjs/languages/javascript.min.js"></script>\n    <script src="/assets/vendor/highlightjs/languages/java.min.js"></script>\n    <script src="/assets/vendor/highlightjs/languages/go.min.js"></script>\n    <script src="/assets/vendor/highlightjs/languages/bash.min.js"></script>\n    <script>\n    tailwind.config = {\n        darkMode: \'class\',\n        theme: {\n            extend: {\n                fontFamily: {\n                    sans: [\'Inter\', \'system-ui\', \'-apple-system\', \'sans-serif\'],\n                    mono: [\'"JetBrains Mono"\', \'"Fira Code"\', \'Consolas\', \'monospace\'],\n                },\n                colors: {\n                    primary: {\n                        50: \'#EDFDF3\', 100: \'#D4FAE2\', 200: \'#ABF4C7\', 300: \'#74E9A4\',\n                        400: \'#4ABE6E\', 500: \'#35A85B\', 600: \'#228547\', 700: \'#1C6B3B\',\n                        800: \'#1A5532\', 900: \'#16462A\',\n                    }\n                },\n                animation: {\n                    \'pulse-dot\': \'pulseDot 1.4s infinite ease-in-out both\',\n                }\n            }\n        }\n    }\n    </script>\n    <!-- Split out of a single console.css. The order is load-bearing: later\n         sheets override earlier ones, so keep it as-is and see\n         channel/web/README.md before inserting anything. -->\n    <link rel="stylesheet" href="/assets/css/base.css">\n    <link rel="stylesheet" href="/assets/css/sessions.css">\n    <link rel="stylesheet" href="/assets/css/components.css">\n    <link rel="stylesheet" href="/assets/css/markdown.css">\n    <link rel="stylesheet" href="/assets/css/chat.css">\n    <link rel="stylesheet" href="/assets/css/workspace.css">\n    <link rel="stylesheet" href="/assets/css/knowledge.css">\n    <link rel="stylesheet" href="/assets/css/agents.css">\n    <link rel="stylesheet" href="/assets/css/artifacts.css">\n    <link rel="stylesheet" href="/assets/css/menu.css">\n<link rel="stylesheet" href="/assets/css/fork/extensions.css">\n<link rel="stylesheet" href="/assets/css/appearance.css">\n<link rel="stylesheet" href="/assets/css/coding.css">\n<script src="/assets/js/appearance.js"></script>\n    <!-- Apply theme/lang before first paint to avoid flash of unstyled content.\n         This runs synchronously in <head> so the correct class is on <html>\n         before any CSS or body rendering occurs. -->\n    <script>\n    // Map an arbitrary locale string (zh-CN, en-US, fr ...) to \'zh\' / \'zh-Hant\' / \'en\',\n    // or \'\' when unrecognized so callers can fall through to the next source.\n    window.__cowNormalizeLang__ = function(raw) {\n        if (!raw) return \'\';\n        var v = String(raw).trim().toLowerCase().replace(\'_\', \'-\');\n        if (v === \'auto\') return \'\';\n        // Handle Traditional Chinese variants first (more specific)\n        if (v === \'zh-hant\' || v.indexOf(\'zh-hant-\') === 0 || v === \'zh-tw\' || v === \'zh-hk\') return \'zh-Hant\';\n        // Then Simplified Chinese\n        if (v.indexOf(\'zh\') === 0) return \'zh\';\n        if (v.indexOf(\'en\') === 0) return \'en\';\n        return \'\';\n    };\n    // Resolve the console language by priority:\n    //   user choice (localStorage) -> backend-detected -> browser -> \'zh\'.\n    window.__cowResolveLang__ = function() {\n        return window.__cowNormalizeLang__(localStorage.getItem(\'cow_lang\'))\n            || window.__cowNormalizeLang__(window.__COW_DEFAULT_LANG__)\n            || window.__cowNormalizeLang__(navigator.language || (navigator.languages && navigator.languages[0]))\n            || \'zh\';\n    };\n    (function() {\n        // Backend-resolved default language (from cow_lang config / auto-detect).\n        window.__COW_DEFAULT_LANG__ = \'{{COW_DEFAULT_LANG}}\';\n        var theme = localStorage.getItem(\'cow_theme\') || \'dark\';\n        if (theme === \'dark\') document.documentElement.classList.add(\'dark\');\n        if (localStorage.getItem(\'cow_sidebar_collapsed\') === \'1\') {\n            document.documentElement.classList.add(\'sidebar-collapsed\');\n        }\n        // A customised menu is drawn by menu.js; keep the built-in one in\n        // sidebar.html from showing first. The timer is the way out should\n        // that script never run.\n        if (localStorage.getItem(\'cow_menu_cache\')) {\n            document.documentElement.classList.add(\'menu-pending\');\n            setTimeout(function () { document.documentElement.classList.remove(\'menu-pending\'); }, 3000);\n        }\n        document.documentElement.setAttribute(\'lang\', window.__cowResolveLang__());\n    })();\n    </script>\n</head>\n<body class="h-screen overflow-hidden bg-gray-50 dark:bg-[#111111] text-slate-800 dark:text-slate-200 font-sans">\n\n<!--#include templates/auth/login.html-->\n<!--#include templates/fork/layout/account-modals.html-->\n\n    <div id="app" class="flex h-screen hidden">\n\n<!--#include templates/layout/sidebar.html-->\n\n<!--#include templates/layout/session-panel.html-->\n\n<!--#include templates/modals/team-chat.html-->\n\n        <!-- Mobile overlay for session panel (click to close) -->\n        <div id="session-panel-overlay" class="session-panel-overlay hidden" onclick="closeSessionPanel()"></div>\n\n        <!-- ================================================================ -->\n        <!-- MAIN CONTENT                                                     -->\n        <!-- ================================================================ -->\n        <div id="main-content" class="flex-1 flex flex-col min-w-0 h-screen">\n<!--#include templates/layout/header.html-->\n\n            <!-- Content Area -->\n            <div id="content-area" class="flex-1 overflow-hidden">\n\n<!--#include templates/views/chat.html-->\n\n<!--#include templates/views/artifacts.html-->\n\n<!--#include templates/views/agents.html-->\n\n<!--#include templates/views/config.html-->\n\n<!--#include templates/views/skills.html-->\n\n<!--#include templates/fork/views/memory.html-->\n\n<!--#include templates/views/knowledge.html-->\n\n<!--#include templates/views/channels.html-->\n\n<!--#include templates/views/tasks.html-->\n\n<!--#include templates/views/logs.html-->\n\n<!--#include templates/views/custom.html-->\n\n            <!--#include templates/fork/views/business.html-->\n            </div><!-- /content-area -->\n        </div><!-- /main-content -->\n    </div><!-- /app -->\n\n<!--#include templates/modals/knowledge-dialog.html-->\n\n<!--#include templates/modals/mcp-editor.html-->\n\n<!--#include templates/modals/skill-add.html-->\n\n<!--#include templates/modals/confirm-dialog.html-->\n\n<!--#include templates/modals/rename-dialog.html-->\n\n<!--#include templates/modals/folder-picker.html-->\n\n<!--#include templates/modals/vendor.html-->\n\n<!--#include templates/modals/custom-provider.html-->\n\n<!--#include templates/modals/task-edit.html-->\n\n<!--#include templates/modals/run-detail.html-->\n\n<!--#include templates/modals/menu-editor.html-->\n\n    <!-- Split out of a single console.js. These are classic scripts, not\n         modules: they share one global scope and `defer` runs them in this\n         order. The order is load-bearing - see channel/web/README.md before\n         adding, removing or moving a line. -->\n\n    <!-- doc-editor first: views/doc-viewers.js builds its editors at load time. -->\n    <script defer src="/assets/js/doc-editor.js"></script>\n\n    <script defer src="/assets/js/i18n/account.js"></script>\n<script defer src="/assets/js/i18n/admin-console.js"></script>\n<script defer src="/assets/js/i18n/agents.js"></script>\n<script defer src="/assets/js/i18n/appearance.js"></script>\n<script defer src="/assets/js/i18n/audit-console.js"></script>\n<script defer src="/assets/js/i18n/branding.js"></script>\n<script defer src="/assets/js/i18n/core.js"></script>\n<script defer src="/assets/js/i18n/memory-account.js"></script>\n<script defer src="/assets/js/i18n/external-connections.js"></script>\n<script defer src="/assets/js/i18n/external-identity.js"></script>\n<script defer src="/assets/js/i18n/home-scenes.js"></script>\n<script defer src="/assets/js/i18n/identity-admin.js"></script>\n<script defer src="/assets/js/i18n/models-config.js"></script>\n<script defer src="/assets/js/i18n/navigation.js"></script>\n<script defer src="/assets/js/i18n/personal-console.js"></script>\n<script defer src="/assets/js/i18n/resource-detail.js"></script>\n<script defer src="/assets/js/i18n/tasks-records.js"></script>\n<script defer src="/assets/js/i18n/tenant-channel.js"></script>\n<script defer src="/assets/js/i18n/todos.js"></script>\n<script defer src="/assets/js/i18n/coding.js"></script>\n<script defer src="/assets/js/i18n/master-sync.js"></script>\n<script defer src="/assets/js/fragments.js"></script>\n<script defer src="/assets/js/functional-capabilities.js"></script>\n<script defer src="/assets/js/functional-models.js"></script>\n<script defer src="/assets/js/fork/desktop-host.js"></script>\n<scri'... 4813 more characters,
+    expected: /id="sidebar-recent"/,
+    operator: 'match',
+    diff: 'simple'
+  }

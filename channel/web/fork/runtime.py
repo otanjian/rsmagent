@@ -2776,6 +2776,7 @@ class WebChannel(ChatChannel):
         # the port a single source of truth owned by the Electron shell.
         port = int(os.environ.get("COW_WEB_PORT") or conf().get("web_port", 9899))
         is_public_bind = host in ("0.0.0.0", "::")
+        scheme = "https" if conf().get("web_https_enabled", False) else "http"
 
         self._cleanup_stale_voice_recordings()
 
@@ -2822,9 +2823,9 @@ class WebChannel(ChatChannel):
             for idx, (name, label) in enumerate(channels, 1):
                 logger.info(f"[WebChannel]  {idx:>2}. {name:<{name_width}} - {label}")
             logger.info("[WebChannel] ✅ Web console is running")
-            logger.info(f"[WebChannel] 🌐 Local access: http://localhost:{port}")
+            logger.info(f"[WebChannel] 🌐 Local access: {scheme}://localhost:{port}")
             if is_public_bind:
-                logger.info(f"[WebChannel] 🌍 Server access: http://YOUR_IP:{port} (replace YOUR_IP with your server IP)")
+                logger.info(f"[WebChannel] 🌍 Server access: {scheme}://YOUR_IP:{port} (replace YOUR_IP with your server IP)")
                 logger.info("[WebChannel] 🔒 Database identity is required for all console access")
             else:
                 logger.info(f"[WebChannel] 🔒 Listening on {host} only (local access). For public access, set web_host to 0.0.0.0 (database login still required)")
@@ -2834,8 +2835,8 @@ class WebChannel(ChatChannel):
             if os.environ.get("COW_DESKTOP") != "1":
                 try:
                     import webbrowser
-                    webbrowser.open(f"http://localhost:{port}")
-                    logger.debug(f"[WebChannel] Opened browser at http://localhost:{port}")
+                    webbrowser.open(f"{scheme}://localhost:{port}")
+                    logger.debug(f"[WebChannel] Opened browser at {scheme}://localhost:{port}")
                 except Exception as e:
                     logger.debug(f"[WebChannel] Could not open browser: {e}")
 
@@ -2862,7 +2863,19 @@ class WebChannel(ChatChannel):
         # Build WSGI app with middleware (same as runsimple but without print)
         func = web.httpserver.StaticMiddleware(app.wsgifunc())
         func = web.httpserver.LogMiddleware(func)
+        from channel.web.core.tls import resolve_tls_config
+        https_enabled = bool(conf().get("web_https_enabled", False))
+        # Only the native loopback runtime uses the existing plain-HTTP bridge.
+        if os.environ.get("COW_DESKTOP") == "1" and host in ("127.0.0.1", "localhost", "::1"):
+            https_enabled = False
+        certfile, keyfile = resolve_tls_config(
+            https_enabled, conf().get("web_ssl_certfile", ""), conf().get("web_ssl_keyfile", ""))
         server = web.httpserver.WSGIServer((host, port), func)
+        scheme = "http"
+        if certfile:
+            from cheroot.ssl.builtin import BuiltinSSLAdapter
+            server.ssl_adapter = BuiltinSSLAdapter(certfile, keyfile)
+            scheme = "https"
         server.daemon_threads = True
         # Default request_queue_size(5) / timeout(10s) / numthreads(10) are
         # too small: when SSE streams occupy many threads, the backlog fills

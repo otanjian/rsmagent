@@ -8,13 +8,13 @@
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <div class="session-panel-new-wrap">
-                <button class="session-panel-new" onclick="onNewChatButton(event)">
+            <div id="history-new-control" class="session-panel-new-wrap">
+                <button id="history-new-chat-btn" class="session-panel-new" onclick="onNewChatButton(event)">
                     <i class="fas fa-plus"></i>
                     <span data-i18n="new_chat">新对话</span>
                     <i id="new-chat-caret" class="fas fa-chevron-down new-chat-caret hidden"></i>
                 </button>
                 <div id="new-chat-menu" class="new-chat-menu hidden"></div>
             </div>
-            <div id="session-list" class="session-list"></div>
+            <div id="history-panel-list-mount" class="flex-1 min-h-0 overflow-y-auto"><div id="history-status" class="history-status history-status-hidden" role="status" aria-live="polite"></div><div id="session-list" class="session-list"></div></div>
         </aside>

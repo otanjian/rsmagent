@@ -73,7 +73,7 @@ MAX_SNAPSHOTS = 5
 ASSET_RETENTION_DAYS = 7
 
 DEFAULT_BRAND_NAME = "容大AI"
-DEFAULT_BRAND_DESC = "工作台"
+DEFAULT_BRAND_DESC = "业务工作台"
 # Bundled trusted resources, served by the existing static AssetsHandler.
 DEFAULT_LOGO_URL = "/assets/rongda-ai-mark.svg"
 DEFAULT_FAVICON_URL = "/assets/favicon.ico"

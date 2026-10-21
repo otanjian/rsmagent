@@ -132,7 +132,7 @@ class BrandingPublicHandler:
                 "enabled": False,
                 "revision": 0,
                 "brand_name": "容大AI",
-                "logo_description": "工作台",
+                "logo_description": "业务工作台",
                 "logo_url": "/assets/rongda-ai-mark.svg",
                 "favicon_url": "/assets/favicon.ico",
             }

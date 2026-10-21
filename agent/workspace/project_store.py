@@ -27,6 +27,7 @@ import threading
 import time
 from typing import Dict, List, Optional
 
+from common.atomic_write import write_json_atomic
 from common.log import logger
 
 # Recents cap: enough to be useful in the picker, small enough that the file
@@ -106,26 +107,21 @@ _lock = threading.Lock()
 
 def _load() -> Dict:
     path = _store_file()
+    empty = {"sessions": {}, "recents": [], "meta": {}, "order": [], "desktop_targets": {}}
     if not os.path.isfile(path):
-        return {"sessions": {}, "recents": [], "meta": {}, "order": [], "desktop_targets": {}}
+        return empty
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f) or {}
     except Exception as e:
         logger.warning(f"[ProjectStore] Could not read {path}: {e}")
-        return {"sessions": {}, "recents": [], "meta": {}, "order": [], "desktop_targets": {}}
-    data.setdefault("sessions", {})
-    data.setdefault("recents", [])
-    # ``desktop_targets``: session -> desktop execution reference (identifiers
-    # only, never an absolute path). Absent on every pre-existing store, which
-    # is exactly "no session runs locally yet".
-    data.setdefault("desktop_targets", {})
-    # ``meta``: path -> {"display_name": str}. A rename lives here, never on
-    # disk, so the folder keeps its name and existing bindings stay valid.
-    data.setdefault("meta", {})
-    # ``order``: user-chosen sidebar order of spaces (project paths and the
-    # DEFAULT_SPACE_KEY sentinel). Absent entries fall back to recency order.
-    data.setdefault("order", [])
+        return empty
+    if not isinstance(data, dict):
+        return empty
+    # A hand-edited file may hold the wrong type under a key; reset just that key.
+    for key, shape in (("sessions", dict), ("recents", list), ("meta", dict), ("order", list), ("desktop_targets", dict)):
+        if not isinstance(data.get(key), shape):
+            data[key] = shape()
     return data
 
 
@@ -133,17 +129,17 @@ def _save(data: Dict) -> None:
     path = _store_file()
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = f"{path}.tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, path)
+        write_json_atomic(path, data, indent=2)
     except Exception as e:
         logger.warning(f"[ProjectStore] Could not write {path}: {e}")
+        # Mutating callers and HTTP handlers must not acknowledge an update
+        # that cannot be loaded again after a restart.
+        raise
 
 
 def _normalize(path: str) -> str:
     from common.utils import expand_path
-    return os.path.realpath(expand_path((path or "").strip()))
+    return os.path.realpath(expand_path(path or ""))
 
 
 def _session_key(session_id: str, agent_id: Optional[str]) -> str:
@@ -465,7 +461,7 @@ def set_order(order: List[str]) -> List[str]:
     for key in order or []:
         if not isinstance(key, str):
             continue
-        k = key.strip()
+        k = key
         if not k or k in seen:
             continue
         # Real project paths are normalized; the default sentinel is kept as-is.

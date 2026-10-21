@@ -1,0 +1,235 @@
+<div id="account-password-modal" class="agent-modal hidden" role="dialog" aria-modal="true" aria-labelledby="account-password-title">
+        <div class="agent-modal-card">
+            <div class="agent-modal-head">
+                <h3 id="account-password-title" class="agent-modal-title" data-i18n="account_password_title">修改密码</h3>
+                <button type="button" id="account-password-close" class="agent-modal-close" onclick="closeAccountPassword()" aria-label="Close" data-i18n-aria-label="close">×</button>
+            </div>
+            <form id="account-password-form" novalidate>
+                <div class="agent-modal-body">
+                    <p id="account-password-status" class="account-field-status hidden" role="status"></p>
+                    <p class="account-password-note" data-i18n="account_password_note">修改成功后，其他已登录会话也会失效，需要重新登录。</p>
+                    <div class="account-field">
+                        <label for="ap-old-password" data-i18n="account_password_old">原密码</label>
+                        <input id="ap-old-password" type="password" class="account-field-input" autocomplete="current-password" required>
+                    </div>
+                    <div class="account-field">
+                        <label for="ap-new-password" data-i18n="account_password_new">新密码</label>
+                        <input id="ap-new-password" type="password" class="account-field-input" autocomplete="new-password" required>
+                    </div>
+                    <div class="account-field">
+                        <label for="ap-confirm-password" data-i18n="account_password_confirm">确认新密码</label>
+                        <input id="ap-confirm-password" type="password" class="account-field-input" autocomplete="new-password" required>
+                    </div>
+                </div>
+                <div class="agent-modal-foot">
+                    <button type="button" onclick="cancelAccountPassword()" class="agent-btn agent-btn-text" data-i18n="cancel">取消</button>
+                    <button id="ap-submit-btn" type="submit" class="agent-btn agent-btn-primary" data-i18n="account_password_submit">提交修改</button>
+                </div>
+            </form>
+        </div>
+    </div>
+<div id="account-profile-drawer" class="agent-modal hidden" role="dialog" aria-modal="true" aria-labelledby="account-profile-title">
+            <div class="agent-modal-card agent-modal-card-wide">
+                <div class="agent-modal-head">
+                    <h3 id="account-profile-title" class="agent-modal-title" data-i18n="account_profile_title">个人资料</h3>
+                    <button type="button" class="agent-modal-close" onclick="closeAccountProfile()" aria-label="Close" data-i18n-aria-label="close">×</button>
+                </div>
+                <!-- Avatar header -->
+                <div class="account-profile-hero">
+                    <div class="account-profile-avatar-wrap">
+                        <button type="button" id="account-profile-avatar" class="account-profile-avatar account-profile-avatar-btn" onclick="handleAccountProfileAvatarActivate(event)" data-i18n-aria-label="account_profile_avatar_hint" data-i18n-title="account_profile_avatar_hint" aria-label="双击可更换头像">
+                        </button>
+                        <span class="account-profile-avatar-edit" aria-hidden="true"><i class="fas fa-camera"></i></span>
+                        <!-- The file input MUST stay a sibling of the disc, never a
+                             child: the disc's innerHTML is fully repainted on every
+                             profile load, which would delete a nested input and
+                             silently break the picker. -->
+                        <input id="account-profile-avatar-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onchange="uploadAccountProfileAvatar(this.files && this.files[0])">
+                    </div>
+                    <div class="account-profile-hero-copy">
+                        <p id="account-profile-hero-name" class="account-profile-hero-name">—</p>
+                        <p id="account-profile-hero-username" class="account-profile-hero-username">—</p>
+                    </div>
+                    <button id="account-profile-edit-btn" type="button" class="agent-btn agent-btn-text account-profile-edit-btn" onclick="startAccountProfileEdit()">
+                        <i class="fas fa-pen mr-1"></i><span data-i18n="account_profile_edit">编辑资料</span>
+                    </button>
+                </div>
+                <div class="agent-modal-body">
+                    <p id="account-profile-status" class="account-field-status hidden" role="status"></p>
+                    <div id="account-profile-content" class="account-profile-content">
+                        <!-- Global account section -->
+                        <div class="account-profile-section">
+                            <h4 class="account-profile-subtitle" data-i18n="account_profile_global">全局账号</h4>
+                            <div class="account-profile-grid">
+                                <div class="account-profile-row" data-field="display_name">
+                                    <dt data-i18n="account_profile_display_name">姓名</dt>
+                                    <dd id="ap-display-name" class="account-profile-read">—</dd>
+                                    <dd class="account-profile-edit"><input id="ap-display-name-input" type="text" class="account-field-input" data-i18n-placeholder="account_profile_display_name" maxlength="80"><p id="ap-display-name-input-error" class="account-field-error hidden"></p></dd>
+                                </div>
+                                <div class="account-profile-row">
+                                    <dt data-i18n="account_profile_username">登录账号</dt>
+                                    <dd id="ap-username" class="account-profile-read">—</dd>
+                                </div>
+                                <div class="account-profile-row">
+                                    <dt data-i18n="account_profile_platform">平台身份</dt>
+                                    <dd id="ap-platform" class="account-profile-read">—</dd>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Current tenant member section -->
+                        <div id="account-profile-member-section" class="account-profile-section">
+                            <h4 class="account-profile-subtitle" data-i18n="account_profile_member">当前租户成员</h4>
+                            <div class="account-profile-grid">
+                                <div class="account-profile-row">
+                                    <dt data-i18n="account_profile_tenant">当前租户</dt>
+                                    <dd id="ap-tenant" class="account-profile-read">—</dd>
+                                </div>
+                                <div class="account-profile-row" data-field="member_display_name">
+                                    <dt data-i18n="account_profile_member_name">成员姓名</dt>
+                                    <dd id="ap-member-name" class="account-profile-read">—</dd>
+                                    <dd class="account-profile-edit"><input id="ap-member-name-input" type="text" class="account-field-input" data-i18n-placeholder="account_profile_member_name" maxlength="80"><p id="ap-member-name-input-error" class="account-field-error hidden"></p></dd>
+                                </div>
+                                <div class="account-profile-row">
+                                    <dt data-i18n="account_profile_role">实际角色</dt>
+                                    <dd id="ap-role" class="account-profile-read">—</dd>
+                                </div>
+                                <div class="account-profile-row">
+                                    <dt data-i18n="account_profile_department">部门</dt>
+                                    <dd id="ap-department" class="account-profile-read">—</dd>
+                                </div>
+                                <div class="account-profile-row" data-field="position_text">
+                                    <dt data-i18n="account_profile_position">岗位</dt>
+                                    <dd id="ap-position" class="account-profile-read">—</dd>
+                                    <dd class="account-profile-edit"><input id="ap-position-input" type="text" class="account-field-input" data-i18n-placeholder="account_profile_position" maxlength="120"></dd>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="agent-modal-foot">
+                    <span id="account-profile-action-status" class="agent-field-hint mr-auto hidden" role="status"></span>
+                    <button id="account-profile-cancel-btn" type="button" onclick="cancelAccountProfileEdit()" class="agent-btn agent-btn-text hidden" data-i18n="cancel">取消</button>
+                    <button id="account-profile-save-btn" type="button" onclick="submitAccountProfile()" class="agent-btn agent-btn-primary hidden" data-i18n="save">保存</button>
+                    <button id="account-profile-close-btn" type="button" onclick="closeAccountProfile()" class="agent-btn agent-btn-text" data-i18n="close">关闭</button>
+                </div>
+            </div>
+        </div>
+<!-- Fork fragment mount point: preserve its identity and accessibility attributes. -->
+<dialog id="appearance-dialog" aria-labelledby="appearance-title" aria-describedby="appearance-scope"
+            data-fork-fragment="/assets/fragments/appearance-dialog.html"></dialog>
+<div id="account-menu-backdrop" class="account-menu-backdrop hidden" aria-hidden="true"></div>
+<div id="todo-edit-overlay" class="fixed inset-0 bg-black/50 z-[200] hidden flex items-center justify-center">
+        <div class="bg-white dark:bg-[#1A1A1A] rounded-2xl border border-slate-200 dark:border-white/10 shadow-xl
+                    w-full max-w-lg mx-4 overflow-hidden flex flex-col" style="max-height:86vh;">
+            <div class="px-6 pt-6 pb-3">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center flex-shrink-0">
+                        <i id="todo-edit-icon" class="fas fa-plus text-primary-500"></i>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h3 id="todo-edit-title" class="font-semibold text-slate-800 dark:text-slate-100 text-base">新建待办</h3>
+                        <p id="todo-edit-subtitle" class="text-xs text-slate-500 dark:text-slate-400 mt-0.5"></p>
+                    </div>
+                    <button class="todo-modal-close p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-400 cursor-pointer">
+                        <i class="fas fa-xmark"></i>
+                    </button>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label for="todo-edit-field-title" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">标题</label>
+                        <input type="text" id="todo-edit-field-title" maxlength="120"
+                               class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500"
+                               placeholder="">
+                        <p class="mt-1 text-xs text-slate-400 dark:text-slate-500">1-120</p>
+                    </div>
+                    <div>
+                        <label for="todo-edit-field-desc" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">说明</label>
+                        <textarea id="todo-edit-field-desc" maxlength="8000" rows="3"
+                                  class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500"></textarea>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="todo-edit-field-kind" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">分类</label>
+                            <select id="todo-edit-field-kind" class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500"></select>
+                        </div>
+                        <div>
+                            <label for="todo-edit-field-priority" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">优先级</label>
+                            <select id="todo-edit-field-priority" class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500"></select>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="todo-edit-field-due" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">截止时间</label>
+                        <div class="flex gap-2">
+                            <input type="datetime-local" id="todo-edit-field-due"
+                                   class="flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500">
+                            <button id="todo-edit-clear-due" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 text-xs hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer" data-i18n="todo_clear_due">清空</button>
+                        </div>
+                    </div>
+                    <!-- Receiver picker. Availability is the server's answer
+                         about todo.assign, never inferred from the fact that
+                         the user can edit their own item. Shown in create mode
+                         only: on an existing item the same choice is an action
+                         in the detail drawer, so it is never offered twice. -->
+                    <div id="todo-edit-delegatee-field" class="hidden">
+                        <div id="todo-edit-delegatee-picker" class="hidden">
+                            <label for="todo-edit-field-assignee" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5" data-i18n="todo_field_assignee">接收人</label>
+                            <select id="todo-edit-field-assignee" class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500"></select>
+                            <p class="mt-1 text-xs text-slate-400 dark:text-slate-500" data-i18n="todo_field_assignee_hint">留空则由你自己跟进；只能指派给一位同事。</p>
+                        </div>
+                        <div id="todo-edit-delegatee-closed" class="hidden">
+                            <label class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5" data-i18n="todo_field_assignee">接收人</label>
+                            <p class="text-xs text-amber-600 dark:text-amber-400" data-i18n="todo_delegate_closed">当前账号未开放委派，接收人不可选。</p>
+                        </div>
+                    </div>
+                    <p id="todo-edit-error" class="hidden mt-2 text-xs text-red-500"></p>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 dark:border-white/5">
+                <button class="todo-modal-close px-4 py-2 rounded-lg border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 text-sm hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer" data-i18n="todo_cancel">取消</button>
+                <button id="todo-edit-submit" class="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium disabled:opacity-50" data-i18n="todo_save">保存</button>
+            </div>
+        </div>
+    </div>
+<div id="todo-detail-overlay" class="fixed inset-0 bg-black/50 z-[200] hidden">
+        <div class="absolute inset-y-0 right-0 w-full max-w-md bg-white dark:bg-[#1A1A1A] border-l border-slate-200 dark:border-white/10 shadow-xl
+                    flex flex-col" style="max-height:100vh;">
+            <div class="px-6 py-5 border-b border-slate-100 dark:border-white/5 flex items-start gap-3">
+                <div class="w-10 h-10 rounded-xl bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center flex-shrink-0">
+                    <i id="todo-detail-icon" class="fas fa-list-check text-primary-500"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <h3 id="todo-detail-title" class="font-semibold text-slate-800 dark:text-slate-100 text-base break-words"></h3>
+                    <p id="todo-detail-meta" class="text-xs text-slate-500 dark:text-slate-400 mt-1"></p>
+                </div>
+                <button class="todo-detail-close p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-400 cursor-pointer">
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </div>
+            <div id="todo-detail-body" class="flex-1 overflow-y-auto px-6 py-5 space-y-5"></div>
+            <div id="todo-detail-actions" class="px-6 py-4 border-t border-slate-100 dark:border-white/5 flex flex-wrap gap-2"></div>
+        </div>
+    </div>
+<div id="resource-detail-overlay" class="fixed inset-0 bg-black/50 z-[100] hidden flex items-center justify-center">
+        <div class="bg-white dark:bg-[#1A1A1A] rounded-2xl border border-slate-200 dark:border-white/10 shadow-xl
+                    w-full max-w-lg mx-4 overflow-hidden flex flex-col" style="max-height:86vh;">
+            <div class="px-6 pt-6 pb-3 flex items-start gap-3">
+                <div class="w-10 h-10 rounded-xl bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-wrench text-primary-500"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <h3 id="resource-detail-title" class="font-semibold text-slate-800 dark:text-slate-100 text-base truncate"></h3>
+                    <p id="resource-detail-kind" class="text-xs text-slate-500 dark:text-slate-400 mt-0.5"></p>
+                </div>
+                <button type="button" onclick="closeResourceDetail()" aria-label="Close" data-i18n-aria-label="close"
+                        class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-400 cursor-pointer">
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </div>
+            <div id="resource-detail-body" class="px-6 pb-4 overflow-y-auto"></div>
+            <div class="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 dark:border-white/5">
+                <button type="button" onclick="closeResourceDetail()"
+                        class="px-4 py-2 rounded-lg border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 text-sm hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer" data-i18n="close">关闭</button>
+            </div>
+        </div>
+    </div>

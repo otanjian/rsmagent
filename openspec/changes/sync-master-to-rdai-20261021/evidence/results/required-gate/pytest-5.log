@@ -1,0 +1,8 @@
+...                                                                      [100%]
+=============================== warnings summary ===============================
+tests/test_sync_master_tls.py::test_fork_startup_serves_tls_with_the_configured_certificate
+  /Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/tests/../channel/chat_channel.py:42: DeprecationWarning: setDaemon() is deprecated, set the daemon attribute instead
+    _thread.setDaemon(True)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+3 passed, 1 warning in 1.63s

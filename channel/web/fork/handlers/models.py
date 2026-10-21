@@ -19,6 +19,7 @@ from config import (
     sync_image_generation_custom_provider_env,
 )
 from channel.web.core._common import _write_config_file_for_write
+import copy
 import json
 import os
 import web
@@ -465,6 +466,13 @@ class ModelsHandler:
     def _write_file_config(cls, data: dict) -> None:
         _write_config_file_for_write(cls._config_path(), data)
 
+    def _commit_config(self, data: dict, runtime_config: dict) -> None:
+        from channel.web.web_channel import conf
+        # Publish live credentials/routing only after the atomic file replacement.
+        self._write_file_config(data)
+        conf().clear()
+        conf().update(runtime_config)
+
     @staticmethod
     def _is_real_key(value: str) -> bool:
         return bool(value) and value not in ("", "YOUR API KEY", "YOUR_API_KEY")
@@ -751,7 +759,7 @@ class ModelsHandler:
         """
         from channel.web.fork.handlers.config import ConfigHandler
         from channel.web.web_channel import conf
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         custom_cards = cls._custom_provider_cards(local_config)
         # Keep the legacy single "custom" card visible alongside the expanded
         # ones when the flat custom_api_key/base config is active or filled,
@@ -1329,56 +1337,12 @@ class ModelsHandler:
     # tests/test_web_search.py asserts the two are equal, so a provider the
     # runtime supports but this list omits is a console-side capability gap
     # (tavily/searxng/keenable were exactly that before this list caught up).
-    _SEARCH_PROVIDERS = ("bocha", "qianfan", "zhipu", "linkai", "anysearch", "serply",
-                         "tavily", "searxng", "keenable")
-
-    _SEARCH_PROVIDER_LABELS = {
-        "bocha":   {"zh": "博查", "en": "Bocha"},
-        "zhipu":   {"zh": "智谱", "en": "GLM"},
-        "qianfan": {"zh": "百度千帆", "en": "ERNIE"},
-        "linkai":  {"zh": "LinkAI", "en": "LinkAI"},
-        "anysearch": {"zh": "AnySearch", "en": "AnySearch"},
-        "serply":  {"zh": "Serply", "en": "Serply"},
-        "tavily":  {"zh": "Tavily", "en": "Tavily"},
-        "searxng": {"zh": "SearXNG", "en": "SearXNG"},
-        "keenable": {"zh": "Keenable", "en": "Keenable"},
-    }
+    _SEARCH_PROVIDERS = UpstreamModelsHandler._SEARCH_PROVIDERS
+    _SEARCH_PROVIDER_LABELS = UpstreamModelsHandler._SEARCH_PROVIDER_LABELS
 
     @classmethod
     def _search_provider_key(cls, provider: str, local_config: dict) -> str:
-        """Resolve the (raw) key for a given search provider."""
-        if provider == "bocha":
-            tools_cfg = local_config.get("tools") or {}
-            block = tools_cfg.get("web_search") or {} if isinstance(tools_cfg, dict) else {}
-            return (block.get("bocha_api_key") if isinstance(block, dict) else "") or os.environ.get("BOCHA_API_KEY", "")
-        if provider == "zhipu":
-            return local_config.get("zhipu_ai_api_key") or os.environ.get("ZHIPUAI_API_KEY", "")
-        if provider == "qianfan":
-            return local_config.get("qianfan_api_key") or os.environ.get("QIANFAN_API_KEY", "")
-        if provider == "linkai":
-            return local_config.get("linkai_api_key") or os.environ.get("LINKAI_API_KEY", "")
-        if provider == "anysearch":
-            tools_cfg = local_config.get("tools") or {}
-            block = tools_cfg.get("web_search") or {} if isinstance(tools_cfg, dict) else {}
-            return (block.get("anysearch_api_key") if isinstance(block, dict) else "") or os.environ.get(
-                "ANYSEARCH_API_KEY", "")
-        if provider == "serply":
-            tools_cfg = local_config.get("tools") or {}
-            block = tools_cfg.get("web_search") or {} if isinstance(tools_cfg, dict) else {}
-            return (block.get("serply_api_key") if isinstance(block, dict) else "") or os.environ.get(
-                "SERPLY_API_KEY", "")
-        if provider == "tavily":
-            tools_cfg = local_config.get("tools") or {}
-            block = tools_cfg.get("web_search") or {} if isinstance(tools_cfg, dict) else {}
-            return (block.get("tavily_api_key") if isinstance(block, dict) else "") or os.environ.get(
-                "TAVILY_API_KEY", "")
-        if provider == "keenable":
-            tools_cfg = local_config.get("tools") or {}
-            block = tools_cfg.get("web_search") or {} if isinstance(tools_cfg, dict) else {}
-            return (block.get("keenable_api_key") if isinstance(block, dict) else "") or os.environ.get(
-                "KEENABLE_API_KEY", "")
-        # searxng uses an instance URL, not an API key — handled in _search_capability
-        return ""
+        return UpstreamModelsHandler._search_provider_key(provider, local_config)
 
     @classmethod
     def _search_capability(cls, local_config: dict) -> dict:
@@ -1429,6 +1393,7 @@ class ModelsHandler:
                 # verbatim to prefill/edit; other providers mask their key.
                 "url_masked": searxng_url if pid == "searxng" else "",
                 "api_key_masked": ConfigHandler._mask_key(raw_key) if raw_key else "",
+                "api_base": local_config.get("deepseek_api_base") or "" if pid == "deepseek" else "",
             })
             if ok:
                 configured_ids.append(pid)
@@ -1476,7 +1441,7 @@ class ModelsHandler:
         _require_platform_console()
         web.header("Content-Type", "application/json; charset=utf-8")
         try:
-            local_config = conf()
+            local_config = copy.deepcopy(dict(conf()))
             return json.dumps({
                 "status": "success",
                 "providers": self._provider_overview(),
@@ -1505,6 +1470,8 @@ class ModelsHandler:
                 return self._handle_set_active_custom_provider(data)
             if action == "set_capability":
                 return self._handle_set_capability(data)
+            if action == "discover_models":
+                return UpstreamModelsHandler._handle_discover_models(self, data)
             if action == "save_catalog":
                 return self._handle_save_catalog(data)
             if action == "set_voice_reply_mode":
@@ -1536,7 +1503,7 @@ class ModelsHandler:
         api_base = (data.get("api_base") or "").strip() if api_base_present else None
 
         applied = {}
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         file_cfg = self._read_file_config()
 
         key_field = meta.get("api_key_field")
@@ -1556,7 +1523,7 @@ class ModelsHandler:
             # frontend can show "Saved" instead of surfacing an error.
             return json.dumps({"status": "success", "provider": provider_id, "noop": True})
 
-        self._write_file_config(file_cfg)
+        self._commit_config(file_cfg, local_config)
         logger.info(f"[ModelsHandler] provider {provider_id} updated: {sorted(applied.keys())}")
 
         # Vendor credentials affect bot routing for any capability that uses
@@ -1572,7 +1539,7 @@ class ModelsHandler:
         if not meta:
             return json.dumps({"status": "error", "message": f"unknown provider: {provider_id}"})
 
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         file_cfg = self._read_file_config()
 
         cleared = []
@@ -1587,7 +1554,7 @@ class ModelsHandler:
             file_cfg[field_name] = ""
             cleared.append(field_name)
 
-        self._write_file_config(file_cfg)
+        self._commit_config(file_cfg, local_config)
         logger.info(f"[ModelsHandler] provider {provider_id} cleared: {cleared}")
         self._reset_bridge()
         return json.dumps({"status": "success", "provider": provider_id, "cleared": cleared})
@@ -1612,7 +1579,7 @@ class ModelsHandler:
         from channel.web.web_channel import conf
         from models.custom_provider import parse_custom_bot_type
 
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         file_cfg = self._read_file_config()
         local_config["custom_providers"] = providers
         file_cfg["custom_providers"] = providers
@@ -1638,6 +1605,7 @@ class ModelsHandler:
             if isinstance(image_config, dict)
             else ""
         )
+        clear_image_env = False
         if image_provider.startswith("custom:"):
             image_provider_id = image_provider[len("custom:"):]
             if not any(
@@ -1659,19 +1627,15 @@ class ModelsHandler:
                         "model",
                         "",
                     )
-                os.environ.pop(
-                    "SKILL_IMAGE_GENERATION_PROVIDER",
-                    None,
-                )
-                os.environ.pop(
-                    "SKILL_IMAGE_GENERATION_MODEL",
-                    None,
-                )
+                clear_image_env = True
+        self._commit_config(file_cfg, local_config)
+        if clear_image_env:
+            os.environ.pop("SKILL_IMAGE_GENERATION_PROVIDER", None)
+            os.environ.pop("SKILL_IMAGE_GENERATION_MODEL", None)
         sync_image_generation_custom_provider_env(
             local_config,
             overwrite=True,
         )
-        self._write_file_config(file_cfg)
         self._reset_bridge()
 
     def _handle_set_custom_provider(self, data: dict) -> str:
@@ -1704,7 +1668,7 @@ class ModelsHandler:
         model = (data.get("model") or "").strip()
         make_active = bool(data.get("make_active"))
 
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         providers = self._normalize_custom_providers(local_config.get("custom_providers"))
 
         existing = next((p for p in providers if p.get("id") == provider_id), None) if provider_id else None
@@ -1767,7 +1731,7 @@ class ModelsHandler:
         if not provider_id:
             return json.dumps({"status": "error", "message": "id is required"})
 
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         providers = self._normalize_custom_providers(local_config.get("custom_providers"))
         remaining = [p for p in providers if p.get("id") != provider_id]
         if len(remaining) == len(providers):
@@ -1794,7 +1758,7 @@ class ModelsHandler:
         if not provider_id:
             return json.dumps({"status": "error", "message": "id is required"})
 
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         providers = self._normalize_custom_providers(local_config.get("custom_providers"))
         if not any(p.get("id") == provider_id for p in providers):
             return json.dumps({"status": "error", "message": f"unknown custom provider id: {provider_id}"})
@@ -1860,7 +1824,7 @@ class ModelsHandler:
         # a specific vendor still get routed there — runtime falls back to
         # model-name prefix inference only when provider is empty.
         from channel.web.web_channel import conf
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         if provider_id.startswith("custom:"):
             custom_id = provider_id[len("custom:"):]
             providers = self._normalize_custom_providers(
@@ -1909,7 +1873,7 @@ class ModelsHandler:
         self._drop_legacy_namespace(local_config, "skill", "skills", child="image-generation")
         self._drop_legacy_namespace(file_cfg, "skill", "skills", child="image-generation")
 
-        self._write_file_config(file_cfg)
+        self._commit_config(file_cfg, local_config)
 
         # The skill subprocess reads SKILL_IMAGE_GENERATION_{MODEL,PROVIDER}
         # from env at startup; mirror the change so live edits apply without
@@ -1954,7 +1918,7 @@ class ModelsHandler:
             return json.dumps({"status": "error", "message": f"unknown provider: {provider_id}"})
 
         applied = {}
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         file_cfg = self._read_file_config()
 
         # Fall back to the custom provider's default model when none is given.
@@ -1978,7 +1942,7 @@ class ModelsHandler:
         if not applied:
             return json.dumps({"status": "success", "applied": {}, "noop": True})
 
-        self._write_file_config(file_cfg)
+        self._commit_config(file_cfg, local_config)
         logger.info(f"[ModelsHandler] chat updated: {applied}")
         self._reset_bridge()
         return json.dumps({"status": "success", "applied": applied})
@@ -2066,7 +2030,7 @@ class ModelsHandler:
                 "message": "at least one provider/model pair is required to enable the fallback",
             })
 
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         file_cfg = self._read_file_config()
         payload = {
             "enabled": bool(enabled),
@@ -2076,7 +2040,7 @@ class ModelsHandler:
         # (provider/model/max_switches) can't survive and win later.
         local_config["chat_fallback"] = dict(payload)
         file_cfg["chat_fallback"] = dict(payload)
-        self._write_file_config(file_cfg)
+        self._commit_config(file_cfg, local_config)
 
         # Turning the fallback off must take effect now, not on the next run
         # boundary. A model that had already switched to a backup keeps its
@@ -2118,7 +2082,7 @@ class ModelsHandler:
                 "message": "vision model is required when a provider is selected",
             })
 
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         file_cfg = self._read_file_config()
         self._set_nested_namespace_value(file_cfg, "tools", "vision", "model", model)
         self._set_nested_namespace_value(local_config, "tools", "vision", "model", model)
@@ -2127,7 +2091,7 @@ class ModelsHandler:
         self._drop_legacy_namespace(file_cfg, "tool", "tools", child="vision")
         self._drop_legacy_namespace(local_config, "tool", "tools", child="vision")
 
-        self._write_file_config(file_cfg)
+        self._commit_config(file_cfg, local_config)
         logger.info(f"[ModelsHandler] vision updated: provider={provider_id!r} model={model!r}")
         return json.dumps({"status": "success", "provider": provider_id, "model": model})
 
@@ -2145,13 +2109,13 @@ class ModelsHandler:
             return json.dumps({"status": "error", "message": f"invalid mode: {mode!r}"})
         always = (mode == "always")
         if_voice = (mode == "voice_if_voice")
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         file_cfg = self._read_file_config()
         local_config["always_reply_voice"] = always
         local_config["voice_reply_voice"] = if_voice
         file_cfg["always_reply_voice"] = always
         file_cfg["voice_reply_voice"] = if_voice
-        self._write_file_config(file_cfg)
+        self._commit_config(file_cfg, local_config)
         logger.info(
             f"[ModelsHandler] voice reply mode set: {mode!r} "
             f"(always_reply_voice={always}, voice_reply_voice={if_voice})"
@@ -2160,11 +2124,11 @@ class ModelsHandler:
 
     def _set_simple(self, key: str, value: str) -> str:
         from channel.web.web_channel import conf
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         file_cfg = self._read_file_config()
         local_config[key] = value
         file_cfg[key] = value
-        self._write_file_config(file_cfg)
+        self._commit_config(file_cfg, local_config)
         logger.info(f"[ModelsHandler] {key} set: {value!r}")
         # Hot-swap the cached voice bot so the change takes effect immediately.
         if key in ("voice_to_text", "text_to_voice"):
@@ -2173,7 +2137,7 @@ class ModelsHandler:
 
     def _set_asr(self, provider_id: str, model: str) -> str:
         from channel.web.web_channel import conf
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         file_cfg = self._read_file_config()
         local_config["voice_to_text"] = provider_id
         file_cfg["voice_to_text"] = provider_id
@@ -2195,7 +2159,7 @@ class ModelsHandler:
         elif offers_default:
             local_config["voice_to_text_model"] = ""
             file_cfg["voice_to_text_model"] = ""
-        self._write_file_config(file_cfg)
+        self._commit_config(file_cfg, local_config)
         logger.info(
             f"[ModelsHandler] asr updated: provider={provider_id!r} "
             f"model={model!r}"
@@ -2209,7 +2173,7 @@ class ModelsHandler:
 
     def _set_tts(self, provider_id: str, model: str, voice: str = "") -> str:
         from channel.web.web_channel import conf
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         file_cfg = self._read_file_config()
         local_config["text_to_voice"] = provider_id
         file_cfg["text_to_voice"] = provider_id
@@ -2217,7 +2181,7 @@ class ModelsHandler:
         file_cfg["text_to_voice_model"] = model
         local_config["tts_voice_id"] = voice
         file_cfg["tts_voice_id"] = voice
-        self._write_file_config(file_cfg)
+        self._commit_config(file_cfg, local_config)
         logger.info(
             f"[ModelsHandler] tts updated: provider={provider_id!r} "
             f"model={model!r} voice={voice!r}"
@@ -2259,13 +2223,13 @@ class ModelsHandler:
                 "status": "error",
                 "message": "embedding model is required when a provider is selected",
             })
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         file_cfg = self._read_file_config()
         local_config["embedding_provider"] = provider_id
         file_cfg["embedding_provider"] = provider_id
         local_config["embedding_model"] = model
         file_cfg["embedding_model"] = model
-        self._write_file_config(file_cfg)
+        self._commit_config(file_cfg, local_config)
         logger.info(f"[ModelsHandler] embedding updated: provider={provider_id!r} model={model!r}")
         # The next /memory rebuild-index command hot-swaps the provider onto
         # the running MemoryManager (see plugins/cow_cli). The dim may have
@@ -2288,13 +2252,13 @@ class ModelsHandler:
         else:
             provider = ""
 
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         file_cfg = self._read_file_config()
         self._set_nested_namespace_value(local_config, "tools", "web_search", "strategy", strategy)
         self._set_nested_namespace_value(file_cfg,     "tools", "web_search", "strategy", strategy)
         self._set_nested_namespace_value(local_config, "tools", "web_search", "provider", provider)
         self._set_nested_namespace_value(file_cfg,     "tools", "web_search", "provider", provider)
-        self._write_file_config(file_cfg)
+        self._commit_config(file_cfg, local_config)
         logger.info(f"[ModelsHandler] search updated: strategy={strategy!r} provider={provider!r}")
         return json.dumps({"status": "success", "strategy": strategy, "provider": provider})
 
@@ -2322,13 +2286,13 @@ class ModelsHandler:
             # up if the key is later cleared.
             anonymous_on = bool(anonymous and not api_key)
 
-            local_config = conf()
+            local_config = copy.deepcopy(dict(conf()))
             file_cfg = self._read_file_config()
             self._set_nested_namespace_value(local_config, "tools", "web_search", key_field, api_key)
             self._set_nested_namespace_value(file_cfg, "tools", "web_search", key_field, api_key)
             self._set_nested_namespace_value(local_config, "tools", "web_search", anonymous_field, anonymous_on)
             self._set_nested_namespace_value(file_cfg, "tools", "web_search", anonymous_field, anonymous_on)
-            self._write_file_config(file_cfg)
+            self._commit_config(file_cfg, local_config)
             logger.info(
                 f"[ModelsHandler] search credential set: {key_field}={'***' if api_key else ''}, "
                 f"{anonymous_field}={anonymous_on}")
@@ -2337,21 +2301,21 @@ class ModelsHandler:
         if provider == "searxng":
             # SearXNG uses an instance URL, not an API key.
             instance_url = (data.get("url") or "").strip() if isinstance(data.get("url"), str) else ""
-            local_config = conf()
+            local_config = copy.deepcopy(dict(conf()))
             file_cfg = self._read_file_config()
             self._set_nested_namespace_value(local_config, "tools", "web_search", "searxng_url", instance_url)
             self._set_nested_namespace_value(file_cfg, "tools", "web_search", "searxng_url", instance_url)
-            self._write_file_config(file_cfg)
+            self._commit_config(file_cfg, local_config)
             logger.info(f"[ModelsHandler] search credential set: searxng_url={'***' if instance_url else ''}")
             return json.dumps({"status": "success", "provider": provider})
 
         key_field = f"{provider}_api_key"
         api_key = (data.get("api_key") or "").strip() if isinstance(data.get("api_key"), str) else ""
-        local_config = conf()
+        local_config = copy.deepcopy(dict(conf()))
         file_cfg = self._read_file_config()
         self._set_nested_namespace_value(local_config, "tools", "web_search", key_field, api_key)
         self._set_nested_namespace_value(file_cfg, "tools", "web_search", key_field, api_key)
-        self._write_file_config(file_cfg)
+        self._commit_config(file_cfg, local_config)
         logger.info(f"[ModelsHandler] search credential set: {key_field}={'***' if api_key else ''}")
         return json.dumps({"status": "success", "provider": provider})
 
