@@ -1,0 +1,132 @@
+{
+  "target_sha": "c9bd4942261156f56c02ffd65e4d81c6153e1594",
+  "source_ledger": "docs/design/upstream-sync/capabilities.json",
+  "source_sha": "48c0d79c36146950667f8d1884ab823deae62305",
+  "capabilities": [
+    {
+      "id": "GAP-001",
+      "behavior": "路径路由与历史",
+      "disposition": "adapt",
+      "verification": "passed",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#3.1",
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+      ]
+    },
+    {
+      "id": "GAP-002",
+      "behavior": "SSE 错误与清理",
+      "disposition": "adapt",
+      "verification": "passed",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#2.1",
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+      ]
+    },
+    {
+      "id": "GAP-003",
+      "behavior": "跨会话任务提醒",
+      "disposition": "adapt",
+      "verification": "passed",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#4.1",
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+      ]
+    },
+    {
+      "id": "GAP-004",
+      "behavior": "流式滚动意图",
+      "disposition": "adapt",
+      "verification": "passed",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#2.3",
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+      ]
+    },
+    {
+      "id": "GAP-005",
+      "behavior": "知识库互斥面板及迟到响应",
+      "disposition": "adapt",
+      "verification": "passed",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#2.4",
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+      ]
+    },
+    {
+      "id": "GAP-006",
+      "behavior": "长文本布局",
+      "disposition": "adapt",
+      "verification": "passed",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#2.6",
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+      ]
+    },
+    {
+      "id": "GAP-007",
+      "behavior": "fork 源码更新",
+      "disposition": "adapt",
+      "verification": "pending",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#5.1",
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/source-update.md",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+      ]
+    },
+    {
+      "id": "GAP-008",
+      "behavior": "普通成员模型目录逻辑存在但页面面板丢失（本轮路径权限验收追加发现）",
+      "disposition": "adapt",
+      "verification": "passed",
+      "owner": "rdai-maintainers",
+      "task": "openspec/changes/restore-upstream-web-parity-and-sync-gates/tasks.md#3.7",
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/browser-routing.json",
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json"
+      ]
+    }
+  ],
+  "reviewed_existing": [
+    {
+      "behaviors": [
+        "mtime/ETag",
+        "技能预览取消",
+        "回复中断提示",
+        "上下文用量/压缩",
+        "模型目录/回退链",
+        "任务创建/运行记录",
+        "Agent 弹窗滚动"
+      ],
+      "disposition": "existing",
+      "verification": "partial",
+      "evidence": [
+        "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md"
+      ],
+      "note": "已核对入口；其中模型接口/局部逻辑和弹窗定向用例已通过，其余不声称全形态验收。本轮实际页面追加发现成员模型目录模板缺失，另记 GAP-008；不据此重复否定已验收接口。"
+    }
+  ],
+  "note": "Historical states only; not acceptance evidence for this sync candidate."
+}
