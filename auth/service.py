@@ -2978,6 +2978,59 @@ class IdentityService:
             allowed = self._within_tenant_model_limit(tenant_id, action, allowed)
         return allowed | owned
 
+    def has_explicit_resource_grant(
+        self, user_id: str, tenant_id: str, kind: str, resource_id: str,
+        action: str,
+    ) -> bool:
+        """True only when a role of this membership explicitly grants the triple.
+
+        Unlike :meth:`check_resource_action` there is no platform ``all``
+        bypass and no private-owner exemption: this is the strict form a
+        few actions need (``platform-all-authorization`` names
+        ``history_read_all`` as that exception). A platform admin who is
+        not a member of ``tenant_id`` holds no membership grants and
+        therefore answers False.
+        """
+        membership = self._membership(user_id, tenant_id)
+        if not membership:
+            return False
+        return any(
+            g["resource_kind"] == kind and g["resource_id"] == resource_id
+            and g["action"] == action
+            for g in self._role_grants_for_membership(membership["id"])
+        )
+
+    def explicit_resource_ids(
+        self, user_id: str, tenant_id: str, kind: str, action: str,
+    ) -> set:
+        """The ids explicitly granted for ``kind``+``action`` — no ``all`` bypass."""
+        membership = self._membership(user_id, tenant_id)
+        if not membership:
+            return set()
+        return resource_ids_for(
+            self._role_grants_for_membership(membership["id"]), kind, action)
+
+    def member_display_names(self, tenant_id: str, user_ids) -> Dict[str, str]:
+        """Minimal identity projection: user id -> display name.
+
+        Only members of ``tenant_id`` are resolved, and only the display
+        name (falling back to the username) is returned — no avatar,
+        email, status or other account field. This lets the cross-owner
+        history view show a creator without needing (or granting) the
+        member-directory permission.
+        """
+        ids = sorted({str(u) for u in user_ids if u})
+        if not ids or not tenant_id:
+            return {}
+        placeholders = ",".join("?" for _ in ids)
+        rows = self._store.execute(
+            "SELECT u.id, u.display_name, u.username FROM users u"
+            " JOIN memberships m ON m.user_id = u.id"
+            " WHERE m.tenant_id = ? AND u.id IN (" + placeholders + ")",
+            (tenant_id, *ids),
+        )
+        return {r["id"]: (r["display_name"] or r["username"] or "") for r in rows}
+
     def _within_tenant_model_limit(self, tenant_id: str, action: str, allowed: set) -> set:
         """Narrow a member's ``model`` grants to the tenant's allocatable limit.
 

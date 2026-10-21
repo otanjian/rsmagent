@@ -30,3 +30,15 @@
 - 删除分流在服务端严格区分「普通会话」「有效编码关联」与「关联读取异常」：读取异常或已有编码记录缺关联时返回可辨识失败并保留记录，不降级为普通会话清理；已确认不存在的重复删除沿用既有幂等与权限边界。
 - 文案覆盖 zh／en／zh-Hant 三语；样式追加在既有 `console.css`／`coding.css`，脚本仍在 `console.js` 内，资源沿用模板的按文件版本戳，无新增静态资源清单项。本 change 无数据迁移，代码回退不回滚已归档／已删除数据。
 
+
+## 企业访谈管理（跨用户只读与调研报告）
+
+由一个默认关闭的开关 `enterprise_interview_management_enabled` 统一控制；关闭时新增范围、目标选择与报告接口均不可用，原本人历史与访谈不受影响。
+
+- **授权**：角色需同时具备 `history.read`、`history.read_all`，并在角色编辑的 Agent 列表里勾选「查看全部会话（只读）」，即对该 `agent:<id>` 写入 `history_read_all`。选择 Agent 不会自动打包该动作；`tenant_admin`、平台 all 与 Agent 管理权都不能替代这条目标授权。
+- **范围**：历史页提供「我的会话 / 获授权智能体的全部会话」。后者必须先选目标 Agent，服务端按可信 tenant 与 Agent 存储键查询；默认范围与旧客户端仍只返回本人集合。
+- **只读详情**：他人记录在历史页内打开只读弹层，不进入聊天、不显示写操作；问答正文按纯文本渲染，不执行 HTML/脚本。附件不自动开放，仍走原文件权限。创建人只显示最小身份投影（显示名或脱敏标识），不需要成员管理资格。
+- **报告**：仅对 `enterprise-planning-advisor` 的会话提供「生成调研报告」。一次 POST 内读取完整已保存问答、固定消息截止、调用一次模型；成功后在当前页面预览并下载 Markdown，服务端不保存报告。生成前校验源读取、`model.use`、模型 grant 与硬配额；返回前重读固定前缀，被删改则拒绝返回，仅追加问答允许按原截止返回。
+- **边界**：不向原会话追加消息、不写记忆、不解析附件、不读取消息中的路径或外链；超长输入明确拒绝，超时/断开不自动重试；读取与生成分别写 `session.history.read_all`、`session.interview_report.generate` 审计（脱敏）。
+
+验收步骤见 `openspec/changes/add-enterprise-interview-management-scene/evidence/acceptance-plan.md`。

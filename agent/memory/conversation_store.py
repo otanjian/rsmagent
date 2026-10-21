@@ -1832,6 +1832,7 @@ class ConversationStore:
         user_id: Optional[str] = None,
         until_seq: Optional[int] = None,
         max_seq: Optional[int] = None,
+        all_owners: bool = False,
     ) -> Dict[str, Any]:
         """
         Load a page of conversation history for UI display, grouped into turns.
@@ -1899,7 +1900,7 @@ class ConversationStore:
                 # narrowed to the empty owner.
                 scope_sql, scope_params = dimension_clause(
                     values=self._dimensions(), keys=("agent_id", "tenant_id"))
-                if user_id:
+                if user_id and not all_owners:
                     msg_where = f"WHERE session_id = ? AND owner = ?{scope_sql}"
                     msg_args = (session_id, user_id) + scope_params
                 else:
@@ -2076,6 +2077,7 @@ class ConversationStore:
         user_id: Optional[str] = None,
         q: str = "",
         archived: bool = False,
+        all_owners: bool = False,
     ) -> Dict[str, Any]:
         """
         List sessions with pinned ones first, then last_active DESC, with an
@@ -2108,8 +2110,15 @@ class ConversationStore:
         """
         page, page_size = page_window(page, page_size, 50, cap=None)
         q = normalize_session_search_query(q)
-        clauses = ["owner = ?"]
-        params: List[Any] = [user_id or ""]
+        clauses: List[str] = []
+        params: List[Any] = []
+        if not all_owners:
+            clauses.append("owner = ?")
+            params.append(user_id or "")
+        else:
+            # Owner-less (legacy) rows are not another user's conversation;
+            # the cross-owner view must not guess an owner for them.
+            clauses.append("owner != ''")
         scope_sql, scope_params = dimension_clause(
             values=self._dimensions(), keys=("agent_id", "tenant_id"))
         if scope_sql:
@@ -2133,7 +2142,7 @@ class ConversationStore:
                 ).fetchone()[0]
                 rows = conn.execute(
                     f"""
-                    SELECT session_id, title, created_at, last_active, msg_count, pinned
+                    SELECT session_id, title, created_at, last_active, msg_count, pinned, owner
                     FROM sessions
                     WHERE {where}
                     ORDER BY pinned DESC, last_active DESC
@@ -2152,6 +2161,7 @@ class ConversationStore:
                 "last_active": r[3],
                 "msg_count": r[4],
                 "pinned": bool(r[5]),
+                "owner": r[6] or "",
             }
             for r in rows
         ]

@@ -311,6 +311,9 @@ available_setting = {
     # agent todo tool are refused (but storage is preserved). Todo access
     # requires a real user/tenant/membership plus todo.read / todo.write.
     "todo_enabled": False,
+    # Cross-owner history read + report entry for the enterprise interview
+    # scene. Off by default; both entry points refuse while off.
+    "enterprise_interview_management_enabled": False,
     # Member personal console capability switches (change
     # enable-member-personal-console, design D5 / task 9.1). Five independent
     # switches; a switch only controls whether a capability is *offered*, never

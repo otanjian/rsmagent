@@ -18,6 +18,17 @@
                                     <i class="fas fa-xmark" aria-hidden="true"></i>
                                 </button>
                             </div>
+                            <div id="history-read-scope" class="history-read-scope hidden">
+                                <select id="history-read-scope-select" class="history-read-select"
+                                        onchange="onHistoryReadScopeChange(event)"
+                                        data-i18n-aria-label="history_scope_label" aria-label="会话范围">
+                                    <option value="own" data-i18n="history_scope_own">我的会话</option>
+                                    <option value="agent_all" data-i18n="history_scope_agent_all">获授权智能体的全部会话</option>
+                                </select>
+                                <select id="history-read-target-select" class="history-read-select hidden"
+                                        onchange="onHistoryReadTargetChange(event)"
+                                        data-i18n-aria-label="history_target_label" aria-label="选择智能体"></select>
+                            </div>
                             <div id="history-page-new-mount" class="history-actions">
                                 <button id="history-refresh-btn" type="button" onclick="loadSessionList()" class="history-refresh-btn"
                                         data-i18n-title="history_refresh" title="刷新历史会话" aria-label="刷新历史会话">

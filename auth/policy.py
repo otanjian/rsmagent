@@ -37,6 +37,7 @@ PERMISSION_CATALOG: Tuple[str, ...] = (
     "tenant.org.read",  # read department tree + member org
     "agent.read",  # secure agent overview
     "history.read",  # read own/shared session history
+    "history.read_all",  # read every owner's history of one explicitly granted Agent
     "knowledge.read",  # read knowledge content
     "memory.read",  # read personal memory
     "todo.read",  # read own personal todos
@@ -92,6 +93,11 @@ PERMISSION_METADATA: Dict[str, Dict[str, object]] = {
         "group": "会话", "label": "查看历史会话",
         "description": "读取本人或合法共享的会话历史",
         "scope": "personal", "assignable": True,
+    },
+    "history.read_all": {
+        "group": "会话", "label": "查看全部会话",
+        "description": "读取当前租户中被明确授权的共享普通智能体全部已保存会话（只读）",
+        "scope": "tenant", "assignable": True,
     },
     "knowledge.read": {
         "group": "知识", "label": "查看知识",
@@ -412,7 +418,7 @@ RESOURCE_ACTIONS: Dict[str, Tuple[str, ...]] = {
     "skill": ("read", "use", "edit", "enable"),
     "tool": ("read", "execute", "configure"),
     "model": ("read", "use"),
-    "agent": ("read", "use", "edit", "enable"),
+    "agent": ("read", "use", "edit", "enable", "history_read_all"),
 }
 
 #: The agent actions a private owner holds by virtue of ownership. Reading and
