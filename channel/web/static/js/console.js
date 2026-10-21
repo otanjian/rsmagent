@@ -20483,8 +20483,12 @@ function startFeishuRegister(targetStatusId, forInstanceId) {
             if (data.register_status === 'downloading') {
                 // Desktop first run: the SDK bundle lands before the QR exists.
                 renderFeishuSdkDownloading(statusId);
-            } else {
+            } else if (data.qr_image || data.qrcode_url) {
                 renderFeishuQr(statusId, data.qr_image, data.qrcode_url);
+            } else {
+                // The SDK is still warming up (its first import is slow); the
+                // poller renders the QR the moment the worker produces it.
+                renderFeishuPreparing(statusId);
             }
             pollFeishuRegisterStatus(statusId);
         })
@@ -20607,6 +20611,13 @@ function pollFeishuRegisterStatus(statusId) {
             pollFeishuRegisterStatus(statusId);
         });
     }, 2000);
+}
+
+function renderFeishuPreparing(statusId) {
+    const el = document.getElementById(statusId);
+    if (!el) return;
+    el.innerHTML = `<p class="text-sm text-slate-500 dark:text-slate-400 text-center">`
+        + `${t('feishu_scan_loading')}</p>`;
 }
 
 function connectFeishuAfterRegister(appId, appSecret) {
