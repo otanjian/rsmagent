@@ -1,0 +1,21 @@
+{
+  "candidate_result": {
+    "passed": 67,
+    "failed": 2
+  },
+  "baseline_commit": "0bd9406e0e92dd993fbddb0bded6f73be9097f1a",
+  "baseline_result": {
+    "passed": 0,
+    "failed": 2,
+    "deselected": 31
+  },
+  "cases": [
+    "ZeroVisibilityRegressionTests::test_a_member_keeps_every_page_it_could_already_open",
+    "ZeroVisibilityRegressionTests::test_a_tenant_admin_keeps_its_management_pages"
+  ],
+  "issue": "Existing migration 20 workbench.artifacts visibility assertion; reproduced on the original rdai checkout.",
+  "logs": [
+    ".sync-test/navigation-backend.log",
+    ".sync-test/navigation-baseline.log"
+  ]
+}

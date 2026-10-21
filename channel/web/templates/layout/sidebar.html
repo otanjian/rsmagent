@@ -18,83 +18,26 @@
                 </div>
             </div>
 
-            <!-- Navigation -->
-            <nav id="sidebar-nav" class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
-                <!-- Chat Group -->
-                <div class="menu-group open" data-group="chat">
-                    <button class="menu-group-head w-full flex items-center gap-2 pl-3 pr-8 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-300 cursor-pointer transition-colors duration-150">
-                        <i class="fas fa-chevron-right text-[10px] chevron"></i>
-                        <span data-i18n="nav_chat">对话</span>
-                    </button>
-                    <div class="menu-group-items pl-2">
-                        <a class="sidebar-item active flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
-                           data-view="chat">
-                            <i class="fas fa-message item-icon text-xs w-5 text-center"></i>
-                            <span data-i18n="menu_chat">对话</span>
-                        </a>
-                    </div>
-                </div>
+            <!-- The shared menu renderer applies the current identity and area. -->
+            <nav id="sidebar-nav" class="flex-1 min-h-0 overflow-y-auto py-4 px-3 space-y-1"></nav>
 
-                <!-- Management Group -->
-                <div class="menu-group open" data-group="manage">
-                    <button class="menu-group-head w-full flex items-center gap-2 pl-3 pr-8 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-300 cursor-pointer transition-colors duration-150">
-                        <i class="fas fa-chevron-right text-[10px] chevron"></i>
-                        <span data-i18n="nav_manage">管理</span>
-                    </button>
-                    <div class="menu-group-items pl-2">
-                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
-                           data-view="agents">
-                            <i class="fas fa-people-group item-icon text-xs w-5 text-center"></i>
-                            <span data-i18n="menu_agents">智能体</span>
-                        </a>
-                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
-                           data-view="config">
-                            <i class="fas fa-sliders item-icon text-xs w-5 text-center"></i>
-                            <span data-i18n="menu_config">配置</span>
-                        </a>
-                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
-                           data-view="skills">
-                            <i class="fas fa-bolt item-icon text-xs w-5 text-center"></i>
-                            <span data-i18n="menu_skills">能力中心</span>
-                        </a>
-                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
-                           data-view="memory">
-                            <i class="fas fa-brain item-icon text-xs w-5 text-center"></i>
-                            <span data-i18n="menu_memory">记忆</span>
-                        </a>
-                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
-                           data-view="knowledge">
-                            <i class="fas fa-book item-icon text-xs w-5 text-center"></i>
-                            <span data-i18n="menu_knowledge">知识</span>
-                        </a>
-                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
-                           data-view="channels">
-                            <i class="fas fa-tower-broadcast item-icon text-xs w-5 text-center"></i>
-                            <span data-i18n="menu_channels">通道</span>
-                        </a>
-                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
-                           data-view="tasks">
-                            <i class="fas fa-clock item-icon text-xs w-5 text-center"></i>
-                            <span data-i18n="menu_tasks">定时</span>
-                        </a>
-                    </div>
-                </div>
-
-                <!-- Monitor Group -->
-                <div class="menu-group open" data-group="monitor">
-                    <button class="menu-group-head w-full flex items-center gap-2 pl-3 pr-8 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-300 cursor-pointer transition-colors duration-150">
-                        <i class="fas fa-chevron-right text-[10px] chevron"></i>
-                        <span data-i18n="nav_monitor">监控</span>
-                    </button>
-                    <div class="menu-group-items pl-2">
-                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
-                           data-view="logs">
-                            <i class="fas fa-terminal item-icon text-xs w-5 text-center"></i>
-                            <span data-i18n="menu_logs">日志</span>
-                        </a>
-                    </div>
-                </div>
-            </nav>
+            <!-- rdai's area switch stays below navigation and above the account. -->
+            <div class="sidebar-admin-entry-wrap" data-nav-shell="workbench">
+                <button id="nav-open-admin" type="button" class="sidebar-item sidebar-area-button hidden"
+                        onclick="navigateTo('admin-home')" data-tip-key="nav_admin_console"
+                        data-i18n-aria-label="nav_admin_console" aria-label="控制台">
+                    <i class="fas fa-sliders" aria-hidden="true"></i>
+                    <span data-i18n="nav_admin_console">控制台</span>
+                </button>
+            </div>
+            <div class="sidebar-admin-entry-wrap" data-nav-shell="admin">
+                <button id="nav-return-workbench" type="button" class="sidebar-item sidebar-area-button"
+                        onclick="navigateTo('chat')" data-tip-key="nav_workbench"
+                        data-i18n-aria-label="nav_workbench" aria-label="业务工作台">
+                    <i class="fas fa-house" aria-hidden="true"></i>
+                    <span data-i18n="nav_workbench">业务工作台</span>
+                </button>
+            </div>
 
             <div id="sidebar-account-footer" class="sidebar-account-footer">
                 <button id="sidebar-account-toggle" type="button" class="sidebar-account-toggle"

@@ -8,7 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {chromium} = require('playwright');
 const repo = path.resolve(__dirname, '..');
-const output = process.env.COW_SYNC_BROWSER_OUTPUT || fs.mkdtempSync(path.join(os.tmpdir(), 'sync-web-browser-'));
+const output = path.resolve(process.env.COW_SYNC_BROWSER_OUTPUT || fs.mkdtempSync(path.join(os.tmpdir(), 'sync-web-browser-')));
 fs.mkdirSync(output, {recursive:true});
 const report = {scenarios:[], pageErrors:[], scope:'actual Web browser, IAM, files and persistence; no model substitute'};
 
@@ -125,6 +125,144 @@ async function main() {
             assert.equal(await alice.locator('#art-btn-download').isVisible(),false);
         });
         const manager=await login('root');
+        await scenario('sync: workbench and console keep separate menus through links, reload and history',async()=>{
+            currentPage=manager;
+            assert.equal(await manager.locator('#app').getAttribute('data-nav-area'),'workbench');
+            assert.equal(await manager.locator('#sidebar-nav [data-view="config"]').count(),0);
+            assert.equal(await manager.locator('#sidebar-nav [data-view="agent-workbench"]').count(),1);
+            assert.deepEqual(await manager.locator('#sidebar-nav .sidebar-item').evaluateAll(items=>items.map(item=>item.dataset.view)),
+                ['chat','agent-workbench','tasks','knowledge','scenes','history']);
+            assert.equal(await manager.locator('#sidebar-nav .menu-group-head').count(),0);
+            assert.equal(await manager.locator('#nav-return-workbench').isVisible(),false);
+            async function assertBottomSwitch(id) {
+                const geometry=await manager.locator(id).evaluate(button=>{
+                    const nav=document.getElementById('sidebar-nav'), account=document.getElementById('sidebar-account-footer');
+                    return {outside:!nav.contains(button), top:button.getBoundingClientRect().top,
+                        bottom:button.getBoundingClientRect().bottom, navBottom:nav.getBoundingClientRect().bottom,
+                        accountTop:account.getBoundingClientRect().top};
+                });
+                assert.ok(geometry.outside && geometry.top>=geometry.navBottom && geometry.bottom<=geometry.accountTop);
+            }
+            await assertBottomSwitch('#nav-open-admin');
+            await manager.screenshot({path:path.join(output,'navigation-workbench.png')});
+            await manager.locator('#nav-open-admin').click();
+            await manager.waitForURL(app.origin+'/admin');
+            assert.equal(await manager.locator('#app').getAttribute('data-nav-area'),'admin');
+            assert.equal(await manager.locator('#sidebar-nav [data-view="chat"]').count(),0);
+            await manager.locator('#admin-home-shortcuts .admin-home-shortcut').first().waitFor();
+            assert.deepEqual(await manager.locator('#sidebar-nav .menu-group').evaluateAll(groups=>groups.map(g=>({
+                id:g.dataset.group, views:Array.from(g.querySelectorAll('.sidebar-item'),item=>item.dataset.view)
+            }))), [
+                {id:'admin-overview',views:['admin-home']},
+                {id:'agent-dev',views:['agents','skills','memory']},
+                {id:'model-access',views:['config','channels','external_connections']},
+                {id:'org-perm',views:['system_user','org','roles']},
+                {id:'platform-ops',views:['tenant','branding','logs','audit','token_usage']},
+            ]);
+            assert.deepEqual(await manager.locator('#sidebar-nav .menu-group-head [data-i18n]').allTextContents(),
+                ['智能体开发','模型与接入','组织与权限','平台管理']);
+            assert.equal(await manager.locator('#nav-open-admin').isVisible(),false);
+            await assertBottomSwitch('#nav-return-workbench');
+            await manager.screenshot({path:path.join(output,'navigation-console.png')});
+            await manager.locator('#sidebar-nav [data-view="config"]').click();
+            await manager.waitForURL(app.origin+'/settings');await manager.reload();
+            await manager.waitForFunction(()=>typeof menuLoaded!=='undefined'&&menuLoaded);
+            assert.equal(await manager.locator('#app').getAttribute('data-nav-area'),'admin');
+            await manager.locator('#nav-return-workbench').click();
+            await manager.goBack();await manager.waitForURL(app.origin+'/settings');
+            assert.equal(await manager.locator('#app').getAttribute('data-nav-area'),'admin');
+            await manager.goForward();
+            assert.equal(await manager.locator('#app').getAttribute('data-nav-area'),'workbench');
+        });
+        await scenario('sync: mixed personal layouts keep both areas and unknown items after edit and reset',async()=>{
+            currentPage=manager;
+            const saved=await manager.evaluate(async()=>{
+                const response=await fetch('/api/menu',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({menu:{groups:[{id:'chat',title:'Mixed layout',items:[
+                    {id:'chat',type:'builtin',view:'chat'},
+                    {id:'config',type:'builtin',view:'config',title:'My configuration'},
+                    {id:'logs',type:'builtin',view:'logs',hidden:true},
+                    {id:'future',type:'builtin',view:'future-page',title:'Keep future page'},
+                    {id:'external',type:'url',url:'https://example.invalid/',open:'tab',title:'My external link'}
+                ]}]}})});return response.ok;
+            });assert.equal(saved,true);
+            await manager.reload();await manager.waitForFunction(()=>typeof menuLoaded!=='undefined'&&menuLoaded);
+            await manager.locator('#sidebar-nav [data-menu-id="external"]').waitFor();
+            await manager.locator('#nav-open-admin').click();
+            assert.equal(await manager.locator('#sidebar-nav [data-menu-id="external"]').count(),0);
+            assert.equal(await manager.locator('#sidebar-nav [data-view="config"]').innerText(),'My configuration');
+            assert.equal(await manager.locator('#sidebar-nav [data-view="logs"]').count(),0);
+            await editTitle(manager,'Kept across areas');
+            const items=(await readMenu(manager)).menu.groups.flatMap(g=>g.items);
+            assert.equal(items.find(i=>i.id==='future').title,'Keep future page');
+            assert.equal(items.find(i=>i.id==='logs').hidden,true);
+            assert.equal(items.find(i=>i.id==='external').url,'https://example.invalid/');
+            await manager.locator('#nav-return-workbench').click();
+            assert.match(await manager.locator('#sidebar-nav').innerText(),/Kept across areas/i);
+            await manager.locator('[onclick="menuEditorOpen()"]:visible').last().click();
+            await manager.locator('[onclick="menuEditorReset()"]:visible').click();
+            await manager.locator('#confirm-dialog-ok').click();
+            await manager.locator('#menu-editor-overlay').waitFor({state:'hidden'});
+            assert.equal((await readMenu(manager)).menu,null);
+            assert.equal(await manager.locator('#app').getAttribute('data-nav-area'),'workbench');
+        });
+        await scenario('sync: main menu labels retain rdai names in three languages',async()=>{
+            currentPage=manager;await manager.locator('#nav-open-admin').click();
+            const views=['agents','config','skills','memory','channels','logs'];
+            for (const [lang,labels,area] of [
+                ['zh',['智能体管理','模型服务','能力中心','记忆管理','消息渠道','运行日志'],'控制台'],
+                ['zh-Hant',['智慧體管理','模型服務','能力中心','記憶管理','訊息管道','執行日誌'],'控制台'],
+                ['en',['Agent Management','Model Services','Capability Center','Memory Management','Channels','Runtime Logs'],'Console'],
+            ]) {
+                await manager.locator('#lang-selector > button').click();
+                await manager.locator('#lang-menu [data-lang="'+lang+'"]').click();
+                for (let i=0;i<views.length;i++) {
+                    assert.equal(await manager.locator('#sidebar-nav [data-view="'+views[i]+'"] [data-i18n]').innerText(),labels[i]);
+                }
+                assert.equal(await manager.locator('#nav-open-admin').getAttribute('aria-label'),area);
+                assert.ok((await manager.title()).endsWith(area));
+            }
+            await manager.locator('#lang-selector > button').click();
+            await manager.locator('#lang-menu [data-lang="zh"]').click();
+            await manager.locator('#sidebar-nav [data-view="agents"]').click();
+            assert.equal(await manager.locator('#breadcrumb-page').innerText(),'智能体管理');
+            await manager.screenshot({path:path.join(output,'navigation-rdai-labels.png')});
+            await manager.locator('#nav-return-workbench').click();
+            for (const [view,label] of [['knowledge','知识库'],['tasks','定时任务'],['agent-workbench','智能体']]) {
+                assert.equal(await manager.locator('#sidebar-nav [data-view="'+view+'"] [data-i18n]').innerText(),label);
+            }
+            assert.ok((await manager.title()).endsWith('业务工作台'));
+        });
+        await scenario('sync: workbench-only member has no console entry and denied deep links keep a way back',async()=>{
+            const limited=await login('limited');currentPage=limited;
+            assert.equal(await limited.locator('#nav-open-admin').isVisible(),false);
+            await limited.goto(app.origin+'/settings');
+            await limited.locator('#view-unavailable').waitFor({state:'visible'});
+            assert.equal(new URL(limited.url()).pathname,'/settings');
+            assert.equal(await limited.locator('#nav-open-admin').isVisible(),false);
+            await limited.locator('#nav-return-workbench').click();
+            await limited.locator('#view-chat').waitFor({state:'visible'});
+            assert.equal(await limited.locator('#app').getAttribute('data-nav-area'),'workbench');
+            await limited.context().close();
+        });
+        await scenario('sync: both navigation areas stay reachable on mobile and the collapsed sidebar',async()=>{
+            currentPage=manager;
+            await manager.setViewportSize({width:390,height:844});
+            await manager.locator('#menu-toggle').click();
+            await manager.locator('#nav-open-admin').click();
+            await manager.waitForURL(app.origin+'/admin');
+            assert.equal(await manager.locator('#menu-toggle').getAttribute('aria-expanded'),'false');
+            await manager.locator('#menu-toggle').click();
+            await manager.waitForFunction(()=>document.getElementById('sidebar').getBoundingClientRect().left>=0);
+            await manager.screenshot({path:path.join(output,'navigation-mobile.png')});
+            await manager.locator('#nav-return-workbench').click();
+            await manager.locator('#view-chat').waitFor({state:'visible'});
+            await manager.setViewportSize({width:1440,height:1000});
+            await manager.locator('#sidebar-collapse-btn').click();
+            await manager.locator('#nav-open-admin').click();
+            await manager.waitForURL(app.origin+'/admin');
+            await manager.locator('#nav-return-workbench').click();
+            await manager.locator('#sidebar-collapse-btn').click();
+        });
         await scenario('sync: skill creation uses the rendered form and persists an authorized resource',async()=>{
             currentPage=manager;await manager.goto(app.origin+'/skills');
             await manager.locator('#skill-add-btn').click();
@@ -147,6 +285,14 @@ async function main() {
             await manager.locator('[data-skill-name="'+data.name+'"] [data-skill-edit]').click();
             const editor=manager.locator('#skill-viewer-content textarea.doc-editor');
             await editor.waitFor();await editor.fill((await editor.inputValue())+'\n\nEdited through the Web form.\n');
+            // The new area switch goes through the existing unsaved-edit guard.
+            const draft=await editor.inputValue();
+            await manager.locator('#nav-return-workbench').click();
+            await manager.locator('#confirm-dialog-overlay').waitFor({state:'visible'});
+            await manager.locator('#confirm-dialog-cancel').click();
+            assert.equal(new URL(manager.url()).pathname,'/skills');
+            assert.equal(await manager.locator('#app').getAttribute('data-nav-area'),'admin');
+            assert.equal(await editor.inputValue(),draft);
             const saved=manager.waitForResponse(r=>new URL(r.url()).pathname==='/api/skills/content'&&r.request().method()==='POST');
             await manager.locator('#skill-btn-save').click();
             assert.equal((await (await saved).json()).status,'success');

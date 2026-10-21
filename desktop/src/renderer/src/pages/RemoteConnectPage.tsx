@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Server, ShieldCheck, ShieldAlert, Trash2, Plus, ArrowLeft, RefreshCw } from 'lucide-react'
 import { t } from '../i18n'
 import type { DesktopModeProjection, RemoteFailure, RemoteProbeReply } from '../types'
@@ -45,6 +46,7 @@ const failureText = (failure: RemoteFailure): string => {
 }
 
 const RemoteConnectPage: React.FC<Props> = () => {
+  const location = useLocation()
   const [projection, setProjection] = useState<DesktopModeProjection | null>(null)
   const [origin, setOrigin] = useState('')
   const [busy, setBusy] = useState(false)
@@ -58,6 +60,7 @@ const RemoteConnectPage: React.FC<Props> = () => {
     if (!api?.desktopModeGet) return
     const reply = await api.desktopModeGet()
     if (reply?.ok) {
+      setAttached(reply.containerAttached === true)
       setProjection({
         mode: reply.mode,
         profiles: reply.profiles || [],
@@ -71,6 +74,11 @@ const RemoteConnectPage: React.FC<Props> = () => {
 
   useEffect(() => {
     void refresh()
+  }, [refresh, location.pathname])
+
+  useEffect(() => {
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
   }, [refresh])
 
   // A sign-out started inside the container ends *its* session, not this
@@ -166,6 +174,10 @@ const RemoteConnectPage: React.FC<Props> = () => {
     setNotice('')
     const reply = await api.desktopRemoteSetMode(mode)
     await refresh()
+    if (!reply?.ok) {
+      setError(t('account_logout_unconfirmed'))
+      return
+    }
     if (mode === 'remote' && reply && reply.applied === false) {
       // The runtime refused the mode (e.g. the legacy Electron line has no
       // WebContentsView). Say so instead of leaving a mode that will not boot.

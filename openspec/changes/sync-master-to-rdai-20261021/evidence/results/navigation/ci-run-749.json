@@ -1,0 +1,13 @@
+{
+  "id": 749,
+  "event": "pull_request",
+  "head_sha": "fd9136921ec672635931d16aaba92c77d352dde5",
+  "status": "completed",
+  "conclusion": "success",
+  "html_url": "https://rd.rsmxm.com.cn/Gitea/rsmai/rsmagent/actions/runs/749",
+  "run_number": 67,
+  "job_id": 868,
+  "artifact_uploaded": true,
+  "candidate_digest": "76d6443c4f304608e10496644213817c3134fdf96fd243554016554d29d74d61",
+  "required_context": "Web readiness / Web required behavior (pull_request)"
+}

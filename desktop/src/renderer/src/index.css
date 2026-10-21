@@ -297,6 +297,7 @@ html.cow-remote-covering body {
 html.cow-remote-covering .titlebar-drag,
 html.cow-remote-covering .titlebar-no-drag {
   -webkit-app-region: no-drag !important;
+}
 /* While the menu editor is sorting, the grab cursor wins over inputs under the pointer */
 .menu-sorting,
 .menu-sorting * {

@@ -63,6 +63,15 @@ async function setShellCovered(window: BrowserWindow, covered: boolean): Promise
   }
 }
 
+/** Reveal native settings without discarding the paired session or file grants. */
+export function setRemoteContainerVisible(window: BrowserWindow, visible: boolean): void {
+  if (!container || attachedWindow !== window) return
+  container.view.setVisible(visible)
+  void setShellCovered(window, visible)
+  if (visible) container.webContents.focus()
+  else window.webContents.focus()
+}
+
 /** Channels the local (trusted) shell uses to attach/detach the container. */
 export const CHANNEL_START = 'remote-container-start'
 export const CHANNEL_STOP = 'remote-container-stop'
@@ -939,7 +948,10 @@ export async function attachRemoteContainer(options: {
   // Full-bleed guest (TOP_INSET=0): drop the shell's titlebar drag regions so
   // they cannot steal clicks from the guest's own top chrome (bell / tenant /
   // workspace). See shell-covering.ts.
-  await setShellCovered(options.window, true)
+  // A local sign-in may finish attaching after the user has already opened
+  // Settings. Do not let that late completion cover the page they chose.
+  const route = new URL(options.window.webContents.getURL()).hash.slice(1).split('?')[0]
+  setRemoteContainerVisible(options.window, route !== '/settings' && route !== '/logs')
   return { ok: true }
 }
 

@@ -37,7 +37,8 @@ class StartupChannelResolutionTests(unittest.TestCase):
 class RunWarmupTests(unittest.TestCase):
     """run() warms scheduler + MCP in BOTH identity modes (task 2.3)."""
 
-    def _run(self):
+    def _run(self, entries=None):
+        entries = ["web"] if entries is None else entries
         with ExitStack() as stack:
             for target in (
                 "common.maintenance.start",
@@ -57,17 +58,21 @@ class RunWarmupTests(unittest.TestCase):
                 "app.sigterm_handler_wrap",
                 "app._sync_builtin_skills",
                 "app._scaffold_subagent_assets",
-                "app.ChannelManager",
                 "app.set_channel_manager",
             ):
                 stack.enter_context(patch(target))
-            stack.enter_context(patch("app._resolve_startup_channels", return_value=["web"]))
+            manager = stack.enter_context(patch("app.ChannelManager"))
+            log = stack.enter_context(patch("app.logger"))
+            stack.enter_context(patch("app._resolve_startup_channels", return_value=entries))
             stack.enter_context(patch("app._has_web_entry", return_value=True))
             stack.enter_context(patch("app.DESKTOP_MODE", False))
             stack.enter_context(patch("app.time.sleep", side_effect=KeyboardInterrupt))
             warmup_mcp = stack.enter_context(patch("app._warmup_mcp_tools"))
             warmup_sched = stack.enter_context(patch("app._warmup_scheduler"))
             app.run()
+            manager.return_value.start.assert_called_once_with(entries, first_start=True)
+            log.exception.assert_not_called()
+            self.assertNotIn("credential-sentinel", repr(log.info.call_args_list))
         return warmup_mcp, warmup_sched
 
     def test_run_starts_warmup_in_database_mode(self):
@@ -79,6 +84,13 @@ class RunWarmupTests(unittest.TestCase):
         warmup_mcp, warmup_sched = self._run()
         warmup_mcp.assert_called_once()
         warmup_sched.assert_called_once()
+
+    def test_run_starts_mixed_channels_without_logging_credentials(self):
+        from channel.channel_instances import ChannelInstance
+        self._run(["web", "terminal", ChannelInstance(
+            instance_id="feishu-test", channel_type="feishu", agent_id="primary",
+            credentials={"feishu_app_secret": "credential-sentinel"},
+        )])
 
 
 if __name__ == "__main__":

@@ -39,6 +39,10 @@ def main(root):
                     [('agent', 'agent:'+aid, action) for aid in ('primary','secondary') for action in ('read','use')])
     password = 'SyntheticWeb2026!'
     ids = {name: app.member(name, [role['code']], password=password) for name in ('alice', 'bob')}
+    limited = app.role('workbench-only', ['chat.use', 'history.read', 'agent.read', 'agent.use'],
+        [('agent', 'agent:primary', 'read'), ('agent', 'agent:primary', 'use'),
+         ('menu', 'nav:workbench.chat', 'view'), ('menu', 'nav:workbench.history', 'view')])
+    ids['limited'] = app.member('limited', [limited['code']], password=password)
     app.service.change_password(app.service.login('root', app.ADMIN_PASSWORD).token, app.ADMIN_PASSWORD, password)
     ids['manager'] = app.member('manager', ['tenant_admin'], password=password)
     store, profile = owned_store(app, ids['alice'])

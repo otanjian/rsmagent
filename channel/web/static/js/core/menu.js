@@ -10,7 +10,7 @@
 
 // The pages of this console that a menu can lead to.
 const MENU_BUILTINS = {
-    'history': { icon: 'fa-clock-rotate-left', label: 'session_history' },
+    'history': { icon: 'fa-clock-rotate-left', label: 'sidebar_history_records' },
     'agent-workbench': { icon: 'fa-robot', label: 'menu_agents' },
     'todo': { icon: 'fa-list-check', label: 'menu_todo' },
     'scenes': { icon: 'fa-shapes', label: 'menu_scenes' },
@@ -26,7 +26,7 @@ const MENU_BUILTINS = {
     'admin-home': { icon: 'fa-house', label: 'nav_admin_overview' },
     chat:      { icon: 'fa-message',          label: 'menu_chat' },
     artifacts: { icon: 'fa-layer-group',      label: 'menu_artifacts' },
-    agents:    { icon: 'fa-people-group',     label: 'menu_agents' },
+    agents:    { icon: 'fa-people-group',     label: 'menu_agent_config' },
     config:    { icon: 'fa-sliders',          label: 'menu_config' },
     skills:    { icon: 'fa-bolt',             label: 'menu_skills' },
     memory:    { icon: 'fa-brain',            label: 'menu_memory' },
@@ -36,17 +36,24 @@ const MENU_BUILTINS = {
     logs:      { icon: 'fa-terminal',         label: 'menu_logs' },
 };
 
-// The built-in menu, as sidebar.html draws it before any script runs.
+// rdai's original default order, rendered with the shared menu components.
 const MENU_DEFAULT = [
-    { id: 'chat',    views: ['chat', 'artifacts', 'history'] },
-    { id: 'business', views: ['agent-workbench', 'todo', 'scenes'] },
-    { id: 'manage',  views: ['agents', 'config', 'skills', 'memory', 'knowledge', 'channels', 'tasks', 'external_connections'] },
-    { id: 'organization', views: ['admin-home', 'system_user', 'roles', 'org', 'tenant', 'platform', 'branding'] },
-    { id: 'monitor', views: ['logs', 'audit', 'token_usage'] },
+    { id: 'chat', views: ['chat', 'agent-workbench', 'tasks', 'knowledge', 'scenes', 'history', 'artifacts', 'todo'] },
+    { id: 'admin-overview', views: ['admin-home'] },
+    { id: 'agent-dev', views: ['agents', 'skills', 'memory'] },
+    { id: 'model-access', views: ['config', 'channels', 'external_connections'] },
+    { id: 'org-perm', views: ['system_user', 'org', 'roles'] },
+    { id: 'platform-ops', views: ['tenant', 'branding', 'logs', 'audit', 'token_usage', 'platform'] },
 ];
 // Built-in pages that start hidden, so only the menu editor offers them.
-const MENU_DEFAULT_HIDDEN = new Set(['artifacts']);
-const MENU_GROUP_LABELS = { business: 'nav_workbench', chat: 'nav_chat', manage: 'nav_manage', monitor: 'nav_monitor', organization: 'nav_system' };
+const MENU_DEFAULT_HIDDEN = new Set(['artifacts', 'todo', 'platform']);
+const MENU_GROUP_LABELS = {
+    chat: 'nav_chat', 'admin-overview': 'nav_admin_overview',
+    'agent-dev': 'nav_group_agent_dev', 'model-access': 'nav_group_model_access',
+    'org-perm': 'nav_group_org_perm', 'platform-ops': 'nav_group_platform_ops',
+    // Saved layouts keep their existing groups and labels.
+    business: 'nav_workbench', manage: 'nav_manage', monitor: 'nav_monitor', organization: 'nav_system',
+};
 // Pages a menu must always lead to; mirrors REQUIRED_VIEWS in api/menu.py.
 const MENU_REQUIRED = ['chat', 'config'];
 // Artifacts that can be a page of the menu; mirrors MENU_KINDS in api/menu.py.
@@ -155,14 +162,29 @@ function _menuItemHTML(item) {
 function menuRenderSidebar() {
     const nav = document.getElementById('sidebar-nav');
     if (!nav) return;
+    // Areas come from the existing route registry, never a saved group title.
+    // Filter only the rendered sidebar: the editor retains the complete document.
+    const area = _viewTargetArea(currentView);
+    nav.dataset.navShell = area;
+    document.getElementById('app')?.setAttribute('data-nav-area', area);
+    const admin = document.getElementById('nav-open-admin');
+    admin?.classList.toggle('hidden', menuAvailableViews['admin-home'] !== true);
     let folded = {};
     try { folded = JSON.parse(localStorage.getItem(SIDEBAR_GROUPS_KEY) || '{}'); } catch (_) { /* keep defaults */ }
     nav.innerHTML = menuDoc.groups.map(group => {
-        const items = group.items.filter(menuShows);
+        const items = group.items.filter(item => menuShows(item)
+            && (item.type === 'builtin' ? _viewTargetArea(item.view) : 'workbench') === area);
         if (!items.length) return '';
         const title = !group.title && MENU_GROUP_LABELS[group.id]
             ? `<span data-i18n="${MENU_GROUP_LABELS[group.id]}">${escapeHtml(menuGroupLabel(group))}</span>`
             : `<span>${escapeHtml(menuGroupLabel(group))}</span>`;
+        // Original workbench entries and console overview have no heading.
+        // An explicitly named personal group still shows its saved heading.
+        if (!group.title && ['chat', 'admin-overview'].includes(group.id)) {
+            return `<div class="menu-group open" data-group="${escapeHtml(group.id)}">
+                <div class="menu-group-items">${items.map(_menuItemHTML).join('')}</div>
+            </div>`;
+        }
         return `<div class="menu-group${folded[group.id] === false ? '' : ' open'}" data-group="${escapeHtml(group.id)}">
             <button class="menu-group-head w-full flex items-center gap-2 pl-3 pr-8 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-300 cursor-pointer transition-colors duration-150">
                 <i class="fas fa-chevron-right text-[10px] chevron"></i>${title}

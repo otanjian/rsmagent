@@ -993,7 +993,8 @@ def run():
         # run.log). Startup only needs to say which instances are coming up.
         logger.info(
             "[App] Starting channels: %s",
-            [(item.instance_id, item.channel_type, item.agent_id)
+            [item if isinstance(item, str) else
+             (item.instance_id, item.channel_type, item.agent_id)
              for item in channel_names])
 
         channel_mgr = ChannelManager()

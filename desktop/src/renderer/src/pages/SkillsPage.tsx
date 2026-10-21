@@ -860,11 +860,12 @@ const Section: React.FC<{ title: string; count: number; action?: React.ReactNode
   </section>
 )
 
-const ActionBtn: React.FC<{ onClick: () => void; children: React.ReactNode }> = ({ onClick, children }) => (
+const ActionBtn: React.FC<{ onClick: () => void; disabled?: boolean; children: React.ReactNode }> = ({ onClick, disabled, children }) => (
   <button
     type="button"
     onClick={onClick}
-    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-btn text-xs font-medium text-accent bg-accent-soft hover:brightness-95 dark:hover:brightness-110 cursor-pointer transition-all"
+    disabled={disabled}
+    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-btn text-xs font-medium text-accent bg-accent-soft hover:brightness-95 dark:hover:brightness-110 cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
   >
     {children}
   </button>

@@ -905,8 +905,8 @@ function applyBrandToDocument() {
         el.title = hasDesc ? desc : '';
     });
 
-    // Browser title: "<brand_name> 控制台" (控制台 localized)
-    const consoleLabel = t('nav_workbench');
+    // Preserve the brand while reflecting the active navigation area.
+    const consoleLabel = t(_navAreaFromPath(location.pathname) === 'admin' ? 'nav_admin_console' : 'nav_workbench');
     document.title = `${name} ${consoleLabel}`.trim();
 
     // Favicon (derived PNG served by the backend; falls back to the built-in)
@@ -937,6 +937,7 @@ function applyLanguage(next, writeToBackend) {
         languageStorageFailed = localStorage.getItem('cow_lang') !== currentLang;
     } catch (_) { languageStorageFailed = true; }
     applyI18n();
+    _applyNavAreaAttribute();
     _applyInputTooltips();
     // The context panel owns its own labels, so re-mount it to repaint them.
     if (typeof mountContextModule === 'function') mountContextModule();
@@ -7909,6 +7910,7 @@ function _applyNavAreaAttribute() {
     const appEl = document.getElementById('app');
     const area = _navAreaFromPath(typeof location !== 'undefined' ? location.pathname : '');
     if (appEl) appEl.setAttribute('data-nav-area', area);
+    document.title = `${productTitle(effectiveBrandName())} ${t(area === 'admin' ? 'nav_admin_console' : 'nav_workbench')}`.trim();
     const sidebarCaption = document.getElementById('sidebar-brand-caption');
     if (sidebarCaption && typeof sidebarBrandCaption === 'function') {
         const caption = sidebarBrandCaption(

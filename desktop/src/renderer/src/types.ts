@@ -139,6 +139,7 @@ export interface RemoteServerProfile {
 
 /** The stored mode projection. Never carries a token, cookie or path. */
 export interface DesktopModeProjection {
+  containerAttached?: boolean
   mode: 'local' | 'remote'
   serverOrigin?: string
   profiles: RemoteServerProfile[]

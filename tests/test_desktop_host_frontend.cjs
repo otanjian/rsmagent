@@ -262,12 +262,15 @@ test('logging out suspends local context before the session ends', () => {
     assert.ok(revoke > suspend, 'the host is told before the server call');
 });
 
-test('the adapter is loaded before console.js and carries a cache-bust stamp', () => {
+test('the native adapters load before their assembled consumers', () => {
     const html = read('channel/web/chat.html');
     const order = [...html.matchAll(/<script defer src="\/?assets\/(js\/[^"?]+)/g)].map((m) => m[1]);
     const adapter = order.indexOf('js/fork/desktop-host.js');
     assert.ok(adapter >= 0, 'the adapter must be on the page');
-    assert.ok(adapter < order.indexOf('js/console.js'), 'console.js uses the namespace at load');
+    assert.ok(adapter < order.indexOf('js/fork/extensions.js'), 'the fork extension consumes the desktop host');
+    const project = order.indexOf('js/fork/project-source.js');
+    const workspace = order.indexOf('js/workspace.js');
+    assert.ok(project >= 0 && workspace > project, 'workspace.js configures the local binding provider at load');
 });
 
 test('no desktop branch is scattered through the console', () => {

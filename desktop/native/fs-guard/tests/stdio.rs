@@ -507,16 +507,9 @@ fn a_path_beyond_the_protocol_bound_is_refused_not_truncated() {
         "invalid_params"
     );
 
-    // One byte under the bound is *not* a length refusal: it is a real name that
-    // does not exist, which is a different answer. This is the boundary check
-    // that keeps the assertion above from passing for the wrong reason.
-    let at_bound = "a".repeat(4096);
-    let code = helper.err(&json!({
-        "id": "s2", "op": "stat", "grant": grant,
-        "params": { "path": at_bound },
-    }));
-    assert_ne!(code, "invalid_params",
-               "a path at the bound must not be refused as oversized");
+    // The validator's exact boundary is tested in paths::tests. An absent
+    // entry and an OS component-length refusal also return invalid_params,
+    // so that error alone cannot distinguish them from the protocol limit.
 }
 
 // ---------------------------------------------------------------------------

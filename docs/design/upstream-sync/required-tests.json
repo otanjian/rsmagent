@@ -69,6 +69,14 @@
         "test_fork_tls_errors_do_not_start_plain_http[missing]",
         "test_fork_tls_errors_do_not_start_plain_http[malformed]"
       ]
+    },
+    {
+      "file": "tests/test_channel_startup_open.py",
+      "ids": [
+        "test_run_starts_warmup_in_database_mode",
+        "test_run_starts_warmup_in_legacy_mode",
+        "test_run_starts_mixed_channels_without_logging_credentials"
+      ]
     }
   ],
   "node": [
@@ -124,6 +132,12 @@
         "the coding Agent surface is translated, not shown as keys",
         "the actual master table merges every loaded fork namespace before lookup"
       ]
+    },
+    {
+      "file": "tests/test_desktop_host_frontend.cjs",
+      "names": [
+        "the native adapters load before their assembled consumers"
+      ]
     }
   ],
   "browser": {
@@ -162,7 +176,12 @@
       "sync: tenant switches, logout and re-login restore only the selected personal layout",
       "sync: workspace upload, search, edit and download persist real file bytes",
       "sync: master history launcher creates a scoped team before switching conversation",
-      "sync: header language reflects the personal choice without changing instance configuration"
+      "sync: header language reflects the personal choice without changing instance configuration",
+      "sync: workbench and console keep separate menus through links, reload and history",
+      "sync: mixed personal layouts keep both areas and unknown items after edit and reset",
+      "sync: workbench-only member has no console entry and denied deep links keep a way back",
+      "sync: both navigation areas stay reachable on mobile and the collapsed sidebar",
+      "sync: main menu labels retain rdai names in three languages"
     ]
   }
 }

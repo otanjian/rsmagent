@@ -206,9 +206,9 @@ test('an HTTP origin is refused before any request is issued', async () => {
     assert.equal(result.failure.kind, 'downgrade');
     assert.equal(called, 0, 'no HTTP request may ever be attempted for a public HTTP origin');
 
-    // Mismatched allowHttpOrigin still refuses before fetch.
+    // A configured exception cannot authorize a public HTTP server.
     const refusedPublicHttp = await connection.probeServer(
-        'http://localhost:9899', fakeFetch, { allowHttpOrigin: 'http://127.0.0.1:9899' });
+        'http://console.example.com', fakeFetch, { allowHttpOrigin: 'http://console.example.com' });
     assert.equal(refusedPublicHttp.ok, false);
     assert.equal(refusedPublicHttp.failure.code, 'scheme_not_https');
     assert.equal(called, 0);
