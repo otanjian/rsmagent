@@ -1,0 +1,7 @@
+{
+  ".sync-test/browser-live-chat.cjs": "0191e78e57ae05483069b07404614610e270eb8a962edc9304dcce5a06615a4f",
+  ".sync-test/real-file-browser.cjs": "4017fe955bef3ce72dab05a78b980726cfeab38e45d7eeba86782022c99f20a4",
+  ".sync-test/real-api-acceptance.py": "7a25f29ed4945c903cb76fb5f67135c713bcf747e9ebfc88ed1fcc4a2230f8f1",
+  ".sync-test/serve-web.py": "d712be7a4a62147a5b699198654d3ad65e8a8b088bb6b80337d5cb248ae044bb",
+  ".sync-test/serve-api-real.py": "69a5147747c35bc8083e0d066a0fec70a6db83ca28e3dc7d0134832d1ec36ab6"
+}

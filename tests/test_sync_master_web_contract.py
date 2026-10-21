@@ -84,7 +84,9 @@ def test_artifact_index_scopes_before_pagination_and_mutations(web_app):
 def test_artifact_failure_retries_committed_messages_once(web_app, monkeypatch):
     app, ids, tokens = setup_members(web_app)
     store, profile = owned_store(app, ids['alice'])
-    target = Path(profile.workspace) / 'report.md'
+    from agent.workspace.personal_default import personal_default_dir
+    with identity_scope(user_id=ids['alice'], tenant_id=app.tenant_id, agent_id='primary'):
+        target = Path(personal_default_dir('primary', ensure=True)) / 'report.md'
     target.write_text('body')
     messages = [{'role':'user','content':'create report'},
                 {'role':'assistant','content':[{'type':'tool_use','id':'write-1','name':'write','input':{'path':str(target)}}]}]
@@ -108,6 +110,37 @@ def test_device_history_never_indexes_server_same_named_file(tmp_path):
     messages = [{'role':'assistant','extras':{'origin':{'source':'desktop','device_id':'d'}},
                  'content':[{'type':'tool_use','id':'w','name':'write','input':{'path':str(target)}}]}]
     assert collect_message_artifacts(messages, str(tmp_path)) == []
+
+
+def test_relative_artifacts_resolve_each_owners_actual_tool_directory(web_app):
+    from agent.workspace.personal_default import personal_default_dir
+    app, ids, tokens = setup_members(web_app)
+    store, profile = owned_store(app, ids['alice'])
+    # A same-named shared file must not mask the caller's generated file.
+    (Path(profile.workspace) / 'report.md').write_text('shared decoy')
+    messages = [{'role': 'user', 'content': 'create report'},
+                {'role': 'assistant', 'content': [
+                    {'type': 'tool_use', 'id': 'w', 'name': 'write',
+                     'input': {'path': 'report.md'}}]},
+                {'role': 'user', 'content': [
+                    {'type': 'tool_result', 'tool_use_id': 'w',
+                     'content': json.dumps({'path': 'report.md'})}]}]
+    for name in ids:
+        with identity_scope(user_id=ids[name], tenant_id=app.tenant_id, agent_id='primary'):
+            directory = personal_default_dir('primary', ensure=True)
+            target = Path(directory) / 'report.md'
+            target.write_text(name)
+            store.append_messages('web:' + name, messages, channel_type='web')
+            assert store.retry_artifact_index('web:' + name) == 1
+            items = store.list_artifacts()['items']
+            assert [item['path'] for item in items] == [str(target)]
+            assert store.retry_artifact_index('web:' + name) == 0
+    for name in ids:
+        response = app.get('/api/artifacts?scope=all', token=tokens[name])
+        assert response.status == '200 OK', response.data
+        items = app.json(response)['items']
+        assert len(items) == 1
+        assert ids[name] in items[0]['path']
 
 
 def test_api_key_management_uses_existing_iam_and_one_shot_secret(web_app, monkeypatch):
@@ -157,7 +190,9 @@ def test_artifact_all_scope_skips_foreign_agents_without_http_error(web_app):
 def test_artifact_recovery_keeps_tool_use_before_persisted_result(web_app):
     app, ids, _ = setup_members(web_app)
     store, profile = owned_store(app, ids['alice'])
-    target = Path(profile.workspace) / 'from-bash.md'
+    from agent.workspace.personal_default import personal_default_dir
+    with identity_scope(user_id=ids['alice'], tenant_id=app.tenant_id, agent_id='primary'):
+        target = Path(personal_default_dir('primary', ensure=True)) / 'from-bash.md'
     target.write_text('generated')
     with identity_scope(user_id=ids['alice'], tenant_id=app.tenant_id, agent_id='primary'):
         # A command's file report arrives only in the later persisted tool result.
@@ -237,6 +272,52 @@ def test_api_default_model_respects_pins_roles_and_live_grants(web_app, monkeypa
         with pytest.raises(openai_api.OpenAIAPIError) as unavailable:
             openai_api._authorized_default_model('primary','owned')
         assert unavailable.value.status_code == 503
+
+
+def test_actual_chat_api_accepts_service_key_without_browser_tenant_header(web_app, monkeypatch):
+    from channel.web import openai_api
+    from common.runtime_identity import current_identity
+    monkeypatch.setenv('COW_CREDENTIAL_MASTER_KEY', '01' * 32)
+    app = web_app('api-entry', settings={'external_api_enabled': True})
+    app.add_agent('primary')
+    monkeypatch.setattr(openai_api, 'conf', app._conf)
+    monkeypatch.setattr('channel.web.fork.runtime._session_model_catalog',
+                        lambda: [{'id': 'deepseek', 'models': ['approved']}])
+    tenant = app.service._store.execute('SELECT version FROM tenants WHERE id=?', (app.tenant_id,))[0]
+    app.service.set_tenant_resource_grants(actor_user_id=app.admin_id, tenant_id=app.tenant_id,
+        expected_version=tenant['version'], grants=[
+            {'resource_kind': 'model', 'resource_id': 'provider:deepseek:approved', 'action': 'use'}])
+    role = app.role('api-model', ['chat.use', 'agent.use', 'model.use'], grants=[
+        ('agent', 'agent:primary', 'use'), ('model', 'provider:deepseek:approved', 'use')])
+    user = app.member('api-client', [role['code']])
+    key = app.service.create_service_account_api_key(actor_user_id=app.admin_id,
+        tenant_id=app.tenant_id, user_id=user)
+    calls = []
+    def run(query, session_id, send_chunk, **kwargs):
+        calls.append((current_identity(), kwargs))
+        send_chunk({'chunk_type': 'content', 'delta': 'accepted'})
+        return {'input_tokens': 1, 'output_tokens': 1}
+    monkeypatch.setattr(openai_api, '_run_chat_service', run)
+    from bridge.bridge import Bridge
+    from agent.registry import get_agent_registry
+    monkeypatch.setattr(Bridge().get_agent_bridge(), 'agent_registry', get_agent_registry())
+    body = {'agent_id': 'primary', 'model': 'approved', 'messages': [{'role': 'user', 'content': 'hello'}]}
+    def request(headers=None, payload=None):
+        return app.app.request('/v1/chat/completions', method='POST',
+            headers=headers or {}, data=json.dumps(payload or body))
+    headers = {'Authorization': 'Bearer ' + key['api_key']}
+    assert request().status.startswith('401')
+    response = request(headers)
+    assert response.status == '200 OK', response.data
+    assert app.json(response)['choices'][0]['message']['content'] == 'accepted'
+    assert (calls[0][0].user_id, calls[0][0].tenant_id) == (user, app.tenant_id)
+    assert calls[0][1]['model_override'] == ('deepseek', 'approved')
+    assert request({**headers, 'X-Tenant-ID': 'another'}).status.startswith('403')
+    assert request(headers, {**body, 'model': 'ungranted'}).status.startswith('404')
+    app.service.revoke_service_account_api_key(actor_user_id=app.admin_id,
+        tenant_id=app.tenant_id, credential_id=key['id'])
+    assert request(headers).status.startswith('401')
+    assert len(calls) == 1
 
 
 def test_runtime_model_authorization_service_failure_does_not_allow_provider(web_app, monkeypatch):

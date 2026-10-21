@@ -1,7 +1,7 @@
 {
   "scope": "required-local-behavior",
   "production_acceptance": false,
-  "candidate_digest": "1305d2af4f6649de916faff7b9c96240b27cf8775536fefd7c2e6c33f93207da",
+  "candidate_digest": "391d9c49ac4f6489f8607b6f87c9349f66ac125f90dc420840cd50471132de18",
   "source_sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
   "layers": {
     "ledger": [],
@@ -13,7 +13,7 @@
     "required-cases": [],
     "candidate-stability": []
   },
-  "ending_digest": "1305d2af4f6649de916faff7b9c96240b27cf8775536fefd7c2e6c33f93207da",
+  "ending_digest": "391d9c49ac4f6489f8607b6f87c9349f66ac125f90dc420840cd50471132de18",
   "unaccepted_capabilities": [
     "GAP-001",
     "GAP-002",

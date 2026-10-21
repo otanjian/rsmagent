@@ -472,10 +472,12 @@
       ],
       "tests": [
         "tests/test_chat_model_fallback.py",
-        "tests/test_artifact_index.py"
+        "tests/test_artifact_index.py",
+        "tests/test_sync_master_web_contract.py"
       ],
       "review": "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
-      "candidate_file_sha256": "3bea16115dd75afa731b1493cd91d62ef165f6db2f80794205f6d0f7149b1c0b"
+      "candidate_file_sha256": "3bea16115dd75afa731b1493cd91d62ef165f6db2f80794205f6d0f7149b1c0b",
+      "integration_note": "Artifact indexing resolves relative tool paths with the existing personal_default_dir, preserving selected projects and owner isolation."
     },
     {
       "status": "M",

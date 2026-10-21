@@ -14,7 +14,7 @@ Skills retain resource identity and install qualification while adopting source 
 
 Historical GAP-001–008 and partial capability/guest/Desktop work are retained. Their previous evidence does not certify this candidate. Desktop source conflicts are integrated; runtime/type/build/package/native checks remain deferred under task 12. GAP-007 and remote required-check blocking remain pending. A pre-existing missing desktop-remote-web-workbench spec was reproduced in an isolated target checkout; the invariant assertion remains intact.
 
-Real provider acceptance is pending: the operator-configured DeepSeek credential returned 401. No synthetic model result is reported as the required real-model/tool/file loop.
+Real provider Web/model/tool/file and two-service-account acceptance passed. See results/real-provider-status.json. Desktop and inherited CI enforcement remain unverified.
 
 ## Workstream consumers and tests
 
@@ -31,3 +31,5 @@ Real provider acceptance is pending: the operator-configured DeepSeek credential
 ## Implementation outcome
 
 See [implementation-status.md](implementation-status.md) for actual results, remaining real-provider acceptance, baseline findings and deferred Desktop scope. The initial classification records above are retained as implementation provenance, not a blanket acceptance claim.
+
+Final follow-up review: reuse the existing personal directory resolver for artifact paths; let the existing API handler authenticate SAK requests; preserve explicit HTTP 403/409 errors. The full-app regression tests both authorized and denied requests without substituting the authentication path.

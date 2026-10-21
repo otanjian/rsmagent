@@ -2,85 +2,85 @@ TAP version 13
 # Subtest: a member gets the console entry and only the groups holding a reachable page
 ok 1 - a member gets the console entry and only the groups holding a reachable page
   ---
-  duration_ms: 1.577583
+  duration_ms: 1.692125
   type: 'test'
   ...
 # Subtest: a tenant admin keeps every non-platform group
 ok 2 - a tenant admin keeps every non-platform group
   ---
-  duration_ms: 0.621
+  duration_ms: 0.6695
   type: 'test'
   ...
 # Subtest: an identity with no reachable page gets neither the entry nor its groups
 ok 3 - an identity with no reachable page gets neither the entry nor its groups
   ---
-  duration_ms: 0.565459
+  duration_ms: 0.59125
   type: 'test'
   ...
 # Subtest: a qualified member opening /admin directly is not bounced back to /chat
 ok 4 - a qualified member opening /admin directly is not bounced back to /chat
   ---
-  duration_ms: 0.551125
+  duration_ms: 0.5525
   type: 'test'
   ...
 # Subtest: an unqualified identity opening /admin is still bounced back to /chat
 ok 5 - an unqualified identity opening /admin is still bounced back to /chat
   ---
-  duration_ms: 0.58525
+  duration_ms: 0.597167
   type: 'test'
   ...
 # Subtest: registered admin addresses resolve from the authoritative route table
 ok 6 - registered admin addresses resolve from the authoritative route table
   ---
-  duration_ms: 1.000792
+  duration_ms: 1.025917
   type: 'test'
   ...
 # Subtest: a denied identity keeps registered admin deep paths and sets the denial marker
 ok 7 - a denied identity keeps registered admin deep paths and sets the denial marker
   ---
-  duration_ms: 1.390458
+  duration_ms: 1.401334
   type: 'test'
   ...
 # Subtest: a denied identity writes the marker and bounces /admin with and without routes
 ok 8 - a denied identity writes the marker and bounces /admin with and without routes
   ---
-  duration_ms: 1.27725
+  duration_ms: 1.293875
   type: 'test'
   ...
 # Subtest: a qualified member reaches /admin and its granted page without a new denial marker
 ok 9 - a qualified member reaches /admin and its granted page without a new denial marker
   ---
-  duration_ms: 1.520792
+  duration_ms: 1.6305
   type: 'test'
   ...
 # Subtest: without the route module a registered deep path falls back to the workbench
 ok 10 - without the route module a registered deep path falls back to the workbench
   ---
-  duration_ms: 0.700291
+  duration_ms: 0.718167
   type: 'test'
   ...
 # Subtest: group visibility is recomputed, never accumulated
 ok 11 - group visibility is recomputed, never accumulated
   ---
-  duration_ms: 0.544167
+  duration_ms: 0.551458
   type: 'test'
   ...
 # Subtest: a platform admin gets every 平台管理 entry
 ok 12 - a platform admin gets every 平台管理 entry
   ---
-  duration_ms: 0.57075
+  duration_ms: 0.619
   type: 'test'
   ...
 # Subtest: a tenant admin gets 平台管理 with only the two operator views
 ok 13 - a tenant admin gets 平台管理 with only the two operator views
   ---
-  duration_ms: 0.528667
+  duration_ms: 0.838166
   type: 'test'
   ...
 # Subtest: an ordinary member gets no 平台管理 heading at all
 ok 14 - an ordinary member gets no 平台管理 heading at all
   ---
-  duration_ms: 0.504125
+  duration_ms: 0.76425
   type: 'test'
   ...
 1..14
@@ -91,4 +91,4 @@ ok 14 - an ordinary member gets no 平台管理 heading at all
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 72.684
+# duration_ms 78.73575

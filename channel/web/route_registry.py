@@ -380,7 +380,7 @@ ROUTES: Tuple[RouteEntry, ...] = (
     RouteEntry("/cancel", "CancelHandler", "upstream", {"POST": P("tenant", comment="cancel request")}),
     RouteEntry("/chat", "ChatHandler", "upstream", {"GET": P("public", comment="console shell — a document navigation cannot send X-Tenant-ID; it carries no tenant data, and the data APIs it loads keep their own policy (see evidence.md §4.7)")}),
     RouteEntry("/admin", "ChatHandler", "fork:admin-console", {"GET": P("public", comment="admin console shell (same handler and reasoning as /chat)")}),
-    RouteEntry("/v1/chat/completions", "OpenAIChatCompletionsHandler", "upstream", {"POST": P("tenant", comment="OpenAI-compatible chat")}),
+    RouteEntry("/v1/chat/completions", "OpenAIChatCompletionsHandler", "upstream", {"POST": P("public", comment="handler validates SAK/database identity, tenant, Agent and model grants")}),
     RouteEntry("/v1/models", "OpenAIModelsHandler", "fork:compat-api", {"GET": P("public", comment="handler validates SAK/database identity and model grants")}),
     RouteEntry("/api/external_api", "ExternalApiHandler", "fork:sync-master-to-rdai", {"GET": P("tenant", comment="service-account key management"), "POST": P("tenant", comment="service-account key management")}),
     RouteEntry("/config", "ConfigHandler", "upstream", {"GET": P("platform", comment="platform config"), "POST": P("platform", comment="platform config save")}),

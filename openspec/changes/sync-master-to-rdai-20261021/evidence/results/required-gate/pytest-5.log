@@ -5,4 +5,4 @@ tests/test_sync_master_tls.py::test_fork_startup_serves_tls_with_the_configured_
     _thread.setDaemon(True)
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-3 passed, 1 warning in 1.61s
+3 passed, 1 warning in 1.63s

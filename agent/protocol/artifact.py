@@ -593,7 +593,7 @@ def artifact_root_for(
     workspace_root: Optional[str] = None,
 ) -> str:
     """The directory a session's file tools resolve paths against: the project
-    it has open, else the Agent's workspace."""
+    it has open, else the caller's normal working directory."""
     if session_id:
         try:
             from agent.workspace import project_store
@@ -602,6 +602,11 @@ def artifact_root_for(
                 return project_dir
         except Exception:
             pass
+    from agent.workspace.personal_default import personal_default_dir
+
+    personal = personal_default_dir(agent_id, base=workspace_root)
+    if personal:
+        return personal
     if workspace_root:
         return workspace_root
     try:

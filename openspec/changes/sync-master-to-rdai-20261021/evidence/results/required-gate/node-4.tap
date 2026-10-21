@@ -2,25 +2,25 @@ TAP version 13
 # Subtest: master context card refuses compaction without the authoritative capability
 ok 1 - master context card refuses compaction without the authoritative capability
   ---
-  duration_ms: 5.933167
+  duration_ms: 6.232
   type: 'test'
   ...
 # Subtest: late compaction completion cannot repaint or unlock a different session
 ok 2 - late compaction completion cannot repaint or unlock a different session
   ---
-  duration_ms: 5.389792
+  duration_ms: 6.30925
   type: 'test'
   ...
 # Subtest: reset invalidates a pending operation even when returning to the same session
 ok 3 - reset invalidates a pending operation even when returning to the same session
   ---
-  duration_ms: 4.294291
+  duration_ms: 4.778583
   type: 'test'
   ...
 # Subtest: restored context renders its snapshot while live-only compaction stays disabled
 ok 4 - restored context renders its snapshot while live-only compaction stays disabled
   ---
-  duration_ms: 4.094083
+  duration_ms: 4.210917
   type: 'test'
   ...
 1..4
@@ -31,4 +31,4 @@ ok 4 - restored context renders its snapshot while live-only compaction stays di
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 46.181875
+# duration_ms 50.873333

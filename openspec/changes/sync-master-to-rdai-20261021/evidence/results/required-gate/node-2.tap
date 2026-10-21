@@ -2,25 +2,25 @@ TAP version 13
 # Subtest: notification polling stops across identities
 ok 1 - notification polling stops across identities
   ---
-  duration_ms: 0.566958
+  duration_ms: 0.613083
   type: 'test'
   ...
 # Subtest: terminal cursor pages are fully consumed
 ok 2 - terminal cursor pages are fully consumed
   ---
-  duration_ms: 0.18025
+  duration_ms: 0.184416
   type: 'test'
   ...
 # Subtest: concurrent windows claim a run once
 ok 3 - concurrent windows claim a run once
   ---
-  duration_ms: 0.121209
+  duration_ms: 0.121084
   type: 'test'
   ...
 # Subtest: a temporary failure preserves progress and an authorization refusal stops the loop
 ok 4 - a temporary failure preserves progress and an authorization refusal stops the loop
   ---
-  duration_ms: 0.107083
+  duration_ms: 0.109917
   type: 'test'
   ...
 1..4
@@ -31,4 +31,4 @@ ok 4 - a temporary failure preserves progress and an authorization refusal stops
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 28.232042
+# duration_ms 30.533542

@@ -2,25 +2,25 @@ TAP version 13
 # Subtest: every i18n key the page asks for from the markup resolves
 ok 1 - every i18n key the page asks for from the markup resolves
   ---
-  duration_ms: 9.302959
+  duration_ms: 10.515584
   type: 'test'
   ...
 # Subtest: every i18n key the loaded scripts ask for by name resolves
 ok 2 - every i18n key the loaded scripts ask for by name resolves
   ---
-  duration_ms: 11.508833
+  duration_ms: 12.572375
   type: 'test'
   ...
 # Subtest: the coding Agent surface is translated, not shown as keys
 ok 3 - the coding Agent surface is translated, not shown as keys
   ---
-  duration_ms: 1989.35
+  duration_ms: 2140.543917
   type: 'test'
   ...
 # Subtest: the actual master table merges every loaded fork namespace before lookup
 ok 4 - the actual master table merges every loaded fork namespace before lookup
   ---
-  duration_ms: 5.872541
+  duration_ms: 4.679917
   type: 'test'
   ...
 1..4
@@ -31,4 +31,4 @@ ok 4 - the actual master table merges every loaded fork namespace before lookup
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 2077.464333
+# duration_ms 2211.968875

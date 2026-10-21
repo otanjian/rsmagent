@@ -1,110 +1,110 @@
 {
-  "artifact": "/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/.sync-test/final-gate-5/browser",
+  "artifact": "/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/.sync-test/final-gate-7/browser",
   "scenarios": [
     {
       "name": "parity: SAP iframe navigation preserves deep shell and identity teardown",
       "passed": true,
-      "durationMs": 2218
+      "durationMs": 2198
     },
     {
       "name": "parity: deep route survives login and explicit tenant selection",
       "passed": true,
-      "durationMs": 1925
+      "durationMs": 1896
     },
     {
       "name": "parity: source update binds confirmation and clears it across identities",
       "passed": true,
-      "durationMs": 1156
+      "durationMs": 1187
     },
     {
       "name": "parity: denied deep route preserves address (classic)",
       "passed": true,
-      "durationMs": 924
+      "durationMs": 934
     },
     {
       "name": "parity: denied deep route preserves address (split)",
       "passed": true,
-      "durationMs": 929
+      "durationMs": 936
     },
     {
       "name": "parity: denied admin entry keeps registered deep routes (classic)",
       "passed": true,
-      "durationMs": 1758
+      "durationMs": 1804
     },
     {
       "name": "parity: denied admin landing returns to the conversation (classic)",
       "passed": true,
-      "durationMs": 1171
+      "durationMs": 1195
     },
     {
       "name": "parity: denied admin entry keeps registered deep routes (split)",
       "passed": true,
-      "durationMs": 1766
+      "durationMs": 1779
     },
     {
       "name": "parity: denied admin landing returns to the conversation (split)",
       "passed": true,
-      "durationMs": 1174
+      "durationMs": 1203
     },
     {
       "name": "parity: scheduler observer honors identity preferences and authorized clicks",
       "passed": true,
-      "durationMs": 971
+      "durationMs": 999
     },
     {
       "name": "parity: two browser windows atomically claim one terminal run",
       "passed": true,
-      "durationMs": 1811
+      "durationMs": 1827
     },
     {
       "name": "parity: member model route renders the granted catalog",
       "passed": true,
-      "durationMs": 909
+      "durationMs": 936
     },
     {
       "name": "parity: revoked model management restores only the member catalog",
       "passed": true,
-      "durationMs": 1709
+      "durationMs": 1745
     },
     {
       "name": "parity: deep paths survive refresh and back",
       "passed": true,
-      "durationMs": 1797
+      "durationMs": 1827
     },
     {
       "name": "parity: legacy links and cancelled leave preserve the target",
       "passed": true,
-      "durationMs": 939
+      "durationMs": 970
     },
     {
       "name": "parity: empty docs/graph and independent sources",
       "passed": true,
-      "durationMs": 1087
+      "durationMs": 1103
     },
     {
       "name": "parity: delayed lists preserve graph and sources selection",
       "passed": true,
-      "durationMs": 1058
+      "durationMs": 1083
     },
     {
       "name": "parity: knowledge failures offer a working retry",
       "passed": true,
-      "durationMs": 1029
+      "durationMs": 1052
     },
     {
       "name": "parity: slight upward scroll pauses streaming and explicit bottom resumes",
       "passed": true,
-      "durationMs": 1108
+      "durationMs": 1112
     },
     {
       "name": "parity: message wrapping and local overflow (light)",
       "passed": true,
-      "durationMs": 919
+      "durationMs": 942
     },
     {
       "name": "parity: message wrapping and local overflow (dark)",
       "passed": true,
-      "durationMs": 917
+      "durationMs": 928
     },
     {
       "name": "http: console-created tasks dispatch into two owned sessions",
@@ -165,22 +165,22 @@
     {
       "name": "desktop: the Agent search filters its own menu, not the document search",
       "passed": true,
-      "durationMs": 974
+      "durationMs": 1027
     },
     {
       "name": "desktop, dark: a CJK query with no match says so instead of an empty menu",
       "passed": true,
-      "durationMs": 964
+      "durationMs": 1037
     },
     {
       "name": "desktop: the sources tab is a closed loop of list, detail and upload",
       "passed": true,
-      "durationMs": 1172
+      "durationMs": 1180
     },
     {
       "name": "narrow: the sources loop still works on a phone-width viewport",
       "passed": true,
-      "durationMs": 1093
+      "durationMs": 1154
     }
   ],
   "pageErrors": [],
@@ -218,11 +218,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_d43304c9-8c47-4277-874b-66e61254c24b&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_1afceed7-231a-43f5-9260-cc261f4d2f32&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_d43304c9-8c47-4277-874b-66e61254c24b/settings",
+      "pathname": "/api/sessions/session_1afceed7-231a-43f5-9260-cc261f4d2f32/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -238,7 +238,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_d43304c9-8c47-4277-874b-66e61254c24b&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_1afceed7-231a-43f5-9260-cc261f4d2f32&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -313,11 +313,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_d43304c9-8c47-4277-874b-66e61254c24b&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_1afceed7-231a-43f5-9260-cc261f4d2f32&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_d43304c9-8c47-4277-874b-66e61254c24b/settings",
+      "pathname": "/api/sessions/session_1afceed7-231a-43f5-9260-cc261f4d2f32/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -333,7 +333,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_d43304c9-8c47-4277-874b-66e61254c24b&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_1afceed7-231a-43f5-9260-cc261f4d2f32&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -413,11 +413,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_5d3293f5-238d-44da-abf0-1f4a1258f528&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_a55d8004-e692-430d-8483-eff415c3e8fc&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_5d3293f5-238d-44da-abf0-1f4a1258f528/settings",
+      "pathname": "/api/sessions/session_a55d8004-e692-430d-8483-eff415c3e8fc/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -433,7 +433,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_5d3293f5-238d-44da-abf0-1f4a1258f528&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_a55d8004-e692-430d-8483-eff415c3e8fc&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -503,11 +503,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_5d3293f5-238d-44da-abf0-1f4a1258f528&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_a55d8004-e692-430d-8483-eff415c3e8fc&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_5d3293f5-238d-44da-abf0-1f4a1258f528/settings",
+      "pathname": "/api/sessions/session_a55d8004-e692-430d-8483-eff415c3e8fc/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -523,7 +523,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_5d3293f5-238d-44da-abf0-1f4a1258f528&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_a55d8004-e692-430d-8483-eff415c3e8fc&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -588,11 +588,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_defe1efa-d94e-4d03-b136-7b04bfbccbed&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_a8ca146a-01aa-4039-8e07-0d963db846c7&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_defe1efa-d94e-4d03-b136-7b04bfbccbed/settings",
+      "pathname": "/api/sessions/session_a8ca146a-01aa-4039-8e07-0d963db846c7/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -608,7 +608,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_defe1efa-d94e-4d03-b136-7b04bfbccbed&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_a8ca146a-01aa-4039-8e07-0d963db846c7&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -673,11 +673,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_6cb20daf-ffea-44d3-9e71-2b45e52ee865&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_60f46e68-256a-4446-9c4d-f252d20da49a&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_6cb20daf-ffea-44d3-9e71-2b45e52ee865/settings",
+      "pathname": "/api/sessions/session_60f46e68-256a-4446-9c4d-f252d20da49a/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -693,7 +693,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_6cb20daf-ffea-44d3-9e71-2b45e52ee865&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_60f46e68-256a-4446-9c4d-f252d20da49a&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -748,11 +748,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_7ad1be38-65df-4c04-a049-7f262f1903c7&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_b5126cda-aec3-42f1-9f4c-ce22e49f819a&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_7ad1be38-65df-4c04-a049-7f262f1903c7/settings",
+      "pathname": "/api/sessions/session_b5126cda-aec3-42f1-9f4c-ce22e49f819a/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -768,7 +768,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_7ad1be38-65df-4c04-a049-7f262f1903c7&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_b5126cda-aec3-42f1-9f4c-ce22e49f819a&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -823,11 +823,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_2d2cbff4-0853-45c8-b510-e62e3c3d3134&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_0ed830e6-5b8f-46f6-abab-c2155aa47cf1&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_2d2cbff4-0853-45c8-b510-e62e3c3d3134/settings",
+      "pathname": "/api/sessions/session_0ed830e6-5b8f-46f6-abab-c2155aa47cf1/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -843,7 +843,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_2d2cbff4-0853-45c8-b510-e62e3c3d3134&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_0ed830e6-5b8f-46f6-abab-c2155aa47cf1&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -888,11 +888,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_2d2cbff4-0853-45c8-b510-e62e3c3d3134&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_0ed830e6-5b8f-46f6-abab-c2155aa47cf1&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_2d2cbff4-0853-45c8-b510-e62e3c3d3134/settings",
+      "pathname": "/api/sessions/session_0ed830e6-5b8f-46f6-abab-c2155aa47cf1/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -908,287 +908,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_2d2cbff4-0853-45c8-b510-e62e3c3d3134&agent_id=agent-a&page=1&page_size=20",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/menu",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/todos/summary",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/agents",
-      "query": "?view=workbench&agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/agents",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/knowledge/list",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/knowledge/read",
-      "query": "?path=MEMORY.md&agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/admin",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/auth/check",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/branding/public",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/auth/me",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/agents",
-      "query": "?view=workbench",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/version",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/projects",
-      "query": "?session=session_b5e32935-ee0e-48fc-99c1-ec147200d952&agent=agent-a&agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/sessions/session_b5e32935-ee0e-48fc-99c1-ec147200d952/settings",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/poll",
-      "query": "?agent_id=agent-a",
-      "method": "POST"
-    },
-    {
-      "pathname": "/auth/context",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/history",
-      "query": "?session_id=session_b5e32935-ee0e-48fc-99c1-ec147200d952&agent_id=agent-a&page=1&page_size=20",
-      "method": "GET"
-    },
-    {
-      "pathname": "/chat",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/menu",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/todos/summary",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/auth/check",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/branding/public",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/auth/me",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/agents",
-      "query": "?view=workbench&agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/version",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/projects",
-      "query": "?session=session_b5e32935-ee0e-48fc-99c1-ec147200d952&agent=agent-a&agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/sessions/session_b5e32935-ee0e-48fc-99c1-ec147200d952/settings",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/poll",
-      "query": "?agent_id=agent-a",
-      "method": "POST"
-    },
-    {
-      "pathname": "/auth/context",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/history",
-      "query": "?session_id=session_b5e32935-ee0e-48fc-99c1-ec147200d952&agent_id=agent-a&page=1&page_size=20",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/menu",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/todos/summary",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/settings/models",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/auth/check",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/branding/public",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/auth/me",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/agents",
-      "query": "?view=workbench",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/version",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/projects",
-      "query": "?session=session_56088cb6-f27e-4672-8c84-f3561a53e28b&agent=agent-a&agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/sessions/session_56088cb6-f27e-4672-8c84-f3561a53e28b/settings",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/poll",
-      "query": "?agent_id=agent-a",
-      "method": "POST"
-    },
-    {
-      "pathname": "/auth/context",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/history",
-      "query": "?session_id=session_56088cb6-f27e-4672-8c84-f3561a53e28b&agent_id=agent-a&page=1&page_size=20",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/menu",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/todos/summary",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/settings/models",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/auth/check",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/branding/public",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/auth/me",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/agents",
-      "query": "?view=workbench&agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/version",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/projects",
-      "query": "?session=session_56088cb6-f27e-4672-8c84-f3561a53e28b&agent=agent-a&agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/sessions/session_56088cb6-f27e-4672-8c84-f3561a53e28b/settings",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/poll",
-      "query": "?agent_id=agent-a",
-      "method": "POST"
-    },
-    {
-      "pathname": "/auth/context",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/history",
-      "query": "?session_id=session_56088cb6-f27e-4672-8c84-f3561a53e28b&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_0ed830e6-5b8f-46f6-abab-c2155aa47cf1&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -1253,11 +973,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_c272c5c8-c405-4ce6-96fe-30e5da7f0f09&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_7546d0bd-e4dd-462f-a3c1-9749f0420108&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_c272c5c8-c405-4ce6-96fe-30e5da7f0f09/settings",
+      "pathname": "/api/sessions/session_7546d0bd-e4dd-462f-a3c1-9749f0420108/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -1273,7 +993,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_c272c5c8-c405-4ce6-96fe-30e5da7f0f09&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_7546d0bd-e4dd-462f-a3c1-9749f0420108&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -1318,11 +1038,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_c272c5c8-c405-4ce6-96fe-30e5da7f0f09&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_7546d0bd-e4dd-462f-a3c1-9749f0420108&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_c272c5c8-c405-4ce6-96fe-30e5da7f0f09/settings",
+      "pathname": "/api/sessions/session_7546d0bd-e4dd-462f-a3c1-9749f0420108/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -1338,7 +1058,287 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_c272c5c8-c405-4ce6-96fe-30e5da7f0f09&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_7546d0bd-e4dd-462f-a3c1-9749f0420108&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/menu",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/settings/models",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_ee99a3eb-cb18-48b7-92e6-ebd5f21f6c51&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_ee99a3eb-cb18-48b7-92e6-ebd5f21f6c51/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_ee99a3eb-cb18-48b7-92e6-ebd5f21f6c51&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/menu",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/settings/models",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_ee99a3eb-cb18-48b7-92e6-ebd5f21f6c51&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_ee99a3eb-cb18-48b7-92e6-ebd5f21f6c51/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_ee99a3eb-cb18-48b7-92e6-ebd5f21f6c51&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/menu",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/read",
+      "query": "?path=MEMORY.md&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/admin",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_91341425-3c51-47f1-898f-14c9738ebf15&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_91341425-3c51-47f1-898f-14c9738ebf15/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_91341425-3c51-47f1-898f-14c9738ebf15&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/chat",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/menu",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_91341425-3c51-47f1-898f-14c9738ebf15&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_91341425-3c51-47f1-898f-14c9738ebf15/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_91341425-3c51-47f1-898f-14c9738ebf15&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -1383,11 +1383,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_1ec9ef84-ee34-481d-91b0-54f330d51cf9&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_a7687401-a194-402f-8d18-6d8e72875676&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_1ec9ef84-ee34-481d-91b0-54f330d51cf9/settings",
+      "pathname": "/api/sessions/session_a7687401-a194-402f-8d18-6d8e72875676/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -1403,7 +1403,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_1ec9ef84-ee34-481d-91b0-54f330d51cf9&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_a7687401-a194-402f-8d18-6d8e72875676&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -1503,11 +1503,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_ccaffc1f-cf10-4d57-b1cd-f3c2dcdcd499&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_024daa5b-160a-4aff-975f-46c54f729bbc&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_ccaffc1f-cf10-4d57-b1cd-f3c2dcdcd499/settings",
+      "pathname": "/api/sessions/session_024daa5b-160a-4aff-975f-46c54f729bbc/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -1523,7 +1523,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_ccaffc1f-cf10-4d57-b1cd-f3c2dcdcd499&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_024daa5b-160a-4aff-975f-46c54f729bbc&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -1588,11 +1588,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_ccaffc1f-cf10-4d57-b1cd-f3c2dcdcd499&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_024daa5b-160a-4aff-975f-46c54f729bbc&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_ccaffc1f-cf10-4d57-b1cd-f3c2dcdcd499/settings",
+      "pathname": "/api/sessions/session_024daa5b-160a-4aff-975f-46c54f729bbc/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -1608,7 +1608,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_ccaffc1f-cf10-4d57-b1cd-f3c2dcdcd499&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_024daa5b-160a-4aff-975f-46c54f729bbc&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -1673,11 +1673,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_cb2e4382-4749-444c-8932-26db91de68a1&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_613d6af0-ef40-4104-aa8e-6f417a229e40&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_cb2e4382-4749-444c-8932-26db91de68a1/settings",
+      "pathname": "/api/sessions/session_613d6af0-ef40-4104-aa8e-6f417a229e40/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -1693,7 +1693,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_cb2e4382-4749-444c-8932-26db91de68a1&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_613d6af0-ef40-4104-aa8e-6f417a229e40&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -1753,11 +1753,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_c10efe77-1f2d-4dbc-911d-1e97ca3c378c&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_1200f991-1a7b-4b7c-976e-2008fcb0f33a&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_c10efe77-1f2d-4dbc-911d-1e97ca3c378c/settings",
+      "pathname": "/api/sessions/session_1200f991-1a7b-4b7c-976e-2008fcb0f33a/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -1773,7 +1773,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_c10efe77-1f2d-4dbc-911d-1e97ca3c378c&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_1200f991-1a7b-4b7c-976e-2008fcb0f33a&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -1828,11 +1828,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_c10efe77-1f2d-4dbc-911d-1e97ca3c378c&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_1200f991-1a7b-4b7c-976e-2008fcb0f33a&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_c10efe77-1f2d-4dbc-911d-1e97ca3c378c/settings",
+      "pathname": "/api/sessions/session_1200f991-1a7b-4b7c-976e-2008fcb0f33a/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -1848,7 +1848,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_c10efe77-1f2d-4dbc-911d-1e97ca3c378c&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_1200f991-1a7b-4b7c-976e-2008fcb0f33a&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -1908,11 +1908,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_98668fbc-affb-474b-98cb-d242ae575fbc&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_6ca0941f-9883-4f53-b33f-86f1b8bd859e&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_98668fbc-affb-474b-98cb-d242ae575fbc/settings",
+      "pathname": "/api/sessions/session_6ca0941f-9883-4f53-b33f-86f1b8bd859e/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -1928,7 +1928,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_98668fbc-affb-474b-98cb-d242ae575fbc&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_6ca0941f-9883-4f53-b33f-86f1b8bd859e&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -1998,11 +1998,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_98668fbc-affb-474b-98cb-d242ae575fbc&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_6ca0941f-9883-4f53-b33f-86f1b8bd859e&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_98668fbc-affb-474b-98cb-d242ae575fbc/settings",
+      "pathname": "/api/sessions/session_6ca0941f-9883-4f53-b33f-86f1b8bd859e/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -2018,7 +2018,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_98668fbc-affb-474b-98cb-d242ae575fbc&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_6ca0941f-9883-4f53-b33f-86f1b8bd859e&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -2103,11 +2103,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_81f89a42-e873-431c-ab3d-1e5d0f46ab3b&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_a2b04815-1da1-4aaf-b0d7-b3c640e4a178&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_81f89a42-e873-431c-ab3d-1e5d0f46ab3b/settings",
+      "pathname": "/api/sessions/session_a2b04815-1da1-4aaf-b0d7-b3c640e4a178/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -2123,7 +2123,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_81f89a42-e873-431c-ab3d-1e5d0f46ab3b&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_a2b04815-1da1-4aaf-b0d7-b3c640e4a178&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -2208,11 +2208,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_364126a0-8330-4181-bc5d-e5e66553f12b&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_0ae72a93-7f19-434d-8e89-e30947286a82&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_364126a0-8330-4181-bc5d-e5e66553f12b/settings",
+      "pathname": "/api/sessions/session_0ae72a93-7f19-434d-8e89-e30947286a82/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -2228,7 +2228,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_364126a0-8330-4181-bc5d-e5e66553f12b&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_0ae72a93-7f19-434d-8e89-e30947286a82&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -2298,11 +2298,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_2aecd15d-5a60-49b6-b57d-9108fe53cd65&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_3708a092-627f-4eb4-9505-ba8dcf5acc7c&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_2aecd15d-5a60-49b6-b57d-9108fe53cd65/settings",
+      "pathname": "/api/sessions/session_3708a092-627f-4eb4-9505-ba8dcf5acc7c/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -2318,7 +2318,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_2aecd15d-5a60-49b6-b57d-9108fe53cd65&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_3708a092-627f-4eb4-9505-ba8dcf5acc7c&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -2393,11 +2393,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_b90143ca-3165-4470-983e-63c2adea9883&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_14a8f5d9-46ec-4b44-b942-f37fe0fe5325&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_b90143ca-3165-4470-983e-63c2adea9883/settings",
+      "pathname": "/api/sessions/session_14a8f5d9-46ec-4b44-b942-f37fe0fe5325/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -2413,7 +2413,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_b90143ca-3165-4470-983e-63c2adea9883&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_14a8f5d9-46ec-4b44-b942-f37fe0fe5325&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -2488,11 +2488,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_e3130ebf-42c3-45f6-9657-71256395ec3e&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_68ae1ebf-a75f-441c-ab33-4c956db85e15&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_e3130ebf-42c3-45f6-9657-71256395ec3e/settings",
+      "pathname": "/api/sessions/session_68ae1ebf-a75f-441c-ab33-4c956db85e15/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -2508,7 +2508,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_e3130ebf-42c3-45f6-9657-71256395ec3e&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_68ae1ebf-a75f-441c-ab33-4c956db85e15&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -2543,11 +2543,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_7a62a190-e94d-4f03-87db-6e5b16c3a989&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_aeccb333-b738-40b1-a233-5c5c5c6231c5&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_7a62a190-e94d-4f03-87db-6e5b16c3a989/settings",
+      "pathname": "/api/sessions/session_aeccb333-b738-40b1-a233-5c5c5c6231c5/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -2593,11 +2593,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_fd41648c-34c2-4ba6-8e57-f9ed11176fd4&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_3279d0cc-651e-4c7b-9743-c9edf23a5cff&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_fd41648c-34c2-4ba6-8e57-f9ed11176fd4/settings",
+      "pathname": "/api/sessions/session_3279d0cc-651e-4c7b-9743-c9edf23a5cff/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -2613,7 +2613,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_fd41648c-34c2-4ba6-8e57-f9ed11176fd4&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_3279d0cc-651e-4c7b-9743-c9edf23a5cff&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -2673,11 +2673,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_be7c7f28-cd64-4a80-9435-734a2efc9527&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_497ea90f-7dd8-4e1b-9cea-1a5df1f519ee&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_be7c7f28-cd64-4a80-9435-734a2efc9527/settings",
+      "pathname": "/api/sessions/session_497ea90f-7dd8-4e1b-9cea-1a5df1f519ee/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -2693,7 +2693,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_be7c7f28-cd64-4a80-9435-734a2efc9527&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_497ea90f-7dd8-4e1b-9cea-1a5df1f519ee&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -2753,11 +2753,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_a449a464-410a-4aef-9754-040f3d9dbf37&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_d9a3f924-611d-4f97-be66-855ec3f64215&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_a449a464-410a-4aef-9754-040f3d9dbf37/settings",
+      "pathname": "/api/sessions/session_d9a3f924-611d-4f97-be66-855ec3f64215/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -2773,92 +2773,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_a449a464-410a-4aef-9754-040f3d9dbf37&agent_id=agent-a&page=1&page_size=20",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/menu",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/todos/summary",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/agents",
-      "query": "?view=workbench&agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/agents",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/knowledge/list",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/knowledge/read",
-      "query": "?path=MEMORY.md&agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/chat",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/auth/check",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/branding/public",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/auth/me",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/agents",
-      "query": "?view=workbench",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/version",
-      "query": "",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/projects",
-      "query": "?session=session_47ae7adf-8bc8-4a00-93ff-67e9fb391526&agent=agent-a&agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/sessions/session_47ae7adf-8bc8-4a00-93ff-67e9fb391526/settings",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/poll",
-      "query": "?agent_id=agent-a",
-      "method": "POST"
-    },
-    {
-      "pathname": "/auth/context",
-      "query": "?agent_id=agent-a",
-      "method": "GET"
-    },
-    {
-      "pathname": "/api/history",
-      "query": "?session_id=session_47ae7adf-8bc8-4a00-93ff-67e9fb391526&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_d9a3f924-611d-4f97-be66-855ec3f64215&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -2923,11 +2838,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_7e834d6d-6d1d-4ec7-a5a9-593573672861&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_b6d17bb6-66ba-433e-ab5b-ac6f34a62bf2&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_7e834d6d-6d1d-4ec7-a5a9-593573672861/settings",
+      "pathname": "/api/sessions/session_b6d17bb6-66ba-433e-ab5b-ac6f34a62bf2/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -2943,7 +2858,92 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_7e834d6d-6d1d-4ec7-a5a9-593573672861&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_b6d17bb6-66ba-433e-ab5b-ac6f34a62bf2&agent_id=agent-a&page=1&page_size=20",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/menu",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/todos/summary",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/list",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/knowledge/read",
+      "query": "?path=MEMORY.md&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/chat",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/check",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/branding/public",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/auth/me",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/agents",
+      "query": "?view=workbench",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/version",
+      "query": "",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/projects",
+      "query": "?session=session_35bbc57f-f32b-4433-86f5-739be3936d87&agent=agent-a&agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/sessions/session_35bbc57f-f32b-4433-86f5-739be3936d87/settings",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/poll",
+      "query": "?agent_id=agent-a",
+      "method": "POST"
+    },
+    {
+      "pathname": "/auth/context",
+      "query": "?agent_id=agent-a",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/history",
+      "query": "?session_id=session_35bbc57f-f32b-4433-86f5-739be3936d87&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {
@@ -3018,11 +3018,11 @@
     },
     {
       "pathname": "/api/projects",
-      "query": "?session=session_b936b61f-40b5-44e5-8332-e42b3a2fb4c1&agent=agent-a&agent_id=agent-a",
+      "query": "?session=session_bc19963e-dca9-4994-8d25-3e88fa53086c&agent=agent-a&agent_id=agent-a",
       "method": "GET"
     },
     {
-      "pathname": "/api/sessions/session_b936b61f-40b5-44e5-8332-e42b3a2fb4c1/settings",
+      "pathname": "/api/sessions/session_bc19963e-dca9-4994-8d25-3e88fa53086c/settings",
       "query": "?agent_id=agent-a",
       "method": "GET"
     },
@@ -3038,7 +3038,7 @@
     },
     {
       "pathname": "/api/history",
-      "query": "?session_id=session_b936b61f-40b5-44e5-8332-e42b3a2fb4c1&agent_id=agent-a&page=1&page_size=20",
+      "query": "?session_id=session_bc19963e-dca9-4994-8d25-3e88fa53086c&agent_id=agent-a&page=1&page_size=20",
       "method": "GET"
     },
     {

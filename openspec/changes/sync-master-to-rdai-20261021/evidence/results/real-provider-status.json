@@ -1,19 +1,16 @@
 {
-  "status": "blocked",
-  "provider": "DeepSeek",
-  "observed_http_status": 401,
-  "source_config": "/Users/jiantan/ai_assistant/rsmagent/config.json",
-  "source_config_mtime": 1791346092,
-  "secret_recorded": false,
-  "acceptance": "Real model reply, tool write/read, file verification and service-account model acceptance remain pending; synthetic fixtures are not a substitute.",
-  "latest_recheck": {
-    "checked_at": "2026-10-21T11:51:20.912781+00:00",
-    "provider": "DeepSeek",
-    "endpoint": "/models",
-    "http_status": 401,
-    "source_config_mtime": 1791346092,
-    "credential_logged": false,
-    "error_code": "invalid_request_error",
-    "error_type": "authentication_error"
-  }
+  "checked_at_utc": "2026-10-21T12:15:22.880780+00:00",
+  "provider": "deepseek",
+  "configured_model": "deepseek-v4-flash",
+  "models_http_status": 200,
+  "web_model_tool_file_passed": true,
+  "artifact_workspace_download_passed": true,
+  "two_service_account_api_passed": true,
+  "secrets_recorded": false,
+  "fixture": "fresh synthetic IAM/conversation stores; isolated initializer env; provider credential read in memory from operator config",
+  "evidence": [
+    "real-chat-result.json",
+    "real-file-browser-result.json",
+    "real-api-result.json"
+  ]
 }

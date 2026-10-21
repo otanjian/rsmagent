@@ -46,10 +46,12 @@
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "verification_scope": "本地实际装配及必要行为；远端 CI、生产部署和最终安装包不在此结果范围",
-      "previous_verification": "passed"
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "previous_verification": "passed",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "GAP-002",
@@ -85,10 +87,12 @@
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "verification_scope": "本地实际装配及必要行为；远端 CI、生产部署和最终安装包不在此结果范围",
-      "previous_verification": "passed"
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "previous_verification": "passed",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "GAP-003",
@@ -131,10 +135,12 @@
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "verification_scope": "本地实际装配及必要行为；远端 CI、生产部署和最终安装包不在此结果范围",
-      "previous_verification": "passed"
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "previous_verification": "passed",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "GAP-004",
@@ -170,10 +176,12 @@
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "verification_scope": "本地实际装配及必要行为；远端 CI、生产部署和最终安装包不在此结果范围",
-      "previous_verification": "passed"
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "previous_verification": "passed",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "GAP-005",
@@ -210,10 +218,12 @@
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "verification_scope": "本地实际装配及必要行为；远端 CI、生产部署和最终安装包不在此结果范围",
-      "previous_verification": "passed"
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "previous_verification": "passed",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "GAP-006",
@@ -249,10 +259,12 @@
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/baseline.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "verification_scope": "本地实际装配及必要行为；远端 CI、生产部署和最终安装包不在此结果范围",
-      "previous_verification": "passed"
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "previous_verification": "passed",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "GAP-007",
@@ -296,9 +308,12 @@
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/source-update.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "previous_verification": "pending"
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "GAP-008",
@@ -335,10 +350,12 @@
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/README.md",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/browser-routing.json",
         "openspec/changes/restore-upstream-web-parity-and-sync-gates/evidence/implementation/required-local/report.json",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "verification_scope": "本地实际装配及必要行为；远端 CI、生产部署和最终安装包不在此结果范围",
-      "previous_verification": "passed"
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "previous_verification": "passed",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "SYNC-009",
@@ -377,9 +394,12 @@
       ],
       "evidence": [
         "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "previous_verification": "pending"
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "SYNC-001",
@@ -487,9 +507,12 @@
       ],
       "evidence": [
         "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "previous_verification": "pending"
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "SYNC-002",
@@ -578,9 +601,11 @@
       ],
       "evidence": [
         "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "previous_verification": "pending"
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。"
     },
     {
       "id": "SYNC-003",
@@ -686,9 +711,12 @@
       ],
       "evidence": [
         "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "previous_verification": "pending"
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "SYNC-004",
@@ -755,9 +783,12 @@
       ],
       "evidence": [
         "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "previous_verification": "pending"
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "SYNC-005",
@@ -814,9 +845,12 @@
       ],
       "evidence": [
         "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "previous_verification": "pending"
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "SYNC-006",
@@ -879,9 +913,12 @@
       ],
       "evidence": [
         "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "previous_verification": "pending"
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "SYNC-007",
@@ -1231,9 +1268,12 @@
       ],
       "evidence": [
         "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "previous_verification": "pending"
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     },
     {
       "id": "SYNC-008",
@@ -1530,9 +1570,12 @@
       ],
       "evidence": [
         "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
       ],
-      "previous_verification": "pending"
+      "previous_verification": "pending",
+      "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
+      "web_evidence": "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
     }
   ],
   "reviewed_existing": [

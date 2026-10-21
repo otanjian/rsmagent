@@ -57,7 +57,9 @@
         "test_model_save_failure_keeps_live_config_and_file[payload1]",
         "test_model_save_failure_keeps_live_config_and_file[payload2]",
         "test_model_save_failure_keeps_live_config_and_file[payload3]",
-        "test_model_save_failure_keeps_live_config_and_file[payload4]"
+        "test_model_save_failure_keeps_live_config_and_file[payload4]",
+        "test_relative_artifacts_resolve_each_owners_actual_tool_directory",
+        "test_actual_chat_api_accepts_service_key_without_browser_tenant_header"
       ]
     },
     {

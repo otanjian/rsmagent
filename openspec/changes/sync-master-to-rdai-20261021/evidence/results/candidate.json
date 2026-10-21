@@ -2,17 +2,18 @@
   "source_sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
   "target_sha": "c9bd4942261156f56c02ffd65e4d81c6153e1594",
   "merge_head": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
-  "candidate_digest": "1305d2af4f6649de916faff7b9c96240b27cf8775536fefd7c2e6c33f93207da",
+  "candidate_digest": "391d9c49ac4f6489f8607b6f87c9349f66ac125f90dc420840cd50471132de18",
   "ref_check_utc": "2026-10-21T11:49:11.721679+00:00",
   "merge_committed": true,
   "browser_scenarios": 39,
   "browser_page_errors": 0,
-  "scope": "Web/shared backend local acceptance; real provider and production delivery still pending; Desktop runtime deferred",
-  "final_gate": ".sync-test/final-gate-5",
+  "scope": "Web/shared backend accepted, including real provider/model/tool/file and two service accounts; Desktop runtime deferred",
+  "final_gate": ".sync-test/final-gate-7",
   "staged_tree_before_final_evidence": "53e5b129167c392b2d2586ad5f3598534e305acc",
-  "accepted_at_utc": "2026-10-21T11:45:13.179017+00:00",
+  "accepted_at_utc": "2026-10-21T12:17:56.370946+00:00",
   "review_merge_commit": "6396213e5cf396ad85d895aed65403820865986c",
   "review_merge_tree": "6d39f4948dc67d0eba27496208eaaa7f862f7335",
   "draft_pr": "https://rd.rsmxm.com.cn/Gitea/rsmai/rsmagent/pulls/2",
-  "delivery_accepted": false
+  "delivery_accepted": false,
+  "real_provider_accepted": true
 }

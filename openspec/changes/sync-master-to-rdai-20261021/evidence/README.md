@@ -1,6 +1,6 @@
 # 规划与实施证据
 
-本目录保留原规划依据，并新增本轮候选的实施与验证记录。候选可先进入草稿评审；最终真实模型验收、正式合入 rdai 和部署仍未完成。
+本目录保留原规划依据，并新增本轮候选的实施与验证记录。本轮 Web 验收（含真实模型、工具、文件及服务账号）已完成；最终 rdai 合入记录见 results/delivery-results.json。Desktop 与远端 CI 自动阻断待补；未执行生产部署。
 
 本目录的纯文本日志副本去除了行末空白，命令输出内容、用例结果和退出状态未改；原始副本保留在隔离工作区的 `.sync-test/raw-evidence-logs/`。证据索引及日志已显式纳入 Git，避免仓库通用忽略规则遗漏。
 
@@ -53,3 +53,5 @@
 - [现用翻译/外观检查](results/locale-current-final.log)、[历史翻译基线](results/legacy-i18n-baseline.json)、[CI 状态](ci-status.md)。
 - [Gitea 只读核查](results/remote-ci-status.json)：无分支保护规则，目标 CI 排队且未分配 runner；[真实模型重试](results/real-provider-status.json)：仍为 401，未记录凭据。
 - [草稿 PR #2](https://rd.rsmxm.com.cn/Gitea/rsmai/rsmagent/pulls/2) 与 [草稿交付记录](results/draft-delivery.json)：服务器确认 draft，保留双亲 merge 历史；尚未正式验收或合入 rdai。
+
+真实模型及文件闭环：`results/real-provider-status.json`、`real-chat-result.json`、`real-file-browser-result.json`、`real-api-result.json`。最终受影响检查：`results/affected-final/`（376 项通过）。
