@@ -1,0 +1,36 @@
+name: Web readiness
+on:
+  pull_request:
+    branches: [main, rdai]
+  push:
+    branches: [main, rdai, 'codex/ci-validation-*']
+  workflow_dispatch:
+jobs:
+  web-required:
+    name: Web required behavior
+    runs-on: rsmagent-web-sync
+    timeout-minutes: 45
+    steps:
+      - uses: https://github.com/actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Web validation dependencies
+        run: |
+          set -euo pipefail
+          uv venv --python 3.11 .venv
+          uv pip install --python .venv/bin/python -r requirements.txt -r requirements-optional.txt -r requirements-scenes.txt pytest pytest-subtests
+          npm --prefix tests/browser ci --no-audit --no-fund
+          tests/browser/node_modules/.bin/playwright install chromium
+      - name: Run required Web behavior
+        env:
+          NODE_PATH: ${{ github.workspace }}/tests/browser/node_modules
+          UPSTREAM_SYNC_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: .venv/bin/python scripts/check-upstream-sync.py --output artifacts/upstream-sync
+      - name: Preserve required behavior evidence
+        if: always()
+        uses: https://github.com/ChristopherHX/gitea-upload-artifact@81f940d004763f986ba3582c007fd842dd5cb0d7
+        with:
+          name: web-required-behavior
+          path: artifacts/upstream-sync
+          if-no-files-found: error
