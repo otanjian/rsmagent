@@ -1,0 +1,11 @@
+{
+  "source": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+  "target": "c9bd4942261156f56c02ffd65e4d81c6153e1594",
+  "rehearsal_head": "2c0bdcde9faf6030c6908f4f4d7ecccb42e8fa4b",
+  "exit_code": 1,
+  "conflict_reports": 175,
+  "head_unchanged": true,
+  "worktree_clean_after_abort": true,
+  "merge_head_absent_after_abort": true,
+  "baseline_drift": "Full added/removed list in rehearsal.log; conflicts reviewed individually during resolution"
+}
