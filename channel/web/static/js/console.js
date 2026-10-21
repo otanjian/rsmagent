@@ -6601,6 +6601,12 @@ window.fetch = function(input, init) {
     if (sameOrigin) url = requestUrl.pathname + requestUrl.search + requestUrl.hash;
     const accountMemory = sameOrigin && /^\/api\/memory(?:\/|$)/.test(requestUrl.pathname);
     const instanceUpdate = sameOrigin && /^\/api\/update\//.test(requestUrl.pathname);
+    // A scan registration is not an agent-scoped call: it either creates a new
+    // application (tenant/platform scan) or names its target explicitly. The
+    // appended active agent turned "shared scan" into "personal target" and the
+    // request was refused before any QR appeared.
+    const scanOnboarding = sameOrigin
+        && /^\/api\/feishu\/register(?:\/|$)/.test(requestUrl.pathname);
     // In database identity mode the request context is tenant-scoped. The
     // selected tenant lives in sessionStorage (cow_tenant_id) but the core
     // console requests (agents / sessions / history / knowledge) do not
@@ -6616,7 +6622,8 @@ window.fetch = function(input, init) {
         if (!headers.has('X-Tenant-ID')) headers.set('X-Tenant-ID', tenantId);
         init.headers = headers;
     }
-    if (!accountMemory && !instanceUpdate && activeAgentId && sameOrigin && url.startsWith('/')) {
+    if (!accountMemory && !instanceUpdate && !scanOnboarding && activeAgentId
+            && sameOrigin && url.startsWith('/')) {
         if (!/[?&]agent_id=/.test(url)) {
             const joiner = url.includes('?') ? '&' : '?';
             url = `${url}${joiner}agent_id=${encodeURIComponent(activeAgentId)}`;
