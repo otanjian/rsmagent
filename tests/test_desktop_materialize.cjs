@@ -531,14 +531,18 @@ test('an origin this build cannot trust is refused before a token is read', asyn
     );
     assert.equal(read, 0, 'a refused origin never asks for a session');
   }
-  // The bundled loopback backend is the one http origin allowed, and only when
-  // the registered origin is exactly it.
+  // Users may also choose a separately hosted loopback server. This does not
+  // authorize public HTTP, even when allowHttpOrigin names that public server.
   assert.equal(
     transportMod.materializeBaseUrl('http://127.0.0.1:8899', 'http://127.0.0.1:8899'),
     'http://127.0.0.1:8899',
   );
+  assert.equal(
+    transportMod.materializeBaseUrl('http://127.0.0.1:8899', 'http://127.0.0.1:9000'),
+    'http://127.0.0.1:8899',
+  );
   assert.throws(
-    () => transportMod.materializeBaseUrl('http://127.0.0.1:8899', 'http://127.0.0.1:9000'),
+    () => transportMod.materializeBaseUrl('http://cow.example.com', 'http://cow.example.com'),
     /https/,
   );
 });

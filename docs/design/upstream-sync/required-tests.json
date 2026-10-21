@@ -69,6 +69,14 @@
         "test_fork_tls_errors_do_not_start_plain_http[missing]",
         "test_fork_tls_errors_do_not_start_plain_http[malformed]"
       ]
+    },
+    {
+      "file": "tests/test_channel_startup_open.py",
+      "ids": [
+        "test_run_starts_warmup_in_database_mode",
+        "test_run_starts_warmup_in_legacy_mode",
+        "test_run_starts_mixed_channels_without_logging_credentials"
+      ]
     }
   ],
   "node": [
@@ -123,6 +131,12 @@
         "every i18n key the loaded scripts ask for by name resolves",
         "the coding Agent surface is translated, not shown as keys",
         "the actual master table merges every loaded fork namespace before lookup"
+      ]
+    },
+    {
+      "file": "tests/test_desktop_host_frontend.cjs",
+      "names": [
+        "the native adapters load before their assembled consumers"
       ]
     }
   ],

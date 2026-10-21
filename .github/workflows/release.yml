@@ -171,9 +171,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo build --release --locked \
+          cargo build --release --locked --bin fs-guard \
             --manifest-path desktop/native/fs-guard/Cargo.toml
-          cargo build --release --locked --features write-ops \
+          cargo build --release --locked --features write-ops --bin project-fs-guard \
             --manifest-path desktop/native/fs-guard/Cargo.toml
           # The script launcher. A third binary for the same reason: it is what
           # owns a script's process tree (a Job Object on Windows), and a package
@@ -197,6 +197,7 @@ jobs:
               ;;
           esac
           ls -l desktop/resources/
+          python desktop/build/verify-file-helpers.py desktop/resources
 
       - name: Verify the collected helper matches this job's target
         if: matrix.platform == 'mac'

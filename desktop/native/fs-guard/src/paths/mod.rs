@@ -254,6 +254,20 @@ mod tests {
     }
 
     #[test]
+    fn path_limit_counts_bytes_and_preserves_the_exact_boundary() {
+        // Small components keep the protocol limit independent of a native
+        // filesystem's per-component limit. Include UTF-8 to catch char counts.
+        let at_bound = format!("{}é", "a/".repeat(2047));
+        assert_eq!(at_bound.len(), 4096);
+        let components = validate_relative_path(&at_bound).unwrap();
+        assert_eq!(components.join("/"), at_bound);
+        assert!(matches!(
+            validate_relative_path(&(at_bound + "a")),
+            Err(Code::InvalidParams)
+        ));
+    }
+
+    #[test]
     fn sensitive_names_are_case_insensitive() {
         for name in [".ssh", "id_rsa", "ID_RSA", "Keychains", ".Netrc", ".AWS"] {
             assert!(is_sensitive(name), "{name} must be sensitive");
