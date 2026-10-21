@@ -11,10 +11,23 @@ jobs:
     runs-on: rsmagent-web-sync
     timeout-minutes: 45
     steps:
-      - uses: https://github.com/actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          fetch-depth: 0
-          persist-credentials: false
+      # Stock actions/checkout drops the /Gitea installation path. Use the
+      # event's exact clone URL; keep the job credential out of Git config.
+      - name: Check out the exact candidate with full history
+        env:
+          CI_REPOSITORY_URL: ${{ github.event.repository.clone_url }}
+          CI_COMMIT: ${{ github.sha }}
+          CI_JOB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "$CI_REPOSITORY_URL"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0="http.${CI_REPOSITORY_URL}.extraheader"
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$CI_JOB_TOKEN" | base64 | tr -d '\n')"
+          git fetch --no-recurse-submodules origin '+refs/heads/*:refs/remotes/origin/*' "$CI_COMMIT"
+          git checkout --detach "$CI_COMMIT"
+          unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 CI_JOB_TOKEN
       - name: Install Web validation dependencies
         run: |
           set -euo pipefail
