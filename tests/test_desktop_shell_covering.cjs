@@ -55,7 +55,8 @@ test('web workbench header keeps interactive chips no-drag', () => {
 });
 
 test('attach and detach wire shell covering', () => {
-  assert.match(ipcSrc, /setShellCovered\(options\.window, true\)/);
+  assert.match(ipcSrc, /setRemoteContainerVisible\(options\.window, route !== '\/settings' && route !== '\/logs'\)/);
+  assert.match(ipcSrc, /setShellCovered\(window, visible\)/);
   assert.match(ipcSrc, /setShellCovered\(coveredWindow, false\)/);
   assert.match(ipcSrc, /from '\.\/shell-covering'/);
 });

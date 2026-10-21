@@ -8,7 +8,7 @@
 // socket over a real identity database. Nothing is mocked: the sign-in is the
 // product's PKCE exchange, the child session is minted by the product's
 // service, the page in the container is the console the server publishes, and
-// the chat turn reaches a real OpenAI-compatible upstream.
+// the chat turn reaches the fixture's canned OpenAI-compatible upstream.
 //
 // The journey is the phase-1 one, in order:
 //
@@ -64,11 +64,21 @@ const FIRST_TENANT = process.env.COW_E2E_TENANT_ID
 const LOCAL_USER = JSON.parse(process.env.COW_E2E_LOCAL_USER)
 const CA = fs.readFileSync(CERT)
 
+// The shipped bridge's explicit allowlist, including the later file and SAP
+// capabilities. A newly exposed method must be reviewed here as well.
+const BRIDGE_METHODS = [
+  'bindContext', 'chooseWorkspace', 'disconnectWorkspace', 'getCapabilities',
+  'localContext', 'manageSapLogin', 'onHostEvent', 'openExternal',
+  'projectCopyPath', 'projectOpenFile', 'projectPreviewFile', 'projectRead',
+  'projectResolve', 'projectRevealFile', 'projectSaveFileAs', 'projectSearch',
+  'projectSource', 'projectTree', 'projectWrite', 'readSapPage',
+  'sapWorkbenchLayout', 'saveArtifact', 'signOut', 'suspendLocalContext',
+].sort()
+
 const OPENED_EXTERNAL = path.join(PROFILE, 'opened-external.jsonl')
 
 // The app's own main-process log. ``initDesktopLogging`` (``index.ts``) mirrors
-// every ``console.*`` line into ``$HOME/.cow/run.log``, and the spec passes
-// ``HOME=PROFILE``, so this is where this run's launch lines land.
+// every ``console.*`` line into the private data directory's desktop-main.log.
 //
 // It is read because the app's stdout cannot answer the question: the mode line
 // is printed before the window exists, and Electron's early stdout is not
@@ -76,7 +86,7 @@ const OPENED_EXTERNAL = path.join(PROFILE, 'opened-external.jsonl')
 // the line was never in ``bootLog`` and "boots remote" could never pass. This
 // file is the product's own record of the same lines, and a byte offset makes
 // "what *this* launch said" exact.
-const MAIN_LOG = path.join(PROFILE, '.cow', 'run.log')
+const MAIN_LOG = path.join(process.env.COW_E2E_LOCAL_DATA_DIR, 'desktop-main.log')
 
 // Labels of the buttons this spec presses. Matched by role + accessible name so
 // a markup change does not silently pass, in both shipped languages.
@@ -329,24 +339,20 @@ async function nextAuthorizeUrl() {
 /**
  * Click a button in the shell.
  *
- * The container view covers the whole window (``container.ts``: ``TOP_INSET`` 0),
- * so a *pointer* event aimed at the shell can be swallowed by the native view on
- * top of it. The click is therefore delivered to the shell document itself when
- * Playwright's own click does not land -- the same button, the same React
- * handler, no product code skipped.
+ * Open the native Settings menu when the container covers the shell, then use
+ * a real pointer click. This must remain usable without script-click fallbacks.
  */
 async function clickInShell(name) {
-  const button = shell.getByRole('button', { name })
-  try {
-    await button.click({ timeout: 10000 })
-  } catch {
-    await shell.evaluate((pattern) => {
-      const match = [...document.querySelectorAll('button')]
-        .find((node) => new RegExp(pattern, 'i').test(node.innerText || ''))
-      if (!match) throw new Error(`no button matching ${pattern}`)
-      match.click()
-    }, name.source)
+  if (await shell.evaluate(() => document.documentElement.classList.contains('cow-remote-covering'))) {
+    await app.evaluate(({ Menu }) => {
+      const items = Menu.getApplicationMenu().items.flatMap(item => item.submenu?.items || [])
+      const settings = items.find(item => /^Settings/.test(item.label))
+      if (!settings) throw new Error('native Settings menu missing')
+      settings.click()
+    })
+    await shell.waitForFunction(() => !document.documentElement.classList.contains('cow-remote-covering'))
   }
+  await shell.getByRole('button', { name }).click({ timeout: 10000 })
 }
 
 /**
@@ -459,7 +465,8 @@ async function openWorkbenchInContainer() {
 
 /** Enter remote mode and attach the server's console. */
 async function attachRemote(as = USERS.u1) {
-  const backendOrigin = await authorize(LABEL.enterRemote, as)
+  const label = await shell.getByRole('button', { name: LABEL.login }).isVisible() ? LABEL.login : LABEL.enterRemote
+  const backendOrigin = await authorize(label, as)
   assert.equal(backendOrigin, ORIGIN, 'the authorization must go to the active server')
   await waitFor('the container to attach', async () => (await containerInfo()).attached, { timeout: 60000 })
   await openWorkbenchInContainer()
@@ -499,9 +506,9 @@ test('the local shell reaches the connection surface from Settings', async () =>
   await shell.locator('input[placeholder^="https://"]').waitFor({ timeout: 15000 })
 })
 
-test('a plain HTTP address is refused and never stored', async () => {
+test('a public HTTP address is refused and never stored', async () => {
   const origin = shell.locator('input[placeholder^="https://"]')
-  await origin.fill('http://127.0.0.1:8080')
+  await origin.fill('http://console.example.com')
   await clickInShell(LABEL.checkAndAdd)
   const refusal = shell.getByText(/仅支持根路径部署的精确 HTTPS|Only an exact HTTPS origin/)
   await refusal.waitFor({ timeout: 20000 })
@@ -573,13 +580,12 @@ test('the container runs the server console with the narrow bridge and nothing w
   assert.equal(capabilities.available, true)
   assert.equal(capabilities.environment, 'desktop')
   assert.equal(String(capabilities.bridge).split('.')[0], '1')
-  assert.deepEqual(capabilities.methods.sort(), [
-    'getCapabilities', 'onHostEvent', 'openExternal', 'saveArtifact', 'suspendLocalContext',
-  ])
+  assert.deepEqual(capabilities.methods.sort(), BRIDGE_METHODS)
 
-  // Phase 1 creates no local file grant, and the adapter exposes no path API.
+  // Merely attaching must never pick or grant a device directory.
   const files = await remote('window.CowDesktopHost.localFiles()')
-  assert.deepEqual(files, { available: false, reason: 'phase_two' })
+  assert.equal(files.connected, null)
+  assert.deepEqual(files.candidates, [])
 })
 
 test('a page cannot forge the bridge or reach a native capability it was not given', async () => {
@@ -604,14 +610,14 @@ test('a page cannot forge the bridge or reach a native capability it was not giv
 
   // The bridge is the *only* native surface, and it is not the local preload's.
   const surfaces = await remote(`Object.keys(window.desktopHost).sort()`)
-  assert.deepEqual(surfaces, ['getCapabilities', 'onHostEvent', 'openExternal', 'saveArtifact', 'suspendLocalContext'])
+  assert.deepEqual(surfaces, BRIDGE_METHODS)
 })
 
 // --------------------------------------------------------------------------
 // 3. the business pages carried in the container
 // --------------------------------------------------------------------------
 
-test('a chat turn streams token by token from the real upstream', async () => {
+test('a chat turn streams token by token from the controlled upstream', async () => {
   const before = (await control('/model-requests')).count
   await remote(`(() => {
     const input = document.querySelector('#chat-input');

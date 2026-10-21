@@ -1,9 +1,9 @@
 name: Web readiness
 on:
   pull_request:
-    branches: [main, rdai]
-  push:
     branches: [main, rdai, 'codex/ci-validation-*']
+  push:
+    branches: [main, rdai]
   workflow_dispatch:
 jobs:
   web-required:

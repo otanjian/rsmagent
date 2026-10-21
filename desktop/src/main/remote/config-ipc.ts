@@ -260,7 +260,11 @@ export function setupRemoteConfigIPC(getWindow: () => BrowserWindow | null): voi
     }
   }
 
-  ipcMain.handle('desktop-mode-get', (event) => wrap(event, () => modeProjection()))
+  ipcMain.handle('desktop-mode-get', async (event) => {
+    const projection = wrap(event, () => modeProjection())
+    const { remoteContainerState } = await import('./remote-container-ipc')
+    return { ...projection, containerAttached: remoteContainerState().attached }
+  })
   ipcMain.handle('desktop-login-server-set', (event, origin: unknown) =>
     wrap(event, () => selectLoginServer(origin)))
 
@@ -283,11 +287,24 @@ export function setupRemoteConfigIPC(getWindow: () => BrowserWindow | null): voi
   ipcMain.handle('desktop-remote-set-active', (event, id: string | null) =>
     wrap(event, () => setActiveServer(id)))
 
-  ipcMain.handle('desktop-remote-set-mode', (event, mode: string) =>
-    wrap(event, () => {
+  ipcMain.handle('desktop-remote-set-mode', async (event, mode: string) => {
+    guard(event)
+    try {
+      const next = mode === 'remote' ? 'remote' : 'local'
+      if (next !== getConfig().mode && (next === 'local' || canHonourRemoteMode(process.versions.electron).ok)) {
+        // Revoke against the OLD origin before changing the broker. Otherwise
+        // the old view survives while its session is dropped, and connect()
+        // mistakes that stale view for an already connected new server.
+        const { detachRemoteContainer } = await import('./remote-container-ipc')
+        const ended = await detachRemoteContainer()
+        if (!ended.ok) return { ok: false, applied: false, code: 'logout_incomplete', message: ended.message }
+      }
       const result = setMode(mode)
-      return { config: modeProjection(), applied: result.applied, reason: result.reason }
-    }))
+      return { ok: true, config: modeProjection(), applied: result.applied, reason: result.reason }
+    } catch {
+      return { ok: false, applied: false, code: 'unexpected_error', message: 'the request could not be completed' }
+    }
+  })
 }
 
 /** Exported for tests / the startup log line. */

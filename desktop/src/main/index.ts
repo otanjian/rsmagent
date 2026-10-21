@@ -28,7 +28,7 @@ import {
   getRuntimeAppIcon,
 } from './app-icon'
 import { setupRemoteConfigIPC, startupMode, syncBrokerOrigin } from './remote/config-ipc'
-import { detachRemoteContainer, setupRemoteContainerIPC } from './remote/remote-container-ipc'
+import { detachRemoteContainer, setRemoteContainerVisible, setupRemoteContainerIPC } from './remote/remote-container-ipc'
 import { setLocalWebBindWindow, tryAutoBindLocalWeb } from './remote/local-web-bind'
 
 // The shell's own diagnostics live in <data-dir>/desktop-main.log, beside the
@@ -365,6 +365,18 @@ function createWindow() {
   // "initialization failed" with no reason attached.
   mainWindow.webContents.on('did-finish-load', () => {
     sendBackendState()
+  })
+
+  // Only the trusted shell's own navigation changes which native view is on
+  // top. The guest keeps its paired identity while local settings are open.
+  mainWindow.webContents.on('did-navigate-in-page', (_event, url, isMainFrame) => {
+    if (!isMainFrame || !mainWindow) return
+    const route = new URL(url).hash.slice(1).split('?')[0]
+    if (route === '/settings' || route === '/remote' || route === '/logs') {
+      setRemoteContainerVisible(mainWindow, false)
+    } else if (route === '/' || route === '') {
+      setRemoteContainerVisible(mainWindow, true)
+    }
   })
 
   mainWindow.once('ready-to-show', () => {
@@ -894,7 +906,12 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
+let quitCleanup: Promise<void> | null = null
+let quitCleanupDone = false
+app.on('before-quit', (event) => {
+  if (quitCleanupDone) return
+  event.preventDefault()
+  if (quitCleanup) return
   isQuitting = true
   saveWindowState()
   destroyTray()
@@ -912,11 +929,15 @@ app.on('before-quit', () => {
   }
   // Close the executor before the backend: a script still running must be stopped
   // while its grant is still resolvable, and its workers' Job Objects end with the
-  // endpoint rather than being orphaned. Not awaited -- `before-quit` cannot block,
-  // and the kernel closes the loopback socket and any surviving Job handle when the
-  // process exits anyway.
-  void stopExecutorEndpoint().catch(() => undefined)
-  pythonBackend?.stop()
+  // endpoint rather than being orphaned. Keep Electron alive until its own
+  // backend has exited; otherwise its escalation timer dies with the app.
+  quitCleanup = (async () => {
+    await stopExecutorEndpoint().catch(() => undefined)
+    await pythonBackend?.stop()
+  })().finally(() => {
+    quitCleanupDone = true
+    app.quit()
+  })
 })
 
 // Wake revalidation (task 13.2): on resume/unlock, tell the shell to re-check

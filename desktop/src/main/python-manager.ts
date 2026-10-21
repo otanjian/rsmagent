@@ -982,23 +982,26 @@ export class PythonBackend extends EventEmitter {
     })
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     // Set before the kill so the exit handler reads this as a deliberate
     // teardown and doesn't try to "recover" a process we just asked to die.
     this.shuttingDown = true
     this.stopHealthMonitor()
     const proc = this.process
-    if (proc) {
-      proc.kill('SIGTERM')
-      // Keep a local ref so the SIGKILL fallback can still reach the process
-      // even after we clear `this.process`; otherwise a stuck backend would
-      // never be force-killed and leak as a zombie.
-      setTimeout(() => {
-        if (!proc.killed) {
-          proc.kill('SIGKILL')
+    this.process = null
+    if (proc && proc.exitCode === null && proc.signalCode === null) {
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          clearTimeout(timer)
+          proc.removeListener('exit', done)
+          resolve()
         }
-      }, 5000)
-      this.process = null
+        // `killed` only means a signal was sent. Wait for the actual exit so a
+        // restart cannot race the old process's port and instance lock.
+        const timer = setTimeout(() => proc.kill('SIGKILL'), 5000)
+        proc.once('exit', done)
+        proc.kill('SIGTERM')
+      })
     }
     this.status = 'stopped'
   }
@@ -1067,8 +1070,7 @@ export class PythonBackend extends EventEmitter {
       this.recoveryAttempts = 0
       this.recoveryWindowStart = Date.now()
     }
-    this.stop()
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    await this.stop()
     await this.start()
   }
 }
