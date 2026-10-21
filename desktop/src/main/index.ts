@@ -82,7 +82,8 @@ initDesktopLogging()
 app.setName(loadAppConfig()?.appName || 'RongAI')
 applyCachedAppName()
 const profileName = ['容大AI', 'RongAI', 'CowAgent'].includes(app.name) ? 'CowAgent' : app.name
-app.setPath('userData', path.join(app.getPath('appData'), profileName))
+const explicitProfile = app.commandLine.getSwitchValue('user-data-dir')
+app.setPath('userData', explicitProfile ? path.resolve(explicitProfile) : path.join(app.getPath('appData'), profileName))
 if (/^cowagent$/i.test(app.name.trim())) app.setName('RongAI')
 
 // Windows shows notifications only when an AppUserModelID is set; without it

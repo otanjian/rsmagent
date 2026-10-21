@@ -2077,19 +2077,19 @@
       "classification": "behavior",
       "owner": "rdai-maintainers",
       "evidence": [
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/desktop-followup-validation.md"
       ],
       "integration": {
         "source_blob": "ccec72544b9686f083361bfeb77d200bdfbbd5b1",
-        "candidate_sha256": "911ac2f44c66f83776ecb971d3a6732eb69b5f7a383a4a46f92f67fb17d6fbdc",
-        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "candidate_sha256": "6a6b01435d75fc6978b2c02b2602e257f1b5182bcc0d0f3f35e4618d9c016674",
+        "reason": "Preserve master scroll behavior and rdai integration; register the composer ResizeObserver with chat state so deferred script loading cannot call it before messagesDiv and scroll flags exist. Real Gitea Chromium run 740 exposed this timing failure.",
         "consumers": [
           "channel/web/chat.html"
         ],
         "tests": [
-          "tests/test_console_parity_browser.cjs",
-          "tests/test_session_history_refresh_frontend.cjs",
-          "tests/test_knowledge_console_frontend.cjs"
+          "tests/web_scroll.test.cjs",
+          "tests/test_knowledge_console_browser.cjs"
         ]
       }
     },
@@ -2290,8 +2290,21 @@
       "classification": "behavior",
       "owner": "rdai-maintainers",
       "evidence": [
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
-      ]
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/desktop-followup-validation.md"
+      ],
+      "integration": {
+        "source_blob": "f6b80b27c72633104e780212e340d6a8cf9fa827",
+        "candidate_sha256": "b261412296a6d310d091a3fcb65bd36a067df38e79ebacd956767fd65f89c869",
+        "reason": "Preserve master scroll behavior and rdai integration; register the composer ResizeObserver with chat state so deferred script loading cannot call it before messagesDiv and scroll flags exist. Real Gitea Chromium run 740 exposed this timing failure.",
+        "consumers": [
+          "channel/web/chat.html"
+        ],
+        "tests": [
+          "tests/web_scroll.test.cjs",
+          "tests/test_knowledge_console_browser.cjs"
+        ]
+      }
     },
     {
       "path": "channel/web/static/js/core/version.js",

@@ -497,6 +497,19 @@ messagesDiv.addEventListener('scroll', () => {
 
 // Composer resizing changes the viewport, not the user's intent.
 // Observe the viewport rather than each message so long conversations stay cheap.
+// Register observers only after the chat DOM and scroll state exist.
+if (typeof ResizeObserver !== 'undefined') {
+    const composer = document.getElementById('chat-composer');
+    if (composer) {
+        new ResizeObserver(() => {
+            const rect = composer.getBoundingClientRect();
+            const chatMain = document.getElementById('chat-main');
+            if (chatMain) chatMain.style.setProperty('--chat-composer-height', `${Math.ceil(rect.height)}px`);
+            refreshChatScrollControls();
+        }).observe(composer);
+    }
+}
+
 if (typeof ResizeObserver !== 'undefined') {
     let previousWidth = messagesDiv.clientWidth;
     let previousHeight = messagesDiv.clientHeight;

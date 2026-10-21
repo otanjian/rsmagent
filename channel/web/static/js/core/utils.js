@@ -185,17 +185,6 @@ function refreshChatScrollControls() {
     scrollChatToBottom();
 }
 
-if (typeof ResizeObserver !== 'undefined') {
-    const composer = document.getElementById('chat-composer');
-    if (composer) {
-        new ResizeObserver(() => {
-            const rect = composer.getBoundingClientRect();
-            const chatMain = document.getElementById('chat-main');
-            if (chatMain) chatMain.style.setProperty('--chat-composer-height', `${Math.ceil(rect.height)}px`);
-            refreshChatScrollControls();
-        }).observe(composer);
-    }
-}
 
 function applyHighlighting(container) {
     const root = container || document;

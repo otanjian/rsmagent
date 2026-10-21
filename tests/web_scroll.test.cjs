@@ -6,6 +6,16 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
 
+test('loading scroll utilities before chat state cannot fire a premature resize callback', () => {
+    const utils = fs.readFileSync(path.join(ROOT, 'channel/web/static/js/core/utils.js'), 'utf8');
+    const context = vm.createContext({
+        document: { getElementById() { return { getBoundingClientRect() { return {height: 80}; }, style: {setProperty() {}} }; } },
+        ResizeObserver: class { constructor(callback) { this.callback = callback; } observe() { this.callback(); } },
+    });
+    assert.doesNotThrow(() => vm.runInContext(
+        utils.slice(utils.indexOf('let _scrollRafId'), utils.indexOf('function applyHighlighting')), context));
+});
+
 function setup() {
     const frames = new Map();
     let nextId = 0;

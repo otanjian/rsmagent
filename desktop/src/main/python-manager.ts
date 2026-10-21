@@ -13,7 +13,7 @@ import {
   isOurBackend,
 } from './backend-port'
 import { missingModuleFrom } from './dependency-error'
-import { COW_DATA_DIR, resolveDataDir } from './data-dir'
+import { resolveDataDir } from './data-dir'
 import { getHostLog } from './host-log'
 import { pythonCandidates, selectInterpreter, summariseAttempts } from './python-probe'
 
@@ -800,11 +800,11 @@ export class PythonBackend extends EventEmitter {
       // bundle reads its read-only resources via sys._MEIPASS, so cwd is free
       // to point elsewhere.
       try {
-        fs.mkdirSync(COW_DATA_DIR, { recursive: true })
+        fs.mkdirSync(dataDir, { recursive: true })
       } catch {
         // ignore — get_data_root() also ensures the dir on the Python side
       }
-      cwd = COW_DATA_DIR
+      cwd = dataDir
       this.emit('log', `Starting bundled backend: ${bundled} (cwd=${cwd})`)
     } else {
       const appPath = path.join(this.backendPath, 'app.py')
@@ -838,7 +838,7 @@ export class PythonBackend extends EventEmitter {
         // The shell owns the port: tell the backend to bind exactly here so the
         // two sides can never disagree (and we avoid the 9899 web-console clash).
         COW_WEB_PORT: String(this.port),
-        ...(bundled ? { COW_DATA_DIR } : {}),
+        ...(bundled ? { COW_DATA_DIR: dataDir } : {}),
         ...this.appConfigEnv(),
         // The local executor endpoint, when this build started one. Absent means
         // the backend has no script surface at all, which is the honest answer
