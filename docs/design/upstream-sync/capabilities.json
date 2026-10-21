@@ -1898,7 +1898,8 @@
       "classification": "behavior",
       "owner": "rdai-maintainers",
       "evidence": [
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/navigation-areas.md"
       ]
     },
     {
@@ -2169,19 +2170,21 @@
       "classification": "behavior",
       "owner": "rdai-maintainers",
       "evidence": [
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/navigation-areas.md"
       ],
       "integration": {
         "source_blob": "76b3f70fbfaae4a0e24fdf2f65dcee20d38d3e39",
-        "candidate_sha256": "c3654ce72203fc802a62d0040e4805160011030c5725c0f433f1ae13d0c3cab3",
-        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "candidate_sha256": "23b61ab3231cfbfd1b2ee2c342ed3a125f8dc7f02209e7d2be38979de38bc66c",
+        "reason": "Preserve original rdai menu names, positions, groups and order; switch areas above the account footer using existing routes and permissions. Keep master components, complete personal layouts and navigation guards.",
         "consumers": [
           "channel/web/chat.html"
         ],
         "tests": [
           "tests/test_console_parity_browser.cjs",
           "tests/test_session_history_refresh_frontend.cjs",
-          "tests/test_knowledge_console_frontend.cjs"
+          "tests/test_knowledge_console_frontend.cjs",
+          "tests/test_sync_master_web_browser.cjs"
         ]
       }
     },
@@ -2198,19 +2201,21 @@
       "classification": "behavior",
       "owner": "rdai-maintainers",
       "evidence": [
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/navigation-areas.md"
       ],
       "integration": {
         "source_blob": "9cd39db57a3eee90c1bff1c5e279bdc768235551",
-        "candidate_sha256": "b66fd0098f9884eb64238c3c14f5c6ef54b68a04f6e44bf3a5c8bff93d4dc907",
-        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "candidate_sha256": "9d8fc65dbf3f012cd4cc4b94ff1ea9a46dcaf872383d5efd96ee815f4375b63b",
+        "reason": "Preserve original rdai menu names, positions, groups and order; switch areas above the account footer using existing routes and permissions. Keep master components, complete personal layouts and navigation guards.",
         "consumers": [
           "channel/web/chat.html"
         ],
         "tests": [
           "tests/test_console_parity_browser.cjs",
           "tests/test_session_history_refresh_frontend.cjs",
-          "tests/test_knowledge_console_frontend.cjs"
+          "tests/test_knowledge_console_frontend.cjs",
+          "tests/test_sync_master_web_browser.cjs"
         ]
       }
     },
@@ -2219,19 +2224,21 @@
       "classification": "behavior",
       "owner": "rdai-maintainers",
       "evidence": [
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/navigation-areas.md"
       ],
       "integration": {
         "source_blob": "7246433c7e7a78c61055438d72176f01b7e2f7d0",
-        "candidate_sha256": "45ed3bb921d991b5b6613aa287b3002aab502992a6a280466b8836c83b6dc7d7",
-        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "candidate_sha256": "a3860562ce5148241c07e49f5529c6b6731f410c6e6f4a884b21a385974e18ab",
+        "reason": "Preserve original rdai menu names, positions, groups and order; switch areas above the account footer using existing routes and permissions. Keep master components, complete personal layouts and navigation guards.",
         "consumers": [
           "channel/web/chat.html"
         ],
         "tests": [
           "tests/test_console_parity_browser.cjs",
           "tests/test_session_history_refresh_frontend.cjs",
-          "tests/test_knowledge_console_frontend.cjs"
+          "tests/test_knowledge_console_frontend.cjs",
+          "tests/test_sync_master_web_browser.cjs"
         ]
       }
     },
@@ -2651,7 +2658,8 @@
       "classification": "behavior",
       "owner": "rdai-maintainers",
       "evidence": [
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/navigation-areas.md"
       ]
     },
     {

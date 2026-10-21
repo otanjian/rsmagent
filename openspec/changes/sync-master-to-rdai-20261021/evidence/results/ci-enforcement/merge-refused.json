@@ -1,0 +1,8 @@
+{
+  "head": "62b3a2fab5963415d8a97892854d0848b1cd7545",
+  "status_code": 405,
+  "body": {
+    "message": "Not all required status checks successful",
+    "url": "https://rd.rsmxm.com.cn/Gitea/api/swagger"
+  }
+}

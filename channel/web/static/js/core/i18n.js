@@ -2120,14 +2120,15 @@ const I18N = {
         mermaid_preview_failed: 'Diagram could not be rendered',
     }
 };
-for (const namespace of Object.values(window.__cowI18N__ || {})) {
+for (const [domain, namespace] of Object.entries(window.__cowI18N__ || {})) {
     for (const [lang, messages] of Object.entries(namespace)) {
         I18N[lang] ||= {};
-        for (const [key, value] of Object.entries(messages)) if (!(key in I18N[lang])) I18N[lang][key] = value;
+        // Shared components keep master behavior; product navigation names
+        // remain rdai's in every language (personal titles still take priority).
+        for (const [key, value] of Object.entries(messages)) {
+            if (domain === 'navigation' || !(key in I18N[lang])) I18N[lang][key] = value;
+        }
     }
-}
-for (const [lang, label, back] of [['zh','业务工作台','返回业务工作台'],['zh-Hant','業務工作台','返回業務工作台'],['en','Business Workspace','Back to Business Workspace']]) {
-    I18N[lang].nav_workbench = label; I18N[lang].nav_return_workbench = back;
 }
 
 

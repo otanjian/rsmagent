@@ -3,6 +3,17 @@
    See channel/web/README.md for the load order, which is load-bearing. */
 
 /* Sidebar */
+.sidebar-admin-entry-wrap { flex-shrink: 0; padding: 8px 12px; border-top: 1px solid #ffffff1a; }
+.sidebar-area-button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; text-align: left; font-size: 14px; color: #a3a3a3; cursor: pointer; }
+.sidebar-area-button.hidden { display: none; }
+.sidebar-area-button:hover { background: #ffffff0d; color: #e5e5e5; }
+.sidebar-area-button:focus-visible { outline: 2px solid #4abe6e; outline-offset: 2px; }
+.sidebar-area-button i { width: 20px; text-align: center; font-size: 12px; flex-shrink: 0; }
+@media (min-width: 1024px) {
+    html.sidebar-collapsed .sidebar-admin-entry-wrap { padding: 8px; }
+    html.sidebar-collapsed .sidebar-area-button { justify-content: center; padding: 10px 0; }
+    html.sidebar-collapsed .sidebar-area-button span { display: none; }
+}
 html.menu-pending #sidebar-nav { visibility: hidden; }
 .sidebar-item .sidebar-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-ext { margin-left: auto; font-size: 9px; opacity: .45; }

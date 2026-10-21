@@ -20,7 +20,7 @@ const VIEW_META = {
     },
     "agents": {
         "group": "nav_manage",
-        "page": "menu_agents",
+        "page": "menu_agent_config",
         "console": "admin.agents"
     },
     "config": {
@@ -157,7 +157,7 @@ function _switchToView(viewId) {
     if (breadcrumb) breadcrumb.style.display = viewId === 'chat' ? 'none' : '';
     const leavingAgents = currentView === 'agents' && viewId !== 'agents';
     currentView = viewId;
-    menuSyncActive();
+    menuRenderSidebar();
     // The Agent detail is a fixed drawer, so it would otherwise hang over
     // whatever view you navigate to. It only belongs to the Agent Team page.
     if (viewId !== 'agents') closeAgentDetail();
@@ -330,7 +330,13 @@ function navigateTo(viewId, tab, routeOptions) {
     if (!VIEW_META[viewId]) return false;
     if (!_viewLeaveCheck(viewId, onArrive || tab, routeOptions)) return false;
     const denied = _viewNavDenied(viewId);
-    if (denied) { routeEnterView(viewId, tab); showUnavailableView(viewId, denied.reason); return false; }
+    if (denied) {
+        routeEnterView(viewId, tab);
+        showUnavailableView(viewId, denied.reason);
+        _applyNavAreaAttribute();
+        menuRenderSidebar();
+        return false;
+    }
     if (viewId !== currentView) { agentNavigationVersion++; cancelAgentStart(); }
 
     // An open document editor is about to be replaced by another view, which
@@ -343,6 +349,7 @@ function navigateTo(viewId, tab, routeOptions) {
     _switchToView(viewId);
     // The address bar follows the view, so a reload lands back here.
     routeEnterView(viewId, tab);
+    _applyNavAreaAttribute();
 
     // Lazy-load view data
     if (viewId === 'config') { loadConfigView(); switchConfigTab(tab || 'basic'); }
