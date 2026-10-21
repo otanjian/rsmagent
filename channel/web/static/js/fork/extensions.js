@@ -199,7 +199,7 @@ function _renderSidebarAccount() {
     _accountHidden('account-menu-retry', !['error', 'logout_error', 'loading', 'timeout'].includes(state.phase));
     _accountHidden('account-menu-logout', !canLogout);
     _accountText('account-menu-logout-label', t(leaving ? 'account_logging_out' : logoutError ? 'account_retry_logout' : 'account_logout'));
-    // Six-item menu for an authenticated database account.
+    // Personal settings for an authenticated database account.
     const dbUser = hasUser;
     _accountHidden('account-menu-settings', !dbUser);
     ['account-menu-profile', 'account-menu-password', 'account-menu-tenant'].forEach(id => {
@@ -207,7 +207,7 @@ function _renderSidebarAccount() {
         if (el) el.disabled = !!_accountWritePending;
         _accountHidden(id, !dbUser);
     });
-    ['account-menu-prefs', 'account-menu-about'].forEach(id => {
+    ['account-menu-prefs', 'account-menu-customize', 'account-menu-about'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.disabled = !!_accountWritePending;
         _accountHidden(id, !dbUser);

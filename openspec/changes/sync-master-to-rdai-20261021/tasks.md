@@ -133,3 +133,9 @@
 - [x] 13.4 更新来源审查、Web 验收、PR 和本地 localhost:9899 交付，完成 OpenSpec 严格校验、delta/重叠核对与实际 required CI；桌面测试仍停止，不据此归档全 change。
 
 本次导航修正及 Web 验收任务 13.1–13.4 已完成，总计 **58/62**；剩余四项均为用户已停止的 Desktop 后补验收，保持延期，不归档为全端完成。实际 required CI 证据见 `evidence/results/navigation/ci-run-749.json`。
+
+## 14. 个人菜单入口归入账号设置
+
+- [x] 14.1 将自定义菜单入口统一移入账号菜单，明确本人当前租户范围，复用原编辑器并处理焦点返回；同步 change，验证保存/恢复默认、身份隔离、移动和折叠侧栏。
+
+账号入口调整及本地必要 Web 验证完成，证据见 `evidence/account-menu-entry.md`。当前共 **59/63**，剩余四项仍为已停止并延期的 Desktop 后补验收。

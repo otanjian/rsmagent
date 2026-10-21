@@ -20,34 +20,6 @@ html.menu-pending #sidebar-nav { visibility: hidden; }
 @media (min-width: 1024px) {
     html.sidebar-collapsed .sidebar-ext { display: none; }
 }
-/* The editor's entry: a pencil at the end of a group header, shown while the
-   header is hovered. The rail hides it with the headers. */
-.menu-group { position: relative; }
-.menu-group-edit {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    width: 24px;
-    height: 24px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 6px;
-    font-size: 10px;
-    color: #737373;
-    opacity: 0;
-    cursor: pointer;
-    transition: opacity .15s, color .15s, background-color .15s;
-}
-.menu-group-head:hover + .menu-group-edit,
-.menu-group-edit:hover,
-.menu-group-edit:focus-visible { opacity: 1; }
-.menu-group-edit:hover { color: #e5e5e5; background: rgba(255, 255, 255, 0.06); }
-@media (hover: none) { .menu-group-edit { opacity: 1; } }
-@media (min-width: 1024px) {
-    html.sidebar-collapsed .menu-group-edit { display: none; }
-}
-
 /* Next to the breadcrumb: open the page on screen outside the console. */
 .breadcrumb-external {
     flex-shrink: 0;
@@ -126,6 +98,12 @@ html.menu-pending #sidebar-nav { visibility: hidden; }
 .me-foot-btn:hover { background: #f1f5f9; color: #1e293b; }
 .dark .me-foot-btn { color: #cbd5e1; }
 .dark .me-foot-btn:hover { background: rgba(255, 255, 255, 0.06); color: #f1f5f9; }
+@media (max-width: 640px) {
+    .menu-editor-foot { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 12px; }
+    .menu-editor-foot > button { justify-content: center; white-space: nowrap; }
+    .menu-editor-error { grid-column: 1 / -1; }
+    .menu-editor-error:empty { display: none; }
+}
 
 .me-group { border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; }
 .me-group + .me-group { margin-top: 12px; }

@@ -54,9 +54,18 @@ async function main() {
         }
         const alice=await login('alice'), second=await login('alice'), bob=await login('bob');
         const readMenu=p=>p.evaluate(async()=>{const r=await fetch('/api/menu');return r.json();});
+        async function openPersonalMenu(page) {
+            await page.locator('#sidebar-account-toggle').click();
+            await page.locator('#account-menu-customize').click();
+            await page.locator('#menu-editor-overlay').waitFor({state:'visible'});
+            assert.equal(await page.locator('#sidebar-account-menu').isVisible(),false);
+            assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('account-menu-sheet-open')),false);
+            assert.equal(await page.locator('#menu-editor-body input').first().evaluate(el=>el===document.activeElement),true);
+            assert.equal(await page.locator('#sidebar-nav .menu-group-edit, #sidebar .sidebar-footer [onclick*="menuEditorOpen"]').count(),0);
+        }
         async function editTitle(page,title,success=true) {
             currentPage=page;
-            await page.locator('[onclick="menuEditorOpen()"]:visible').last().click();
+            await openPersonalMenu(page);
             await page.locator('.me-group[data-gid="chat"] [data-field="group-title"]').fill(title);
             const response=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/menu'&&r.request().method()==='POST');
             await page.locator('#menu-editor-save').click();const result=await response;
@@ -198,7 +207,7 @@ async function main() {
             assert.equal(items.find(i=>i.id==='external').url,'https://example.invalid/');
             await manager.locator('#nav-return-workbench').click();
             assert.match(await manager.locator('#sidebar-nav').innerText(),/Kept across areas/i);
-            await manager.locator('[onclick="menuEditorOpen()"]:visible').last().click();
+            await openPersonalMenu(manager);
             await manager.locator('[onclick="menuEditorReset()"]:visible').click();
             await manager.locator('#confirm-dialog-ok').click();
             await manager.locator('#menu-editor-overlay').waitFor({state:'hidden'});
@@ -254,10 +263,21 @@ async function main() {
             await manager.locator('#menu-toggle').click();
             await manager.waitForFunction(()=>document.getElementById('sidebar').getBoundingClientRect().left>=0);
             await manager.screenshot({path:path.join(output,'navigation-mobile.png')});
+            await openPersonalMenu(manager);
+            assert.equal(await manager.locator('.menu-editor-foot > button').evaluateAll(buttons => buttons.every(button => {
+                const box = button.getBoundingClientRect();
+                return box.left >= 0 && box.right <= innerWidth && button.scrollWidth <= button.clientWidth;
+            })), true);
+            await manager.screenshot({path:path.join(output,'account-menu-editor-mobile.png')});
+            await manager.keyboard.press('Escape');
+            assert.equal(await manager.locator('#sidebar-account-toggle').evaluate(el=>el===document.activeElement),true);
             await manager.locator('#nav-return-workbench').click();
             await manager.locator('#view-chat').waitFor({state:'visible'});
             await manager.setViewportSize({width:1440,height:1000});
             await manager.locator('#sidebar-collapse-btn').click();
+            await openPersonalMenu(manager);
+            await manager.keyboard.press('Escape');
+            assert.equal(await manager.locator('#sidebar-account-toggle').evaluate(el=>el===document.activeElement),true);
             await manager.locator('#nav-open-admin').click();
             await manager.waitForURL(app.origin+'/admin');
             await manager.locator('#nav-return-workbench').click();

@@ -186,11 +186,9 @@ function menuRenderSidebar() {
             </div>`;
         }
         return `<div class="menu-group${folded[group.id] === false ? '' : ' open'}" data-group="${escapeHtml(group.id)}">
-            <button class="menu-group-head w-full flex items-center gap-2 pl-3 pr-8 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-300 cursor-pointer transition-colors duration-150">
+            <button class="menu-group-head w-full flex items-center gap-2 pl-3 pr-3 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-300 cursor-pointer transition-colors duration-150">
                 <i class="fas fa-chevron-right text-[10px] chevron"></i>${title}
             </button>
-            <button class="menu-group-edit" onclick="menuEditorOpen()" data-tip-key="menu_edit" data-tooltip="${escapeHtml(t('menu_edit'))}"
-                    data-tip-float data-tooltip-pos="right" aria-label="${escapeHtml(t('menu_edit'))}"><i class="fas fa-pen"></i></button>
             <div class="menu-group-items pl-2">${items.map(_menuItemHTML).join('')}</div>
         </div>`;
     }).join('');
