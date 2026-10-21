@@ -1,6 +1,6 @@
 ---
 title: MCP 工具
-description: 通过 Model Context Protocol 接入外部工具生态
+description: "CowAgent 支持 Model Context Protocol（MCP），配置一次 mcp.json 或在控制台中添加服务，即可让 Agent 像使用内置工具一样调用社区中数以万计的 MCP 工具。"
 ---
 
 容大AI 支持 [Model Context Protocol (MCP)](https://modelcontextprotocol.io)，让 Agent 能够直接调用社区中数以万计的 MCP 工具。配置一次 `mcp.json`，工具就会以与内置工具完全相同的方式呈现给 LLM，可被自动选择和调用。
@@ -116,6 +116,10 @@ Agent 会：
 
 1. 访问 MCP 配置文件，合并新 server 配置，保留已有项
 2. 自动重载增量的 MCP Server，下一次对话即可使用相应 Tools
+
+<Note>
+`mcp.json` 中配置的命令会以 Agent 进程的权限启动，因此只有**全部可访问**权限的会话才允许 Agent 修改 `mcp.json`；只读和工作区可写会话会拒绝，可切换会话权限，或直接在控制台中添加。
+</Note>
 
 ## 网页授权（OAuth）
 

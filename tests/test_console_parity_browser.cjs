@@ -465,8 +465,10 @@ exports.run = async function (scenario) {
         await page.evaluate(() => scrollChatToBottom(true));
         await page.waitForFunction(() => messagesDiv.scrollTop > 500);
         await page.evaluate(() => messagesDiv.dispatchEvent(new Event('scroll')));
-        const top = await page.evaluate(() => { messagesDiv.scrollTop -= 10; return messagesDiv.scrollTop; });
+        await page.locator('#chat-messages').hover();
+        await page.mouse.wheel(0, -10);
         await page.waitForFunction(() => !_autoScrollEnabled);
+        const top = await page.evaluate(() => messagesDiv.scrollTop);
         await page.evaluate(() => {
             document.getElementById('parity-scroll-content').style.height = '2200px'; scrollChatToBottom();
         });
@@ -474,7 +476,8 @@ exports.run = async function (scenario) {
         await page.evaluate(() => scrollChatToBottom(true));
         await page.waitForFunction(() => _autoScrollEnabled && messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight < 2);
         // Writing the same position emits no event. It must not swallow the next user scroll.
-        await page.evaluate(() => { scrollChatToBottom(true); messagesDiv.scrollTop -= 10; });
+        await page.evaluate(() => scrollChatToBottom(true));
+        await page.mouse.wheel(0, -10);
         await page.waitForFunction(() => !_autoScrollEnabled);
         await page.evaluate(() => newChat(false));
         assert.equal(await page.evaluate(() => _autoScrollEnabled), true);

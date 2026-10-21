@@ -9,6 +9,7 @@ import { useUIStore } from '../../store/uiStore'
 import { useSessionStore } from '../../store/sessionStore'
 import { useSessionSettingsStore } from '../../store/sessionSettingsStore'
 import { Card, Field, Dropdown, Toggle, TextInput, SaveRow, MASK_RE } from './primitives'
+import ChatApiCard from './ChatApiCard'
 import { PERMISSION_META, PERMISSION_MODE_ORDER, asPermissionMode } from '../../lib/permission'
 
 const CustomModelPicker = product.models?.ModelPicker
@@ -115,9 +116,9 @@ const BasicSettings: React.FC<BasicSettingsProps> = ({ baseUrl, onLangChange, on
   // agent card
   // Manual cap on the input budget (compact once reached, to control cost);
   // 0 disables the cap and follows the model window.
-  const [maxTokens, setMaxTokens] = useState('64000')
-  const [maxTurns, setMaxTurns] = useState('20')
-  const [maxSteps, setMaxSteps] = useState('20')
+  const [maxTokens, setMaxTokens] = useState('200000')
+  const [maxTurns, setMaxTurns] = useState('30')
+  const [maxSteps, setMaxSteps] = useState('100')
   const [thinking, setThinking] = useState(false)
   const [reasoningEffort, setReasoningEffort] = useState('high')
   const [subagent, setSubagent] = useState(true)
@@ -172,9 +173,9 @@ const BasicSettings: React.FC<BasicSettingsProps> = ({ baseUrl, onLangChange, on
       const data = await apiClient.getConfig()
       setConfig(data)
       setModel(data.model || '')
-      setMaxTokens(String(data.agent_max_context_tokens ?? 64000))
-      setMaxTurns(String(data.agent_max_context_turns ?? 20))
-      setMaxSteps(String(data.agent_max_steps ?? 20))
+      setMaxTokens(String(data.agent_max_context_tokens ?? 200000))
+      setMaxTurns(String(data.agent_max_context_turns ?? 30))
+      setMaxSteps(String(data.agent_max_steps ?? 100))
       setThinking(!!data.enable_thinking)
       setReasoningEffort(data.reasoning_effort || 'high')
       setSubagent(data.subagent_enabled !== false)
@@ -328,9 +329,9 @@ const BasicSettings: React.FC<BasicSettingsProps> = ({ baseUrl, onLangChange, on
       const effortKey = currentModelKey()
       // A field left blank keeps whatever is already persisted rather than
       // silently saving 0, which would drop the context cap or turn limit.
-      const nextMaxTokens = toInt(maxTokens, config?.agent_max_context_tokens ?? 64000)
-      const nextMaxTurns = toInt(maxTurns, config?.agent_max_context_turns ?? 20)
-      const nextMaxSteps = toInt(maxSteps, config?.agent_max_steps ?? 20)
+      const nextMaxTokens = toInt(maxTokens, config?.agent_max_context_tokens ?? 200000)
+      const nextMaxTurns = toInt(maxTurns, config?.agent_max_context_turns ?? 30)
+      const nextMaxSteps = toInt(maxSteps, config?.agent_max_steps ?? 100)
       await apiClient.updateConfig({
         agent_max_context_tokens: nextMaxTokens,
         agent_max_context_turns: nextMaxTurns,
@@ -633,6 +634,8 @@ const BasicSettings: React.FC<BasicSettingsProps> = ({ baseUrl, onLangChange, on
           </Field>
         </div>
       </Card>
+
+      <ChatApiCard baseUrl={baseUrl} />
 
       {/* System — language + notification preferences (client-side, no save) */}
       <Card icon={<Settings size={16} />} title={t('config_system')}>

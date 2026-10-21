@@ -71,6 +71,21 @@ def history_errors(data, previous):
     return errors
 
 
+def reviewed_integration(root, data, path, source_blob, content):
+    """A source adaptation is reviewed only for these exact source/candidate bytes."""
+    for review in data.get('source_reviews', []):
+        if review.get('path') != path:
+            continue
+        integration = review.get('integration') or {}
+        refs = review.get('evidence', []) + integration.get('consumers', []) + integration.get('tests', [])
+        return bool(review.get('owner') and integration.get('reason')
+            and integration.get('source_blob') == source_blob
+            and integration.get('candidate_sha256') == hashlib.sha256(content).hexdigest()
+            and integration.get('consumers') and integration.get('tests') and review.get('evidence')
+            and all((root / p).resolve().is_relative_to(root.resolve()) and (root / p).is_file() for p in refs))
+    return False
+
+
 def source_errors(root, data, source, baseline):
     errors = []
     if source != data['source_sha']:
@@ -113,7 +128,7 @@ def source_errors(root, data, source, baseline):
         if blob == current[path]:
             continue
         code, old = command(['git', 'rev-parse', data['target_base_sha'] + ':' + path], root)
-        if code or blob != old.strip():
+        if (code or blob != old.strip()) and not reviewed_integration(root, data, path, current[path], content):
             errors.append('reference module differs from source and fixed target: ' + path)
     previous = load_manifest(root / 'docs/design/upstream-sync/history.json')
     if previous['source_sha'] != source:
@@ -214,6 +229,10 @@ def brand_errors(root):
         except OSError as error:
             errors.append(f'cannot read {path.relative_to(dist)}: {error}')
             continue
+        # The brand overlay deliberately retains this internal hosted-origin
+        # predicate: changing it would send our public deployment to localhost.
+        # It is neither visible branding nor a link; every other domain occurrence fails.
+        text = re.sub(r"location\.hostname\.includes\([\"']opencode\.ai[\"']\)", '', text)
         for token in ('opencode.ai', 'OpenCode'):
             if token in text:
                 errors.append(f'{path.relative_to(dist)} still contains {token!r}')

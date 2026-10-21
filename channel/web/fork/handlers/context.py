@@ -141,7 +141,9 @@ class SessionContextUsageHandler:
                 if agent is None:
                     # Owned session with no live instance: a successful read that
                     # simply is not available yet (never ``get_agent``).
-                    return json.dumps({"status": "success", "available": False},
+                    snapshot = _store.get_context_usage(session_id)
+                    return json.dumps({**(snapshot or {}), "status": "success",
+                                       "available": False, "restored": bool(snapshot)},
                                       ensure_ascii=False)
                 usage = _usage_for(agent)
             if usage is None:

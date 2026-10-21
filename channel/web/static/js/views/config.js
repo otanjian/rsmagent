@@ -32,6 +32,10 @@ function initDropdown(el, options, selectedValue, onChange, opts) {
     // "pick or empty" capabilities (asr / embedding) where we want the
     // user to make an explicit choice.
     opts = opts || {};
+    // opts.readOnly: the control still renders the effective value but cannot
+    // be opened or changed. Used for settings that are owned by another layer
+    // (e.g. the default permission in database mode, which roles own).
+    el._ddReadOnly = !!opts.readOnly;
     const textEl = el.querySelector('.cfg-dropdown-text');
     const menuEl = el.querySelector('.cfg-dropdown-menu');
     const selEl = el.querySelector('.cfg-dropdown-selected');
@@ -42,67 +46,93 @@ function initDropdown(el, options, selectedValue, onChange, opts) {
     el._ddValue = selectedValue || '';
     el._ddOnChange = onChange;
 
+    // The filter box is opt-in (opts.searchable). Without it `listEl` is the
+    // menu itself, so an opting-out call site keeps byte-identical markup and
+    // the rows are still direct children of `.cfg-dropdown-menu`.
+    const search = opts.searchable ? _mountDropdownSearch(menuEl) : null;
+    const listEl = search ? search.listEl : menuEl;
+    el._ddQuery = '';
+    if (search) {
+        const applyQuery = () => {
+            el._ddQuery = String(search.input.value || '').trim().toLowerCase();
+            render();
+        };
+        search.input.addEventListener('input', (event) => {
+            // A composition update is a syllable in progress, not the query yet;
+            // filtering on it would rebuild the row list mid-character.
+            if (event && event.isComposing) return;
+            applyQuery();
+        });
+        search.input.addEventListener('compositionend', applyQuery);
+        search.input.addEventListener('keydown',
+            (event) => _dropdownSearchKeydown(event, el, search, render));
+    }
+
     function paintFace(opt) {
         if (!faceEl) return;
         faceEl.innerHTML = (opt && opt.agent) ? agentAvatarHTML(opt.agent, 20) : '';
     }
 
-    function render() {
-        menuEl.innerHTML = '';
-        options.forEach(opt => {
-            const item = document.createElement('div');
-            item.className = 'cfg-dropdown-item' + (opt.value === el._ddValue ? ' active' : '');
-            item.dataset.value = opt.value;
-            // Hint is an optional dim secondary label rendered on the right
-            // side of the row (e.g. friendly brand name next to a technical
-            // model id). When absent the row degrades to the original
-            // single-string layout.
-            if (opt.agent) {
-                const face = document.createElement('span');
-                face.className = 'cfg-dropdown-item-face';
-                face.innerHTML = agentAvatarHTML(opt.agent, 20);
-                const labelEl = document.createElement('span');
-                labelEl.className = 'cfg-dropdown-label';
-                labelEl.textContent = opt.label;
-                item.appendChild(face);
-                item.appendChild(labelEl);
-                // Optional trailing pill (e.g. a "default" marker) rendered
-                // dim after the name.
-                if (opt.badge) {
-                    const badgeEl = document.createElement('span');
-                    badgeEl.className = 'cfg-dropdown-badge';
-                    badgeEl.textContent = opt.badge;
-                    item.appendChild(badgeEl);
-                }
-            } else if (opt.hint) {
-                const labelEl = document.createElement('span');
-                labelEl.className = 'cfg-dropdown-label';
-                labelEl.textContent = opt.label;
-                const hintEl = document.createElement('span');
-                hintEl.className = 'cfg-dropdown-hint';
-                hintEl.textContent = opt.hint;
-                item.appendChild(labelEl);
-                item.appendChild(hintEl);
-            } else {
-                item.textContent = opt.label;
+    function buildItem(opt) {
+        const item = document.createElement('div');
+        item.className = 'cfg-dropdown-item' + (opt.value === el._ddValue ? ' active' : '');
+        item.dataset.value = opt.value;
+        // Hint is an optional dim secondary label rendered on the right
+        // side of the row (e.g. friendly brand name next to a technical
+        // model id). When absent the row degrades to the original
+        // single-string layout.
+        if (opt.agent) {
+            const face = document.createElement('span');
+            face.className = 'cfg-dropdown-item-face';
+            face.innerHTML = agentAvatarHTML(opt.agent, 20);
+            const labelEl = document.createElement('span');
+            labelEl.className = 'cfg-dropdown-label';
+            labelEl.textContent = opt.label;
+            item.appendChild(face);
+            item.appendChild(labelEl);
+            // Optional trailing pill (e.g. a "default" marker) rendered
+            // dim after the name.
+            if (opt.badge) {
+                const badgeEl = document.createElement('span');
+                badgeEl.className = 'cfg-dropdown-badge';
+                badgeEl.textContent = opt.badge;
+                item.appendChild(badgeEl);
             }
-            item.addEventListener('click', (e) => {
-                e.stopPropagation();
-                el._ddValue = opt.value;
-                textEl.textContent = opt.label;
-                // Now that a real option is picked, drop the muted placeholder
-                // style — otherwise the chosen label stays grey (visible on
-                // dropdowns that start in a placeholder state, e.g. the chat
-                // fallback pickers).
-                textEl.classList.remove('text-slate-400', 'dark:text-slate-500');
-                paintFace(opt);
-                menuEl.querySelectorAll('.cfg-dropdown-item').forEach(i => i.classList.remove('active'));
-                item.classList.add('active');
-                el.classList.remove('open');
-                if (el._ddOnChange) el._ddOnChange(opt.value);
-            });
-            menuEl.appendChild(item);
+        } else if (opt.hint) {
+            const labelEl = document.createElement('span');
+            labelEl.className = 'cfg-dropdown-label';
+            labelEl.textContent = opt.label;
+            const hintEl = document.createElement('span');
+            hintEl.className = 'cfg-dropdown-hint';
+            hintEl.textContent = opt.hint;
+            item.appendChild(labelEl);
+            item.appendChild(hintEl);
+        } else {
+            item.textContent = opt.label;
+        }
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (el._ddReadOnly) return;
+            el._ddValue = opt.value;
+            textEl.textContent = opt.label;
+            // Now that a real option is picked, drop the muted placeholder
+            // style — otherwise the chosen label stays grey (visible on
+            // dropdowns that start in a placeholder state, e.g. the chat
+            // fallback pickers).
+            textEl.classList.remove('text-slate-400', 'dark:text-slate-500');
+            paintFace(opt);
+            listEl.querySelectorAll('.cfg-dropdown-item').forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
+            el.classList.remove('open');
+            if (el._ddOnChange) el._ddOnChange(opt.value);
         });
+        return item;
+    }
+
+    // Paint the closed control (the trigger) from the full option list, so a
+    // filtered-out but still-selected Agent keeps showing in the trigger: the
+    // filter narrows the menu, never the current choice.
+    function paintTrigger() {
         const sel = options.find(o => o.value === el._ddValue);
         if (sel) {
             textEl.textContent = sel.label;
@@ -123,11 +153,31 @@ function initDropdown(el, options, selectedValue, onChange, opts) {
         }
     }
 
+    function render() {
+        const needle = el._ddQuery;
+        const shown = needle
+            ? options.filter(opt => _dropdownOptionMatches(opt, needle))
+            : options;
+        listEl.innerHTML = '';
+        shown.forEach(opt => listEl.appendChild(buildItem(opt)));
+        // The keyboard highlight is positional, so it cannot outlive the rows it
+        // pointed at; a re-filter starts from "nothing highlighted".
+        if (search) search.showEmpty(shown.length === 0 && !!needle);
+        paintTrigger();
+    }
+
     render();
 
     if (!el._ddBound) {
+        // A click inside the menu belongs to the menu. The document-level
+        // handler below closes every open dropdown whose click it hears, and
+        // the trigger and the rows already stop their clicks from reaching it;
+        // the opt-in filter box did not, so the click that put the caret in it
+        // closed the menu (and took the box) before a character could be typed.
+        menuEl.addEventListener('click', (e) => e.stopPropagation());
         selEl.addEventListener('click', (e) => {
             e.stopPropagation();
+            if (el._ddReadOnly) return;
             document.querySelectorAll('.cfg-dropdown.open').forEach(d => { if (d !== el) d.classList.remove('open'); });
             const willOpen = !el.classList.contains('open');
             if (willOpen) {
@@ -174,9 +224,9 @@ function initConfigView(data) {
     onProviderChange(cfgProviderValue);
     syncModelSelection(configCurrentModel);
 
-    document.getElementById('cfg-max-tokens').value = data.agent_max_context_tokens ?? 64000;
-    document.getElementById('cfg-max-turns').value = data.agent_max_context_turns || 20;
-    document.getElementById('cfg-max-steps').value = data.agent_max_steps || 20;
+    document.getElementById('cfg-max-tokens').value = data.agent_max_context_tokens ?? 200000;
+    document.getElementById('cfg-max-turns').value = data.agent_max_context_turns || 30;
+    document.getElementById('cfg-max-steps').value = data.agent_max_steps || 100;
     const thinkingEl = document.getElementById('cfg-enable-thinking');
     thinkingEl.checked = data.enable_thinking === true;
     if (!thinkingEl._cfgReasoningBound) {
@@ -211,46 +261,32 @@ function initConfigView(data) {
         );
     }
 
-    // Default permission mode for new conversations. Applied on pick, like the
-    // language selector: the card's save button belongs to the password field,
-    // and a security default that silently waited for a save would be worse than
-    // one that takes effect immediately.
+    // Default permission mode for new conversations. Owned by role resource
+    // grants: rendered read-only so a tenant user cannot widen what their
+    // session may run. Editable only when the server explicitly allows it.
     const permEl = document.getElementById('cfg-permission');
     if (permEl) {
+        const editable = data.permission_mode_editable === true;
         const offered = data.permission_modes && data.permission_modes.length
             ? data.permission_modes
             : Object.keys(PERMISSION_META);
         const permOpts = Object.keys(PERMISSION_META)
             .filter(mode => offered.includes(mode))
             .map(mode => ({ value: mode, label: t(PERMISSION_META[mode].key) }));
-        initDropdown(permEl, permOpts, data.agent_permission_mode || 'full-access', saveGlobalPermission);
-    }
-
-    const pwdInput = document.getElementById('cfg-password');
-    const maskedPwd = data.web_password_masked || '';
-    pwdInput.value = maskedPwd;
-    pwdInput.dataset.masked = maskedPwd ? '1' : '';
-    pwdInput.dataset.maskedVal = maskedPwd;
-    pwdInput.classList.toggle('cfg-key-masked', !!maskedPwd);
-
-    if (maskedPwd) {
-        pwdInput.placeholder = '••••••••';
-    } else {
-        pwdInput.placeholder = '';
-    }
-
-    if (!pwdInput._cfgBound) {
-        pwdInput.addEventListener('focus', function() {
-            if (this.dataset.masked === '1') {
-                this.value = '';
-                this.dataset.masked = '';
-                this.classList.remove('cfg-key-masked');
-            }
-        });
-        pwdInput.addEventListener('input', function() {
-            this.dataset.masked = '';
-        });
-        pwdInput._cfgBound = true;
+        initDropdown(
+            permEl,
+            permOpts,
+            data.agent_permission_mode || 'full-access',
+            editable ? saveGlobalPermission : null,
+            { readOnly: !editable }
+        );
+        permEl.classList.toggle('cfg-dropdown-readonly', !editable);
+        if (editable) permEl.removeAttribute('aria-disabled');
+        else permEl.setAttribute('aria-disabled', 'true');
+        const descEl = document.getElementById('cfg-permission-desc');
+        const roleDescEl = document.getElementById('cfg-permission-role-desc');
+        if (descEl) descEl.classList.toggle('hidden', !editable);
+        if (roleDescEl) roleDescEl.classList.toggle('hidden', editable);
     }
 }
 
@@ -539,8 +575,8 @@ function saveAgentConfig() {
     const mergedEffortByModel = Object.assign({}, configReasoningByModel, { [effortKey]: cfgReasoningEffortValue });
     const updates = {
         agent_max_context_tokens: parseInt(document.getElementById('cfg-max-tokens').value) || 0,
-        agent_max_context_turns: parseInt(document.getElementById('cfg-max-turns').value) || 20,
-        agent_max_steps: parseInt(document.getElementById('cfg-max-steps').value) || 20,
+        agent_max_context_turns: parseInt(document.getElementById('cfg-max-turns').value) || 30,
+        agent_max_steps: parseInt(document.getElementById('cfg-max-steps').value) || 100,
         enable_thinking: document.getElementById('cfg-enable-thinking').checked,
         // Persist effort per model (merge with the existing map so other
         // models' saved efforts survive the flat config save).
@@ -582,66 +618,16 @@ function saveGlobalPermission(mode) {
     .then(r => r.json())
     .then(data => {
         if (data.status === 'success') {
-            showStatus('cfg-password-status', 'config_saved', false);
+            showStatus('cfg-permission-status', 'config_saved', false);
             refreshSessionSettings();
         } else {
-            showStatus('cfg-password-status', 'config_save_error', true);
+            showStatus('cfg-permission-status', 'config_save_error', true);
         }
     })
-    .catch(() => showStatus('cfg-password-status', 'config_save_error', true));
+    .catch(() => showStatus('cfg-permission-status', 'config_save_error', true));
 }
 
-function savePasswordConfig() {
-    const input = document.getElementById('cfg-password');
-    if (input.dataset.masked === '1') {
-        showStatus('cfg-password-status', 'config_saved', false);
-        return;
-    }
-    const newPwd = input.value.trim();
-    const btn = document.getElementById('cfg-password-save');
-    btn.disabled = true;
-    fetch('/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ updates: { web_password: newPwd } })
-    })
-    .then(r => r.json())
-    .then(data => {
-        console.log('[Password Config] Response:', data); // Debug
-        if (data.status === 'success') {
-            if (newPwd) {
-                showStatus('cfg-password-status', 'config_password_changed', false);
-                // Mark as masked so user needs to re-enter to change again
-                input.dataset.masked = '1';
-                input.dataset.maskedVal = newPwd;
-                input.value = '••••••••';
-                input.classList.add('cfg-key-masked');
-                
-                // Show logout button since password is now enabled
-                const logoutBtn = document.getElementById('logout-btn-header');
-                if (logoutBtn) logoutBtn.classList.remove('hidden');
-            } else {
-                input.dataset.masked = '';
-                input.dataset.maskedVal = '';
-                input.classList.remove('cfg-key-masked');
-                
-                // Show security warning if password was cleared with public host
-                if (data.warning === 'password_cleared_with_public_host') {
-                    showStatus('cfg-password-status', 'config_password_security_warning', true);
-                } else {
-                    showStatus('cfg-password-status', 'config_password_cleared', false);
-                }
-                
-                const logoutBtn = document.getElementById('logout-btn-header');
-                if (logoutBtn) logoutBtn.classList.add('hidden');
-            }
-        } else {
-            showStatus('cfg-password-status', 'config_save_error', true);
-        }
-    })
-    .catch(() => showStatus('cfg-password-status', 'config_save_error', true))
-    .finally(() => { btn.disabled = false; });
-}
+function savePasswordConfig() { openAccountPassword(); }
 
 function loadConfigView() {
     fetch('/config').then(r => r.json()).then(data => {
@@ -649,14 +635,157 @@ function loadConfigView() {
         appConfig = data;
         initConfigView(data);
     }).catch(() => {});
+    loadExternalApi();
+}
+
+// ---- Chat API card: the OpenAI-compatible /v1 endpoint ----------------------
+
+let externalApiState = { enabled: false, api_key: '' };
+let externalApiLang = 'curl';
+let externalApiRequest = 0;
+
+function _externalApiRevealed() {
+    return !document.getElementById('cfg-api-token').classList.contains('cfg-key-masked');
+}
+
+function externalApiExample(lang, reveal) {
+    const base = `${window.location.origin}/v1`;
+    const raw = externalApiState.issued?.api_key || 'sak_YOUR_SERVICE_ACCOUNT_KEY';
+    const key = reveal ? raw : 'sak_YOUR_SERVICE_ACCOUNT_KEY';
+    if (lang === 'python') {
+        return [
+            'import requests',
+            '',
+            'resp = requests.post(',
+            `    "${base}/chat/completions",`,
+            `    headers={"Authorization": "Bearer ${key}"},`,
+            '    json={"messages": [{"role": "user", "content": "Hello"}]},',
+            ')',
+            'print(resp.json()["choices"][0]["message"]["content"])',
+        ].join('\n');
+    }
+    if (lang === 'node') {
+        return [
+            `const resp = await fetch("${base}/chat/completions", {`,
+            '  method: "POST",',
+            `  headers: { "Authorization": "Bearer ${key}", "Content-Type": "application/json" },`,
+            '  body: JSON.stringify({ messages: [{ role: "user", content: "Hello" }] }),',
+            '});',
+            'const data = await resp.json();',
+            'console.log(data.choices[0].message.content);',
+        ].join('\n');
+    }
+    return [
+        `curl ${base}/chat/completions \\`,
+        `  -H "Authorization: Bearer ${key}" \\`,
+        '  -H "Content-Type: application/json" \\',
+        `  -d '{"messages": [{"role": "user", "content": "Hello"}]}'`,
+    ].join('\n');
+}
+
+function renderExternalApi() {
+    const state = externalApiState;
+    const enabled = document.getElementById('cfg-api-enabled');
+    enabled.checked = !!state.enabled; enabled.disabled = !state.can_configure;
+    document.getElementById('cfg-api-detail').classList.remove('hidden');
+    document.getElementById('cfg-api-base-url').value = window.location.origin + '/v1';
+    document.getElementById('cfg-api-user').value = state.user_id || '';
+    document.getElementById('cfg-api-token').value = state.issued?.api_key || '';
+    document.getElementById('cfg-api-example').textContent = externalApiExample(externalApiLang, false);
+    const keys = document.getElementById('cfg-api-keys'); keys.replaceChildren();
+    (state.keys || []).forEach(key => {
+        const row = document.createElement('div'); row.className = 'flex gap-3 items-center text-sm';
+        const name = document.createElement('code'); name.textContent = key.masked; row.appendChild(name);
+        for (const action of ['rotate', 'revoke']) {
+            const button = document.createElement('button'); button.className = 'agent-btn';
+            button.textContent = t('config_api_' + action);
+            button.onclick = () => {
+                const target = {scope: menuScope(), user: state.user_id};
+                showConfirmDialog({title: button.textContent, message: t('config_api_key_change_confirm'), onConfirm: () => _postExternalApi(action, key.id, target)});
+            };
+            row.appendChild(button);
+        }
+        keys.appendChild(row);
+    });
+}
+
+async function loadExternalApi() {
+    const request = ++externalApiRequest;
+    const scope = menuScope();
+    try {
+        const user = document.getElementById('cfg-api-user')?.value || '';
+        const response = await fetch('/api/external_api?user_id=' + encodeURIComponent(user));
+        const data = await response.json();
+        if (scope !== menuScope() || request !== externalApiRequest) return;
+        if (!response.ok || data.status !== 'success') throw new Error(data.message || t('config_api_failed'));
+        externalApiState = data; renderExternalApi();
+    } catch (error) { if (scope === menuScope() && request === externalApiRequest) document.getElementById('cfg-api-error').textContent = error.message; }
+}
+
+async function _postExternalApi(action, credentialId, target) {
+    const request = ++externalApiRequest;
+    target = target || {scope: menuScope(), user: document.getElementById('cfg-api-user').value};
+    const scope = target.scope;
+    if (scope !== menuScope() || request !== externalApiRequest) return;
+    try {
+        const response = await fetch('/api/external_api', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action, credential_id:credentialId, user_id:target.user})});
+        const data = await response.json();
+        if (scope !== menuScope() || request !== externalApiRequest) return;
+        if (!response.ok || data.status !== 'success') throw new Error(data.message || t('config_api_failed'));
+        externalApiState = data; renderExternalApi();
+        document.getElementById('cfg-api-error').textContent = '';
+    } catch (error) { if (scope === menuScope() && request === externalApiRequest) document.getElementById('cfg-api-error').textContent = error.message; }
+}
+
+function onExternalApiToggle(input) {
+    // The switch keeps its state until the user confirms either way.
+    const enable = input.checked;
+    input.checked = !enable;
+    const target = {scope: menuScope(), user: document.getElementById('cfg-api-user').value};
+    showConfirmDialog({
+        title: t(enable ? 'config_api_enable' : 'config_api_disable'),
+        message: t(enable ? 'config_api_enable_confirm' : 'config_api_disable_confirm'),
+        okText: t(enable ? 'config_api_enable_ok' : 'config_api_disable_ok'),
+        tone: enable ? 'primary' : 'danger',
+        onConfirm: () => _postExternalApi(enable ? 'enable' : 'disable', undefined, target),
+    });
+}
+
+function createServiceApiKey() { return _postExternalApi('create'); }
+
+function switchExternalApiExample(lang) {
+    externalApiLang = lang;
+    renderExternalApi();
+}
+
+function toggleExternalApiKey() {
+    const input = document.getElementById('cfg-api-token');
+    const masked = input.classList.toggle('cfg-key-masked');
+    document.querySelector('#cfg-api-token-toggle i').className = masked ? 'fas fa-eye text-xs' : 'fas fa-eye-slash text-xs';
+    renderExternalApi();
+}
+
+function copyExternalApiField(id, btn) {
+    const text = id === 'cfg-api-example'
+        ? externalApiExample(externalApiLang, true)
+        : document.getElementById(id).value;
+    copyToClipboard(text).then(() => {
+        const icon = btn.querySelector('i');
+        const original = icon.className;
+        icon.className = original.replace(/far fa-copy/, 'fas fa-check');
+        setTimeout(() => { icon.className = original; }, 1200);
+    }).catch(() => {});
 }
 
 function switchConfigTab(tab) {
-    ['basic', 'models'].forEach(name => {
+    if (!['basic', 'models', 'catalog'].includes(tab)) return;
+    if (tab !== 'catalog' && !_modelsManageAllowed()) tab = 'catalog';
+    ['basic', 'models', 'catalog'].forEach(name => {
         document.getElementById(`config-tab-${name}`)?.classList.toggle('active', name === tab);
         document.getElementById(`config-panel-${name}`)?.classList.toggle('hidden', name !== tab);
     });
     if (tab === 'models') loadModelsView();
+    if (tab === 'catalog') loadMemberCatalog();
     // Re-pull /config when returning to Basic: a provider added on the Models
     // tab must show up in the basic main-model provider picker without a manual
     // page refresh. loadConfigView re-renders from the fresh provider list.
@@ -664,3 +793,5 @@ function switchConfigTab(tab) {
     routeNoteTab('config', tab);
 }
 
+
+window.addEventListener('account-invalidated', () => { ++externalApiRequest; externalApiState = {}; document.getElementById('cfg-api-user').value = ''; document.getElementById('cfg-api-token').value = ''; document.getElementById('cfg-api-example').textContent = ''; });

@@ -4,6 +4,11 @@
 
 // Regenerate bot response: find the preceding user message and resend it
 async function regenerateResponse(botMsgEl) {
+    const owner = { sid: sessionId, agentId: activeAgentId, authEpoch: _authEpoch,
+        tenantId: sessionStorage.getItem('cow_tenant_id') || '' };
+    const currentIdentity = () => owner.authEpoch === _authEpoch
+        && owner.tenantId === (sessionStorage.getItem('cow_tenant_id') || '');
+    const currentViewOwner = () => currentIdentity() && owner.sid === sessionId && owner.agentId === activeAgentId;
     let prevEl = botMsgEl.previousElementSibling;
     while (prevEl && !prevEl.classList.contains('user-message-group')) {
         prevEl = prevEl.previousElementSibling;
@@ -26,21 +31,25 @@ async function regenerateResponse(botMsgEl) {
     const userSeq = prevEl.dataset.seq;
     if (userSeq) {
         try {
-            const resp = await fetch('/api/messages/delete', {
+            const resp = await fetch('/api/messages/delete?agent_id=' + encodeURIComponent(owner.agentId), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    session_id: sessionId, 
+                    session_id: owner.sid,
+                    agent_id: owner.agentId,
                     user_seq: parseInt(userSeq),
                     delete_user: true
                 })
             });
             const data = await resp.json();
-            if (data.status === 'success') console.log(`Deleted ${data.deleted} old messages`);
+            if (!resp.ok || data.status !== 'success') { if (currentViewOwner()) addMessageError(data); return; }
         } catch (err) {
-            console.error('Failed to delete old messages:', err);
+            if (currentViewOwner()) addBotMessage(t('error_send'), new Date());
+            return;
         }
     }
+
+    if (!currentViewOwner()) return;
 
     // Remove both the old user message and bot message from DOM
     if (prevEl.parentNode) prevEl.parentNode.removeChild(prevEl);
@@ -54,7 +63,7 @@ async function regenerateResponse(botMsgEl) {
 
     // Resend the message
     const timestamp = new Date();
-    const body = { session_id: sessionId, message: userContent, stream: true, timestamp: timestamp.toISOString(), lang: currentLang };
+    const body = { session_id: owner.sid, agent_id: owner.agentId, message: userContent, stream: true, timestamp: timestamp.toISOString(), lang: currentLang };
     const regenAddressed = addressedAgentId(userContent);
     if (regenAddressed) body.speaker_agent_id = regenAddressed;
 
@@ -62,32 +71,34 @@ async function regenerateResponse(botMsgEl) {
     const RETRY_DELAY_MS = 1000;
 
     function postWithRetry(attempt) {
-        fetch('/message', {
+        if (!currentIdentity()) return;
+        fetch('/message?agent_id=' + encodeURIComponent(owner.agentId), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         })
-        .then(r => r.json())
+        .then(readMessageResponse)
         .then(data => {
+            if (!currentIdentity()) return;
             if (data.status === 'success') {
                 rememberLiveSpeaker(data);
                 setLoadingSpeaker(loadingEl, data.request_id);
                 if (data.inline_reply) {
                     loadingEl.remove();
-                    addBotMessage(data.inline_reply, new Date());
+                    if (currentViewOwner()) addBotMessage(data.inline_reply, new Date());
                 } else if (data.stream) {
-                    setSendBtnCancelMode(data.request_id);
-                    startSSE(data.request_id, loadingEl, timestamp, null);
+                    if (currentViewOwner()) setSendBtnCancelMode(data.request_id);
+                    startSSE(data.request_id, loadingEl, timestamp, null, null, owner);
                 } else {
                     loadingContainers[data.request_id] = loadingEl;
                 }
             } else {
                 loadingEl.remove();
-                addBotMessage(t('error_send'), new Date());
-                resetSendBtnSendMode();
+                if (currentViewOwner()) { addMessageError(data); resetSendBtnSendMode(); }
             }
         })
         .catch(err => {
+            if (!currentViewOwner()) return;
             if (err.name === 'AbortError') {
                 loadingEl.remove();
                 addBotMessage(t('error_timeout'), new Date());
@@ -109,12 +120,39 @@ async function regenerateResponse(botMsgEl) {
 }
 
 function sendMessage() {
+    if (_identityMode() === 'database' && !sessionStorage.getItem('cow_tenant_id')) {
+        addMessageError({ code: 'missing_tenant' });
+        return;
+    }
+    if (typeof guardCodingMessage === 'function' && guardCodingMessage()) return;
     // Do NOT branch on sendBtnMode here: Enter should always send (so
     // typing "/cancel" submits normally). Cancel is wired only to the
     // send button's pointer click — see send-btn listener above.
 
     const text = chatInput.value.trim();
     if (!text && pendingAttachments.length === 0) return;
+
+    // A message is never sent while an attachment is unresolved: the file must
+    // be stored first. The chip on screen carries a retry for exactly this
+    // (change add-coding-agent-personal-workspace, "上传失败保留草稿").
+    if (pendingAttachments.some(a => a._failed || a._uploading)) {
+        addMessageError({ code: 'attachment_upload_failed', message: t('attachment_upload_failed') });
+        return;
+    }
+
+    // Continue the original SAP workbench query context through its host adapter.
+    if (text.startsWith('/sap ') && typeof window.continueSceneSapAnalysis === 'function') {
+        chatInput.value = '';
+        window.continueSceneSapAnalysis(text.slice(5).trim());
+        return;
+    }
+
+    // `/场景`（或 `/scenes`）打开场景选择器，不发送给后端。
+    if ((text === '/场景' || text === '/scenes') && typeof window.showScenePicker === 'function') {
+        chatInput.value = '';
+        window.showScenePicker();
+        return;
+    }
 
     if (text) {
         inputHistory.push(text);
@@ -126,13 +164,17 @@ function sendMessage() {
     const isFirstMessage = !!ws;
     if (ws) ws.remove();
 
-    const titleInfo = (isFirstMessage && text) ? { sid: sessionId, userMsg: text } : null;
+    const ownerContext = { sid: sessionId, agentId: activeAgentId, authEpoch: _authEpoch,
+        tenantId: sessionStorage.getItem('cow_tenant_id') || '' };
+    const isCurrentIdentity = () => ownerContext.authEpoch === _authEpoch
+        && ownerContext.tenantId === (sessionStorage.getItem('cow_tenant_id') || '');
+    const titleInfo = (isFirstMessage && text) ? { sid: sessionId, agentId: activeAgentId, userMsg: text } : null;
     syncTeamFromText(text);
     renderComposerIdentity();
 
     const timestamp = new Date();
     const attachments = [...pendingAttachments];
-    addUserMessage(text, timestamp, attachments);
+    const userEl = addUserMessage(text, timestamp, attachments);
 
     const loadingEl = addLoadingIndicator();
 
@@ -143,7 +185,33 @@ function sendMessage() {
     sendBtn.disabled = true;
     if (typeof resetTurnArtifacts === 'function') resetTurnArtifacts();
 
-    const body = { session_id: sessionId, message: text, stream: true, timestamp: timestamp.toISOString(), lang: currentLang };
+    // A send that is refused -- most importantly an attachment that never
+    // landed in the personal directory -- must cost a retry, not a retype: the
+    // optimistic bubble and the spinner are withdrawn and the exact draft
+    // (text plus pending attachments) is put back. The server is the authority
+    // on whether an attachment exists; the console never sends a message whose
+    // attachment it cannot confirm (change add-coding-agent-personal-workspace).
+    let draftRestored = false;
+    function restoreDraft(data) {
+        if (draftRestored) return;
+        draftRestored = true;
+        if (ownerContext.sid !== sessionId || ownerContext.agentId !== activeAgentId) { loadingEl.remove(); return; }
+        if (userEl && userEl.parentNode) userEl.parentNode.removeChild(userEl);
+        if (loadingEl && loadingEl.parentNode) loadingEl.remove();
+        if (!chatInput.value.trim()) {
+            chatInput.value = text;
+            resetComposerHeight();
+        }
+        if (pendingAttachments.length === 0 && attachments.length > 0) {
+            pendingAttachments = [...attachments];
+            renderAttachmentPreview();
+        }
+        if (data) addMessageError(data);
+        else addBotMessage(t('error_send'), new Date());
+        resetSendBtnSendMode();
+    }
+
+    const body = { session_id: sessionId, agent_id: ownerContext.agentId, message: text, stream: true, timestamp: timestamp.toISOString(), lang: currentLang };
     // Naming somebody hands them the turn. Sent explicitly because the composer
     // already knows who it wrote, and the server re-checks it either way.
     const addressed = addressedAgentId(text);
@@ -161,34 +229,48 @@ function sendMessage() {
     const RETRY_DELAY_MS = 1000;
 
     function postWithRetry(attempt) {
-        fetch('/message', {
+        if (!isCurrentIdentity()) return;
+        fetch('/message?agent_id=' + encodeURIComponent(ownerContext.agentId), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         })
-        .then(r => r.json())
+        .then(readMessageResponse)
         .then(data => {
+            if (!isCurrentIdentity()) return;
             if (data.status === 'success') {
+                if (!data.inline_reply) {
+                    _touchHistorySession(ownerContext.sid, ownerContext.agentId, {
+                        last_active: Math.floor(Date.now() / 1000),
+                        optimistic: false,
+                    });
+                }
+                const ownerVisible = ownerContext.sid === sessionId && ownerContext.agentId === activeAgentId;
                 rememberLiveSpeaker(data);
+                // The turn has now persisted the session: the context entry can
+                // read a real row instead of the quiet pre-persistence state.
+                if (ownerVisible && typeof _contextAfterSessionChange === 'function' && _contextNewSession) {
+                    _contextAfterSessionChange(true);
+                }
                 setLoadingSpeaker(loadingEl, data.request_id);
                 if (data.inline_reply) {
                     // Channel handled synchronously (e.g. /cancel fast-path);
                     // render as a bot bubble and skip SSE entirely.
                     loadingEl.remove();
-                    addBotMessage(data.inline_reply, new Date());
+                    if (ownerVisible) addBotMessage(data.inline_reply, new Date());
                 } else if (data.stream) {
-                    setSendBtnCancelMode(data.request_id);
-                    startSSE(data.request_id, loadingEl, timestamp, titleInfo);
+                    if (ownerVisible) setSendBtnCancelMode(data.request_id);
+                    startSSE(data.request_id, loadingEl, timestamp, titleInfo, null, ownerContext);
                 } else {
                     loadingContainers[data.request_id] = loadingEl;
                 }
             } else {
-                loadingEl.remove();
-                addBotMessage(t('error_send'), new Date());
-                resetSendBtnSendMode();
+                restoreDraft(data);
             }
         })
         .catch(err => {
+            if (!isCurrentIdentity()) return;
+            if (ownerContext.sid !== sessionId || ownerContext.agentId !== activeAgentId) { loadingEl.remove(); return; }
             if (err.name === 'AbortError') {
                 loadingEl.remove();
                 addBotMessage(t('error_timeout'), new Date());
@@ -219,7 +301,7 @@ function reloadHistoryView() {
 
 // `resume` ({ el, afterSeq }) picks up a reply already in flight: events up to
 // afterSeq are skipped, and `el`, the bubble of its stored steps, is written on.
-function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resume) {
+function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, ownerContext, resume) {
     let botEl = null;
     let stepsEl = null;    // .agent-steps  (thinking summaries + tool indicators)
     let contentEl = null;  // .answer-content (final streaming answer)
@@ -281,15 +363,22 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resum
     // persists); when foreign it does not touch the view but still records
     // every event into a buffer, so returning to the session can rebuild the
     // bubble by replaying the buffer and then resume live rendering.
-    const ownerSession = sessionId;
-    const ownerAgent = activeAgentId;
+    // Keep ownership and the pending first title in the existing buffer. A
+    // re-attach must consume the same title, even after switching Agents.
+    const buffer = streamBuffers[requestId] || { items: [], timestamp,
+        ownerContext: ownerContext || { sid: sessionId, agentId: activeAgentId,
+            authEpoch: _authEpoch, tenantId: sessionStorage.getItem('cow_tenant_id') || '' },
+        titleInfo };
+    streamBuffers[requestId] = buffer;
+    const owner = buffer.ownerContext;
+    const ownerSession = owner.sid;
+    const ownerAgent = owner.agentId;
+    const isCurrentIdentity = () => owner.authEpoch === _authEpoch
+        && owner.tenantId === (sessionStorage.getItem('cow_tenant_id') || '');
     const ownerKey = runtimeSessionKey(ownerSession, ownerAgent);
-    const isActive = () => ownerSession === sessionId && ownerAgent === activeAgentId;
+    const isActive = () => isCurrentIdentity() && ownerSession === sessionId && ownerAgent === activeAgentId;
     sessionActiveRequest[ownerKey] = requestId;
     updateEditButtonsState();
-    // Per-request event buffer used to rebuild the bubble on re-attach.
-    const buffer = streamBuffers[requestId] || { items: [], timestamp };
-    streamBuffers[requestId] = buffer;
     const clearOwnerRequest = () => {
         if (sessionActiveRequest[ownerKey] === requestId) {
             delete sessionActiveRequest[ownerKey];
@@ -336,21 +425,22 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resum
                     <div class="media-content"></div>
                     <div class="bot-audio-slot"></div>
                 </div>
-                <div class="flex items-center gap-2 mt-1.5">
+                <div class="bot-message-meta flex items-center gap-2 mt-1.5 flex-wrap">
                     <span class="text-xs text-slate-400 dark:text-slate-500">${formatTime(timestamp)}</span>
-                    <button class="copy-msg-btn text-xs text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400 transition-colors cursor-pointer" title="${currentLang === 'zh' ? '复制' : 'Copy'}" style="display:none">
+                    <button class="copy-msg-btn text-xs text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400 transition-colors cursor-pointer" data-tip-float data-tooltip="${currentLang === 'zh' ? '复制' : 'Copy'}" style="display:none">
                         <i class="fas fa-copy"></i>
                     </button>
-                    <button class="speak-msg-btn text-xs text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400 transition-colors cursor-pointer" title="${t('speak_msg')}" style="display:none;">
+                    <button class="speak-msg-btn text-xs text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400 transition-colors cursor-pointer" data-tip-float data-tooltip="${t('speak_msg')}" style="display:none;">
                         <i class="fas fa-volume-up"></i>
                     </button>
-                    <button class="regenerate-msg-btn text-xs text-slate-300 dark:text-slate-600 hover:text-primary-400 dark:hover:text-primary-400 transition-colors cursor-pointer" title="${t('regenerate_response')}" style="display:none;">
+                    <button class="regenerate-msg-btn text-xs text-slate-300 dark:text-slate-600 hover:text-primary-400 dark:hover:text-primary-400 transition-colors cursor-pointer" data-tip-float data-tooltip="${t('regenerate_response')}" style="display:none;">
                         <i class="fas fa-rotate-right"></i>
                     </button>
                 </div>
             </div>
         `;
         messagesDiv.appendChild(botEl);
+        refreshChatScrollControls();
         stepsEl = botEl.querySelector('.agent-steps');
         contentEl = botEl.querySelector('.answer-content');
         mediaEl = botEl.querySelector('.media-content');
@@ -382,9 +472,34 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resum
     // can close it. During replay there is no live connection (null).
     let currentEs = null;
 
+    // Deltas may arrive in a burst (an upstream that buffers the reply and
+    // flushes it at once). Re-rendering the whole answer per delta would then
+    // block the main thread, so renders are coalesced to at most one per frame.
+    let deltaRenderRaf = null;
+    function renderAccumulatedText() {
+        if (contentEl) contentEl.innerHTML = renderMarkdown(accumulatedText);
+    }
+    function scheduleDeltaRender() {
+        if (deltaRenderRaf !== null) return;
+        deltaRenderRaf = requestAnimationFrame(() => {
+            deltaRenderRaf = null;
+            renderAccumulatedText();
+            scrollChatToBottom();
+        });
+    }
+    // Any non-delta event may read or replace contentEl, so the pending text
+    // must be on screen before it runs.
+    function flushDeltaRender() {
+        if (deltaRenderRaf === null) return;
+        cancelAnimationFrame(deltaRenderRaf);
+        deltaRenderRaf = null;
+        renderAccumulatedText();
+    }
+
     // Render one SSE event into the bubble. Used by the live handler and by
     // re-attach replay alike, so both paths produce identical UI.
     function processSSEItem(item) {
+            if (item.type !== 'delta') flushDeltaRender();
             if (item.type === 'reasoning') {
                 ensureBotEl();
                 reasoningText += item.content;
@@ -455,8 +570,7 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resum
                     reasoningText = '';
                 }
                 accumulatedText += item.content;
-                contentEl.innerHTML = renderMarkdown(accumulatedText);
-                scrollChatToBottom();
+                scheduleDeltaRender();
 
             } else if (item.type === 'message_end') {
                 if (item.has_tool_calls && accumulatedText.trim()) {
@@ -635,11 +749,12 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resum
                         if (outputSection) outputSection.remove();
                     }
                     if (isError) toolEl.classList.add('tool-failed');
-                    // A permission refusal is not an ordinary failure: surface a
-                    // one-click way to raise this session's permission instead of
-                    // leaving the user to decode the model's error text.
+                    // A permission refusal is not an ordinary failure: add a short
+                    // sentence explaining it instead of leaving the user to decode
+                    // the model's error text. There is no action button — execution
+                    // is decided by the caller's role, not by a chat control.
                     if (item.permission_denied) {
-                        _appendPermissionDeniedHint(toolEl, item.permission_mode);
+                        _appendPermissionDeniedHint(toolEl, item.permission_mode, item.permission_denial_kind);
                     }
                     toolElements.delete(item.tool_call_id);
                 }
@@ -674,6 +789,29 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resum
                 const wrapper = document.createElement('div');
                 wrapper.innerHTML = _buildVideoHtml(item.content);
                 mediaEl.appendChild(wrapper.firstElementChild || wrapper);
+                scrollChatToBottom();
+
+            } else if (item.type === 'file' && item.file_type === 'video') {
+                ensureBotEl();
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = _buildVideoHtml(item.content);
+                mediaEl.appendChild(wrapper.firstElementChild || wrapper);
+                scrollChatToBottom();
+
+            } else if (item.type === 'file' && item.abs_path && typeof appendArtifactCard === 'function') {
+                // A local document delivered with `send`: the same card as a
+                // file the agent wrote, so it previews and opens in Artifacts.
+                // A file the turn already produced keeps its one card.
+                ensureBotEl();
+                const name = item.file_name || item.abs_path.split(/[\\/]/).pop();
+                const kind = item.kind || wsKindOf(name);
+                appendArtifactCard(mediaEl, Object.assign({}, item, {
+                    file_name: name,
+                    kind: kind,
+                    rel_path: item.rel_path || name,
+                    raw_url: item.content,
+                    previewable: item.previewable != null ? item.previewable : WS_PREVIEWABLE.has(kind),
+                }));
                 scrollChatToBottom();
 
             } else if (item.type === 'file') {
@@ -763,6 +901,7 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resum
                     ? messagesDiv.querySelector(`[data-request-id="${requestId}"]:not([data-peer-bubble])`)
                     : null);
                 if (targetBotEl) {
+                    attachMessageUsage(targetBotEl, item.usage);
                     if (item.bot_seq !== undefined && item.bot_seq !== null) {
                         targetBotEl.dataset.seq = item.bot_seq;
                     }
@@ -790,13 +929,6 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resum
 
                 if (typeof maybeAutoOpenArtifact === 'function') maybeAutoOpenArtifact();
 
-                if (titleInfo) {
-                    generateSessionTitle(titleInfo.sid, titleInfo.userMsg, '');
-                    titleInfo = null;
-                } else if (sessionPanelOpen) {
-                    loadSessionList();
-                }
-
             } else if (item.type === 'voice_attach') {
                 // TTS finished — attach a playable audio element to the
                 // persisted bot bubble. If history is still loading after a
@@ -813,6 +945,12 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resum
                 if (currentEs) { currentEs.close(); }
                 delete activeStreams[requestId];
                 clearOwnerRequest();
+                // The run is over, so whatever it wrote into the session's file
+                // source is there now: re-read the panel instead of leaving a
+                // listing that predates it (task 3.4). A closed panel is not
+                // refreshed, and a personal session's files are re-read from the
+                // OpenCode host through the ordinary listing.
+                if (typeof wsRefreshAfterRun === 'function') wsRefreshAfterRun();
 
             } else if (item.type === 'resync_required') {
                 done = true;
@@ -840,7 +978,7 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resum
                 const unknown = item.reason === 'unknown_request';
                 if (unknown && !mainDone && !cancelled) {
                     if (isActive()) reloadHistoryView();
-                } else if (!cancelled && !unknown) {
+                } else if (!cancelled && !mainDone && !unknown) {
                     addBotMessage(t('error_send'), new Date());
                 }
                 resetSendBtnSendMode();
@@ -848,14 +986,24 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resum
     }
 
     function connect() {
+        if (!isCurrentIdentity()) { clearOwnerRequest(); return; }
         const es = new EventSource(
             `/stream?request_id=${encodeURIComponent(requestId)}`
             + `&after_seq=${lastSeq}`
+            + `&agent_id=${encodeURIComponent(ownerAgent)}`
         );
         currentEs = es;
         activeStreams[requestId] = es;
 
         es.onmessage = function(e) {
+            if (done) return;
+            if (!isCurrentIdentity()) {
+                done = true;
+                es.close();
+                delete activeStreams[requestId];
+                clearOwnerRequest();
+                return;
+            }
             let item;
             try { item = JSON.parse(e.data); } catch (_) { return; }
 
@@ -882,6 +1030,14 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resum
             // is intentionally skipped. Notify for both foreground and
             // background sessions, before the render guard below.
             if (item.type === 'done') {
+                _touchHistorySession(ownerSession, ownerAgent, {
+                    last_active: Math.floor(Date.now() / 1000),
+                });
+                const firstTitle = buffer.titleInfo;
+                buffer.titleInfo = null;
+                if (firstTitle) {
+                    generateSessionTitle(firstTitle.sid, firstTitle.userMsg, '', firstTitle.agentId);
+                }
                 mainDone = true;
                 if (item.bot_seq !== undefined && item.bot_seq !== null) {
                     completedBotSeq = item.bot_seq;
@@ -893,6 +1049,8 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resum
                 if (!isSchedulerRequest(requestId)) {
                     notifyTaskFinished(ownerSession, 'done', item.content, ownerAgent);
                 }
+            } else if (item.type === 'cancelled') {
+                cancelled = true;
             } else if (item.type === 'error') {
                 if (!cancelled && !mainDone && !isSchedulerRequest(requestId)) notifyTaskFinished(ownerSession, 'error', '', ownerAgent);
             } else if (
@@ -911,7 +1069,7 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resum
             // and persists, but skip rendering into the now-foreign view. The
             // buffer above still grows so returning to the session can rebuild
             // the bubble and resume live rendering.
-            if (ownerSession !== sessionId) {
+            if (!isActive()) {
                 if (item.type === 'stream_end' || item.type === 'error' || item.type === 'resync_required') {
                     done = true;
                     es.close();
@@ -981,6 +1139,7 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resum
     // not animated) before connecting for the live tail. `processSSEItem`
     // is the same renderer used by the live onmessage handler, so the
     // snapshot matches exactly what live rendering would have produced.
+    if (!isCurrentIdentity()) { clearOwnerRequest(); return; }
     if (replayItems && replayItems.length) {
         for (const item of replayItems) {
             const seq = Number(item.seq || 0);
@@ -1005,11 +1164,15 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems, resum
 
 function startPolling() {
     const gen = ++pollGeneration;
+    const authEpoch = _authEpoch;
+    const tenantId = sessionStorage.getItem('cow_tenant_id') || '';
+    const isCurrent = () => gen === pollGeneration && authEpoch === _authEpoch
+        && tenantId === (sessionStorage.getItem('cow_tenant_id') || '');
     isPolling = true;
     let pollInFlight = false;
 
     function poll() {
-        if (gen !== pollGeneration) return;
+        if (!isCurrent()) return;
         if (pollInFlight) return;
         // Keep polling while hidden: push messages are exactly what the
         // notification below should deliver to a background tab.
@@ -1022,7 +1185,7 @@ function startPolling() {
         .then(r => r.json())
         .then(data => {
             pollInFlight = false;
-            if (gen !== pollGeneration) return;
+            if (!isCurrent()) return;
             if (data.status === 'success' && data.has_content) {
                 const rid = data.request_id;
                 if (loadingContainers[rid]) {

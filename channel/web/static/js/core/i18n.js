@@ -7,6 +7,7 @@
 // =====================================================================
 const I18N = {
     zh: {
+        chat_scroll_to_bottom: '滚动到底部',
         console: '控制台',
         nav_chat: '对话', nav_manage: '管理', nav_monitor: '监控',
         menu_chat: '对话', menu_agents: '智能体', menu_config: '配置', menu_skills: '能力',
@@ -31,6 +32,7 @@ const I18N = {
         agents_default: '默认',
         agents_archived: '已归档',
         agents_chat: '开始对话',
+        agents_copy_id: '复制 ID',
         agents_delete: '删除',
         agents_delete_title: '删除智能体',
         agents_delete_confirm: '确定删除智能体「{name}」吗？其工作空间和会话将一并移除，且无法恢复。',
@@ -94,6 +96,13 @@ const I18N = {
         models_catalog_advanced: '（高级 · 可选）',
         models_tag_text: '文本模型',
         models_catalog_add: '添加模型',
+        models_catalog_discover: '自动发现',
+        models_catalog_discovering: '正在发现…',
+        models_catalog_discovered: '已加入 {n} 个模型',
+        models_catalog_discover_pick: '选择要加入的模型',
+        models_catalog_discover_apply: '加入选中',
+        models_catalog_discover_cancel: '取消',
+        models_catalog_discover_none: '没有发现新模型',
         models_catalog_window: '上下文窗口',
         models_catalog_output: '最大输出',
         models_catalog_no_budget: '该模型类型不区分上下文窗口与最大输出',
@@ -169,6 +178,8 @@ const I18N = {
         models_search_tavily_desc: '前往 tavily.com 控制台创建 API Key。',
         models_search_searxng_title: '配置 SearXNG 实例 URL',
         models_search_searxng_desc: '输入自托管 SearXNG 实例的 URL（无需 API Key）。',
+        models_search_deepseek_title: '配置 DeepSeek 搜索',
+        models_search_deepseek_desc: '与 DeepSeek 模型共用同一组 API Key 和 Base URL，修改后模型调用也会生效。',
         models_search_anysearch_anon_hint: '留空可启用匿名模式（无需 API Key）',
         models_search_anonymous_badge: '匿名',
         models_search_anonymous_disable: '停用匿名',
@@ -267,6 +278,16 @@ const I18N = {
         config_custom_tip: '接口需遵循 OpenAI API 协议',
         config_security: '安全设置', config_password: '访问密码',
         config_password_hint: '留空则不启用密码保护',
+        config_api: '对话 API', config_api_desc: '通过 OpenAI 兼容接口调用 Agent', config_api_docs: '查看文档',
+        config_api_base_url: '接口地址', config_api_copy: '复制', config_api_example: '调用示例',
+        config_api_key_hint: '持有 API Key 即可调用 Agent，请妥善保管',
+        config_api_example_hint: 'model：指定模型，不传时使用智能体的默认模型\nagent_id：指定智能体，不传时使用默认智能体，ID 可在智能体页面复制',
+        config_api_regenerate: '重新生成',
+        config_api_regenerate_confirm: '重新生成后旧的 API Key 立即失效，已接入的应用需要更新。',
+        config_api_disable: '关闭对话 API', config_api_disable_ok: '关闭',
+        config_api_disable_confirm: '关闭后将无法通过 API 访问 Agent。API Key 会保留，再次开启后可继续使用。',
+        config_api_enable: '开启对话 API', config_api_enable_ok: '开启',
+        config_api_enable_confirm: '开启后，将可通过 API 访问 Agent，是否确认？',
         config_permission: '默认权限',
         config_permission_hint: '新会话的默认权限范围，决定 Agent 能修改哪些文件、能执行哪些命令',
         config_permission_desc: '新会话默认使用该权限；单个会话可在输入框下方单独调整',
@@ -285,7 +306,28 @@ const I18N = {
         skill_edit_hint: '编辑技能',
         skill_back: '返回列表',
         skill_load_failed: '读取技能内容失败',
-        skill_builtin_readonly: '内置技能不可编辑（重启会覆盖）',
+        skill_builtin_readonly: '内置技能不可编辑',
+        skill_files_title: '技能文件',
+        skill_files_collapse: '收起文件列表',
+        skill_files_expand: '展开文件列表',
+        skill_file_not_text: '该文件不是文本，无法在此查看',
+        skill_new_name: '名称',
+        skill_new_name_hint: '将作为技能目录名，仅保留小写字母、数字和连字符',
+        skill_new_name_dir: '目录名',
+        skill_new_name_invalid: '名称需包含英文字母或数字',
+        skill_new_desc: '描述',
+        skill_new_desc_hint: 'Agent 靠描述决定何时使用该技能，写清用途和触发场景',
+        skill_new_desc_required: '请填写描述',
+        skill_new_body: '说明内容',
+        skill_new_body_hint: 'SKILL.md 正文，可留空后续在技能详情页编辑',
+        skill_new_files: '附件', skill_new_files_add: '添加', skill_new_files_pick: '选择文件',
+        skill_new_files_pick_folder: '选择文件夹',
+        skill_new_files_hint: '脚本、模板等资源文件，将放入技能目录',
+        skill_new_submit: '创建', skill_new_created: '技能已创建',
+        skill_new_failed: '创建失败，请稍后再试',
+        skill_upload_too_many: '一次最多上传 {max} 个文件',
+        skill_upload_file_too_large: '{name} 超过 {max}MB',
+        skill_upload_total_too_large: '单次上传总大小不能超过 {max}MB',
         mcp_section_title: 'MCP 工具',
         mcp_add: '添加 MCP', mcp_add_title: '添加 MCP 工具', mcp_edit: '编辑 MCP 工具',
         mcp_empty: '还没有接入 MCP 工具', mcp_empty_hint: '可以手动填写，也可以直接粘贴 MCP 市场提供的 JSON 配置',
@@ -311,7 +353,7 @@ const I18N = {
         mcp_test_needs_auth: '需要 OAuth 授权，保存后在对话中按提示完成授权',
         mcp_save_error: '保存失败', mcp_load_failed: '读取 MCP 配置失败',
         mcp_delete_confirm: '确定删除这个 MCP 工具吗？',
-        skill_add: '添加技能', skill_add_tab_market: '从市场安装', skill_add_tab_upload: '本地上传',
+        skill_add: '添加技能', skill_add_tab_market: '从市场安装', skill_add_tab_upload: '本地上传', skill_add_tab_create: '表单创建',
         skill_source: '来源', skill_source_local: '本地上传',
         skill_value_hub: '技能名称', skill_value_github: '仓库或目录地址', skill_value_clawhub: '技能名称',
         skill_hint_hub: '填写技能广场中的技能名称，可前往浏览：',
@@ -451,6 +493,66 @@ const I18N = {
         session_history: '历史会话',
         ws_toggle: '工作空间', ws_tab_preview: '预览', ws_tab_files: '文件',
         timeline_nav: '消息导航',
+        menu_artifacts: '产物', artifacts_title: '产物',
+        artifacts_desc: 'Agent 在对话中生成的网页、图片、视频和文档，按时间汇集在这里',
+        artifacts_filter_all: '全部', artifacts_filter_web: '网页', artifacts_filter_image: '图片',
+        artifacts_filter_media: '音视频', artifacts_filter_doc: '文档', artifacts_filter_other: '其他',
+        artifacts_search: '搜索名称或路径', artifacts_scope_all: '全部智能体',
+        artifacts_empty_title: '还没有产物',
+        artifacts_empty_desc: '从现在起，Agent 在对话中写出的网页和文档、发给你的图片和视频，都会按时间收录在这里。',
+        artifacts_empty_action: '开始对话',
+        artifacts_no_match: '没有符合条件的产物', artifacts_clear_filters: '清除筛选',
+        artifacts_today: '今天', artifacts_yesterday: '昨天',
+        artifacts_jump: '定位到对话',
+        artifacts_jump_unavailable: '该产物来自其他通道或已删除的会话，无法定位',
+        artifacts_missing: '文件已被移动或删除',
+        artifacts_remove: '从产物中移除', artifacts_removed: '已移除，文件本身不受影响',
+        artifacts_remove_title: '从产物中移除？', artifacts_remove_ok: '移除',
+        artifacts_remove_confirm: '「{name}」将不再出现在产物中，文件本身不会被删除。之后可从对话中的文件卡片重新加入。',
+        artifacts_add: '加入产物', artifacts_added: '已加入产物',
+        artifacts_pin: '置顶', artifacts_unpin: '取消置顶', artifacts_pinned_group: '已置顶',
+        artifacts_pinned: '已置顶', artifacts_unpinned: '已取消置顶',
+        artifacts_rename: '重命名', artifacts_rename_failed: '重命名失败',
+        menu_edit: '自定义菜单',
+        menu_edit_desc: '拖动调整顺序和分组，也可以把产物或网页放进菜单。Web 端和桌面端共用这份菜单。',
+        menu_add: '添加',
+        menu_add_group: '添加分组',
+        menu_add_artifact: '产物（HTML / Markdown）',
+        menu_add_url: '网页链接',
+        menu_add_builtin: '内置页面',
+        menu_group_untitled: '未命名分组',
+        menu_group_title_ph: '分组名称',
+        menu_group_keeps_pages: '分组里有内置页面，先把它们移到别的分组',
+        menu_item_title_ph: '名称',
+        menu_open_embed: '内嵌',
+        menu_open_tab: '新标签',
+        menu_hide: '隐藏',
+        menu_show: '显示',
+        menu_required: '这个页面不能隐藏',
+        menu_remove: '移除',
+        menu_drag: '拖动排序',
+        menu_icon: '图标',
+        menu_icon_default: '默认图标',
+        menu_reset: '恢复默认',
+        menu_reset_confirm: '菜单会恢复成内置的默认菜单，你添加的产物和链接会被移除。',
+        menu_save_failed: '保存失败',
+        menu_need_title: '请填写名称',
+        menu_need_group_title: '请填写分组名称',
+        menu_need_url: '请填写以 http:// 或 https:// 开头的链接',
+        menu_builtin_page: '内置页面',
+        menu_unsupported: '当前端没有这个页面，保留给另一端',
+        menu_artifact_search: '搜索产物',
+        menu_artifact_empty: '没有找到产物',
+        menu_already_added: '已在菜单中',
+        menu_page_missing: '这一项已经不在菜单里了',
+        menu_file_missing: '文件已不存在',
+        menu_open_external: '新标签打开',
+        menu_back_chat: '回到对话',
+        menu_add_to_menu: '添加到菜单',
+        artifacts_view_in: '在产物中查看', artifacts_untitled: '未命名对话',
+        artifacts_load_failed: '加载失败', artifacts_retry: '重试',
+        artifacts_meta_session: '会话', artifacts_meta_size: '大小',
+        sidebar_collapse: '收起侧边栏', sidebar_expand: '展开侧边栏',
         ws_default_workspace: '默认空间', ws_sel_title: '选择工作空间',
         ws_sel_default_hint: '使用默认工作空间（~/cow）', ws_sel_recents: '最近使用',
         ws_sel_open: '打开项目…', ws_sel_new: '新建项目', ws_sel_local_dir: '选择本机目录',
@@ -470,7 +572,8 @@ const I18N = {
         ws_sel_name_required: '请输入项目名称', ws_sel_name_no_slash: '项目名称不能包含 / 或 \\',
         ws_sel_open_here: '打开此目录', ws_sel_dblclick_hint: '双击进入子目录，单击选中',
         ws_sel_no_subdirs: '此目录下没有子文件夹', ws_sel_drives: '此电脑',
-        ws_open_external: '在新标签页打开', ws_download: '下载', ws_copy_path: '复制路径',
+        ws_open_external: '在新标签页打开', ws_download: '下载',
+        ws_reveal: '在文件夹中显示', ws_reveal_failed: '无法打开文件夹',
         ws_close: '关闭', ws_refresh: '刷新', ws_preview: '预览',
         ws_search_placeholder: '搜索文件',
         ws_preview_empty: '选择一个文件进行预览',
@@ -511,7 +614,6 @@ const I18N = {
         perm_follow_global: '跟随全局设置',
         perm_tip: '权限：{name}',
         perm_denied_hint: '当前权限为「{name}」，此操作被拒绝。',
-        perm_denied_action: '调整权限',
         model_menu_title: '本次会话模型',
         model_follow_global: '跟随全局设置',
         model_follow_agent: '跟随智能体默认模型',
@@ -536,6 +638,7 @@ const I18N = {
         ctx_free: '剩余可用',
         ctx_used_of: '已用 {used} / {limit}',
         ctx_estimated: '估算值',
+        ctx_restored: '上次运行',
         ctx_empty: '当前对话暂无上下文',
         ctx_error: '无法获取上下文用量',
         ctx_act_compact: '压缩', ctx_act_compact_tip: '总结较早的对话以释放上下文',
@@ -570,6 +673,8 @@ const I18N = {
         confirm_cancel: '取消',
         error_send: '发送失败，请稍后再试。', error_timeout: '请求超时，请再试一次。',
         reply_cancelled: '已中止', reply_interrupted: '已中断', reply_running: '仍在运行，稍后刷新查看最新进度',
+        msg_usage_total: 'Token 总计', msg_usage_in: '输入', msg_usage_out: '输出',
+        msg_usage_cached: '缓存命中', msg_usage_calls: '模型调用 {n} 次',
         error_connection_lost: '连接已断开。回复可能仍在生成，稍后刷新页面即可查看。',
         thinking_in_progress: '思考中...', thinking_done: '已深度思考', thinking_duration: '耗时',
         handoff_to: '转交给 {name}',
@@ -602,9 +707,13 @@ const I18N = {
         update_step_restart: '重启服务',
         update_step_starting: '准备更新',
         update_step_done: '完成',
+        mermaid_code: '代码',
+        mermaid_preview: '预览',
+        mermaid_preview_failed: '图表无法渲染',
     },
     'zh-Hant': {
 
+        chat_scroll_to_bottom: '捲動至底部',
         console: '控制台',
         nav_chat: '對話', nav_manage: '管理', nav_monitor: '監控',
         menu_chat: '對話', menu_agents: '智慧體', menu_config: '設定', menu_skills: '能力',
@@ -629,6 +738,7 @@ const I18N = {
         agents_default: '預設',
         agents_archived: '已封存',
         agents_chat: '開始對話',
+        agents_copy_id: '複製 ID',
         agents_delete: '刪除',
         agents_delete_title: '刪除智慧體',
         agents_delete_confirm: '確定刪除智慧體「{name}」嗎？其工作空間與會話將一併移除，且無法復原。',
@@ -692,6 +802,13 @@ const I18N = {
         models_catalog_advanced: '（高級 · 可選）',
         models_tag_text: '文本模型',
         models_catalog_add: '新增模型',
+        models_catalog_discover: '自動探索',
+        models_catalog_discovering: '正在探索…',
+        models_catalog_discovered: '已加入 {n} 個模型',
+        models_catalog_discover_pick: '選擇要加入的模型',
+        models_catalog_discover_apply: '加入選中',
+        models_catalog_discover_cancel: '取消',
+        models_catalog_discover_none: '沒有發現新模型',
         models_catalog_window: '上下文窗口',
         models_catalog_output: '最大輸出',
         models_catalog_no_budget: '該模型類型不區分上下文視窗與最大輸出',
@@ -767,6 +884,8 @@ const I18N = {
         models_search_tavily_desc: '前往 tavily.com 控制台建立 API Key',
         models_search_searxng_title: '設定 SearXNG 實例 URL',
         models_search_searxng_desc: '輸入自託管 SearXNG 實例的 URL（無需 API Key）。',
+        models_search_deepseek_title: '設定 DeepSeek 搜尋',
+        models_search_deepseek_desc: '與 DeepSeek 模型共用同一組 API Key 和 Base URL，修改後模型呼叫也會生效。',
         models_search_anysearch_anon_hint: '留空可啟用匿名模式（無需 API Key）',
         models_search_anonymous_badge: '匿名',
         models_search_anonymous_disable: '停用匿名',
@@ -865,6 +984,16 @@ const I18N = {
         config_custom_tip: '介面需遵循 OpenAI API 協議',
         config_security: '安全設定', config_password: '訪問密碼',
         config_password_hint: '留空則不啟用密碼保護',
+        config_api: '對話 API', config_api_desc: '透過 OpenAI 相容介面呼叫 Agent', config_api_docs: '查看文件',
+        config_api_base_url: '介面位址', config_api_copy: '複製', config_api_example: '呼叫範例',
+        config_api_key_hint: '持有 API Key 即可呼叫 Agent，請妥善保管',
+        config_api_example_hint: 'model：指定模型，不傳時使用智慧體的預設模型\nagent_id：指定智慧體，不傳時使用預設智慧體，ID 可在智慧體頁面複製',
+        config_api_regenerate: '重新產生',
+        config_api_regenerate_confirm: '重新產生後舊的 API Key 立即失效，已接入的應用需要更新。',
+        config_api_disable: '關閉對話 API', config_api_disable_ok: '關閉',
+        config_api_disable_confirm: '關閉後將無法透過 API 存取 Agent。API Key 會保留，再次開啟後可繼續使用。',
+        config_api_enable: '開啟對話 API', config_api_enable_ok: '開啟',
+        config_api_enable_confirm: '開啟後，將可透過 API 存取 Agent，是否確認？',
         config_permission: '預設權限',
         config_permission_hint: '新會話的預設權限範圍，決定 Agent 能修改哪些檔案、能執行哪些命令',
         config_permission_desc: '新會話預設使用該權限；單個會話可在輸入框下方單獨調整',
@@ -883,7 +1012,28 @@ const I18N = {
         skill_edit_hint: '編輯技能',
         skill_back: '返回列表',
         skill_load_failed: '讀取技能內容失敗',
-        skill_builtin_readonly: '內建技能不可編輯（重啟會覆蓋）',
+        skill_builtin_readonly: '內建技能不可編輯',
+        skill_files_title: '技能檔案',
+        skill_files_collapse: '收合檔案列表',
+        skill_files_expand: '展開檔案列表',
+        skill_file_not_text: '該檔案不是文字，無法在此檢視',
+        skill_new_name: '名稱',
+        skill_new_name_hint: '將作為技能目錄名，僅保留小寫英文字母、數字和連字號',
+        skill_new_name_dir: '目錄名',
+        skill_new_name_invalid: '名稱需包含英文字母或數字',
+        skill_new_desc: '描述',
+        skill_new_desc_hint: 'Agent 靠描述決定何時使用該技能，寫清用途和觸發場景',
+        skill_new_desc_required: '請填寫描述',
+        skill_new_body: '說明內容',
+        skill_new_body_hint: 'SKILL.md 正文，可留空後續在技能詳情頁編輯',
+        skill_new_files: '附件', skill_new_files_add: '新增', skill_new_files_pick: '選擇檔案',
+        skill_new_files_pick_folder: '選擇資料夾',
+        skill_new_files_hint: '腳本、範本等資源檔案，將放入技能目錄',
+        skill_new_submit: '建立', skill_new_created: '技能已建立',
+        skill_new_failed: '建立失敗，請稍後再試',
+        skill_upload_too_many: '一次最多上傳 {max} 個檔案',
+        skill_upload_file_too_large: '{name} 超過 {max}MB',
+        skill_upload_total_too_large: '單次上傳總大小不能超過 {max}MB',
         mcp_section_title: 'MCP 工具',
         mcp_add: '新增 MCP', mcp_add_title: '新增 MCP 工具', mcp_edit: '編輯 MCP 工具',
         mcp_empty: '還沒有接入 MCP 工具', mcp_empty_hint: '可以手動填寫，也可以直接貼上 MCP 市場提供的 JSON 設定',
@@ -909,7 +1059,7 @@ const I18N = {
         mcp_test_needs_auth: '需要 OAuth 授權，儲存後在對話中依提示完成授權',
         mcp_save_error: '儲存失敗', mcp_load_failed: '讀取 MCP 設定失敗',
         mcp_delete_confirm: '確定刪除這個 MCP 工具嗎？',
-        skill_add: '新增技能', skill_add_tab_market: '從市場安裝', skill_add_tab_upload: '本機上傳',
+        skill_add: '新增技能', skill_add_tab_market: '從市場安裝', skill_add_tab_upload: '本機上傳', skill_add_tab_create: '表單建立',
         skill_source: '來源', skill_source_local: '本機上傳',
         skill_value_hub: '技能名稱', skill_value_github: '儲存庫或目錄位址', skill_value_clawhub: '技能名稱',
         skill_hint_hub: '填寫技能廣場中的技能名稱，可前往瀏覽：',
@@ -1049,6 +1199,66 @@ const I18N = {
         session_history: '歷史會話',
         ws_toggle: '工作空間', ws_tab_preview: '預覽', ws_tab_files: '檔案',
         timeline_nav: '訊息導覽',
+        menu_artifacts: '產物', artifacts_title: '產物',
+        artifacts_desc: 'Agent 在對話中產生的網頁、圖片、影片和文件，依時間彙整於此',
+        artifacts_filter_all: '全部', artifacts_filter_web: '網頁', artifacts_filter_image: '圖片',
+        artifacts_filter_media: '影音', artifacts_filter_doc: '文件', artifacts_filter_other: '其他',
+        artifacts_search: '搜尋名稱或路徑', artifacts_scope_all: '全部智慧體',
+        artifacts_empty_title: '還沒有產物',
+        artifacts_empty_desc: '從現在起，Agent 在對話中寫出的網頁和文件、傳給你的圖片和影片，都會依時間收錄在這裡。',
+        artifacts_empty_action: '開始對話',
+        artifacts_no_match: '沒有符合條件的產物', artifacts_clear_filters: '清除篩選',
+        artifacts_today: '今天', artifacts_yesterday: '昨天',
+        artifacts_jump: '定位到對話',
+        artifacts_jump_unavailable: '此產物來自其他通道或已刪除的會話，無法定位',
+        artifacts_missing: '檔案已被移動或刪除',
+        artifacts_remove: '從產物中移除', artifacts_removed: '已移除，檔案本身不受影響',
+        artifacts_remove_title: '從產物中移除？', artifacts_remove_ok: '移除',
+        artifacts_remove_confirm: '「{name}」將不再出現在產物中，檔案本身不會被刪除。之後可從對話中的檔案卡片重新加入。',
+        artifacts_add: '加入產物', artifacts_added: '已加入產物',
+        artifacts_pin: '置頂', artifacts_unpin: '取消置頂', artifacts_pinned_group: '已置頂',
+        artifacts_pinned: '已置頂', artifacts_unpinned: '已取消置頂',
+        artifacts_rename: '重新命名', artifacts_rename_failed: '重新命名失敗',
+        menu_edit: '自訂選單',
+        menu_edit_desc: '拖曳調整順序和分組，也可以把產物或網頁放進選單。網頁版和桌面版共用這份選單。',
+        menu_add: '新增',
+        menu_add_group: '新增分組',
+        menu_add_artifact: '產物（HTML / Markdown）',
+        menu_add_url: '網頁連結',
+        menu_add_builtin: '內建頁面',
+        menu_group_untitled: '未命名分組',
+        menu_group_title_ph: '分組名稱',
+        menu_group_keeps_pages: '分組裡有內建頁面，先把它們移到別的分組',
+        menu_item_title_ph: '名稱',
+        menu_open_embed: '內嵌',
+        menu_open_tab: '新分頁',
+        menu_hide: '隱藏',
+        menu_show: '顯示',
+        menu_required: '這個頁面不能隱藏',
+        menu_remove: '移除',
+        menu_drag: '拖曳排序',
+        menu_icon: '圖示',
+        menu_icon_default: '預設圖示',
+        menu_reset: '恢復預設',
+        menu_reset_confirm: '選單會恢復成內建的預設選單，你新增的產物和連結會被移除。',
+        menu_save_failed: '儲存失敗',
+        menu_need_title: '請填寫名稱',
+        menu_need_group_title: '請填寫分組名稱',
+        menu_need_url: '請填寫以 http:// 或 https:// 開頭的連結',
+        menu_builtin_page: '內建頁面',
+        menu_unsupported: '目前這端沒有這個頁面，保留給另一端',
+        menu_artifact_search: '搜尋產物',
+        menu_artifact_empty: '沒有找到產物',
+        menu_already_added: '已在選單中',
+        menu_page_missing: '這一項已經不在選單裡了',
+        menu_file_missing: '檔案已不存在',
+        menu_open_external: '新分頁開啟',
+        menu_back_chat: '回到對話',
+        menu_add_to_menu: '加入選單',
+        artifacts_view_in: '在產物中檢視', artifacts_untitled: '未命名對話',
+        artifacts_load_failed: '載入失敗', artifacts_retry: '重試',
+        artifacts_meta_session: '會話', artifacts_meta_size: '大小',
+        sidebar_collapse: '收合側邊欄', sidebar_expand: '展開側邊欄',
         ws_default_workspace: '預設空間', ws_sel_title: '選擇工作空間',
         ws_sel_default_hint: '使用預設工作空間（~/cow）', ws_sel_recents: '最近使用',
         ws_sel_open: '開啟專案…', ws_sel_new: '新建專案', ws_sel_local_dir: '選擇本機目錄',
@@ -1068,7 +1278,8 @@ const I18N = {
         ws_sel_name_required: '請輸入專案名稱', ws_sel_name_no_slash: '專案名稱不能包含 / 或 \\',
         ws_sel_open_here: '開啟此目錄', ws_sel_dblclick_hint: '雙擊進入子目錄，單擊選中',
         ws_sel_no_subdirs: '此目錄下沒有子資料夾', ws_sel_drives: '本機',
-        ws_open_external: '在新分頁開啟', ws_download: '下載', ws_copy_path: '複製路徑',
+        ws_open_external: '在新分頁開啟', ws_download: '下載',
+        ws_reveal: '在資料夾中顯示', ws_reveal_failed: '無法開啟資料夾',
         ws_close: '關閉', ws_refresh: '重新整理', ws_preview: '預覽',
         ws_search_placeholder: '搜尋檔案',
         ws_preview_empty: '選擇一個檔案進行預覽',
@@ -1109,7 +1320,6 @@ const I18N = {
         perm_follow_global: '跟隨全域設定',
         perm_tip: '權限：{name}',
         perm_denied_hint: '目前權限為「{name}」，此操作被拒絕。',
-        perm_denied_action: '調整權限',
         model_menu_title: '本次會話模型',
         model_follow_global: '跟隨全域設定',
         model_follow_agent: '跟隨智慧體預設模型',
@@ -1134,6 +1344,7 @@ const I18N = {
         ctx_free: '剩餘可用',
         ctx_used_of: '已用 {used} / {limit}',
         ctx_estimated: '估算值',
+        ctx_restored: '上次執行',
         ctx_empty: '目前對話暫無上下文',
         ctx_error: '無法取得上下文用量',
         ctx_act_compact: '壓縮', ctx_act_compact_tip: '總結較早的對話以釋放上下文',
@@ -1164,6 +1375,8 @@ const I18N = {
         confirm_cancel: '取消',
         error_send: '傳送失敗，請稍後再試。', error_timeout: '請求超時，請再試一次。',
         reply_cancelled: '已中止', reply_interrupted: '已中斷', reply_running: '仍在執行，稍後重新整理查看最新進度',
+        msg_usage_total: 'Token 總計', msg_usage_in: '輸入', msg_usage_out: '輸出',
+        msg_usage_cached: '快取命中', msg_usage_calls: '模型呼叫 {n} 次',
         error_connection_lost: '連線已中斷。回覆可能仍在產生，稍後重新整理頁面即可查看。',
         thinking_in_progress: '思考中...', thinking_done: '已深度思考', thinking_duration: '耗時',
         handoff_to: '轉交給 {name}',
@@ -1196,8 +1409,12 @@ const I18N = {
         update_step_restart: '重啟服務',
         update_step_starting: '準備更新',
         update_step_done: '完成',
+        mermaid_code: '程式碼',
+        mermaid_preview: '預覽',
+        mermaid_preview_failed: '圖表無法渲染',
         },
     en: {
+        chat_scroll_to_bottom: 'Scroll to bottom',
         console: 'Console',
         nav_chat: 'Chat', nav_manage: 'Management', nav_monitor: 'Monitor',
         menu_chat: 'Chat', menu_agents: 'Agents', menu_config: 'Config', menu_skills: 'Capabilities',
@@ -1222,6 +1439,7 @@ const I18N = {
         agents_default: 'Default',
         agents_archived: 'Archived',
         agents_chat: 'Start chat',
+        agents_copy_id: 'Copy ID',
         agents_delete: 'Delete',
         agents_delete_title: 'Delete Agent',
         agents_delete_confirm: 'Delete Agent "{name}"? Its workspace and conversations will be removed for good.',
@@ -1285,6 +1503,13 @@ const I18N = {
         models_catalog_advanced: '(Advanced · optional)',
         models_tag_text: 'Text',
         models_catalog_add: 'Add model',
+        models_catalog_discover: 'Discover models',
+        models_catalog_discovering: 'Discovering…',
+        models_catalog_discovered: 'Added {n} models',
+        models_catalog_discover_pick: 'Choose models to add',
+        models_catalog_discover_apply: 'Add selected',
+        models_catalog_discover_cancel: 'Cancel',
+        models_catalog_discover_none: 'No new models found',
         models_catalog_window: 'Context window',
         models_catalog_output: 'Max output',
         models_catalog_no_budget: 'Context window and max output do not apply to this model type',
@@ -1360,6 +1585,8 @@ const I18N = {
         models_search_tavily_desc: 'Create a key at the Tavily console (tavily.com).',
         models_search_searxng_title: 'Configure SearXNG Instance URL',
         models_search_searxng_desc: 'Enter the URL of your self-hosted SearXNG instance (no API key required).',
+        models_search_deepseek_title: 'Configure DeepSeek Search',
+        models_search_deepseek_desc: 'Shares the API key and base URL with the DeepSeek model; changes here apply to model calls too.',
         models_search_anysearch_anon_hint: 'Leave empty to enable anonymous mode (no API key required)',
         models_search_anonymous_badge: 'anonymous',
         models_search_anonymous_disable: 'Disable anonymous',
@@ -1458,6 +1685,16 @@ const I18N = {
         config_custom_tip: 'API must follow OpenAI protocol.',
         config_security: 'Security', config_password: 'Password',
         config_password_hint: 'Leave empty to disable password protection',
+        config_api: 'Chat API', config_api_desc: 'Call your Agent through an OpenAI-compatible API', config_api_docs: 'Docs',
+        config_api_base_url: 'Base URL', config_api_copy: 'Copy', config_api_example: 'Example',
+        config_api_key_hint: 'Anyone with this key can use your Agent. Keep it secret.',
+        config_api_example_hint: 'model: the model to use; the Agent\'s own model if left out\nagent_id: the Agent that answers; the default Agent if left out (copy IDs on the Agents page)',
+        config_api_regenerate: 'Regenerate',
+        config_api_regenerate_confirm: 'The current key stops working at once. Update any app that uses it.',
+        config_api_disable: 'Turn off Chat API', config_api_disable_ok: 'Turn off',
+        config_api_disable_confirm: 'The Agent can no longer be reached through the API. The key is kept and works again once the API is back on.',
+        config_api_enable: 'Turn on Chat API', config_api_enable_ok: 'Turn on',
+        config_api_enable_confirm: 'Once on, the Agent can be reached through the API. Continue?',
         config_permission: 'Default permissions',
         config_permission_hint: 'The default scope for new chats: which files the agent may change and which commands it may run',
         config_permission_desc: 'New chats start with this; each chat can be changed under the input box',
@@ -1476,7 +1713,28 @@ const I18N = {
         skill_edit_hint: 'Edit skill',
         skill_back: 'Back to list',
         skill_load_failed: 'Could not read the skill',
-        skill_builtin_readonly: 'Built-in skill, read-only (replaced on restart)',
+        skill_builtin_readonly: 'Built-in skill, read-only',
+        skill_files_title: 'Skill files',
+        skill_files_collapse: 'Collapse file list',
+        skill_files_expand: 'Expand file list',
+        skill_file_not_text: 'This file is not text and cannot be shown here',
+        skill_new_name: 'Name',
+        skill_new_name_hint: 'Becomes the skill directory: lowercase letters, digits and hyphens',
+        skill_new_name_dir: 'Directory',
+        skill_new_name_invalid: 'The name needs latin letters or digits',
+        skill_new_desc: 'Description',
+        skill_new_desc_hint: 'The description is what tells the agent when to use this skill, so say what it does and when',
+        skill_new_desc_required: 'A description is required',
+        skill_new_body: 'Instructions',
+        skill_new_body_hint: 'The body of SKILL.md. Can be left empty and written later in the skill view',
+        skill_new_files: 'Files', skill_new_files_add: 'Add', skill_new_files_pick: 'Choose files',
+        skill_new_files_pick_folder: 'Choose folder',
+        skill_new_files_hint: 'Scripts, templates and other resources, bundled into the skill directory',
+        skill_new_submit: 'Create', skill_new_created: 'Skill created',
+        skill_new_failed: 'Could not create the skill, please try again',
+        skill_upload_too_many: 'Upload at most {max} files at a time',
+        skill_upload_file_too_large: '{name} exceeds {max}MB',
+        skill_upload_total_too_large: 'Total upload size cannot exceed {max}MB',
         mcp_section_title: 'MCP Tools',
         mcp_add: 'Add MCP', mcp_add_title: 'Add MCP tool', mcp_edit: 'Edit MCP tool',
         mcp_empty: 'No MCP tools connected yet', mcp_empty_hint: 'Fill in the form, or paste the JSON config an MCP directory gives you',
@@ -1502,7 +1760,7 @@ const I18N = {
         mcp_test_needs_auth: 'Needs OAuth authorization. Save it, then follow the prompt in the chat.',
         mcp_save_error: 'Save failed', mcp_load_failed: 'Could not read the MCP config',
         mcp_delete_confirm: 'Delete this MCP tool?',
-        skill_add: 'Add skill', skill_add_tab_market: 'From a market', skill_add_tab_upload: 'Upload',
+        skill_add: 'Add skill', skill_add_tab_market: 'From a market', skill_add_tab_upload: 'Upload', skill_add_tab_create: 'Write one',
         skill_source: 'Source', skill_source_local: 'Uploaded',
         skill_value_hub: 'Skill name', skill_value_github: 'Repository or folder URL', skill_value_clawhub: 'Skill name',
         skill_hint_hub: 'The skill\'s name on Skill Hub. Browse at',
@@ -1642,6 +1900,66 @@ const I18N = {
         session_history: 'History',
         ws_toggle: 'Workspace', ws_tab_preview: 'Preview', ws_tab_files: 'Files',
         timeline_nav: 'Jump to message',
+        menu_artifacts: 'Artifacts', artifacts_title: 'Artifacts',
+        artifacts_desc: 'Pages, images, videos and documents your agents made in chats, in one timeline',
+        artifacts_filter_all: 'All', artifacts_filter_web: 'Pages', artifacts_filter_image: 'Images',
+        artifacts_filter_media: 'Video & audio', artifacts_filter_doc: 'Documents', artifacts_filter_other: 'Other',
+        artifacts_search: 'Search name or path', artifacts_scope_all: 'All agents',
+        artifacts_empty_title: 'No artifacts yet',
+        artifacts_empty_desc: 'From now on, the pages and documents your agents write, and the images and videos they send you, will be collected here by time.',
+        artifacts_empty_action: 'Start a chat',
+        artifacts_no_match: 'Nothing matches these filters', artifacts_clear_filters: 'Clear filters',
+        artifacts_today: 'Today', artifacts_yesterday: 'Yesterday',
+        artifacts_jump: 'Show in chat',
+        artifacts_jump_unavailable: 'Made in another channel or a deleted conversation, so it can\'t be located',
+        artifacts_missing: 'File moved or deleted',
+        artifacts_remove: 'Remove from artifacts', artifacts_removed: 'Removed. The file itself is untouched.',
+        artifacts_remove_title: 'Remove from artifacts?', artifacts_remove_ok: 'Remove',
+        artifacts_remove_confirm: '"{name}" will no longer appear in Artifacts. The file itself is not deleted, and you can add it back from its file card in the conversation.',
+        artifacts_add: 'Add to artifacts', artifacts_added: 'Added to artifacts',
+        artifacts_pin: 'Pin to top', artifacts_unpin: 'Unpin', artifacts_pinned_group: 'Pinned',
+        artifacts_pinned: 'Pinned to top', artifacts_unpinned: 'Unpinned',
+        artifacts_rename: 'Rename', artifacts_rename_failed: 'Rename failed',
+        menu_edit: 'Customize menu',
+        menu_edit_desc: 'Drag to reorder and regroup, and put artifacts or web pages in the menu. The web console and the desktop app share it.',
+        menu_add: 'Add',
+        menu_add_group: 'Add group',
+        menu_add_artifact: 'Artifact (HTML / Markdown)',
+        menu_add_url: 'Web link',
+        menu_add_builtin: 'Built-in page',
+        menu_group_untitled: 'Untitled group',
+        menu_group_title_ph: 'Group name',
+        menu_group_keeps_pages: 'Move the built-in pages to another group first',
+        menu_item_title_ph: 'Name',
+        menu_open_embed: 'Embed',
+        menu_open_tab: 'New tab',
+        menu_hide: 'Hide',
+        menu_show: 'Show',
+        menu_required: 'This page can\'t be hidden',
+        menu_remove: 'Remove',
+        menu_drag: 'Drag to reorder',
+        menu_icon: 'Icon',
+        menu_icon_default: 'Default icon',
+        menu_reset: 'Restore default',
+        menu_reset_confirm: 'The menu goes back to the built-in one, and the artifacts and links you added are removed.',
+        menu_save_failed: 'Couldn\'t save',
+        menu_need_title: 'Enter a name',
+        menu_need_group_title: 'Enter a group name',
+        menu_need_url: 'Enter a link starting with http:// or https://',
+        menu_builtin_page: 'Built-in page',
+        menu_unsupported: 'Not available here; kept for the other app',
+        menu_artifact_search: 'Search artifacts',
+        menu_artifact_empty: 'No artifacts found',
+        menu_already_added: 'Already in the menu',
+        menu_page_missing: 'This item is no longer in the menu',
+        menu_file_missing: 'The file no longer exists',
+        menu_open_external: 'Open in new tab',
+        menu_back_chat: 'Back to chat',
+        menu_add_to_menu: 'Add to menu',
+        artifacts_view_in: 'View in artifacts', artifacts_untitled: 'Untitled chat',
+        artifacts_load_failed: 'Failed to load', artifacts_retry: 'Retry',
+        artifacts_meta_session: 'Chat', artifacts_meta_size: 'Size',
+        sidebar_collapse: 'Collapse sidebar', sidebar_expand: 'Expand sidebar',
         ws_default_workspace: 'Default', ws_sel_title: 'Select workspace',
         ws_sel_default_hint: 'Use the default workspace (~/cow)', ws_sel_recents: 'Recent',
         ws_sel_open: 'Open project…', ws_sel_new: 'New project', ws_sel_local_dir: 'Choose local folder…',
@@ -1662,7 +1980,8 @@ const I18N = {
         ws_sel_name_required: 'Please enter a project name', ws_sel_name_no_slash: 'Project name must not contain / or \\',
         ws_sel_open_here: 'Open this folder', ws_sel_dblclick_hint: 'Double-click to enter, single-click to select',
         ws_sel_no_subdirs: 'No sub-folders here', ws_sel_drives: 'This PC',
-        ws_open_external: 'Open in new tab', ws_download: 'Download', ws_copy_path: 'Copy path',
+        ws_open_external: 'Open in new tab', ws_download: 'Download',
+        ws_reveal: 'Show in folder', ws_reveal_failed: 'Could not open the folder',
         ws_close: 'Close', ws_refresh: 'Refresh', ws_preview: 'Preview',
         ws_search_placeholder: 'Search files',
         ws_preview_empty: 'Select a file to preview',
@@ -1703,7 +2022,6 @@ const I18N = {
         perm_follow_global: 'Follow global setting',
         perm_tip: 'Permissions: {name}',
         perm_denied_hint: 'This session is “{name}”, so the action was refused.',
-        perm_denied_action: 'Adjust permissions',
         model_menu_title: 'Model for this chat',
         model_follow_global: 'Follow global setting',
         model_follow_agent: 'Follow the agent\u2019s default model',
@@ -1728,6 +2046,7 @@ const I18N = {
         ctx_free: 'Free',
         ctx_used_of: '{used} / {limit} used',
         ctx_estimated: 'estimated',
+        ctx_restored: 'last run',
         ctx_empty: 'No context built for this session yet',
         ctx_error: 'Could not load context usage',
         ctx_act_compact: 'Compact', ctx_act_compact_tip: 'Summarize older turns to free up context',
@@ -1762,6 +2081,8 @@ const I18N = {
         confirm_cancel: 'Cancel',
         error_send: 'Failed to send. Please try again.', error_timeout: 'Request timeout. Please try again.',
         reply_cancelled: 'Stopped', reply_interrupted: 'Interrupted', reply_running: 'Still running; refresh later to see the latest progress',
+        msg_usage_total: 'Tokens', msg_usage_in: 'In', msg_usage_out: 'Out',
+        msg_usage_cached: 'Cached', msg_usage_calls: '{n} model calls',
         error_connection_lost: 'Connection lost. The reply may still be in progress; refresh the page later to see it.',
         thinking_in_progress: 'Thinking...', thinking_done: 'Thought', thinking_duration: 'Duration',
         handoff_to: 'Handed to {name}',
@@ -1794,8 +2115,21 @@ const I18N = {
         update_step_restart: 'Restarting the service',
         update_step_starting: 'Preparing the update',
         update_step_done: 'Done',
+        mermaid_code: 'Code',
+        mermaid_preview: 'Preview',
+        mermaid_preview_failed: 'Diagram could not be rendered',
     }
 };
+for (const namespace of Object.values(window.__cowI18N__ || {})) {
+    for (const [lang, messages] of Object.entries(namespace)) {
+        I18N[lang] ||= {};
+        for (const [key, value] of Object.entries(messages)) if (!(key in I18N[lang])) I18N[lang][key] = value;
+    }
+}
+for (const [lang, label, back] of [['zh','业务工作台','返回业务工作台'],['zh-Hant','業務工作台','返回業務工作台'],['en','Business Workspace','Back to Business Workspace']]) {
+    I18N[lang].nav_workbench = label; I18N[lang].nav_return_workbench = back;
+}
+
 
 // Resolve language by priority: user choice (localStorage) -> backend-detected
 // (cow_lang) -> browser language -> 'zh'. Shares __cowResolveLang__ defined in
@@ -1857,6 +2191,7 @@ function applyI18n() {
     });
     installCfgTipPortal();
     installContextUsagePopover();
+    if (typeof syncSidebarTips === 'function') syncSidebarTips();
     
     // Clear any status messages when language changes
     document.querySelectorAll('[id$="-status"]').forEach(el => {
@@ -1866,33 +2201,19 @@ function applyI18n() {
     _syncLangControls();
     // Point the docs link to the locale-specific documentation site.
     const docsLink = document.getElementById('docs-link');
-    if (docsLink) docsLink.href = currentLang === 'zh' ? 'https://docs.cowagent.ai/zh' : 'https://docs.cowagent.ai';
+    if (docsLink) docsLink.href = currentLang === 'zh' ? 'https://www.rsm.global/china/zh-hans' : 'https://www.rsm.global/china/zh-hans';
     // Workspace panel content is rendered by JS, not data-i18n attributes.
     if (typeof relocalizeWorkspacePanel === 'function') relocalizeWorkspacePanel();
+    _renderSidebarAccount();
+    renderAppearancePreferences();
+    if (typeof paintWelcomeAgentIntro === 'function') paintWelcomeAgentIntro();
 }
 
-// Single entry point for switching language. Updates the in-memory language,
-// persists the user choice locally, re-renders the UI, and binds the choice to
-// the backend `cow_lang` config so logs / agent replies / CLI follow suit.
+// Header and account preferences share a browser-local language choice.
+// A member's display preference must never change the instance-wide config.
 function setLanguage(lang) {
     const next = (lang === 'en' || lang === 'zh' || lang === 'zh-Hant') ? lang : 'zh';
-    if (next === currentLang) {
-        // Still persist + sync in case storage/backend drifted from the UI.
-        syncLanguageToBackend(next);
-        return;
-    }
-    currentLang = next;
-    localStorage.setItem('cow_lang', currentLang);
-    applyI18n();
-    _applyInputTooltips();
-    // Keep the language switch button and config selector visually in sync.
-    try { updateLangControls(); } catch (e) {}
-    
-    // Sync language choice to backend first, then trigger dynamic views reload
-    // to avoid race conditions on API endpoints.
-    syncLanguageToBackend(currentLang, () => {
-        try { rerenderDynamicViews(); } catch (e) {}
-    });
+    applyLanguage(next, /* writeToBackend */ false);
 }
 
 // Persist the language to the backend `cow_lang` config (best-effort; the UI
@@ -1914,7 +2235,6 @@ function syncLanguageToBackend(lang, callback) {
 // Reflect the current language on both the top-right toggle and the config
 // selector (if present), so the two entry points stay synchronized.
 function updateLangControls() {
-    _syncLangControls();
     // The config language picker is the custom .cfg-dropdown component. Only
     // sync it once it has been initialized (i.e. the config panel was opened).
     const sel = document.getElementById('cfg-lang-select');
@@ -1977,10 +2297,28 @@ document.addEventListener('click', (e) => {
 // Refresh JS-rendered views after a language switch. Each branch uses the
 // lightweight in-memory re-render path (no extra network round-trips).
 function rerenderDynamicViews() {
+    if (typeof _historyVisible !== 'undefined' && _historyVisible) {
+        _closeSessionActionMenu();
+        if (document.getElementById('session-list')?.querySelector('.session-title-input') || _dragSpaceKey !== null) {
+            _historyDirty = true;
+        } else {
+            _renderSessionList();
+        }
+        _updateHistorySearchControls();
+        _renderHistoryStatus();
+    }
+    if (currentView === 'agent-workbench') renderAgentWorkbench();
     // Models are a tab of the config view, not a view of their own.
     if (currentView === 'config' && typeof renderModelsView === 'function'
             && modelsState && (modelsState.providers || modelsState.capabilities)) {
         renderModelsView();
+    }
+    // The member catalog is the same view's other shape: re-render it from the
+    // rows already in hand so a language switch does not silently drop back to
+    // the loading skeleton while the request is repeated.
+    if (currentView === 'config' && typeof renderMemberCatalog === 'function'
+            && (memberCatalogState.items || []).length) {
+        renderMemberCatalog();
     }
     // Reload task list after language switch
     if (currentView === 'tasks') {
@@ -2000,6 +2338,9 @@ function rerenderDynamicViews() {
     if (currentView === 'config') {
         loadConfigView();
     }
+    // Re-render the fork/identity views through the view registry (task 8.6).
+    // Their `repaint` is the lightweight in-memory reload they used to get here.
+    _repaintRegisteredView(currentView);
     // Repaint the Agents workbench after a language switch. The grid, detail
     // pane and avatar picker are built from t() into innerHTML, so applyI18n()
     // (which only touches data-i18n nodes) can't relocalize them; re-render from
@@ -2008,6 +2349,7 @@ function rerenderDynamicViews() {
         renderAgentsGrid();
         if (selectedAdminAgentId) renderAgentDetail();
     }
+    if (currentView === 'artifacts') rerenderArtifactsView();
 }
 
 // Floating tooltip portal for [data-tip-key] elements. Tooltip nodes are
@@ -2034,12 +2376,19 @@ function installCfgTipPortal() {
         _cfgTipPortalEl.style.top = '0px';
         _cfgTipPortalEl.classList.add('show');
         const tipRect = _cfgTipPortalEl.getBoundingClientRect();
-        let left = rect.left + rect.width / 2 - tipRect.width / 2;
-        // Clamp horizontally to the viewport with an 8px gutter.
-        left = Math.max(8, Math.min(left, window.innerWidth - tipRect.width - 8));
-        // Default above the target; place below when data-tooltip-pos="bottom".
-        const below = target.getAttribute('data-tooltip-pos') === 'bottom';
-        const top = below ? rect.bottom + 6 : rect.top - tipRect.height - 6;
+        const pos = target.getAttribute('data-tooltip-pos');
+        let left;
+        let top;
+        if (pos === 'right') {
+            left = rect.right + 10;
+            top = rect.top + rect.height / 2 - tipRect.height / 2;
+        } else {
+            left = rect.left + rect.width / 2 - tipRect.width / 2;
+            // Clamp horizontally to the viewport with an 8px gutter.
+            left = Math.max(8, Math.min(left, window.innerWidth - tipRect.width - 8));
+            // Default above the target; place below when data-tooltip-pos="bottom".
+            top = pos === 'bottom' ? rect.bottom + 6 : rect.top - tipRect.height - 6;
+        }
         _cfgTipPortalEl.style.left = left + 'px';
         _cfgTipPortalEl.style.top = top + 'px';
     };
@@ -2059,8 +2408,16 @@ function installCfgTipPortal() {
         const target = e.target.closest(_tipSel);
         if (target) hideTip();
     });
-    // Hide on scroll/resize so the tooltip doesn't drift away from its anchor.
+    // Hide on scroll/resize so the tooltip doesn't drift away from its anchor,
+    // and on press: a click may hide or move the anchor, so no mouseout follows.
     window.addEventListener('scroll', hideTip, true);
     window.addEventListener('resize', hideTip);
+    document.addEventListener('pointerdown', hideTip, true);
 }
 
+
+Object.assign(I18N["zh"], {"refresh": "刷新", "config_api_account": "服务账号用户 ID", "config_api_create_key": "创建密钥", "config_api_rotate": "轮换", "config_api_revoke": "撤销", "config_api_key_change_confirm": "此操作将使旧密钥失效。", "config_api_identity_hint": "密钥受所选账号当前租户与资源权限约束。明文仅在创建或轮换成功后显示一次。", "config_api_failed": "请求失败"});
+
+Object.assign(I18N["zh-Hant"], {"refresh": "重新整理", "config_api_account": "服務帳號使用者 ID", "config_api_create_key": "建立金鑰", "config_api_rotate": "輪換", "config_api_revoke": "撤銷", "config_api_key_change_confirm": "此操作將使舊金鑰失效。", "config_api_identity_hint": "金鑰受所選帳號的租戶與資源權限約束。明文僅在建立或輪換成功後顯示一次。", "config_api_failed": "請求失敗"});
+
+Object.assign(I18N["en"], {"refresh": "Refresh", "config_api_account": "Service account user ID", "config_api_create_key": "Create key", "config_api_rotate": "Rotate", "config_api_revoke": "Revoke", "config_api_key_change_confirm": "This invalidates the previous key.", "config_api_identity_hint": "Keys use the selected account’s current tenant and resource permissions. Plaintext is shown only after issuance or rotation.", "config_api_failed": "Request failed"});

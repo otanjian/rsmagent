@@ -1,0 +1,36 @@
+# Implementation and acceptance status
+
+Fixed source: `ee2dc0521714fc144e0c9923f363147fe865ad2f`. Fixed delivery target: `c9bd4942261156f56c02ffd65e4d81c6153e1594`. Candidate branch: `codex/sync-master-to-rdai-20261021-web`, in the independent clone `/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021`.
+
+## Implemented
+
+All 876 upstream changed paths are classified. The 175 actual merge conflicts retain per-hunk decisions and both sides' hashes. The runtime uses master's split Web shell/templates, with one authoritative route registry and the existing fork identity/resource boundaries. No unresolved Git conflict remains. The candidate is prepared for explicitly blocked draft review while mandatory acceptance is incomplete.
+
+Shared pages and interactions follow master. The rdai default is 业务工作台 / 業務工作台 / Business Workspace; master conversation (`chat`), rdai Agent directory (`agent-workbench`) and SAP retain their own routes/content. User branding is preserved. Master owns the sidebar/menu arrangement and session panel; historical sidebar launch/recent-preview layout is not restored over it. The session-panel launch control has its own unique ID and team creation returns focus to the actual composer.
+
+Artifacts extend the existing conversation store with exact tenant/owner/file-source boundaries and an index retry watermark. Messages are committed once; retrying an index does not duplicate them. Personal menu JSON uses the existing private application directory and atomic replacement. Unknown legitimate menu entries survive as unavailable entries. IAM service-account keys retain one-time plaintext issuance and scoped API defaults/locks. Skills carry resource identity through creation, file listing and editing. Context usage reuses the source card/snapshot and disables compaction without a live authorized session. Direct TLS is applied before serving.
+
+Additional integration repairs include one database scheduler observer (no duplicate upstream polling), stale identity/session guards, model fallback grants bound to the resolved provider, delayed runtime config publication after atomic disk save, preservation of Agent visibility in the use-range catalog so the file panel opens the member's own writable directory, and the master header language control reflecting the browser-local preference without writing instance configuration.
+
+## Evidence and limits
+
+`results/` contains stable summaries, named-case XML/TAP reports, browser scenario results, build provenance and baseline comparison bindings. It contains no operator credentials or real business data. Browser fixtures use fresh IAM/conversation stores, synthetic users in two tenants, real HTTP routes, actual files and the rendered shipped shell. Notification tests include 205 rows, disconnect/reconnect, two windows and revoked-grant clicks. Synthetic model fixtures are not counted as a real-provider success.
+
+The broad backend run isolates test files in separate processes, with real `web` imported before collection. Some historical test modules install a fake `web` module at import time or replace global config; combining those modules in one process contaminates unrelated tests. File isolation retains every assertion and test ID. Native Chrome browser tests are enabled. The 12 Windows-only integration cases remain explicitly deferred under task 12, with their original skip reasons.
+
+Known baseline findings are retained, not disguised as a green suite:
+
+- `test_capability_matrix.py::DeclarationInvariantTests::test_every_declared_capability_has_a_spec` fails because the target already declares `desktop-remote-web-workbench` without a corresponding spec. The unchanged invariant and target source were verified in an isolated archive. This sync does not fabricate that spec or qualify the desktop slice.
+- Five old launch/sidebar frontend cases fail identically against the fixed target: two launch-caret cases in `test_agent_chat_launch_frontend.cjs` and three removed recent-sidebar cases in `test_workbench_menu_grant_frontend.cjs`. Those tests still read the historical monolith. Target blobs for the test inputs are hash-bound in `baseline-bindings.json`; source-to-candidate comparison adds no failure. Current master-layout launch, team persistence, history/navigation, permissions and file flows are covered by the actual loaded modules and browser gate. The historical failures remain visible for maintainer review; they are not reported as passing.
+
+- Three historical i18n snapshot/loader cases also fail on the fixed target. The current runtime coverage test now executes the actual loaded master table and rdai namespaces; 33 translation/appearance cases pass, and the browser checks Simplified Chinese, Traditional Chinese and English without global config writes. The legacy snapshot failures remain recorded in `results/legacy-i18n-baseline.json`.
+
+## Remaining blocker and delivery
+
+The operator's configured DeepSeek endpoint returned HTTP 401 with the existing credential. The configuration has not changed since that attempt. Real Web chat plus tool write/read, generated-file verification and real service-account model output (WB-03, the model-dependent portions of WB-05/WB-06, and WB-12) are not accepted. The key is neither logged nor copied into fixtures/evidence. Supply a valid authorized test connection in the existing local config before resuming those checks.
+
+The 2026-10-21 11:48 UTC retry of the configured provider's `/models` endpoint again returned HTTP 401 / `authentication_error`, before any model selection or tool execution. The configured value is not a masked value or environment reference, has no boundary whitespace, and has no `DEEPSEEK_API_KEY` environment override. This is a remaining external credential prerequisite, not a passing model acceptance result. See [real-provider-status.json](results/real-provider-status.json).
+
+The follow-up at 11:51 UTC again returned 401; no alternative model key is configured in the project's config or provider environment. The prepared local browser acceptance script now also observes actual SSE write/read tool IDs, successful outcomes in order, the read result, final assistant-only text and completed stream. Its syntax was checked; it has not passed a real-provider run. Review also corrected the upgrade note: `user` does not retain a conversation in this candidate; clients need explicit `conversation_id`, as required by the proposal and actual parser.
+
+Draft review may preserve the candidate merge and evidence on the independent sync branch before final acceptance. It does not authorize merging into `rdai` or a production rollout. Final acceptance, review, delivery ancestry and production smoke remain open; formal delivery tasks remain unchecked. Read-only Gitea inspection confirms no configured branch protection rules and queued target jobs without an assigned runner; task 9.4 / GAP-007 enforcement acceptance remains open. See [CI status](ci-status.md). Desktop source is integrated; types/build/package/native D1–D6 and platform installation tests remain deferred under task 12. The overlapping desktop enterprise-services change retains its 72 open tasks. This change must not be archived as fully accepted.

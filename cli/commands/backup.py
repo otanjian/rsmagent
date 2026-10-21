@@ -15,6 +15,7 @@ from typing import Iterable, Optional, Set
 
 import click
 
+from cli.config_json import merge_duplicate_keys
 from cli.utils import _ensure_project_on_path, get_project_root
 
 
@@ -117,7 +118,7 @@ def _read_config(data_root: Path) -> dict:
         return {}
     try:
         with path.open("r", encoding="utf-8-sig") as handle:
-            value = json.load(handle)
+            value = json.load(handle, object_pairs_hook=merge_duplicate_keys)
         return value if isinstance(value, dict) else {}
     except (OSError, ValueError):
         return {}
@@ -133,12 +134,12 @@ def _configured_workspaces(config: dict, fallback: Path):
         from agent.registry import AgentRegistry
 
         registry = AgentRegistry.from_config(config)
-        return registry.list(), True
+        return registry.list(), True, registry.default_agent_id
     from agent.registry import AgentProfile
 
     return [
         AgentProfile("default", "Default", str(Path(fallback).resolve()))
-    ], False
+    ], False, "default"
 
 
 def _legacy_user_data_path(data_root: Path, config: dict) -> Path:
@@ -201,7 +202,7 @@ def create_backup_archive(
         config = _team().resolve({**config, "agent_workspace": str(workspace)})
     legacy_path = _legacy_user_data_path(data_root, config)
     brand_export = _branding_export(data_root)
-    profiles, explicit_registry = _configured_workspaces(config, workspace)
+    profiles, explicit_registry, default_agent_id = _configured_workspaces(config, workspace)
     sources = {
         profile.id: Path(profile.workspace).expanduser().resolve()
         for profile in profiles
@@ -242,7 +243,7 @@ def create_backup_archive(
                 source
                 for profile, source, _, _, _ in workspace_entries
                 if profile.id
-                == (config.get("default_agent_id") if explicit_registry else "default")
+                == default_agent_id
             )
         ),
         "agents": [
@@ -394,7 +395,8 @@ def _validate_archive(archive: zipfile.ZipFile) -> dict:
     return manifest
 
 
-def _extract_validated(archive: zipfile.ZipFile, destination: Path) -> None:
+def _extract_validated(archive: zipfile.ZipFile, destination: Path) -> dict:
+    file_modes = {}
     for info in archive.infolist():
         target = destination.joinpath(*PurePosixPath(info.filename).parts)
         if info.is_dir():
@@ -403,14 +405,27 @@ def _extract_validated(archive: zipfile.ZipFile, destination: Path) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         with archive.open(info, "r") as source, target.open("wb") as output:
             shutil.copyfileobj(source, output)
+        # Keep staging files readable for config parsing and copying. Apply
+        # archived rwx bits only when publishing the destination's sibling.
+        # DOS archives may have no Unix mode; keep their existing defaults.
+        mode = (info.external_attr >> 16) & 0o777
+        if os.name != "nt" and info.create_system == 3 and mode:
+            file_modes[target] = mode
+        else:
+            file_modes.pop(target, None)
+    return file_modes
 
 
-def _atomic_copy(source: Path, destination: Path, private: bool = False) -> None:
+def _atomic_copy(
+    source: Path, destination: Path, private: bool = False, mode: Optional[int] = None
+) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(prefix=destination.name + ".", dir=str(destination.parent))
     os.close(fd)
     try:
         shutil.copy2(str(source), temp_name)
+        if mode is not None and not private:
+            os.chmod(temp_name, mode)
         os.replace(temp_name, str(destination))
         if private:
             try:
@@ -500,13 +515,13 @@ def restore_backup_archive(
     try:
         with zipfile.ZipFile(str(archive_path), "r") as archive:
             manifest = _validate_archive(archive)
-            _extract_validated(archive, temp_dir)
+            file_modes = _extract_validated(archive, temp_dir)
 
         archived_config_path = temp_dir / "data" / "config.json"
         archived_config = {}
         if archived_config_path.is_file():
             with archived_config_path.open("r", encoding="utf-8-sig") as handle:
-                value = json.load(handle)
+                value = json.load(handle, object_pairs_hook=merge_duplicate_keys)
             if not isinstance(value, dict):
                 raise ValueError("archived config.json must contain an object")
             archived_config = value
@@ -577,7 +592,7 @@ def restore_backup_archive(
                             raise ValueError(
                                 f"unsafe Agent workspace destination: {agent_id}/{relative}"
                             )
-                        _atomic_copy(source, destination)
+                        _atomic_copy(source, destination, mode=file_modes.get(source))
                         restored_files += 1
                         agent_files += 1
                 restored_agents.append(
@@ -591,7 +606,7 @@ def restore_backup_archive(
                     destination = target_workspace / relative
                     if not _is_within(destination, target_workspace):
                         raise ValueError(f"unsafe workspace destination: {relative}")
-                    _atomic_copy(source, destination)
+                    _atomic_copy(source, destination, mode=file_modes.get(source))
                     restored_files += 1
 
         # Restore the instance Web branding segment, if the archive carries one.

@@ -392,6 +392,31 @@ class Agent:
             roots.append(self.workspace_dir)
         return roots
 
+    def protected_paths(self) -> list:
+        """Files that decide what the Agent may run or reach: MCP servers,
+        session permissions, project directories, config and credentials.
+
+        Most sit inside the writable roots, so workspace-write refuses them
+        explicitly; otherwise a session could grant itself more than its mode.
+        """
+        paths = []
+        try:
+            from config import get_data_root
+            paths.append(os.path.join(get_data_root(), "config.json"))
+        except Exception:
+            pass
+        bases = {self.workspace_dir} if self.workspace_dir else set()
+        try:
+            from common.state_dir import shared_root
+            from agent.workspace import project_store, session_prefs
+            bases.add(str(shared_root()))
+            paths += [session_prefs._store_file(), project_store._store_file()]
+        except Exception:
+            pass
+        for base in bases:
+            paths += [os.path.join(base, "mcp.json"), os.path.join(base, ".env")]
+        return paths
+
     def get_skills_prompt(self, skill_filter=None) -> str:
         """
         Get the skills prompt to append to system prompt.
@@ -970,7 +995,7 @@ class Agent:
 
         # Get max_context_turns from config
         from config import conf
-        max_context_turns = conf().get("agent_max_context_turns", 20)
+        max_context_turns = conf().get("agent_max_context_turns", 30)
         
         # Create stream executor with copied message history
         executor = AgentStreamExecutor(

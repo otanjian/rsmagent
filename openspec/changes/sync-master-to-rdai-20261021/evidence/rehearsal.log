@@ -1,0 +1,816 @@
+== fetch upstream/master
+== merge attempt upstream/master into codex/sync-master-to-rdai-20261021-web
+CONFLICT (modify/delete): README.md deleted in HEAD and modified in upstream/master.  Version upstream/master of README.md left in tree.
+Auto-merging agent/admin.py
+CONFLICT (content): Merge conflict in agent/admin.py
+Auto-merging agent/evolution/backup.py
+CONFLICT (content): Merge conflict in agent/evolution/backup.py
+Auto-merging agent/evolution/executor.py
+Auto-merging agent/knowledge/service.py
+CONFLICT (content): Merge conflict in agent/knowledge/service.py
+Auto-merging agent/memory/config.py
+Auto-merging agent/memory/conversation_store.py
+CONFLICT (content): Merge conflict in agent/memory/conversation_store.py
+Auto-merging agent/memory/manager.py
+CONFLICT (content): Merge conflict in agent/memory/manager.py
+Auto-merging agent/memory/service.py
+CONFLICT (content): Merge conflict in agent/memory/service.py
+Auto-merging agent/memory/storage.py
+CONFLICT (content): Merge conflict in agent/memory/storage.py
+Auto-merging agent/memory/summarizer.py
+CONFLICT (content): Merge conflict in agent/memory/summarizer.py
+Auto-merging agent/memory/vector_backend.py
+Auto-merging agent/multiagent/inbound.py
+Auto-merging agent/permission/policy.py
+CONFLICT (content): Merge conflict in agent/permission/policy.py
+Auto-merging agent/prompt/builder.py
+Auto-merging agent/prompt/workspace.py
+Auto-merging agent/protocol/agent.py
+CONFLICT (content): Merge conflict in agent/protocol/agent.py
+Auto-merging agent/protocol/agent_stream.py
+CONFLICT (content): Merge conflict in agent/protocol/agent_stream.py
+Auto-merging agent/protocol/artifact.py
+CONFLICT (content): Merge conflict in agent/protocol/artifact.py
+Auto-merging agent/protocol/message_utils.py
+Auto-merging agent/skills/loader.py
+Auto-merging agent/skills/manager.py
+Auto-merging agent/skills/service.py
+CONFLICT (content): Merge conflict in agent/skills/service.py
+Auto-merging agent/subagent/templates.py
+Auto-merging agent/tools/base_tool.py
+Auto-merging agent/tools/bash/background.py
+Auto-merging agent/tools/bash/bash.py
+Auto-merging agent/tools/browser/browser_tool.py
+Auto-merging agent/tools/edit/edit.py
+Auto-merging agent/tools/ls/ls.py
+Auto-merging agent/tools/mcp/mcp_client.py
+CONFLICT (content): Merge conflict in agent/tools/mcp/mcp_client.py
+Auto-merging agent/tools/mcp/mcp_oauth.py
+Auto-merging agent/tools/memory/memory_get.py
+CONFLICT (content): Merge conflict in agent/tools/memory/memory_get.py
+Auto-merging agent/tools/read/read.py
+CONFLICT (content): Merge conflict in agent/tools/read/read.py
+Auto-merging agent/tools/scheduler/integration.py
+Auto-merging agent/tools/scheduler/recipient_store.py
+Auto-merging agent/tools/scheduler/scheduler_tool.py
+CONFLICT (content): Merge conflict in agent/tools/scheduler/scheduler_tool.py
+Auto-merging agent/tools/scheduler/task_store.py
+CONFLICT (content): Merge conflict in agent/tools/scheduler/task_store.py
+Auto-merging agent/tools/search_files/search_files.py
+CONFLICT (content): Merge conflict in agent/tools/search_files/search_files.py
+Auto-merging agent/tools/send/send.py
+Auto-merging agent/tools/tool_manager.py
+Auto-merging agent/tools/web_fetch/web_fetch.py
+CONFLICT (content): Merge conflict in agent/tools/web_fetch/web_fetch.py
+Auto-merging agent/tools/web_search/web_search.py
+Auto-merging agent/tools/write/write.py
+Auto-merging agent/workspace/project_store.py
+CONFLICT (content): Merge conflict in agent/workspace/project_store.py
+Auto-merging agent/workspace/service.py
+Auto-merging agent/workspace/session_prefs.py
+CONFLICT (content): Merge conflict in agent/workspace/session_prefs.py
+Auto-merging bridge/agent_bridge.py
+CONFLICT (content): Merge conflict in bridge/agent_bridge.py
+Auto-merging bridge/agent_initializer.py
+CONFLICT (content): Merge conflict in bridge/agent_initializer.py
+Auto-merging channel/chat_channel.py
+Auto-merging channel/dingtalk/dingtalk_channel.py
+Auto-merging channel/discord/discord_channel.py
+Auto-merging channel/feishu/feishu_channel.py
+Auto-merging channel/feishu/feishu_message.py
+Auto-merging channel/qq/qq_channel.py
+Auto-merging channel/slack/slack_channel.py
+Auto-merging channel/telegram/telegram_channel.py
+CONFLICT (modify/delete): channel/web/README.md deleted in HEAD and modified in upstream/master.  Version upstream/master of channel/web/README.md left in tree.
+Auto-merging channel/web/api/agents.py
+Auto-merging channel/web/chat.html
+CONFLICT (content): Merge conflict in channel/web/chat.html
+Auto-merging channel/web/static/css/chat.css
+Auto-merging channel/web/static/css/workspace.css
+Auto-merging channel/web/static/js/chat/timeline.js
+Auto-merging channel/web/static/js/core/i18n.js
+Auto-merging channel/web/static/js/workspace.js
+CONFLICT (content): Merge conflict in channel/web/static/js/workspace.js
+CONFLICT (modify/delete): channel/web/static/vendor/README.md deleted in HEAD and modified in upstream/master.  Version upstream/master of channel/web/static/vendor/README.md left in tree.
+Auto-merging channel/web/templates/layout/sidebar.html
+Auto-merging channel/web/templates/views/chat.html
+CONFLICT (content): Merge conflict in channel/web/templates/views/chat.html
+Auto-merging channel/web/templates/views/config.html
+Auto-merging channel/web/templates/views/skills.html
+Auto-merging channel/web/web_channel.py
+CONFLICT (content): Merge conflict in channel/web/web_channel.py
+CONFLICT (modify/delete): channel/wechat_kf/README.md deleted in HEAD and modified in upstream/master.  Version upstream/master of channel/wechat_kf/README.md left in tree.
+Auto-merging channel/wechat_kf/wechat_kf_channel.py
+Auto-merging channel/wechatcom/wechatcomapp_channel.py
+Auto-merging channel/wechatmp/active_reply.py
+Auto-merging channel/wechatmp/passive_reply.py
+Auto-merging channel/wechatmp/wechatmp_channel.py
+Auto-merging channel/wecom_bot/wecom_bot_channel.py
+CONFLICT (content): Merge conflict in channel/wecom_bot/wecom_bot_channel.py
+Auto-merging channel/weixin/weixin_channel.py
+CONFLICT (content): Merge conflict in channel/weixin/weixin_channel.py
+Auto-merging cli/commands/backup.py
+CONFLICT (content): Merge conflict in cli/commands/backup.py
+Auto-merging cli/commands/install.py
+Auto-merging cli/commands/knowledge.py
+Auto-merging cli/commands/process.py
+Auto-merging cli/commands/skill.py
+CONFLICT (content): Merge conflict in cli/commands/skill.py
+Auto-merging cli/utils.py
+CONFLICT (content): Merge conflict in cli/utils.py
+Auto-merging common/cloud_client.py
+Auto-merging common/log.py
+CONFLICT (content): Merge conflict in common/log.py
+Auto-merging common/state_dir.py
+CONFLICT (content): Merge conflict in common/state_dir.py
+Auto-merging config-template.json
+CONFLICT (content): Merge conflict in config-template.json
+Auto-merging config.py
+CONFLICT (content): Merge conflict in config.py
+Auto-merging desktop/package.json
+CONFLICT (content): Merge conflict in desktop/package.json
+Auto-merging desktop/src/main/index.ts
+CONFLICT (content): Merge conflict in desktop/src/main/index.ts
+Auto-merging desktop/src/main/preload.ts
+Auto-merging desktop/src/main/updater.ts
+Auto-merging desktop/src/renderer/index.html
+CONFLICT (content): Merge conflict in desktop/src/renderer/index.html
+Auto-merging desktop/src/renderer/src/App.tsx
+CONFLICT (content): Merge conflict in desktop/src/renderer/src/App.tsx
+Auto-merging desktop/src/renderer/src/api/client.ts
+Auto-merging desktop/src/renderer/src/components/ChatInput.tsx
+Auto-merging desktop/src/renderer/src/components/MessageBubble.tsx
+Auto-merging desktop/src/renderer/src/components/UpdateBanner.tsx
+Auto-merging desktop/src/renderer/src/i18n.ts
+CONFLICT (content): Merge conflict in desktop/src/renderer/src/i18n.ts
+Auto-merging desktop/src/renderer/src/index.css
+CONFLICT (content): Merge conflict in desktop/src/renderer/src/index.css
+Auto-merging desktop/src/renderer/src/layout/NavRail.tsx
+CONFLICT (content): Merge conflict in desktop/src/renderer/src/layout/NavRail.tsx
+Auto-merging desktop/src/renderer/src/pages/ChatPage.tsx
+CONFLICT (content): Merge conflict in desktop/src/renderer/src/pages/ChatPage.tsx
+Auto-merging desktop/src/renderer/src/pages/SkillsPage.tsx
+CONFLICT (content): Merge conflict in desktop/src/renderer/src/pages/SkillsPage.tsx
+Auto-merging desktop/src/renderer/src/pages/settings/BasicSettings.tsx
+Auto-merging desktop/src/renderer/src/store/agentStore.ts
+CONFLICT (content): Merge conflict in desktop/src/renderer/src/store/agentStore.ts
+Auto-merging desktop/src/renderer/src/store/chatStore.ts
+Auto-merging desktop/src/renderer/src/types.ts
+CONFLICT (content): Merge conflict in desktop/src/renderer/src/types.ts
+Auto-merging docker/docker-compose.yml
+CONFLICT (content): Merge conflict in docker/docker-compose.yml
+Auto-merging docs/channels/dingtalk.mdx
+CONFLICT (content): Merge conflict in docs/channels/dingtalk.mdx
+Auto-merging docs/channels/discord.mdx
+CONFLICT (content): Merge conflict in docs/channels/discord.mdx
+Auto-merging docs/channels/feishu.mdx
+CONFLICT (content): Merge conflict in docs/channels/feishu.mdx
+Auto-merging docs/channels/index.mdx
+CONFLICT (content): Merge conflict in docs/channels/index.mdx
+Auto-merging docs/channels/qq.mdx
+CONFLICT (content): Merge conflict in docs/channels/qq.mdx
+Auto-merging docs/channels/slack.mdx
+CONFLICT (content): Merge conflict in docs/channels/slack.mdx
+Auto-merging docs/channels/telegram.mdx
+CONFLICT (content): Merge conflict in docs/channels/telegram.mdx
+Auto-merging docs/channels/web.mdx
+CONFLICT (content): Merge conflict in docs/channels/web.mdx
+Auto-merging docs/channels/wechat-kf.mdx
+CONFLICT (content): Merge conflict in docs/channels/wechat-kf.mdx
+Auto-merging docs/channels/wechatmp.mdx
+CONFLICT (content): Merge conflict in docs/channels/wechatmp.mdx
+Auto-merging docs/channels/wecom-bot.mdx
+CONFLICT (content): Merge conflict in docs/channels/wecom-bot.mdx
+Auto-merging docs/channels/wecom.mdx
+CONFLICT (content): Merge conflict in docs/channels/wecom.mdx
+Auto-merging docs/channels/weixin.mdx
+CONFLICT (content): Merge conflict in docs/channels/weixin.mdx
+Auto-merging docs/cli/backup.mdx
+CONFLICT (content): Merge conflict in docs/cli/backup.mdx
+Auto-merging docs/cli/general.mdx
+Auto-merging docs/cli/index.mdx
+CONFLICT (content): Merge conflict in docs/cli/index.mdx
+Auto-merging docs/cli/process.mdx
+CONFLICT (content): Merge conflict in docs/cli/process.mdx
+Auto-merging docs/cli/skill.mdx
+Auto-merging docs/docs.json
+Auto-merging docs/guide/desktop.mdx
+CONFLICT (content): Merge conflict in docs/guide/desktop.mdx
+Auto-merging docs/guide/manual-install.mdx
+CONFLICT (content): Merge conflict in docs/guide/manual-install.mdx
+Auto-merging docs/guide/quick-start.mdx
+CONFLICT (content): Merge conflict in docs/guide/quick-start.mdx
+Auto-merging docs/guide/upgrade.mdx
+CONFLICT (content): Merge conflict in docs/guide/upgrade.mdx
+Auto-merging docs/intro/architecture.mdx
+CONFLICT (content): Merge conflict in docs/intro/architecture.mdx
+Auto-merging docs/intro/features.mdx
+CONFLICT (content): Merge conflict in docs/intro/features.mdx
+Auto-merging docs/intro/index.mdx
+CONFLICT (content): Merge conflict in docs/intro/index.mdx
+CONFLICT (modify/delete): docs/ja/README.md deleted in HEAD and modified in upstream/master.  Version upstream/master of docs/ja/README.md left in tree.
+Auto-merging docs/ja/channels/dingtalk.mdx
+CONFLICT (content): Merge conflict in docs/ja/channels/dingtalk.mdx
+Auto-merging docs/ja/channels/discord.mdx
+CONFLICT (content): Merge conflict in docs/ja/channels/discord.mdx
+Auto-merging docs/ja/channels/feishu.mdx
+CONFLICT (content): Merge conflict in docs/ja/channels/feishu.mdx
+Auto-merging docs/ja/channels/index.mdx
+CONFLICT (content): Merge conflict in docs/ja/channels/index.mdx
+Auto-merging docs/ja/channels/qq.mdx
+CONFLICT (content): Merge conflict in docs/ja/channels/qq.mdx
+Auto-merging docs/ja/channels/slack.mdx
+CONFLICT (content): Merge conflict in docs/ja/channels/slack.mdx
+Auto-merging docs/ja/channels/telegram.mdx
+CONFLICT (content): Merge conflict in docs/ja/channels/telegram.mdx
+Auto-merging docs/ja/channels/web.mdx
+CONFLICT (content): Merge conflict in docs/ja/channels/web.mdx
+Auto-merging docs/ja/channels/wechat-kf.mdx
+CONFLICT (content): Merge conflict in docs/ja/channels/wechat-kf.mdx
+Auto-merging docs/ja/channels/wechatmp.mdx
+CONFLICT (content): Merge conflict in docs/ja/channels/wechatmp.mdx
+Auto-merging docs/ja/channels/wecom.mdx
+CONFLICT (content): Merge conflict in docs/ja/channels/wecom.mdx
+Auto-merging docs/ja/channels/weixin.mdx
+CONFLICT (content): Merge conflict in docs/ja/channels/weixin.mdx
+Auto-merging docs/ja/cli/general.mdx
+Auto-merging docs/ja/cli/index.mdx
+CONFLICT (content): Merge conflict in docs/ja/cli/index.mdx
+Auto-merging docs/ja/cli/process.mdx
+CONFLICT (content): Merge conflict in docs/ja/cli/process.mdx
+Auto-merging docs/ja/cli/skill.mdx
+Auto-merging docs/ja/guide/desktop.mdx
+CONFLICT (content): Merge conflict in docs/ja/guide/desktop.mdx
+Auto-merging docs/ja/guide/manual-install.mdx
+CONFLICT (content): Merge conflict in docs/ja/guide/manual-install.mdx
+Auto-merging docs/ja/guide/quick-start.mdx
+CONFLICT (content): Merge conflict in docs/ja/guide/quick-start.mdx
+Auto-merging docs/ja/guide/upgrade.mdx
+CONFLICT (content): Merge conflict in docs/ja/guide/upgrade.mdx
+Auto-merging docs/ja/intro/architecture.mdx
+CONFLICT (content): Merge conflict in docs/ja/intro/architecture.mdx
+Auto-merging docs/ja/intro/index.mdx
+CONFLICT (content): Merge conflict in docs/ja/intro/index.mdx
+Auto-merging docs/ja/knowledge/index.mdx
+CONFLICT (content): Merge conflict in docs/ja/knowledge/index.mdx
+Auto-merging docs/ja/memory/deep-dream.mdx
+Auto-merging docs/ja/memory/index.mdx
+CONFLICT (content): Merge conflict in docs/ja/memory/index.mdx
+Auto-merging docs/ja/models/coding-plan.mdx
+Auto-merging docs/ja/models/deepseek.mdx
+Auto-merging docs/ja/models/index.mdx
+CONFLICT (content): Merge conflict in docs/ja/models/index.mdx
+Auto-merging docs/ja/models/mimo.mdx
+Auto-merging docs/ja/multi-agent/team.mdx
+Auto-merging docs/ja/releases/overview.mdx
+CONFLICT (content): Merge conflict in docs/ja/releases/overview.mdx
+Auto-merging docs/ja/releases/v2.0.0.mdx
+CONFLICT (content): Merge conflict in docs/ja/releases/v2.0.0.mdx
+Auto-merging docs/ja/releases/v2.0.1.mdx
+CONFLICT (content): Merge conflict in docs/ja/releases/v2.0.1.mdx
+Auto-merging docs/ja/releases/v2.0.2.mdx
+CONFLICT (content): Merge conflict in docs/ja/releases/v2.0.2.mdx
+Auto-merging docs/ja/releases/v2.0.3.mdx
+CONFLICT (content): Merge conflict in docs/ja/releases/v2.0.3.mdx
+Auto-merging docs/ja/releases/v2.0.4.mdx
+CONFLICT (content): Merge conflict in docs/ja/releases/v2.0.4.mdx
+Auto-merging docs/ja/releases/v2.0.5.mdx
+CONFLICT (content): Merge conflict in docs/ja/releases/v2.0.5.mdx
+Auto-merging docs/ja/releases/v2.0.8.mdx
+CONFLICT (content): Merge conflict in docs/ja/releases/v2.0.8.mdx
+Auto-merging docs/ja/releases/v2.1.0.mdx
+CONFLICT (content): Merge conflict in docs/ja/releases/v2.1.0.mdx
+Auto-merging docs/ja/releases/v2.1.3.mdx
+CONFLICT (content): Merge conflict in docs/ja/releases/v2.1.3.mdx
+Auto-merging docs/ja/skills/create.mdx
+Auto-merging docs/ja/skills/hub.mdx
+Auto-merging docs/ja/skills/index.mdx
+CONFLICT (content): Merge conflict in docs/ja/skills/index.mdx
+Auto-merging docs/ja/skills/install.mdx
+Auto-merging docs/ja/tools/index.mdx
+CONFLICT (content): Merge conflict in docs/ja/tools/index.mdx
+Auto-merging docs/ja/tools/mcp.mdx
+Auto-merging docs/knowledge/index.mdx
+CONFLICT (content): Merge conflict in docs/knowledge/index.mdx
+Auto-merging docs/memory/deep-dream.mdx
+Auto-merging docs/memory/index.mdx
+CONFLICT (content): Merge conflict in docs/memory/index.mdx
+Auto-merging docs/memory/self-evolution.mdx
+Auto-merging docs/models/coding-plan.mdx
+Auto-merging docs/models/deepseek.mdx
+Auto-merging docs/models/index.mdx
+CONFLICT (content): Merge conflict in docs/models/index.mdx
+Auto-merging docs/models/mimo.mdx
+Auto-merging docs/multi-agent/team.mdx
+Auto-merging docs/releases/overview.mdx
+CONFLICT (content): Merge conflict in docs/releases/overview.mdx
+Auto-merging docs/releases/v2.0.0.mdx
+CONFLICT (content): Merge conflict in docs/releases/v2.0.0.mdx
+Auto-merging docs/releases/v2.0.1.mdx
+CONFLICT (content): Merge conflict in docs/releases/v2.0.1.mdx
+Auto-merging docs/releases/v2.0.2.mdx
+CONFLICT (content): Merge conflict in docs/releases/v2.0.2.mdx
+Auto-merging docs/releases/v2.0.3.mdx
+CONFLICT (content): Merge conflict in docs/releases/v2.0.3.mdx
+Auto-merging docs/releases/v2.0.4.mdx
+CONFLICT (content): Merge conflict in docs/releases/v2.0.4.mdx
+Auto-merging docs/releases/v2.0.5.mdx
+CONFLICT (content): Merge conflict in docs/releases/v2.0.5.mdx
+Auto-merging docs/releases/v2.1.3.mdx
+CONFLICT (content): Merge conflict in docs/releases/v2.1.3.mdx
+Auto-merging docs/skills/create.mdx
+Auto-merging docs/skills/hub.mdx
+Auto-merging docs/skills/index.mdx
+CONFLICT (content): Merge conflict in docs/skills/index.mdx
+Auto-merging docs/skills/install.mdx
+Auto-merging docs/tools/index.mdx
+CONFLICT (content): Merge conflict in docs/tools/index.mdx
+Auto-merging docs/tools/mcp.mdx
+Auto-merging docs/tools/scheduler.mdx
+CONFLICT (modify/delete): docs/zh/README-Hant.md deleted in HEAD and modified in upstream/master.  Version upstream/master of docs/zh/README-Hant.md left in tree.
+CONFLICT (modify/delete): docs/zh/README.md deleted in HEAD and modified in upstream/master.  Version upstream/master of docs/zh/README.md left in tree.
+Auto-merging docs/zh/channels/dingtalk.mdx
+CONFLICT (content): Merge conflict in docs/zh/channels/dingtalk.mdx
+Auto-merging docs/zh/channels/discord.mdx
+CONFLICT (content): Merge conflict in docs/zh/channels/discord.mdx
+Auto-merging docs/zh/channels/feishu.mdx
+CONFLICT (content): Merge conflict in docs/zh/channels/feishu.mdx
+Auto-merging docs/zh/channels/index.mdx
+CONFLICT (content): Merge conflict in docs/zh/channels/index.mdx
+Auto-merging docs/zh/channels/qq.mdx
+CONFLICT (content): Merge conflict in docs/zh/channels/qq.mdx
+Auto-merging docs/zh/channels/slack.mdx
+CONFLICT (content): Merge conflict in docs/zh/channels/slack.mdx
+Auto-merging docs/zh/channels/telegram.mdx
+CONFLICT (content): Merge conflict in docs/zh/channels/telegram.mdx
+Auto-merging docs/zh/channels/web.mdx
+CONFLICT (content): Merge conflict in docs/zh/channels/web.mdx
+Auto-merging docs/zh/channels/wechat-kf.mdx
+CONFLICT (content): Merge conflict in docs/zh/channels/wechat-kf.mdx
+Auto-merging docs/zh/channels/wechatmp.mdx
+CONFLICT (content): Merge conflict in docs/zh/channels/wechatmp.mdx
+Auto-merging docs/zh/channels/wecom-bot.mdx
+CONFLICT (content): Merge conflict in docs/zh/channels/wecom-bot.mdx
+Auto-merging docs/zh/channels/wecom.mdx
+CONFLICT (content): Merge conflict in docs/zh/channels/wecom.mdx
+Auto-merging docs/zh/channels/weixin.mdx
+CONFLICT (content): Merge conflict in docs/zh/channels/weixin.mdx
+Auto-merging docs/zh/cli/backup.mdx
+CONFLICT (content): Merge conflict in docs/zh/cli/backup.mdx
+Auto-merging docs/zh/cli/general.mdx
+Auto-merging docs/zh/cli/index.mdx
+CONFLICT (content): Merge conflict in docs/zh/cli/index.mdx
+Auto-merging docs/zh/cli/process.mdx
+CONFLICT (content): Merge conflict in docs/zh/cli/process.mdx
+Auto-merging docs/zh/cli/skill.mdx
+Auto-merging docs/zh/guide/desktop.mdx
+CONFLICT (content): Merge conflict in docs/zh/guide/desktop.mdx
+Auto-merging docs/zh/guide/manual-install.mdx
+CONFLICT (content): Merge conflict in docs/zh/guide/manual-install.mdx
+Auto-merging docs/zh/guide/quick-start.mdx
+CONFLICT (content): Merge conflict in docs/zh/guide/quick-start.mdx
+Auto-merging docs/zh/guide/upgrade.mdx
+CONFLICT (content): Merge conflict in docs/zh/guide/upgrade.mdx
+Auto-merging docs/zh/intro/architecture.mdx
+CONFLICT (content): Merge conflict in docs/zh/intro/architecture.mdx
+Auto-merging docs/zh/intro/features.mdx
+CONFLICT (content): Merge conflict in docs/zh/intro/features.mdx
+Auto-merging docs/zh/intro/index.mdx
+CONFLICT (content): Merge conflict in docs/zh/intro/index.mdx
+Auto-merging docs/zh/knowledge/index.mdx
+CONFLICT (content): Merge conflict in docs/zh/knowledge/index.mdx
+Auto-merging docs/zh/memory/deep-dream.mdx
+Auto-merging docs/zh/memory/index.mdx
+CONFLICT (content): Merge conflict in docs/zh/memory/index.mdx
+Auto-merging docs/zh/memory/self-evolution.mdx
+Auto-merging docs/zh/models/coding-plan.mdx
+Auto-merging docs/zh/models/deepseek.mdx
+Auto-merging docs/zh/models/index.mdx
+CONFLICT (content): Merge conflict in docs/zh/models/index.mdx
+Auto-merging docs/zh/models/mimo.mdx
+Auto-merging docs/zh/multi-agent/team.mdx
+Auto-merging docs/zh/releases/overview.mdx
+CONFLICT (content): Merge conflict in docs/zh/releases/overview.mdx
+Auto-merging docs/zh/releases/v2.0.0.mdx
+CONFLICT (content): Merge conflict in docs/zh/releases/v2.0.0.mdx
+Auto-merging docs/zh/releases/v2.0.1.mdx
+CONFLICT (content): Merge conflict in docs/zh/releases/v2.0.1.mdx
+Auto-merging docs/zh/releases/v2.0.2.mdx
+CONFLICT (content): Merge conflict in docs/zh/releases/v2.0.2.mdx
+Auto-merging docs/zh/releases/v2.0.3.mdx
+CONFLICT (content): Merge conflict in docs/zh/releases/v2.0.3.mdx
+Auto-merging docs/zh/releases/v2.0.4.mdx
+CONFLICT (content): Merge conflict in docs/zh/releases/v2.0.4.mdx
+Auto-merging docs/zh/releases/v2.0.5.mdx
+CONFLICT (content): Merge conflict in docs/zh/releases/v2.0.5.mdx
+Auto-merging docs/zh/releases/v2.0.6.mdx
+CONFLICT (content): Merge conflict in docs/zh/releases/v2.0.6.mdx
+Auto-merging docs/zh/releases/v2.0.7.mdx
+CONFLICT (content): Merge conflict in docs/zh/releases/v2.0.7.mdx
+Auto-merging docs/zh/releases/v2.0.9.mdx
+CONFLICT (content): Merge conflict in docs/zh/releases/v2.0.9.mdx
+Auto-merging docs/zh/releases/v2.1.1.mdx
+CONFLICT (content): Merge conflict in docs/zh/releases/v2.1.1.mdx
+Auto-merging docs/zh/releases/v2.1.5.mdx
+CONFLICT (content): Merge conflict in docs/zh/releases/v2.1.5.mdx
+Auto-merging docs/zh/releases/v2.1.6.mdx
+CONFLICT (content): Merge conflict in docs/zh/releases/v2.1.6.mdx
+Auto-merging docs/zh/releases/v2.1.7.mdx
+CONFLICT (content): Merge conflict in docs/zh/releases/v2.1.7.mdx
+Auto-merging docs/zh/skills/create.mdx
+Auto-merging docs/zh/skills/hub.mdx
+Auto-merging docs/zh/skills/index.mdx
+CONFLICT (content): Merge conflict in docs/zh/skills/index.mdx
+Auto-merging docs/zh/skills/install.mdx
+Auto-merging docs/zh/tools/index.mdx
+CONFLICT (content): Merge conflict in docs/zh/tools/index.mdx
+Auto-merging docs/zh/tools/mcp.mdx
+Auto-merging docs/zh/tools/scheduler.mdx
+Auto-merging models/custom_provider.py
+Auto-merging models/deepseek/deepseek_bot.py
+Auto-merging models/linkai/link_ai_bot.py
+Auto-merging models/openai/openai_http_client.py
+Auto-merging plugins/cow_cli/cow_cli.py
+CONFLICT (content): Merge conflict in plugins/cow_cli/cow_cli.py
+CONFLICT (modify/delete): plugins/linkai/README.md deleted in HEAD and modified in upstream/master.  Version upstream/master of plugins/linkai/README.md left in tree.
+Auto-merging run.sh
+Auto-merging scripts/run.ps1
+Auto-merging tests/test_chat_model_fallback.py
+Auto-merging tests/test_cli_backup.py
+CONFLICT (content): Merge conflict in tests/test_cli_backup.py
+Auto-merging tests/test_dingtalk_group_context_guard.py
+Auto-merging tests/test_doc_edit.py
+CONFLICT (content): Merge conflict in tests/test_doc_edit.py
+Auto-merging tests/test_knowledge_web.py
+Auto-merging tests/test_model_catalog_api.py
+Auto-merging tests/test_openai_chat_api.py
+CONFLICT (content): Merge conflict in tests/test_openai_chat_api.py
+Auto-merging tests/test_scheduler_web_update.py
+CONFLICT (content): Merge conflict in tests/test_scheduler_web_update.py
+Auto-merging tests/test_web_console_update.py
+Auto-merging tests/test_web_multipart_agent_scope.py
+Auto-merging tests/test_web_search.py
+Auto-merging tests/test_workspace_edit.py
+Automatic merge failed; fix conflicts and then commit the result.
+合并冲突：175 个文件
+  [已知冲突] README.md  keep-deletion
+  [已知冲突] agent/admin.py  merge
+  [新增冲突] agent/evolution/backup.py
+  [新增冲突] agent/knowledge/service.py
+  [已知冲突] agent/memory/conversation_store.py  seam:conversation-store
+  [新增冲突] agent/memory/manager.py
+  [新增冲突] agent/memory/service.py
+  [新增冲突] agent/memory/storage.py
+  [新增冲突] agent/memory/summarizer.py
+  [新增冲突] agent/permission/policy.py
+  [新增冲突] agent/protocol/agent.py
+  [已知冲突] agent/protocol/agent_stream.py  merge
+  [新增冲突] agent/protocol/artifact.py
+  [新增冲突] agent/skills/service.py
+  [新增冲突] agent/tools/mcp/mcp_client.py
+  [新增冲突] agent/tools/memory/memory_get.py
+  [新增冲突] agent/tools/read/read.py
+  [新增冲突] agent/tools/scheduler/scheduler_tool.py
+  [已知冲突] agent/tools/scheduler/task_store.py  merge
+  [新增冲突] agent/tools/search_files/search_files.py
+  [新增冲突] agent/tools/web_fetch/web_fetch.py
+  [新增冲突] agent/workspace/project_store.py
+  [新增冲突] agent/workspace/session_prefs.py
+  [新增冲突] bridge/agent_bridge.py
+  [新增冲突] bridge/agent_initializer.py
+  [已知冲突] channel/web/README.md  keep-deletion
+  [已知冲突] channel/web/chat.html  keep-fork
+  [新增冲突] channel/web/static/js/workspace.js
+  [已知冲突] channel/web/static/vendor/README.md  keep-deletion
+  [新增冲突] channel/web/templates/views/chat.html
+  [已知冲突] channel/web/web_channel.py  keep-fork
+  [新增冲突] channel/wechat_kf/README.md
+  [新增冲突] channel/wecom_bot/wecom_bot_channel.py
+  [新增冲突] channel/weixin/weixin_channel.py
+  [新增冲突] cli/commands/backup.py
+  [新增冲突] cli/commands/skill.py
+  [新增冲突] cli/utils.py
+  [新增冲突] common/log.py
+  [新增冲突] common/state_dir.py
+  [新增冲突] config-template.json
+  [已知冲突] config.py  merge
+  [已知冲突] desktop/package.json  merge
+  [新增冲突] desktop/src/main/index.ts
+  [新增冲突] desktop/src/renderer/index.html
+  [新增冲突] desktop/src/renderer/src/App.tsx
+  [新增冲突] desktop/src/renderer/src/i18n.ts
+  [新增冲突] desktop/src/renderer/src/index.css
+  [新增冲突] desktop/src/renderer/src/layout/NavRail.tsx
+  [新增冲突] desktop/src/renderer/src/pages/ChatPage.tsx
+  [新增冲突] desktop/src/renderer/src/pages/SkillsPage.tsx
+  [新增冲突] desktop/src/renderer/src/store/agentStore.ts
+  [已知冲突] desktop/src/renderer/src/types.ts  merge
+  [新增冲突] docker/docker-compose.yml
+  [新增冲突] docs/channels/dingtalk.mdx
+  [新增冲突] docs/channels/discord.mdx
+  [新增冲突] docs/channels/feishu.mdx
+  [新增冲突] docs/channels/index.mdx
+  [新增冲突] docs/channels/qq.mdx
+  [新增冲突] docs/channels/slack.mdx
+  [新增冲突] docs/channels/telegram.mdx
+  [新增冲突] docs/channels/web.mdx
+  [新增冲突] docs/channels/wechat-kf.mdx
+  [新增冲突] docs/channels/wechatmp.mdx
+  [新增冲突] docs/channels/wecom-bot.mdx
+  [新增冲突] docs/channels/wecom.mdx
+  [新增冲突] docs/channels/weixin.mdx
+  [新增冲突] docs/cli/backup.mdx
+  [新增冲突] docs/cli/index.mdx
+  [新增冲突] docs/cli/process.mdx
+  [新增冲突] docs/guide/desktop.mdx
+  [新增冲突] docs/guide/manual-install.mdx
+  [新增冲突] docs/guide/quick-start.mdx
+  [新增冲突] docs/guide/upgrade.mdx
+  [已知冲突] docs/intro/architecture.mdx  merge-docs
+  [已知冲突] docs/intro/features.mdx  merge-docs
+  [已知冲突] docs/intro/index.mdx  merge-docs
+  [已知冲突] docs/ja/README.md  keep-deletion
+  [新增冲突] docs/ja/channels/dingtalk.mdx
+  [新增冲突] docs/ja/channels/discord.mdx
+  [新增冲突] docs/ja/channels/feishu.mdx
+  [新增冲突] docs/ja/channels/index.mdx
+  [新增冲突] docs/ja/channels/qq.mdx
+  [新增冲突] docs/ja/channels/slack.mdx
+  [新增冲突] docs/ja/channels/telegram.mdx
+  [新增冲突] docs/ja/channels/web.mdx
+  [新增冲突] docs/ja/channels/wechat-kf.mdx
+  [新增冲突] docs/ja/channels/wechatmp.mdx
+  [新增冲突] docs/ja/channels/wecom.mdx
+  [新增冲突] docs/ja/channels/weixin.mdx
+  [新增冲突] docs/ja/cli/index.mdx
+  [新增冲突] docs/ja/cli/process.mdx
+  [新增冲突] docs/ja/guide/desktop.mdx
+  [新增冲突] docs/ja/guide/manual-install.mdx
+  [新增冲突] docs/ja/guide/quick-start.mdx
+  [新增冲突] docs/ja/guide/upgrade.mdx
+  [已知冲突] docs/ja/intro/architecture.mdx  merge-docs
+  [已知冲突] docs/ja/intro/index.mdx  merge-docs
+  [新增冲突] docs/ja/knowledge/index.mdx
+  [新增冲突] docs/ja/memory/index.mdx
+  [新增冲突] docs/ja/models/index.mdx
+  [新增冲突] docs/ja/releases/overview.mdx
+  [新增冲突] docs/ja/releases/v2.0.0.mdx
+  [新增冲突] docs/ja/releases/v2.0.1.mdx
+  [新增冲突] docs/ja/releases/v2.0.2.mdx
+  [新增冲突] docs/ja/releases/v2.0.3.mdx
+  [新增冲突] docs/ja/releases/v2.0.4.mdx
+  [新增冲突] docs/ja/releases/v2.0.5.mdx
+  [新增冲突] docs/ja/releases/v2.0.8.mdx
+  [新增冲突] docs/ja/releases/v2.1.0.mdx
+  [新增冲突] docs/ja/releases/v2.1.3.mdx
+  [新增冲突] docs/ja/skills/index.mdx
+  [新增冲突] docs/ja/tools/index.mdx
+  [新增冲突] docs/knowledge/index.mdx
+  [新增冲突] docs/memory/index.mdx
+  [新增冲突] docs/models/index.mdx
+  [新增冲突] docs/releases/overview.mdx
+  [新增冲突] docs/releases/v2.0.0.mdx
+  [新增冲突] docs/releases/v2.0.1.mdx
+  [新增冲突] docs/releases/v2.0.2.mdx
+  [新增冲突] docs/releases/v2.0.3.mdx
+  [新增冲突] docs/releases/v2.0.4.mdx
+  [新增冲突] docs/releases/v2.0.5.mdx
+  [新增冲突] docs/releases/v2.1.3.mdx
+  [新增冲突] docs/skills/index.mdx
+  [新增冲突] docs/tools/index.mdx
+  [已知冲突] docs/zh/README-Hant.md  keep-deletion
+  [已知冲突] docs/zh/README.md  keep-deletion
+  [新增冲突] docs/zh/channels/dingtalk.mdx
+  [新增冲突] docs/zh/channels/discord.mdx
+  [新增冲突] docs/zh/channels/feishu.mdx
+  [新增冲突] docs/zh/channels/index.mdx
+  [新增冲突] docs/zh/channels/qq.mdx
+  [新增冲突] docs/zh/channels/slack.mdx
+  [新增冲突] docs/zh/channels/telegram.mdx
+  [新增冲突] docs/zh/channels/web.mdx
+  [新增冲突] docs/zh/channels/wechat-kf.mdx
+  [新增冲突] docs/zh/channels/wechatmp.mdx
+  [新增冲突] docs/zh/channels/wecom-bot.mdx
+  [新增冲突] docs/zh/channels/wecom.mdx
+  [新增冲突] docs/zh/channels/weixin.mdx
+  [新增冲突] docs/zh/cli/backup.mdx
+  [新增冲突] docs/zh/cli/index.mdx
+  [新增冲突] docs/zh/cli/process.mdx
+  [新增冲突] docs/zh/guide/desktop.mdx
+  [新增冲突] docs/zh/guide/manual-install.mdx
+  [新增冲突] docs/zh/guide/quick-start.mdx
+  [新增冲突] docs/zh/guide/upgrade.mdx
+  [已知冲突] docs/zh/intro/architecture.mdx  merge-docs
+  [新增冲突] docs/zh/intro/features.mdx
+  [已知冲突] docs/zh/intro/index.mdx  merge-docs
+  [新增冲突] docs/zh/knowledge/index.mdx
+  [新增冲突] docs/zh/memory/index.mdx
+  [新增冲突] docs/zh/models/index.mdx
+  [新增冲突] docs/zh/releases/overview.mdx
+  [新增冲突] docs/zh/releases/v2.0.0.mdx
+  [新增冲突] docs/zh/releases/v2.0.1.mdx
+  [新增冲突] docs/zh/releases/v2.0.2.mdx
+  [新增冲突] docs/zh/releases/v2.0.3.mdx
+  [新增冲突] docs/zh/releases/v2.0.4.mdx
+  [新增冲突] docs/zh/releases/v2.0.5.mdx
+  [新增冲突] docs/zh/releases/v2.0.6.mdx
+  [新增冲突] docs/zh/releases/v2.0.7.mdx
+  [新增冲突] docs/zh/releases/v2.0.9.mdx
+  [新增冲突] docs/zh/releases/v2.1.1.mdx
+  [新增冲突] docs/zh/releases/v2.1.5.mdx
+  [新增冲突] docs/zh/releases/v2.1.6.mdx
+  [新增冲突] docs/zh/releases/v2.1.7.mdx
+  [新增冲突] docs/zh/skills/index.mdx
+  [新增冲突] docs/zh/tools/index.mdx
+  [新增冲突] plugins/cow_cli/cow_cli.py
+  [新增冲突] plugins/linkai/README.md
+  [新增冲突] tests/test_cli_backup.py
+  [已知冲突] tests/test_doc_edit.py  merge
+  [已知冲突] tests/test_openai_chat_api.py  merge
+  [已知冲突] tests/test_scheduler_web_update.py  seam:scheduler
+
+相对基线的漂移（新增冲突）——接缝可能已被上游改动越过：
+  + agent/evolution/backup.py
+  + agent/knowledge/service.py
+  + agent/memory/manager.py
+  + agent/memory/service.py
+  + agent/memory/storage.py
+  + agent/memory/summarizer.py
+  + agent/permission/policy.py
+  + agent/protocol/agent.py
+  + agent/protocol/artifact.py
+  + agent/skills/service.py
+  + agent/tools/mcp/mcp_client.py
+  + agent/tools/memory/memory_get.py
+  + agent/tools/read/read.py
+  + agent/tools/scheduler/scheduler_tool.py
+  + agent/tools/search_files/search_files.py
+  + agent/tools/web_fetch/web_fetch.py
+  + agent/workspace/project_store.py
+  + agent/workspace/session_prefs.py
+  + bridge/agent_bridge.py
+  + bridge/agent_initializer.py
+  + channel/web/static/js/workspace.js
+  + channel/web/templates/views/chat.html
+  + channel/wechat_kf/README.md
+  + channel/wecom_bot/wecom_bot_channel.py
+  + channel/weixin/weixin_channel.py
+  + cli/commands/backup.py
+  + cli/commands/skill.py
+  + cli/utils.py
+  + common/log.py
+  + common/state_dir.py
+  + config-template.json
+  + desktop/src/main/index.ts
+  + desktop/src/renderer/index.html
+  + desktop/src/renderer/src/App.tsx
+  + desktop/src/renderer/src/i18n.ts
+  + desktop/src/renderer/src/index.css
+  + desktop/src/renderer/src/layout/NavRail.tsx
+  + desktop/src/renderer/src/pages/ChatPage.tsx
+  + desktop/src/renderer/src/pages/SkillsPage.tsx
+  + desktop/src/renderer/src/store/agentStore.ts
+  + docker/docker-compose.yml
+  + docs/channels/dingtalk.mdx
+  + docs/channels/discord.mdx
+  + docs/channels/feishu.mdx
+  + docs/channels/index.mdx
+  + docs/channels/qq.mdx
+  + docs/channels/slack.mdx
+  + docs/channels/telegram.mdx
+  + docs/channels/web.mdx
+  + docs/channels/wechat-kf.mdx
+  + docs/channels/wechatmp.mdx
+  + docs/channels/wecom-bot.mdx
+  + docs/channels/wecom.mdx
+  + docs/channels/weixin.mdx
+  + docs/cli/backup.mdx
+  + docs/cli/index.mdx
+  + docs/cli/process.mdx
+  + docs/guide/desktop.mdx
+  + docs/guide/manual-install.mdx
+  + docs/guide/quick-start.mdx
+  + docs/guide/upgrade.mdx
+  + docs/ja/channels/dingtalk.mdx
+  + docs/ja/channels/discord.mdx
+  + docs/ja/channels/feishu.mdx
+  + docs/ja/channels/index.mdx
+  + docs/ja/channels/qq.mdx
+  + docs/ja/channels/slack.mdx
+  + docs/ja/channels/telegram.mdx
+  + docs/ja/channels/web.mdx
+  + docs/ja/channels/wechat-kf.mdx
+  + docs/ja/channels/wechatmp.mdx
+  + docs/ja/channels/wecom.mdx
+  + docs/ja/channels/weixin.mdx
+  + docs/ja/cli/index.mdx
+  + docs/ja/cli/process.mdx
+  + docs/ja/guide/desktop.mdx
+  + docs/ja/guide/manual-install.mdx
+  + docs/ja/guide/quick-start.mdx
+  + docs/ja/guide/upgrade.mdx
+  + docs/ja/knowledge/index.mdx
+  + docs/ja/memory/index.mdx
+  + docs/ja/models/index.mdx
+  + docs/ja/releases/overview.mdx
+  + docs/ja/releases/v2.0.0.mdx
+  + docs/ja/releases/v2.0.1.mdx
+  + docs/ja/releases/v2.0.2.mdx
+  + docs/ja/releases/v2.0.3.mdx
+  + docs/ja/releases/v2.0.4.mdx
+  + docs/ja/releases/v2.0.5.mdx
+  + docs/ja/releases/v2.0.8.mdx
+  + docs/ja/releases/v2.1.0.mdx
+  + docs/ja/releases/v2.1.3.mdx
+  + docs/ja/skills/index.mdx
+  + docs/ja/tools/index.mdx
+  + docs/knowledge/index.mdx
+  + docs/memory/index.mdx
+  + docs/models/index.mdx
+  + docs/releases/overview.mdx
+  + docs/releases/v2.0.0.mdx
+  + docs/releases/v2.0.1.mdx
+  + docs/releases/v2.0.2.mdx
+  + docs/releases/v2.0.3.mdx
+  + docs/releases/v2.0.4.mdx
+  + docs/releases/v2.0.5.mdx
+  + docs/releases/v2.1.3.mdx
+  + docs/skills/index.mdx
+  + docs/tools/index.mdx
+  + docs/zh/channels/dingtalk.mdx
+  + docs/zh/channels/discord.mdx
+  + docs/zh/channels/feishu.mdx
+  + docs/zh/channels/index.mdx
+  + docs/zh/channels/qq.mdx
+  + docs/zh/channels/slack.mdx
+  + docs/zh/channels/telegram.mdx
+  + docs/zh/channels/web.mdx
+  + docs/zh/channels/wechat-kf.mdx
+  + docs/zh/channels/wechatmp.mdx
+  + docs/zh/channels/wecom-bot.mdx
+  + docs/zh/channels/wecom.mdx
+  + docs/zh/channels/weixin.mdx
+  + docs/zh/cli/backup.mdx
+  + docs/zh/cli/index.mdx
+  + docs/zh/cli/process.mdx
+  + docs/zh/guide/desktop.mdx
+  + docs/zh/guide/manual-install.mdx
+  + docs/zh/guide/quick-start.mdx
+  + docs/zh/guide/upgrade.mdx
+  + docs/zh/intro/features.mdx
+  + docs/zh/knowledge/index.mdx
+  + docs/zh/memory/index.mdx
+  + docs/zh/models/index.mdx
+  + docs/zh/releases/overview.mdx
+  + docs/zh/releases/v2.0.0.mdx
+  + docs/zh/releases/v2.0.1.mdx
+  + docs/zh/releases/v2.0.2.mdx
+  + docs/zh/releases/v2.0.3.mdx
+  + docs/zh/releases/v2.0.4.mdx
+  + docs/zh/releases/v2.0.5.mdx
+  + docs/zh/releases/v2.0.6.mdx
+  + docs/zh/releases/v2.0.7.mdx
+  + docs/zh/releases/v2.0.9.mdx
+  + docs/zh/releases/v2.1.1.mdx
+  + docs/zh/releases/v2.1.5.mdx
+  + docs/zh/releases/v2.1.6.mdx
+  + docs/zh/releases/v2.1.7.mdx
+  + docs/zh/skills/index.mdx
+  + docs/zh/tools/index.mdx
+  + plugins/cow_cli/cow_cli.py
+  + plugins/linkai/README.md
+  + tests/test_cli_backup.py
+
+基线中不再冲突的文件——接缝生效或上游改动，请复核基线：
+  - .gitignore
+  - agent/registry.py
+  - agent/tools/scheduler/integration.py
+  - app.py
+  - channel/channel_instances.py
+  - channel/web/static/css/console.css
+  - channel/web/static/js/console.js
+  - desktop/build/notarize-dmg.sh
+  - desktop/src/main/preload.ts
+  - desktop/src/renderer/src/api/client.ts
+  - desktop/src/renderer/src/components/PermissionSelector.tsx
+  - docs/ja/intro/features.mdx
+  - tests/test_agent_web_management.py
+  - tests/test_claude_thinking.py
+  - tests/test_config_subagent_toggle.py
+  - tests/test_dashscope_provider.py
+  - tests/test_knowledge_web.py
+  - tests/test_models_handler.py
+  - tests/test_qianfan_provider.py
+  - tests/test_web_chat_content_type.py
+  - tests/test_workspace_edit.py
+
+需要逐次复核的删除/修改类决策：
+  README.md  [keep-deletion]
+  docs/zh/README.md  [keep-deletion]
+  docs/zh/README-Hant.md  [keep-deletion]
+  docs/ja/README.md  [keep-deletion]
+  desktop/src/renderer/src/components/PermissionSelector.tsx  [keep-deletion]
+  channel/web/README.md  [keep-deletion]  (not in DELIBERATE_REMOVALS)
+  channel/web/static/vendor/README.md  [keep-deletion]  (not in DELIBERATE_REMOVALS)
+
+合并已被中止；不会自动提交或推送。

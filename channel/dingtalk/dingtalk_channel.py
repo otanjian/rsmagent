@@ -463,6 +463,7 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
                     download_to_file(
                         file_path, temp_file, MAX_FILE_BYTES,
                         timeout=(5, 60), max_seconds=_MAX_REMOTE_FILE_SECONDS,
+                        guarded=True,
                     )
                 except MediaTooLargeError:
                     logger.error("[DingTalk] Remote file exceeds size limit, skipped upload")
@@ -792,7 +793,8 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
         if conf().get("group_shared_session", True):
             session_id = cmsg.other_user_id  # conversation_id
         else:
-            session_id = cmsg.from_user_id + "_" + cmsg.other_user_id
+            # from_user_id is the conversation id for DingTalk groups; the sender is actual_user_id
+            session_id = f"{cmsg.actual_user_id}_{cmsg.other_user_id}"
         
         if cmsg.ctype is None:
             return

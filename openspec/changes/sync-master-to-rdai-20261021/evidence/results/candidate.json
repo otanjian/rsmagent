@@ -1,0 +1,14 @@
+{
+  "source_sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+  "target_sha": "c9bd4942261156f56c02ffd65e4d81c6153e1594",
+  "merge_head": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+  "candidate_digest": "1305d2af4f6649de916faff7b9c96240b27cf8775536fefd7c2e6c33f93207da",
+  "ref_check_utc": "2026-10-21T11:49:11.721679+00:00",
+  "merge_committed": false,
+  "browser_scenarios": 39,
+  "browser_page_errors": 0,
+  "scope": "Web/shared backend local acceptance; real provider and production delivery still pending; Desktop runtime deferred",
+  "final_gate": ".sync-test/final-gate-5",
+  "staged_tree_before_final_evidence": "53e5b129167c392b2d2586ad5f3598534e305acc",
+  "accepted_at_utc": "2026-10-21T11:45:13.179017+00:00"
+}

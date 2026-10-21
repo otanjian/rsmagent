@@ -1,0 +1,378 @@
+✖ entering chat with several Agents anchors the default, no picker (3.758ms)
+✔ the new-chat button starts a chat instead of forcing a choice (0.881459ms)
+✔ the caret opens the optional switch / team picker (0.846458ms)
+✔ a single Agent behaves like the console before Agents existed (0.700125ms)
+✔ re-clicking the caret closes the picker again (1.077458ms)
+✔ an empty Agent catalogue anchors nothing instead of inventing "default" (1.222958ms)
+✔ a remembered Agent the catalogue no longer offers is dropped (1.173208ms)
+✔ a remembered Agent the catalogue still offers is kept (0.874041ms)
+✔ the picker offers the shared Agents the caller may use (0.698542ms)
+✔ a shared Agent resolves for the chat identity it names (0.7015ms)
+✔ the management grid is not widened by the use-range roster (0.847708ms)
+✔ an unusable Agent in the use range is not offered for chat (0.616416ms)
+✔ the sidebar launch control is the panel control in another place (0.626708ms)
+✔ the team entry leads the picker, ahead of the solo roster (0.566125ms)
+✖ the sidebar caret rides the presentation switch, the panel caret does not (0.691292ms)
+✔ one usable Agent leaves both launch controls without a caret (0.593708ms)
+✔ a coding Agent is marked in the picker with the card’s glyph (0.642ms)
+✔ keyword/tag intersection, per-agent facet counts and legacy untagged records (2.5505ms)
+✔ search and tag selection only narrow cards, not the shared chat roster or owner (2.327916ms)
+✔ unmatched filters differ from an empty roster and a failed refresh (1.802875ms)
+✔ refresh removing the selected tag falls back to All while preserving the search (1.269ms)
+✔ IME composition waits for committed input without replacing the search input (0.809709ms)
+✔ the committed word filters even when the event carries the pre-edit text (0.778333ms)
+✔ a dropped compositionend cannot freeze later keystrokes (1.164792ms)
+✔ Enter commits the search and IME Enter still picks the candidate (2.002917ms)
+✔ identity changes clear previous filters and invalidate delayed list replies (1.782584ms)
+✔ a newer response uses the latest search and cannot resurrect old tags (0.830125ms)
+✔ custom labels stay text, special tag names cannot collide with synthetic filters (0.732625ms)
+✔ only the first tag row remains focusable when collapsed; expanding and resizing restore access (0.62375ms)
+✔ fresh workbench Agent starts even when absent from management cache (0.733291ms)
+✔ removed target is rejected despite stale enabled management entry (0.621583ms)
+✔ permission-denied target cannot launch and explains why (0.630917ms)
+✔ double-click while validation is pending submits one session (0.587541ms)
+✔ navigation away and back discards a late start result (0.556625ms)
+✔ cancel before validation preserves all state (0.525334ms)
+✔ content becomes dirty while validating: do not partially switch (0.611042ms)
+✔ network failure keeps context and allows retry (0.633542ms)
+✔ newer list wins over an older response without changing owner (0.717334ms)
+✔ tenant switch discards list response (0.656625ms)
+✔ empty state is visible and full management fallback is rejected (1.003292ms)
+✔ a transient read failure is retried once instead of showing a dead page (0.728916ms)
+✔ a persistent refusal names its cause instead of a generic failure (0.624208ms)
+✔ an unselected tenant is reported as such, not as a generic failure (0.581167ms)
+✔ a render fault is not reported as a load failure (0.624167ms)
+✔ a render fault while painting the loading state cannot escape the loader (0.621542ms)
+✔ an empty list that hides Agents says so instead of "no Agents available" (0.554666ms)
+✔ a tenant with no Agents keeps the plain empty message (0.537167ms)
+✔ an empty reason is cleared when a later read returns cards (0.597542ms)
+✔ an old backend with no reason code still shows the plain empty message (0.529ms)
+✔ default card leads even when its ID sorts last (0.57325ms)
+✔ chat header follows composer changes, including single-Agent mode (0.513833ms)
+✔ composer switch shares cancellation and fresh target validation (0.550833ms)
+✔ old session model and project responses cannot overwrite new context (0.599ms)
+✔ the workbench read carries the Agent type through to the card (0.627417ms)
+✔ the workbench card says when an Agent is a coding one (0.60925ms)
+✔ the icon hint is a square chip, not a text pill (0.325292ms)
+✔ concurrent chat roster reads share a request but later refreshes are fresh (0.736458ms)
+✔ an old tenant reply cannot repaint a new tenant or clear its in-flight read (0.271125ms)
+✔ a failed chat roster read rejects startup and can be retried (0.563459ms)
+✔ management data loads on demand without painting a view the user already left (0.236417ms)
+✔ tenant projection restores all selectable Agents without enabled or a global default (1.913584ms)
+✔ legacy enabled flags remain authoritative and archived Agents are not offered (0.7095ms)
+✔ runtime-unavailable and malformed capabilities do not become chat choices (1.423ms)
+✔ an existing group keeps the member controls of members it can still run (0.757209ms)
+✔ a member that can no longer take part is a generic warning, never a named row (0.676834ms)
+✔ a late catalog from the previous tenant cannot restore its Agents (0.607709ms)
+✔ the picker offers team candidates, never a coding Agent (3.54225ms)
+✔ a coding conversation can still open the picker and keeps its session (0.841416ms)
+✔ search filters on name or role without clearing the selection (1.092459ms)
+✔ dropping the default responder leaves the field empty rather than reassigning it (0.773083ms)
+✔ two members and a default responder are required before anything is written (0.810333ms)
+✔ Escape closes the picker and hands focus back to the launch action (0.767625ms)
+✔ focus comes back to the launch control, not to the row that closed (0.716625ms)
+✔ the session panel hands focus back to its own button, not the composer (0.877583ms)
+✔ a picker opened from the phone drawer closes the drawer behind it (0.765166ms)
+✔ the Escape key is inert while no picker is open, and cannot eat another dialog (0.701208ms)
+✔ on a phone the focus returns to the visible drawer toggle, not into the collapsed drawer (0.727458ms)
+✔ the roster is written to the prepared session, not the one on screen (0.879958ms)
+✔ a refused write leaves the conversation, the draft and the picker alone (1.040167ms)
+✔ a lost response after the user cancels never commits (0.80475ms)
+✔ a second click while saving cannot write a second roster (0.752916ms)
+✔ a tenant switch while saving drops the stale commit (0.746584ms)
+✔ a member that stopped being eligible is refused before the write (1.059583ms)
+✔ the saved roster is what the composer renders (0.769792ms)
+✔ an arbitrary member set cannot start a team without a default responder (0.725584ms)
+✔ edit made while the roster saves gets its say before the view moves (0.72725ms)
+✔ declining the coding leave guard keeps the coding conversation (0.716ms)
+✔ a withheld menu grant denies workbench.history and hides the block (1.950292ms)
+✔ a role with no menu grant keeps the functional-permission behaviour (1.075667ms)
+✔ platform "all" is never restricted by a menu denial (2.327166ms)
+✔ an unknown projection never hides or blocks the block (1.801167ms)
+✔ legacy mode never hides or blocks the block (1.11175ms)
+✖ the recent-sessions request is skipped when the grant is withheld (0.402ms)
+✖ the recent-sessions request runs when the block is visible (0.228708ms)
+✖ chat.html keeps the recent block addressable without a competing data-view (0.838584ms)
+✔ the recent block has a CSS rule that honours the hidden class (1.151708ms)
+✔ the refined sidebar is off unless the flag is exactly 1 (3.224ms)
+✔ offscreen rendering cannot throw: the switch is inert without a document (0.227ms)
+✔ the switch gates layout only, never a team rule (0.370791ms)
+✔ the launch control carries no picker while the switch is off (2.16175ms)
+✔ the one launch control sits above the navigation when on (1.106583ms)
+✔ there is exactly one launch control: no separate team button (0.814792ms)
+✔ the launch controls keep distinct ids on the page (0.800667ms)
+✔ the workbench navigation takes the promised order and keeps unknown entries (0.44675ms)
+✔ the body starts a chat and the caret opens the shared picker (0.641083ms)
+✔ a roster of one leaves neither launch control with a caret (0.403167ms)
+✔ the marker helper states what a conversation is, from the roster (0.409209ms)
+✔ both surfaces derive their marker from the one shared helper (0.286625ms)
+✔ the sidebar keeps one middle scroll region with the zones in order (0.132667ms)
+✔ the launch control and its picker carry their own styling hooks (1.115042ms)
+ℹ tests 110
+ℹ suites 0
+ℹ pass 105
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 79.62425
+
+✖ failing tests:
+
+test at tests/test_agent_chat_launch_frontend.cjs:99:1
+✖ entering chat with several Agents anchors the default, no picker (3.758ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  true !== false
+
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/.sync-test/baseline/tests/test_agent_chat_launch_frontend.cjs:109:12)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/test_agent_chat_launch_frontend.cjs:315:1
+✖ the sidebar caret rides the presentation switch, the panel caret does not (0.691292ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  true !== false
+
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/.sync-test/baseline/tests/test_agent_chat_launch_frontend.cjs:319:12)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/test_workbench_menu_grant_frontend.cjs:141:1
+✖ the recent-sessions request is skipped when the grant is withheld (0.402ms)
+  AssertionError [ERR_ASSERTION]: Missing loadSidebarRecentSessions
+      at fnSource (/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/.sync-test/baseline/tests/test_workbench_menu_grant_frontend.cjs:21:12)
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/.sync-test/baseline/tests/test_workbench_menu_grant_frontend.cjs:157:24)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests/test_workbench_menu_grant_frontend.cjs:163:1
+✖ the recent-sessions request runs when the block is visible (0.228708ms)
+  AssertionError [ERR_ASSERTION]: Missing loadSidebarRecentSessions
+      at fnSource (/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/.sync-test/baseline/tests/test_workbench_menu_grant_frontend.cjs:21:12)
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/.sync-test/baseline/tests/test_workbench_menu_grant_frontend.cjs:182:24)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests/test_workbench_menu_grant_frontend.cjs:187:1
+✖ chat.html keeps the recent block addressable without a competing data-view (0.838584ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /id="sidebar-recent-list"/. Input:
+
+  '<!DOCTYPE html>\n' +
+    '<html lang="zh" class="">\n' +
+    '<head>\n' +
+    '    <meta charset="UTF-8">\n' +
+    '    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+    '    <script type="application/json" id="console-page-routes">{{COW_CONSOLE_ROUTES}}</script>\n' +
+    '    <title>容大AI 控制台</title>\n' +
+    '    <meta name="application-name" content="容大AI">\n' +
+    '    <!-- The account check is independent of the console bundle: start it here,\n' +
+    '         ahead of the heavy scripts below, so the read-only /auth/check overlaps\n' +
+    '         their download instead of queueing behind them. console.js consumes\n' +
+    '         this one bounded result (change optimize-console-login-startup). -->\n' +
+    '    <script src="/assets/js/fork/auth-check-prefetch.js"></script>\n' +
+    '    <link rel="icon" href="/assets/favicon.ico?v=rongda-ai" sizes="any">\n' +
+    '    <link rel="icon" href="/assets/rongda-ai-mark.svg" type="image/svg+xml">\n' +
+    '    <!-- Vendored third-party assets (no external CDN dependency).\n' +
+    '         See channel/web/static/vendor/README.md for sources & versions. -->\n' +
+    '    <link rel="stylesheet" href="/assets/vendor/fontawesome/css/all.min.css">\n' +
+    '    <link rel="stylesheet" href="/assets/vendor/fonts/inter/inter.css">\n' +
+    '    <script src="/assets/vendor/tailwind/tailwind.min.js"></script>\n' +
+    '    <script src="/assets/vendor/markdown-it/markdown-it.min.js"></script>\n' +
+    '    <link id="hljs-light" rel="stylesheet" href="/assets/vendor/highlightjs/styles/github.min.css">\n' +
+    '    <link id="hljs-dark" rel="stylesheet" href="/assets/vendor/highlightjs/styles/github-dark.min.css" disabled>\n' +
+    '    <script src="/assets/vendor/highlightjs/highlight.min.js"></script>\n' +
+    '    <script src="/assets/vendor/highlightjs/languages/python.min.js"></script>\n' +
+    '    <script src="/assets/vendor/highlightjs/languages/javascript.min.js"></script>\n' +
+    '    <script src="/assets/vendor/highlightjs/languages/java.min.js"></script>\n' +
+    '    <script src="/assets/vendor/highlightjs/languages/go.min.js"></script>\n' +
+    '    <script src="/assets/vendor/highlightjs/languages/bash.min.js"></script>\n' +
+    '    <script>\n' +
+    '    tailwind.config = {\n' +
+    "        darkMode: 'class',\n" +
+    '        theme: {\n' +
+    '            extend: {\n' +
+    '                fontFamily: {\n' +
+    "                    sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],\n" +
+    `                    mono: ['"JetBrains Mono"', '"Fira Code"', 'Consolas', 'monospace'],\n` +
+    '                },\n' +
+    '                colors: {\n' +
+    '                    primary: {\n' +
+    "                        50: '#EDFDF3', 100: '#D4FAE2', 200: '#ABF4C7', 300: '#74E9A4',\n" +
+    "                        400: '#4ABE6E', 500: '#35A85B', 600: '#228547', 700: '#1C6B3B',\n" +
+    "                        800: '#1A5532', 900: '#16462A',\n" +
+    '                    }\n' +
+    '                },\n' +
+    '                animation: {\n' +
+    "                    'pulse-dot': 'pulseDot 1.4s infinite ease-in-out both',\n" +
+    '                }\n' +
+    '            }\n' +
+    '        }\n' +
+    '    }\n' +
+    '    </script>\n' +
+    '    <link rel="stylesheet" href="/assets/css/console.css">\n' +
+    '    <link rel="stylesheet" href="/assets/css/master-sync.css">\n' +
+    '    <link rel="stylesheet" href="/assets/css/appearance.css">\n' +
+    '    <link rel="stylesheet" href="/assets/css/coding.css">\n' +
+    '    <link rel="stylesheet" href="/assets/css/fork/sessions.css">\n' +
+    '    <script src="/assets/js/appearance.js"></script>\n' +
+    '    <!-- Apply theme/lang before first paint to avoid flash of unstyled content.\n' +
+    '         This runs synchronously in <head> so the correct class is on <html>\n' +
+    '         before any CSS or body rendering occurs. -->\n' +
+    '    <script>\n' +
+    "    // Map an arbitrary locale string (zh-CN, en-US, fr ...) to 'zh' / 'zh-Hant' / 'en',\n" +
+    "    // or '' when unrecognized so callers can fall through to the next source.\n" +
+    '    window.__cowNormalizeLang__ = function(raw) {\n' +
+    "        if (!raw) return '';\n" +
+    "        var v = String(raw).trim().toLowerCase().replace('_', '-');\n" +
+    "        if (v === 'auto') return '';\n" +
+    '        // Handle Traditional Chinese variants first (more specific)\n' +
+    "        if (v === 'zh-hant' || v.indexOf('zh-hant-') === 0 || v === 'zh-tw' || v === 'zh-hk') return 'zh-Hant';\n" +
+    '        // Then Simplified Chinese\n' +
+    "        if (v.indexOf('zh') === 0) return 'zh';\n" +
+    "        if (v.indexOf('en') === 0) return 'en';\n" +
+    "        return '';\n" +
+    '    };\n' +
+    '    // Resolve the console language by priority:\n' +
+    "    //   user choice (localStorage) -> backend-detected -> browser -> 'zh'.\n" +
+    '    window.__cowResolveLang__ = function() {\n' +
+    '        var storedLang = null;\n' +
+    "        try { storedLang = localStorage.getItem('cow_lang'); } catch (_) {}\n" +
+    '        return window.__cowNormalizeLang__(storedLang)\n' +
+    '            || window.__cowNormalizeLang__(window.__COW_DEFAULT_LANG__)\n' +
+    '            || window.__cowNormalizeLang__(navigator.language || (navigator.languages && navigator.languages[0]))\n' +
+    "            || 'zh';\n" +
+    '    };\n' +
+    '    (function() {\n' +
+    '        // Backend-resolved default language (from cow_lang config / auto-detect).\n' +
+    "        window.__COW_DEFAULT_LANG__ = '{{COW_DEFAULT_LANG}}';\n" +
+    '        // Backend-validated console navigation presentation switch (layout\n' +
+    '        // only): "classic" (single sidebar) or "split" (area switch). Never\n' +
+    '        // changes authorization, identity mode or consumer state.\n' +
+    "        window.__COW_NAVIGATION_MODE__ = '{{COW_NAVIGATION_MODE}}';\n" +
+    "        // Temporary workbench-sidebar presentation switch: '1' renders the\n" +
+    '        // four-zone sidebar with dual launch buttons. History uses the shared\n' +
+    '        // panel in both layouts. Layout only -- the team candidate rules and the server-side\n' +
+    '        // roster rejection apply either way, so turning this back off restores\n' +
+    '        // the old sidebar without weakening any team boundary.\n' +
+    "        window.__COW_WORKBENCH_SIDEBAR_LAUNCH_V2__ = '{{COW_WORKBENCH_SIDEBAR_LAUNCH_V2}}';\n" +
+    "        document.documentElement.setAttribute('lang', window.__cowResolveLang__());\n" +
+    '    })();\n' +
+    '    </script>\n' +
+    '</head>\n' +
+    '<body class="h-screen overflow-hidden bg-gray-50 dark:bg-[#111111] text-slate-800 dark:text-slate-200 font-sans">\n' +
+    '\n' +
+    '    <!--#include templates/auth/login.html-->\n' +
+    '\n' +
+    '    <!-- ================================================================ -->\n' +
+    '    <!-- Change-password modal (database identity mode)                   -->\n' +
+    '    <!--                                                                  -->\n' +
+    '    <!-- Body-level on purpose: `_enterForcedPassword()` hides #app while  -->\n' +
+    '    <!-- this gate is open, and a modal nested in a hidden ancestor        -->\n' +
+    '    <!-- collapses to 0x0 and becomes invisible.                          -->\n' +
+    '    <!-- ================================================================ -->\n' +
+    '    <div id="account-password-modal" class="agent-modal hidden" role="dialog" aria-modal="true" aria-labelledby="account-password-title">\n' +
+    '        <div class="agent-modal-card">\n' +
+    '            <div class="agent-modal-head">\n' +
+    '                <h3 id="account-password-title" class="agent-modal-title" data-i18n="account_password_title">修改密码</h3>\n' +
+    '                <button type="button" id="account-password-close" class="agent-modal-close" onclick="closeAccountPassword()" aria-label="Close" data-i18n-aria-label="close">×</button>\n' +
+    '            </div>\n' +
+    '            <form id="account-password-form" novalidate>\n' +
+    '                <div class="agent-modal-body">\n' +
+    '                    <p id="account-password-status" class="account-field-status hidden" role="status"></p>\n' +
+    '                    <p class="account-password-note" data-i18n="account_password_note">修改成功后，其他已登录会话也会失效，需要重新登录。</p>\n' +
+    '                    <div class="account-field">\n' +
+    '                        <label for="ap-old-password" data-i18n="account_password_old">原密码</label>\n' +
+    '                        <input id="ap-old-password" type="password" class="account-field-input" autocomplete="current-password" required>\n' +
+    '                    </div>\n' +
+    '                    <div class="account-field">\n' +
+    '                        <label for="ap-new-password" data-i18n="account_password_new">新密码</label>\n' +
+    '                        <input id="ap-new-password" type="password" class="account-field-input" autocomplete="new-password" required>\n' +
+    '                    </div>\n' +
+    '                    <div class="account-field">\n' +
+    '                        <label for="ap-confirm-password" data-i18n="account_password_confirm">确认新密码</label>\n' +
+    '                        <input id="ap-confirm-password" type="password" class="account-field-input" autocomplete="new-password" required>\n' +
+    '                    </div>\n' +
+    '                </div>\n' +
+    '                <div class="agent-modal-foot">\n' +
+    '                    <button type="button" onclick="cancelAccountPassword()" class="agent-btn agent-btn-text" data-i18n="cancel">取消</button>\n' +
+    '                    <button id="ap-submit-btn" type="submit" class="agent-btn agent-btn-primary" data-i18n="account_password_submit">提交修改</button>\n' +
+    '                </div>\n' +
+    '            </form>\n' +
+    '        </div>\n' +
+    '    </div>\n' +
+    '\n' +
+    '    <div id="app" class="flex h-screen hidden">\n' +
+    '\n' +
+    '        <!-- ================================================================ -->\n' +
+    '        <!-- SIDEBAR                                                          -->\n' +
+    '        <!-- ================================================================ -->\n' +
+    '        <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-52 bg-[#0A0A0A] text-neutral-400 flex flex-col\n' +
+    '                                    transform -translate-x-full lg:relative lg:translate-x-0\n' +
+    '                                    transition-transform duration-300 ease-in-out">\n' +
+    '            <!-- Logo -->\n' +
+    '            <div class="sidebar-brand">\n' +
+    '                <img src="/assets/rongda-ai-mark.svg" alt="" class="brand-mark sidebar-brand-mark" width="34" height="34">\n' +
+    '                <div class="sidebar-brand-copy">\n' +
+    '                    <span class="brand-wordmark" id="sidebar-brand-name">容大<span class="brand-ai">AI</span></span>\n' +
+    '                    <span class="sidebar-brand-caption" id="sidebar-brand-caption" title="">工作台</span>\n' +
+    '                </div>\n' +
+    '            </div>\n' +
+    '\n' +
+    '            <!-- The one launch control of the refined sidebar (change\n' +
+    '                 refine-sidebar-team-chat-launch): the same control the session\n' +
+    "                 panel's 新对话 is — its body starts a chat straight away, its\n" +
+    '                 caret opens the one picker that offers a solo chat per Agent\n' +
+    '         '... 253919 more characters
+
+      at TestContext.<anonymous> (/Users/jiantan/ai_assistant/rsmagent-sync-master-20261021/.sync-test/baseline/tests/test_workbench_menu_grant_frontend.cjs:190:12)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '<!DOCTYPE html>\n<html lang="zh" class="">\n<head>\n    <meta charset="UTF-8">\n    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n    <script type="application/json" id="console-page-routes">{{COW_CONSOLE_ROUTES}}</script>\n    <title>容大AI 控制台</title>\n    <meta name="application-name" content="容大AI">\n    <!-- The account check is independent of the console bundle: start it here,\n         ahead of the heavy scripts below, so the read-only /auth/check overlaps\n         their download instead of queueing behind them. console.js consumes\n         this one bounded result (change optimize-console-login-startup). -->\n    <script src="/assets/js/fork/auth-check-prefetch.js"></script>\n    <link rel="icon" href="/assets/favicon.ico?v=rongda-ai" sizes="any">\n    <link rel="icon" href="/assets/rongda-ai-mark.svg" type="image/svg+xml">\n    <!-- Vendored third-party assets (no external CDN dependency).\n         See channel/web/static/vendor/README.md for sources & versions. -->\n    <link rel="stylesheet" href="/assets/vendor/fontawesome/css/all.min.css">\n    <link rel="stylesheet" href="/assets/vendor/fonts/inter/inter.css">\n    <script src="/assets/vendor/tailwind/tailwind.min.js"></script>\n    <script src="/assets/vendor/markdown-it/markdown-it.min.js"></script>\n    <link id="hljs-light" rel="stylesheet" href="/assets/vendor/highlightjs/styles/github.min.css">\n    <link id="hljs-dark" rel="stylesheet" href="/assets/vendor/highlightjs/styles/github-dark.min.css" disabled>\n    <script src="/assets/vendor/highlightjs/highlight.min.js"></script>\n    <script src="/assets/vendor/highlightjs/languages/python.min.js"></script>\n    <script src="/assets/vendor/highlightjs/languages/javascript.min.js"></script>\n    <script src="/assets/vendor/highlightjs/languages/java.min.js"></script>\n    <script src="/assets/vendor/highlightjs/languages/go.min.js"></script>\n    <script src="/assets/vendor/highlightjs/languages/bash.min.js"></script>\n    <script>\n    tailwind.config = {\n        darkMode: \'class\',\n        theme: {\n            extend: {\n                fontFamily: {\n                    sans: [\'Inter\', \'system-ui\', \'-apple-system\', \'sans-serif\'],\n                    mono: [\'"JetBrains Mono"\', \'"Fira Code"\', \'Consolas\', \'monospace\'],\n                },\n                colors: {\n                    primary: {\n                        50: \'#EDFDF3\', 100: \'#D4FAE2\', 200: \'#ABF4C7\', 300: \'#74E9A4\',\n                        400: \'#4ABE6E\', 500: \'#35A85B\', 600: \'#228547\', 700: \'#1C6B3B\',\n                        800: \'#1A5532\', 900: \'#16462A\',\n                    }\n                },\n                animation: {\n                    \'pulse-dot\': \'pulseDot 1.4s infinite ease-in-out both\',\n                }\n            }\n        }\n    }\n    </script>\n    <link rel="stylesheet" href="/assets/css/console.css">\n    <link rel="stylesheet" href="/assets/css/master-sync.css">\n    <link rel="stylesheet" href="/assets/css/appearance.css">\n    <link rel="stylesheet" href="/assets/css/coding.css">\n    <link rel="stylesheet" href="/assets/css/fork/sessions.css">\n    <script src="/assets/js/appearance.js"></script>\n    <!-- Apply theme/lang before first paint to avoid flash of unstyled content.\n         This runs synchronously in <head> so the correct class is on <html>\n         before any CSS or body rendering occurs. -->\n    <script>\n    // Map an arbitrary locale string (zh-CN, en-US, fr ...) to \'zh\' / \'zh-Hant\' / \'en\',\n    // or \'\' when unrecognized so callers can fall through to the next source.\n    window.__cowNormalizeLang__ = function(raw) {\n        if (!raw) return \'\';\n        var v = String(raw).trim().toLowerCase().replace(\'_\', \'-\');\n        if (v === \'auto\') return \'\';\n        // Handle Traditional Chinese variants first (more specific)\n        if (v === \'zh-hant\' || v.indexOf(\'zh-hant-\') === 0 || v === \'zh-tw\' || v === \'zh-hk\') return \'zh-Hant\';\n        // Then Simplified Chinese\n        if (v.indexOf(\'zh\') === 0) return \'zh\';\n        if (v.indexOf(\'en\') === 0) return \'en\';\n        return \'\';\n    };\n    // Resolve the console language by priority:\n    //   user choice (localStorage) -> backend-detected -> browser -> \'zh\'.\n    window.__cowResolveLang__ = function() {\n        var storedLang = null;\n        try { storedLang = localStorage.getItem(\'cow_lang\'); } catch (_) {}\n        return window.__cowNormalizeLang__(storedLang)\n            || window.__cowNormalizeLang__(window.__COW_DEFAULT_LANG__)\n            || window.__cowNormalizeLang__(navigator.language || (navigator.languages && navigator.languages[0]))\n            || \'zh\';\n    };\n    (function() {\n        // Backend-resolved default language (from cow_lang config / auto-detect).\n        window.__COW_DEFAULT_LANG__ = \'{{COW_DEFAULT_LANG}}\';\n        // Backend-validated console navigation presentation switch (layout\n        // only): "classic" (single sidebar) or "split" (area switch). Never\n        // changes authorization, identity mode or consumer state.\n        window.__COW_NAVIGATION_MODE__ = \'{{COW_NAVIGATION_MODE}}\';\n        // Temporary workbench-sidebar presentation switch: \'1\' renders the\n        // four-zone sidebar with dual launch buttons. History uses the shared\n        // panel in both layouts. Layout only -- the team candidate rules and the server-side\n        // roster rejection apply either way, so turning this back off restores\n        // the old sidebar without weakening any team boundary.\n        window.__COW_WORKBENCH_SIDEBAR_LAUNCH_V2__ = \'{{COW_WORKBENCH_SIDEBAR_LAUNCH_V2}}\';\n        document.documentElement.setAttribute(\'lang\', window.__cowResolveLang__());\n    })();\n    </script>\n</head>\n<body class="h-screen overflow-hidden bg-gray-50 dark:bg-[#111111] text-slate-800 dark:text-slate-200 font-sans">\n\n    <!--#include templates/auth/login.html-->\n\n    <!-- ================================================================ -->\n    <!-- Change-password modal (database identity mode)                   -->\n    <!--                                                                  -->\n    <!-- Body-level on purpose: `_enterForcedPassword()` hides #app while  -->\n    <!-- this gate is open, and a modal nested in a hidden ancestor        -->\n    <!-- collapses to 0x0 and becomes invisible.                          -->\n    <!-- ================================================================ -->\n    <div id="account-password-modal" class="agent-modal hidden" role="dialog" aria-modal="true" aria-labelledby="account-password-title">\n        <div class="agent-modal-card">\n            <div class="agent-modal-head">\n                <h3 id="account-password-title" class="agent-modal-title" data-i18n="account_password_title">修改密码</h3>\n                <button type="button" id="account-password-close" class="agent-modal-close" onclick="closeAccountPassword()" aria-label="Close" data-i18n-aria-label="close">×</button>\n            </div>\n            <form id="account-password-form" novalidate>\n                <div class="agent-modal-body">\n                    <p id="account-password-status" class="account-field-status hidden" role="status"></p>\n                    <p class="account-password-note" data-i18n="account_password_note">修改成功后，其他已登录会话也会失效，需要重新登录。</p>\n                    <div class="account-field">\n                        <label for="ap-old-password" data-i18n="account_password_old">原密码</label>\n                        <input id="ap-old-password" type="password" class="account-field-input" autocomplete="current-password" required>\n                    </div>\n                    <div class="account-field">\n                        <label for="ap-new-password" data-i18n="account_password_new">新密码</label>\n                        <input id="ap-new-password" type="password" class="account-field-input" autocomplete="new-password" required>\n                    </div>\n                    <div class="account-field">\n                        <label for="ap-confirm-password" data-i18n="account_password_confirm">确认新密码</label>\n                        <input id="ap-confirm-password" type="password" class="account-field-input" autocomplete="new-password" required>\n                    </div>\n                </div>\n                <div class="agent-modal-foot">\n                    <button type="button" onclick="cancelAccountPassword()" class="agent-btn agent-btn-text" data-i18n="cancel">取消</button>\n                    <button id="ap-submit-btn" type="submit" class="agent-btn agent-btn-primary" data-i18n="account_password_submit">提交修改</button>\n                </div>\n            </form>\n        </div>\n    </div>\n\n    <div id="app" class="flex h-screen hidden">\n\n        <!-- ================================================================ -->\n        <!-- SIDEBAR                                                          -->\n        <!-- ================================================================ -->\n        <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-52 bg-[#0A0A0A] text-neutral-400 flex flex-col\n                                    transform -translate-x-full lg:relative lg:translate-x-0\n                                    transition-transform duration-300 ease-in-out">\n            <!-- Logo -->\n            <div class="sidebar-brand">\n                <img src="/assets/rongda-ai-mark.svg" alt="" class="brand-mark sidebar-brand-mark" width="34" height="34">\n                <div class="sidebar-brand-copy">\n                    <span class="brand-wordmark" id="sidebar-brand-name">容大<span class="brand-ai">AI</span></span>\n                    <span class="sidebar-brand-caption" id="sidebar-brand-caption" title="">工作台</span>\n                </div>\n            </div>\n\n            <!-- The one launch control of the refined sidebar (change\n                 refine-sidebar-team-chat-launch): the same control the session\n                 panel\'s 新对话 is — its body starts a chat straight away, its\n                 caret opens the one picker that offers a solo chat per Agent\n         '... 253919 more characters,
+    expected: /id="sidebar-recent-list"/,
+    operator: 'match',
+    diff: 'simple'
+  }

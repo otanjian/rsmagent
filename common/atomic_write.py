@@ -41,7 +41,20 @@ def _replace(path, write, encoding: str = "utf-8", newline=None) -> None:
     directory, name = os.path.split(target)
     tmp_path = os.path.join(directory, f".{name}.{uuid.uuid4().hex[:12]}.tmp")
     try:
-        f = open(tmp_path, "w", encoding=encoding, newline=newline)
+        # Stage with the target's own mode, so a private file is never readable
+        # mid-write while a new file keeps the umask default.
+        try:
+            target_stat = os.stat(target)
+        except OSError:
+            mode = 0o666
+        else:
+            if not stat.S_ISREG(target_stat.st_mode):
+                raise OSError(errno.EINVAL, "target is not a regular file", target)
+            mode = stat.S_IMODE(target_stat.st_mode)
+        f = open(
+            tmp_path, "w", encoding=encoding, newline=newline,
+            opener=lambda name, flags: os.open(name, flags | os.O_EXCL, mode),
+        )
     except OSError as e:
         if not _can_write_in_place(e, target):
             raise

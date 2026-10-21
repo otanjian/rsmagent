@@ -22,6 +22,7 @@
 // these paths from the same shell; the table there has to stay in step.
 const ROUTE_PATHS = {
     chat:      '',
+    artifacts: 'artifacts',
     agents:    'agents',
     config:    'settings',
     skills:    'skills',
@@ -32,6 +33,12 @@ const ROUTE_PATHS = {
     logs:      'logs',
 };
 
+// An artifact or link the user put in the menu is at /m/<item id>, served by
+// its own pattern in web_channel.py. The id travels as the view's "tab".
+const ROUTE_MENU_SEGMENT = 'm';
+
+const consolePages = JSON.parse(document.getElementById('console-page-routes')?.textContent || '[]');
+for (const page of consolePages) ROUTE_PATHS[page.view] = page.path.replace(/^\//, '');
 const ROUTE_VIEWS = {};
 for (const view in ROUTE_PATHS) ROUTE_VIEWS[ROUTE_PATHS[view]] = view;
 
@@ -60,6 +67,11 @@ const ROUTE_TAB_PATHS = {
     memory: { dreams: 'evolution' },
 };
 
+for (const page of consolePages) {
+    ROUTE_TABS[page.view] = page.tabs;
+    ROUTE_DEFAULT_TABS[page.view] = page.tabs[0] || '';
+    ROUTE_TAB_PATHS[page.view] = page.tab_aliases;
+}
 function _tabPath(view, tab) {
     return (ROUTE_TAB_PATHS[view] || {})[tab] || tab;
 }
@@ -84,6 +96,7 @@ let routeTab = '';
 let _routeApplying = false;
 
 function _routePath(view, tab) {
+    if (view === 'custom') return '/' + ROUTE_MENU_SEGMENT + '/' + encodeURIComponent(tab || '');
     const path = ROUTE_PATHS[view] || '';
     if (!path || !tab || tab === ROUTE_DEFAULT_TABS[view]) return '/' + path;
     return '/' + path + '/' + _tabPath(view, tab);
@@ -91,20 +104,24 @@ function _routePath(view, tab) {
 
 function _routeParse(pathname) {
     const parts = String(pathname || '/').replace(/^\/+|\/+$/g, '').split('/');
-    const view = ROUTE_VIEWS[parts[0] || ''];
-    // An unknown path -- a stale bookmark, a hand-edited URL -- falls back to
-    // chat rather than leaving the console on whatever happens to be on screen.
-    if (!view || !VIEW_META[view]) return { view: 'chat', tab: '' };
+    if (parts[0] === ROUTE_MENU_SEGMENT && parts[1]) {
+        let id = parts[1];
+        try { id = decodeURIComponent(id); } catch (_) { /* keep it as typed */ }
+        return { view: 'custom', tab: id };
+    }
+    const clean = String(pathname || '/').replace(/^\/+|\/+$/g, '');
+    const routePath = Object.keys(ROUTE_VIEWS).sort((a, b) => b.length - a.length)
+        .find(path => clean === path || (path && clean.startsWith(path + '/')));
+    const view = ROUTE_VIEWS[routePath];
+    if (!view) return { view: 'chat', tab: '' };
     const allowed = ROUTE_TABS[view] || [];
-    const tab = _tabId(view, parts[1]);
-    // An unknown tab is dropped, not passed on: the tab switchers index into
-    // the DOM by name and would throw on one that does not exist.
-    return { view: view, tab: allowed.indexOf(tab) === -1 ? '' : tab };
+    const tab = _tabId(view, clean.slice(routePath.length).replace(/^\//, ''));
+    return { view, tab: allowed.includes(tab) ? tab : '' };
 }
 
 function _routeWrite(view, tab, replace) {
     const path = _routePath(view, tab);
-    if (location.pathname === path) return;
+    if (location.pathname === path && !location.hash && !location.search) return;
     // pushState/replaceState do not fire popstate, so writing the address bar
     // cannot loop back in as a navigation.
     history[replace ? 'replaceState' : 'pushState'](null, '', path);
@@ -115,20 +132,24 @@ function _routeApplyTab(view, tab) {
     else if (view === 'memory') switchMemoryTab(tab);
     else if (view === 'tasks') switchTasksTab(tab);
     else if (view === 'knowledge') switchKnowledgeTab(tab);
+    else if (view === 'custom') navigateTo('custom', tab);
 }
 
 // Called by navigateTo() once it has committed to a view: the history gains an
 // entry, so Back returns to where the user came from.
-function routeEnterView(view) {
+function routeEnterView(view, tab) {
     if (!VIEW_META[view]) return;
-    routeTab = '';
+    // The custom view is one view for every entry the user added, so which
+    // one it shows is part of the destination, not a refinement of it.
+    routeTab = tab || '';
     if (_routeApplying) return;
     // Re-entering the view already on screen -- clicking its sidebar item
     // again -- is not a new destination. Refine the entry instead of stacking
     // another, or Back would have to undo a run of no-op navigations before it
     // appeared to do anything.
-    const reentry = _routeParse(location.pathname).view === view;
-    _routeWrite(view, '', reentry);
+    const here = _routeParse(location.pathname);
+    const reentry = here.view === view && (view !== 'custom' || here.tab === routeTab);
+    _routeWrite(view, routeTab, reentry);
 }
 
 // Called by the tab switchers. A tab is a refinement of the view already on
@@ -144,7 +165,18 @@ function routeNoteTab(view, tab) {
 
 // Apply what the address bar says: on Back/Forward, and once at startup.
 function routeApply() {
-    const parsed = _routeParse(location.pathname);
+    if (typeof _accountAppVisible !== 'undefined' && !_accountAppVisible) return false;
+    let parsed = _routeParse(location.pathname);
+    if (['/', '/chat', '/admin'].includes(location.pathname) && location.hash) {
+        let id = location.hash.replace(/^#view-/, '').split(/[?\/]/)[0];
+        const old = /^#\/(workbench|admin)\/([^?]+)/.exec(location.hash);
+        if (old) id = old[1] === 'workbench' && old[2] === 'agents' ? 'agent-workbench' : old[2];
+        id = legacyPersonalForward(id) || _normalizeViewId(id);
+        if (VIEW_META[id]) {
+            const requested = new URLSearchParams(location.hash.split('?')[1] || '').get('tab');
+            parsed = {view: id, tab: (ROUTE_TABS[id] || []).includes(requested) ? requested : ''};
+        }
+    }
 
     if (parsed.view === currentView) {
         // No tab segment names the view's default tab, rather than meaning
@@ -174,3 +206,19 @@ function routeApply() {
 }
 
 window.addEventListener('popstate', routeApply);
+
+// The fork's business pages share this router; no second history implementation.
+window.ConsoleRoutes = {
+    pages: consolePages,
+    parse: path => {
+        const route = _routeParse(path);
+        const page = consolePages.find(page => page.view === route.view);
+        const clean = String(path).replace(/\/$/, '') || '/';
+        return page && (clean === page.path || (page.path !== '/' && clean.startsWith(page.path + '/') && route.tab)) ? route : null;
+    },
+    pathFor: _routePath,
+    note: routeNoteTab, apply: routeApply,
+    area: path => { const route = window.ConsoleRoutes.parse(path); return route ? consolePages.find(page => page.view === route.view)?.area || null : null; },
+};
+window.addEventListener('hashchange', routeApply);
+window.addEventListener('account-invalidated', () => { routeTab = ''; _routeApplying = false; });

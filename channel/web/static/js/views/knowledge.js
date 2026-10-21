@@ -21,7 +21,7 @@ const KNOWLEDGE_IMPORT_MAX_TOTAL_SIZE = 200 * 1024 * 1024;
 // Which Agent's knowledge base the page is viewing. Persisted like the memory
 // page's selector so a refresh keeps the last choice. An Agent on "shared" mode
 // resolves to the shared base on the backend, so this simply scopes the view.
-let knowledgeAgentId = localStorage.getItem('cow_knowledge_agent') || '';
+let knowledgeAgentId = readScopedPreference('cow_knowledge_agent') || '';
 
 function viewingKnowledgeAgentId() {
     return knowledgeAgentId || activeAgentId || defaultAgentId;
@@ -40,30 +40,141 @@ function renderKnowledgeAgentSelect() {
     const current = viewingKnowledgeAgentId();
     const list = agentCatalog.length ? agentCatalog : enabledAgents();
     const options = list.map(a => ({ value: a.id, label: a.name || a.id, agent: a }));
-    initDropdown(el, options, current, (value) => selectKnowledgeAgent(value), { withAvatar: true });
+    initDropdown(el, options, current, (value) => selectKnowledgeAgent(value),
+        { withAvatar: true, searchable: true });
 }
 
 function selectKnowledgeAgent(agentId) {
+    // Another Agent's base replaces the open document, edit and all.
+    if (!knowledgeEditor.guard(() => selectKnowledgeAgent(agentId))) return;
     knowledgeAgentId = agentId;
-    localStorage.setItem('cow_knowledge_agent', agentId);
+    writeScopedPreference('cow_knowledge_agent', agentId);
+    // Another library: nothing the sources tab holds is about it any more.
+    knowledgeSourcesOnLibraryChange();
     loadKnowledgeView();
+    if (_knowledgeTab === 'sources') loadKnowledgeSources();
+}
+
+// The knowledge page's half of the console's inline document editor. The
+// memory and skill pages build theirs in views/doc-viewers.js; all three share
+// the dirty tracking, the mtime baseline and the discard guard.
+const knowledgeEditor = createDocEditor({
+    body: () => document.getElementById('knowledge-viewer-body'),
+    buttons: () => ({
+        edit: document.getElementById('knowledge-btn-edit'),
+        save: document.getElementById('knowledge-btn-save'),
+        cancel: document.getElementById('knowledge-btn-cancel'),
+    }),
+    read: (doc) => knowledgeReadDoc(doc.path),
+    write: (doc, content, mtime) => knowledgeWriteDoc(doc, content, mtime),
+    render: (doc) => renderKnowledgeDoc(doc),
+    // index.md and log.md are maintained by the Agent, and a page too large to
+    // write back is refused up front rather than at save time.
+    canEdit: (doc) => doc.editable,
+    onState: (state) => docRenderTitle('knowledge-viewer-title', knowledgeEditor.current()?.title, state),
+});
+
+/** Read one knowledge page's raw Markdown. Throws so the editor can report it. */
+async function knowledgeReadDoc(path) {
+    const res = await fetch(_kbUrl(`/api/knowledge/read?path=${encodeURIComponent(path)}`));
+    const data = await res.json();
+    if (data.status !== 'success') throw new Error(data.message || 'read failed');
+    return data;
+}
+
+/**
+ * Save a knowledge page and let the backend reindex it.
+ *
+ * Translated into the shape createDocEditor expects: the string `conflict`
+ * code it offers to overwrite, and the new mtime as the next baseline.
+ */
+async function knowledgeWriteDoc(doc, content, expectedMtime) {
+    const context = _knowledgeReadContext();
+    const res = await fetch('/api/knowledge/action', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            action: 'update_document',
+            payload: {path: doc.path, content: content, expected_mtime: expectedMtime},
+            agent_id: viewingKnowledgeAgentId(),
+        }),
+    });
+    const data = await res.json();
+    if (context === _knowledgeReadContext() && data.status === 'success') _refreshKnowledgeTree();
+    return {
+        status: data.status,
+        code: data.payload?.conflict ? 'conflict' : data.code,
+        message: data.message,
+        mtime: data.payload?.mtime,
+    };
+}
+
+/**
+ * Reload the tree and the stats line, leaving the viewer alone.
+ *
+ * A save may have rewritten the page's H1 — its title in the tree — and its
+ * size, but the document on screen, or the text area still open over it after
+ * Ctrl+S, must stay exactly where it is.
+ */
+async function _refreshKnowledgeTree() {
+    const context = _knowledgeReadContext();
+    try {
+        const data = await fetch(_kbUrl('/api/knowledge/list')).then(r => r.json());
+        if (context !== _knowledgeReadContext() || data.status !== 'success') return;
+        _knowledgeTreeData = data.tree || [];
+        _knowledgeRootFiles = data.root_files || [];
+        _renderKnowledgeStats(data.stats || {});
+        renderKnowledgeTree(_knowledgeTreeData, _knowledgeRootFiles,
+                            document.getElementById('knowledge-search')?.value || '');
+        const doc = knowledgeEditor.current();
+        const title = doc ? _findKnowledgeFileTitle(doc.path) : null;
+        if (doc && title !== null) {
+            doc.title = title;
+            docRenderTitle('knowledge-viewer-title', title, {dirty: knowledgeEditor.isDirty()});
+        }
+    } catch (error) {
+        /* The tree on screen is merely stale; the save itself went through. */
+    }
+}
+
+function _renderKnowledgeStats(stats) {
+    const size = stats.size || 0;
+    const sizeStr = size < 1024 ? size + ' B' : (size / 1024).toFixed(1) + ' KB';
+    document.getElementById('knowledge-stats').textContent = (stats.pages || 0) + ' pages · ' + sizeStr;
 }
 
 function loadKnowledgeView(targetPath) {
-    // Reset to docs tab
-    switchKnowledgeTab('docs');
+    // Preserve the selected tab while a refresh or routed load is in flight.
+    if (targetPath) switchKnowledgeTab('docs');
+    const request = ++_knowledgeLoadSeq;
     _knowledgeGraphLoaded = false;
     _knowledgeCurrentFile = null;
+    _knowledgeHasPages = false;
+    _knowledgeListState = 'loading';
+    // The tree about to be drawn decides which document is open, so no editor
+    // state may survive into it. Callers that could lose an edit this way ask
+    // first, through knowledgeEditor.guard().
+    knowledgeEditor.forget();
 
     // Drop a deleted Agent selection so we never point at a ghost.
     if (knowledgeAgentId && agentCatalog.length && !agentCatalog.some(a => a.id === knowledgeAgentId)) {
         knowledgeAgentId = '';
-        localStorage.removeItem('cow_knowledge_agent');
+        removeScopedPreference('cow_knowledge_agent');
     }
     renderKnowledgeAgentSelect();
+    renderKnowledgeWriteAffordances();
+    const context = _knowledgeReadContext();
+    const current = () => request === _knowledgeLoadSeq && context === _knowledgeReadContext();
+    const loading = document.getElementById('knowledge-empty');
+    if (loading && loading.querySelector('p')) loading.querySelector('p').textContent = t('knowledge_loading');
+    _applyKnowledgePanels();
 
     fetch(_kbUrl('/api/knowledge/list')).then(r => r.json()).then(data => {
-        if (data.status !== 'success') return;
+        if (!current()) return;
+        if (data.status !== 'success') {
+            renderKnowledgeUnavailable(data);
+            return;
+        }
         initKnowledgeImportDropZone();
 
         const emptyEl = document.getElementById('knowledge-empty');
@@ -75,13 +186,15 @@ function loadKnowledgeView(targetPath) {
         _knowledgeRootFiles = rootFiles;
         const stats = data.stats || {};
         const totalPages = stats.pages || 0;
-        const sizeStr = stats.size < 1024 ? stats.size + ' B' : (stats.size / 1024).toFixed(1) + ' KB';
+        _renderKnowledgeStats(stats);
 
-        statsEl.textContent = totalPages + ' pages · ' + sizeStr;
 
+        _knowledgeListState = 'ready';
         _knowledgeHasPages = !(totalPages === 0 && tree.length === 0 && rootFiles.length === 0);
         if (!_knowledgeHasPages) {
             emptyEl.querySelector('p').textContent = t('knowledge_empty_hint');
+            const lines = emptyEl.querySelectorAll('p');
+            if (lines[1]) lines[1].textContent = '';
             const guideEl = document.getElementById('knowledge-empty-guide');
             if (guideEl) guideEl.classList.remove('hidden');
         }
@@ -116,7 +229,7 @@ function loadKnowledgeView(targetPath) {
             document.getElementById('knowledge-content-placeholder').classList.add('hidden');
             document.getElementById('knowledge-content-viewer').classList.add('hidden');
         }
-    }).catch(() => {});
+    }).catch(() => { if (current()) renderKnowledgeUnavailable({ message: t('knowledge_unavailable') }); });
 }
 
 // Find a file's display title by its relative path within the knowledge tree.
@@ -221,16 +334,19 @@ function _knowledgeActionButton(icon, title, handler) {
 
 function _knowledgeFileActions(path) {
     if (path === 'index.md' || path === 'log.md') return '';
+    if (!canWriteKnowledge()) return '';
     const value = JSON.stringify(path).replace(/"/g, '&quot;');
     return `<span class="knowledge-actions">${_knowledgeActionButton('fa-arrow-right-arrow-left', '移动', `moveKnowledgeDocument(${value})`)}${_knowledgeActionButton('fa-trash', '删除', `deleteKnowledgeDocument(${value})`)}</span>`;
 }
 
 function _knowledgeCategoryActions(path) {
+    if (!canWriteKnowledge()) return '';
     const value = JSON.stringify(path).replace(/"/g, '&quot;');
     return `<span class="knowledge-actions">${_knowledgeActionButton('fa-pen', '重命名', `renameKnowledgeCategory(${value})`)}${_knowledgeActionButton('fa-trash', '删除', `deleteKnowledgeCategory(${value})`)}</span>`;
 }
 
-async function dispatchKnowledgeAction(action, payload, openPathResolver) {
+async function dispatchKnowledgeAction(action, payload, openPathResolver, context = _knowledgeReadContext()) {
+    if (context !== _knowledgeReadContext()) return null;
     _setKnowledgeStatus(currentLang === 'zh' ? '处理中...' : 'Working...', false, true);
     try {
         const response = await fetch('/api/knowledge/action', {
@@ -239,6 +355,7 @@ async function dispatchKnowledgeAction(action, payload, openPathResolver) {
             body: JSON.stringify({action, payload, agent_id: viewingKnowledgeAgentId()}),
         });
         const result = await response.json();
+        if (context !== _knowledgeReadContext()) return null;
         if (result.status !== 'success') {
             _setKnowledgeStatus(result.message || (currentLang === 'zh' ? '操作失败' : 'Operation failed'), true);
             loadKnowledgeView();
@@ -250,6 +367,7 @@ async function dispatchKnowledgeAction(action, payload, openPathResolver) {
         loadKnowledgeView(openPath || undefined);
         return result.payload;
     } catch (error) {
+        if (context !== _knowledgeReadContext()) return null;
         _setKnowledgeStatus(currentLang === 'zh' ? '请求失败，请稍后重试' : 'Request failed, please try again', true);
         return null;
     }
@@ -293,6 +411,7 @@ function _knowledgeCategoryPaths(groups, parent = '') {
 }
 
 function openKnowledgeDialog(options) {
+    const context = _knowledgeReadContext();
     const overlay = document.getElementById('knowledge-dialog-overlay');
     const card = document.getElementById('knowledge-dialog-card');
     const input = document.getElementById('knowledge-dialog-input');
@@ -348,6 +467,7 @@ function openKnowledgeDialog(options) {
 
     const close = () => overlay.classList.add('hidden');
     const submitAction = async () => {
+        if (context !== _knowledgeReadContext()) { close(); return; }
         const rawValue = options.type === 'select' ? getDropdownValue(select) :
             (options.type === 'textarea' ? textarea.value :
             (options.type === 'document' ? {
@@ -364,6 +484,7 @@ function openKnowledgeDialog(options) {
         }
         submit.disabled = true;
         const ok = await options.onSubmit(value);
+        if (context !== _knowledgeReadContext()) return;
         submit.disabled = false;
         if (ok !== null) close();
     };
@@ -399,7 +520,12 @@ function toggleKnowledgeNewMenu(event) {
     }
 }
 
+// Every one of these ends in loadKnowledgeView(), which redraws the tree and
+// with it the viewer, so an open text area does not survive them. Asked here,
+// before the action's own dialog, rather than after the user has already
+// confirmed a deletion that cannot be called off.
 function createKnowledgeCategory() {
+    if (!knowledgeEditor.guard(createKnowledgeCategory)) return;
     openKnowledgeDialog({
         title: currentLang === 'zh' ? '新建分类' : 'New category',
         subtitle: currentLang === 'zh' ? '分类会创建为 knowledge/ 下的目录' : 'Creates a directory under knowledge/',
@@ -411,6 +537,7 @@ function createKnowledgeCategory() {
 }
 
 function createKnowledgeDocument() {
+    if (!knowledgeEditor.guard(createKnowledgeDocument)) return;
     const categories = _knowledgeCategoryPaths(_knowledgeTreeData);
     if (!categories.length) {
         _setKnowledgeStatus(currentLang === 'zh' ? '请先创建分类' : 'Create a category first', true);
@@ -473,6 +600,8 @@ function selectKnowledgeImportFiles() {
 }
 
 function openKnowledgeImportDialog(files) {
+    if (!canWriteKnowledge()) return;
+    if (!knowledgeEditor.guard(() => openKnowledgeImportDialog(files))) return;
     const validationError = validateKnowledgeImportFiles(files);
     if (validationError) {
         _setKnowledgeStatus(validationError, true);
@@ -563,7 +692,7 @@ function initKnowledgeImportDropZone() {
             if (event.type === 'drop') {
                 event.preventDefault();
                 const files = Array.from(event.dataTransfer?.files || []);
-                if (files.length) openKnowledgeImportDialog(files);
+                if (files.length && canWriteKnowledge()) openKnowledgeImportDialog(files);
             }
             panel.classList.remove('knowledge-import-drag-over');
         });
@@ -571,6 +700,7 @@ function initKnowledgeImportDropZone() {
 }
 
 function renameKnowledgeCategory(path) {
+    if (!knowledgeEditor.guard(() => renameKnowledgeCategory(path))) return;
     openKnowledgeDialog({
         title: currentLang === 'zh' ? '重命名分类' : 'Rename category',
         subtitle: path,
@@ -583,26 +713,31 @@ function renameKnowledgeCategory(path) {
 }
 
 function deleteKnowledgeCategory(path) {
+    const context = _knowledgeReadContext();
+    if (!knowledgeEditor.guard(() => deleteKnowledgeCategory(path))) return;
     showConfirmDialog({
         title: '删除分类',
         message: `确认删除“${path}”及其中全部文档？`,
         okText: t('confirm_yes'),
         cancelText: t('confirm_cancel'),
-        onConfirm: () => dispatchKnowledgeAction('delete_category', {path, confirm: true}),
+        onConfirm: () => dispatchKnowledgeAction('delete_category', {path, confirm: true}, null, context),
     });
 }
 
 function deleteKnowledgeDocument(path) {
+    const context = _knowledgeReadContext();
+    if (!knowledgeEditor.guard(() => deleteKnowledgeDocument(path))) return;
     showConfirmDialog({
         title: '删除文档',
         message: `确认删除“${path}”？`,
         okText: t('confirm_yes'),
         cancelText: t('confirm_cancel'),
-        onConfirm: () => dispatchKnowledgeAction('delete_documents', {paths: [path]}),
+        onConfirm: () => dispatchKnowledgeAction('delete_documents', {paths: [path]}, null, context),
     });
 }
 
 function moveKnowledgeDocument(path) {
+    if (!knowledgeEditor.guard(() => moveKnowledgeDocument(path))) return;
     const currentCategory = path.includes('/') ? path.split('/').slice(0, -1).join('/') : '';
     const choices = _knowledgeCategoryPaths(_knowledgeTreeData).filter(value => value !== currentCategory);
     openKnowledgeDialog({
@@ -695,8 +830,21 @@ function bindKnowledgeImages(container, baseDir) {
     });
 }
 
+/** Draw a knowledge page read-only, with its links and images resolved. */
+function renderKnowledgeDoc(doc) {
+    const bodyEl = document.getElementById('knowledge-viewer-body');
+    if (!bodyEl) return;
+    bodyEl.innerHTML = renderMarkdown(doc.content || '');
+    applyHighlighting(bodyEl);
+    bindKnowledgeLinks(bodyEl, doc.path);
+    bindKnowledgeImages(bodyEl, doc.dir);
+}
+
 function openKnowledgeFile(path, title) {
+    // Another document is about to take the viewer over, text area included.
+    if (!knowledgeEditor.guard(() => openKnowledgeFile(path, title))) return;
     _knowledgeCurrentFile = path;
+    const context = _knowledgeReadContext();
     // Update active state in tree via data-path
     document.querySelectorAll('.knowledge-tree-file').forEach(el => {
         el.classList.toggle('active', el.dataset.path === path);
@@ -705,36 +853,52 @@ function openKnowledgeFile(path, title) {
     // Immediately hide placeholder
     document.getElementById('knowledge-content-placeholder').classList.add('hidden');
 
-    fetch(_kbUrl(`/api/knowledge/read?path=${encodeURIComponent(path)}`)).then(r => r.json()).then(data => {
-        if (data.status !== 'success') return;
-        const viewer = document.getElementById('knowledge-content-viewer');
-        document.getElementById('knowledge-viewer-title').textContent = title;
+    knowledgeReadDoc(path).then(data => {
         document.getElementById('knowledge-viewer-path').textContent = path;
-        const bodyEl = document.getElementById('knowledge-viewer-body');
-        bodyEl.innerHTML = renderMarkdown(data.content || '');
-        viewer.classList.remove('hidden');
-        applyHighlighting(viewer);
-        bindKnowledgeLinks(bodyEl, path);
-        bindKnowledgeImages(bodyEl, data.dir);
+        document.getElementById('knowledge-content-viewer').classList.remove('hidden');
+        knowledgeEditor.open({
+            path: path,
+            title: title,
+            content: data.content || '',
+            // Absolute dir of the page, for resolving its relative image srcs.
+            dir: data.dir,
+            editable: !!data.editable,
+        });
 
         // Mobile: hide sidebar, show content
         if (window.innerWidth < 768) {
             document.getElementById('knowledge-sidebar').classList.add('hidden');
         }
-    }).catch(() => {});
+    }).catch(error => {
+        // The viewer is still showing whatever was open before the click, and
+        // the tree has already moved its highlight: say why it did not follow.
+        _setKnowledgeStatus(currentLang === 'zh' ? '文档加载失败' : 'Failed to load document', true);
+    });
 }
 
 function knowledgeMobileBack() {
+    if (!knowledgeEditor.guard(knowledgeMobileBack)) return;
+    knowledgeEditor.forget();
     document.getElementById('knowledge-sidebar').classList.remove('hidden');
     document.getElementById('knowledge-content-viewer').classList.add('hidden');
 }
 
 function switchKnowledgeTab(tab) {
-    document.querySelectorAll('.knowledge-tab').forEach(el => el.classList.remove('active'));
-    document.getElementById('knowledge-tab-' + tab).classList.add('active');
+    if (tab !== _knowledgeTab && !knowledgeEditor.guard(() => switchKnowledgeTab(tab))) return;
+    if (!['docs', 'graph', 'sources'].includes(tab)) return;
     _knowledgeTab = tab;
+    document.querySelectorAll('.knowledge-tab').forEach(el => el.classList.remove('active'));
+    const active = document.getElementById('knowledge-tab-' + tab);
+    if (active) active.classList.add('active');
+
     _applyKnowledgePanels();
-    routeNoteTab('knowledge', tab);
+    if (window.ConsoleRoutes) window.ConsoleRoutes.note('knowledge', tab);
+    if (tab === 'sources') {
+        loadKnowledgeSources({ quiet: _knowledgeSourceItems.length > 0 });
+    } else {
+        // Off screen: no timer may keep asking for a panel nobody is looking at.
+        stopKnowledgeSourcePolling();
+    }
 }
 
 // The one place the empty state and the two tab panels are shown or hidden.
@@ -743,16 +907,16 @@ function switchKnowledgeTab(tab) {
 // regardless, which put the search box and an empty tree under the "no pages
 // yet" guide. The graph is fetched the first time its panel is actually shown.
 function _applyKnowledgePanels() {
-    const emptyEl = document.getElementById('knowledge-empty');
-    const docsPanel = document.getElementById('knowledge-panel-docs');
-    const graphPanel = document.getElementById('knowledge-panel-graph');
-    const showDocs = _knowledgeHasPages && _knowledgeTab === 'docs';
-    const showGraph = _knowledgeHasPages && _knowledgeTab === 'graph';
-
-    emptyEl.classList.toggle('hidden', _knowledgeHasPages);
-    docsPanel.classList.toggle('hidden', !showDocs);
-    graphPanel.classList.toggle('hidden', !showGraph);
-    if (showGraph && !_knowledgeGraphLoaded) loadKnowledgeGraph();
+    const hasPages = _knowledgeListState === 'ready' && _knowledgeHasPages;
+    for (const tab of ['docs', 'graph', 'sources']) {
+        const panel = document.getElementById('knowledge-panel-' + tab);
+        if (panel) panel.classList.toggle('hidden', _knowledgeTab !== tab || (tab !== 'sources' && !hasPages));
+    }
+    const empty = document.getElementById('knowledge-empty');
+    if (empty) empty.classList.toggle('hidden', _knowledgeTab === 'sources' || hasPages);
+    const retry = document.getElementById('knowledge-retry');
+    if (retry) retry.classList.toggle('hidden', _knowledgeListState !== 'error');
+    if (_knowledgeTab === 'graph' && hasPages && !_knowledgeGraphLoaded) loadKnowledgeGraph();
 }
 
 let _d3LoadPromise = null;
@@ -773,6 +937,9 @@ function ensureD3Loaded() {
 
 function loadKnowledgeGraph() {
     _knowledgeGraphLoaded = true;
+    const context = _knowledgeReadContext();
+    const request = _knowledgeLoadSeq;
+    const current = () => request === _knowledgeLoadSeq && context === _knowledgeReadContext();
     const container = document.getElementById('knowledge-graph-container');
     container.innerHTML = '<div class="flex items-center justify-center h-full text-slate-400 text-sm"><i class="fas fa-spinner fa-spin mr-2"></i>Loading graph...</div>';
 
@@ -780,6 +947,7 @@ function loadKnowledgeGraph() {
         ensureD3Loaded(),
         fetch(_kbUrl('/api/knowledge/graph')).then(r => r.json()),
     ]).then(([, data]) => {
+        if (!current()) return;
         const nodes = data.nodes || [];
         const links = data.links || [];
         if (nodes.length === 0) {
@@ -789,6 +957,8 @@ function loadKnowledgeGraph() {
         container.innerHTML = '';
         renderKnowledgeGraph(container, nodes, links);
     }).catch(() => {
+        if (!current()) return;
+        _knowledgeGraphLoaded = false;
         container.innerHTML = '<div class="flex items-center justify-center h-full text-slate-400 text-sm">Failed to load graph</div>';
     });
 }
@@ -969,3 +1139,13 @@ function renderKnowledgeGraph(container, nodes, links) {
     container.appendChild(legendDiv);
 }
 
+
+window.addEventListener('account-invalidated', () => {
+    ++_knowledgeLoadSeq;
+    knowledgeEditor.forget();
+    document.getElementById('knowledge-dialog-overlay')?.classList.add('hidden');
+    for (const id of ['knowledge-dialog-input', 'knowledge-dialog-textarea', 'knowledge-document-content', 'knowledge-document-filename']) {
+        const field = document.getElementById(id);
+        if (field) field.value = '';
+    }
+});

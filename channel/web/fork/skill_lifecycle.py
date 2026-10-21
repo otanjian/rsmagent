@@ -6,7 +6,7 @@ import json
 import web
 
 from channel.web.api.skills import (
-    _LOCAL_PATH_PREFIXES, _market_spec, _preview_response, _staging,
+    _LOCAL_PATH_PREFIXES, _market_spec, _preview_response, _record_staged_fields, _staging,
 )
 
 ACTIONS = frozenset(("preview", "confirm", "discard", "install", "delete"))
@@ -86,9 +86,10 @@ def apply(ctx, body):
         try:
             installed = commit_staged(staged["dir"], names, agent_id=agent_id,
                                       skills_dir=service.manager.custom_dir)
+            service.manager.refresh_skills()
+            _record_staged_fields(staged["dir"], installed, service)
         finally:
             _staging.discard(token)
-        service.manager.refresh_skills()
         return json.dumps({"status": "success", "installed": installed}, ensure_ascii=False)
     if action == "preview":
         spec = _market_spec(body.get("source") or "", body.get("value") or "")
@@ -110,9 +111,13 @@ def apply(ctx, body):
                 return json.dumps({"status": "error", "message": result.error})
             installed = commit_staged(path, agent_id=agent_id,
                                       skills_dir=service.manager.custom_dir)
+            service.manager.refresh_skills()
+            _record_staged_fields(path, installed, service)
+            meta = body.get("meta")
+            if isinstance(meta, dict) and len(installed) == 1:
+                service.record_install(installed[0], meta)
         finally:
             _staging.discard(token)
-        service.manager.refresh_skills()
         return json.dumps({"status": "success", "installed": installed,
                            "messages": result.messages}, ensure_ascii=False)
     if action == "delete":

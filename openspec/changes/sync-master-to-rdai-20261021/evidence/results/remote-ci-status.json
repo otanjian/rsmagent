@@ -1,0 +1,129 @@
+{
+  "checked_at": "2026-10-21T11:48:04.173184+00:00",
+  "origin": "https://rd.rsmxm.com.cn/Gitea",
+  "git_credential_available": true,
+  "checks": [
+    {
+      "endpoint": "/api/v1/version",
+      "http_status": 200,
+      "version": "1.27.3"
+    },
+    {
+      "endpoint": "/api/v1/repos/rsmai/rsmagent",
+      "http_status": 200,
+      "default_branch": "main",
+      "has_actions": true,
+      "permissions": {
+        "admin": true,
+        "push": true,
+        "pull": true
+      }
+    },
+    {
+      "endpoint": "/api/v1/repos/rsmai/rsmagent/branch_protections",
+      "http_status": 200,
+      "protections": []
+    },
+    {
+      "endpoint": "/api/v1/repos/rsmai/rsmagent/actions/runs?limit=5",
+      "http_status": 200,
+      "response_keys": [
+        "workflow_runs",
+        "total_count"
+      ],
+      "total_count": 46,
+      "runs": [
+        {
+          "id": 728,
+          "path": "production-readiness.yml@refs/heads/rdai",
+          "event": "push",
+          "head_sha": "c9bd4942261156f56c02ffd65e4d81c6153e1594",
+          "head_branch": "rdai",
+          "status": "queued"
+        },
+        {
+          "id": 727,
+          "path": "production-readiness.yml@refs/heads/rdai",
+          "event": "push",
+          "head_sha": "5e68cecd616eb5504dd795b37885cb92f8b2a1de",
+          "head_branch": "rdai",
+          "status": "queued"
+        },
+        {
+          "id": 726,
+          "path": "production-readiness.yml@refs/heads/rdai",
+          "event": "push",
+          "head_sha": "545e4c119101c56881be460d78744e9c63c5695c",
+          "head_branch": "rdai",
+          "status": "queued"
+        },
+        {
+          "id": 725,
+          "path": "production-readiness.yml@refs/heads/rdai",
+          "event": "push",
+          "head_sha": "5f3c1a02122c97a5cd22c4efb2dd65c5124760d0",
+          "head_branch": "rdai",
+          "status": "queued"
+        },
+        {
+          "id": 724,
+          "path": "production-readiness.yml@refs/heads/rdai",
+          "event": "push",
+          "head_sha": "0d0ca5607224a886b6cca75a82fb60b8137fce5c",
+          "head_branch": "rdai",
+          "status": "queued"
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/v1/repos/rsmai/rsmagent/actions/runners",
+      "http_status": 200,
+      "response_keys": [
+        "runners",
+        "total_count"
+      ],
+      "total_count": 0,
+      "items": []
+    },
+    {
+      "endpoint": "/api/v1/repos/rsmai/rsmagent/actions/runs/728/jobs",
+      "http_status": 200,
+      "response_keys": [
+        "jobs",
+        "total_count"
+      ],
+      "total_count": 2,
+      "items": [
+        {
+          "id": 832,
+          "name": "local-regression",
+          "labels": [
+            "macos-production"
+          ],
+          "status": "queued",
+          "runner_id": 0,
+          "started_at": "1970-01-01T00:00:00Z",
+          "completed_at": "1970-01-01T00:00:00Z"
+        },
+        {
+          "id": 833,
+          "name": "final-linux-image",
+          "labels": [
+            "linux-production"
+          ],
+          "status": "queued",
+          "runner_id": 0,
+          "started_at": "1970-01-01T00:00:00Z",
+          "completed_at": "1970-01-01T00:00:00Z"
+        }
+      ]
+    }
+  ],
+  "refs": {
+    "upstream/master": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+    "delivery/rdai": "c9bd4942261156f56c02ffd65e4d81c6153e1594",
+    "HEAD": "c9f80a8ae51ae7e327be18930eb63a3facd119d9",
+    "MERGE_HEAD": "ee2dc0521714fc144e0c9923f363147fe865ad2f"
+  },
+  "interpretation": "No branch protection rules are configured. Latest target push is queued. Automatic failed-PR blocking/recovery is not proven; GAP-007 and task 9.4 remain open. No repository setting was changed."
+}

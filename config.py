@@ -10,6 +10,7 @@ import time
 
 from common.log import logger
 from common import i18n
+from cli.config_json import deep_merge_dicts as _deep_merge_dicts, merge_duplicate_keys
 
 # All available config keys are listed in this dict (use lowercase keys).
 # The values here are placeholders only; the program does NOT read them.
@@ -34,6 +35,9 @@ available_setting = {
     # openai api protocol: "auto" (Responses only for models that require it), "chat" (/chat/completions) or "responses" (/responses)
     "open_ai_api_type": "auto",
     "claude_api_base": "https://api.anthropic.com/v1",  # claude api base
+    # Prompt cache TTL for the system prompt + tools in agent mode: "1h" or "5m".
+    # Use "5m" if the endpoint rejects the 1h TTL; the conversation always uses 5m.
+    "claude_cache_ttl": "1h",
     "gemini_api_base": "https://generativelanguage.googleapis.com",  # gemini api base
     "custom_api_key": "",  # custom OpenAI-compatible provider api key (used when bot_type is "custom"); legacy single-provider field
     "custom_api_base": "",  # custom OpenAI-compatible provider api base (used when bot_type is "custom"); legacy single-provider field
@@ -291,7 +295,11 @@ available_setting = {
     "mimo_api_base": "https://api.xiaomimimo.com/v1",
     "web_host": "",  # Web console bind address; empty means 127.0.0.1
     "web_port": 9899,
-    "web_session_expire_days": 30,  # Database session expiry in days
+    "web_https_enabled": False,  # Serve the web console over HTTPS directly; needs web_ssl_certfile + web_ssl_keyfile
+    "web_ssl_certfile": "",  # PEM certificate file for direct HTTPS (full chain recommended)
+    "web_ssl_keyfile": "",  # PEM private key file for direct HTTPS
+    "external_api_enabled": True,  # serve the OpenAI-compatible /v1 chat API
+    "web_session_expire_days": 30,  # Auth session expiry in days
     "web_file_serve_root": "~",  # Root dir the /api/file endpoint may serve; "/" allows the whole filesystem
     # Platform-admin read-only browse root in database identity mode. Empty uses
     # get_data_root(). MUST NOT default to "~" or "/".
@@ -400,13 +408,13 @@ available_setting = {
     "personal_assistant_persona_summary_template": "{name}的私人智能办公助理：{source_tail}",
     # Manual cap on the Agent-mode input budget, used to control cost / token
     # burn: history is compacted once the prompt reaches this many tokens, even
-    # when the model's window is far larger. Defaults to 64000. This value is
+    # when the model's window is far larger. Defaults to 200000. This value is
     # still clamped below the effective model's window (window - output
     # reserve), so a small-window model is never asked for more than it allows.
     # Set 0 to disable the manual cap and follow the model window instead.
-    "agent_max_context_tokens": 64000,
+    "agent_max_context_tokens": 200000,
     "agent_max_context_turns": 30,  # max context memory turns in Agent mode
-    "agent_max_steps": 30,  # max decision steps per run in Agent mode
+    "agent_max_steps": 100,  # max decision steps per run in Agent mode
     # Default permission mode for sessions that have not picked one of their own:
     # "read-only" | "workspace-write" | "full-access". Kept at full-access so an
     # existing install behaves exactly as before an upgrade. Only a fresh desktop
@@ -487,6 +495,11 @@ available_setting = {
     # Deep Dream: nightly memory distillation into MEMORY.md + dream diary.
     "deep_dream_enabled": True,             # scheduled deep dream switch; manual /memory dream is unaffected
     "skill": {},  # Per-skill runtime config; nested keys flatten to SKILL_<NAME>_<KEY> env vars at startup
+    # Registry that installs by bare name, skill search and skill list --remote
+    # use; empty means the default Skill Hub. It must speak the same API. The key,
+    # if set, is sent as a bearer token to this registry only.
+    "skill_hub_url": "",
+    "skill_hub_api_key": "",
     "mcp_servers": [],  # MCP server list; each entry supports type "stdio" (local process) or "sse" (remote URL)
     # On-demand MCP tool retrieval: when many MCP tools are connected, inject
     # only the most query-relevant ones instead of all of them. Built-in tools
@@ -744,6 +757,10 @@ def load_config():
         # skip comment fields starting with an underscore
         if name.startswith("_"):
             continue
+        # A blank value is a placeholder (docker-compose lists every key as
+        # ''), not a request to wipe what the user saved in config.json.
+        if value == "":
+            continue
         if name in available_setting:
             logger.info("[INIT] override config by environment: {}".format(name))
             try:
@@ -757,10 +774,14 @@ def load_config():
                 # strings, but also TypeError/RecursionError on malformed input
                 # (e.g. unhashable dict keys); catch broadly to avoid crashing
                 # startup, and fall back to treating the value as a plain string.
+                # Numeric keys reject it instead: a string there fails much later.
                 if value.lower() == "false":
                     config[name] = False
                 elif value.lower() == "true":
                     config[name] = True
+                elif type(available_setting[name]) in (int, float):
+                    logger.warning("[INIT] ignoring environment override {}: not a {}".format(
+                        name, type(available_setting[name]).__name__))
                 else:
                     config[name] = value
 
@@ -859,7 +880,7 @@ def load_config():
     }
     injected = 0
     for conf_key, env_key in _CONFIG_TO_ENV.items():
-        if env_key not in os.environ:
+        if not os.environ.get(env_key):
             val = config.get(conf_key, "")
             if val:
                 os.environ[env_key] = str(val)
@@ -874,45 +895,16 @@ def load_config():
     config.load_user_datas()
 
 
-def _deep_merge_dicts(base: dict, incoming: dict) -> dict:
-    """Recursively merge ``incoming`` into ``base`` (incoming wins on leaves)."""
-    for key, val in incoming.items():
-        if (
-            key in base
-            and isinstance(base[key], dict)
-            and isinstance(val, dict)
-        ):
-            _deep_merge_dicts(base[key], val)
-        else:
-            base[key] = val
-    return base
-
-
 def _merge_duplicate_keys(pairs):
-    """object_pairs_hook for json.loads: deep-merge duplicate top-level keys
-    (lists concat, dicts merge, scalars take the latter) instead of dropping."""
-    out = {}
-    duplicates = []
-    for key, val in pairs:
-        if key not in out:
-            out[key] = val
-            continue
-        duplicates.append(key)
-        prev = out[key]
-        if isinstance(prev, dict) and isinstance(val, dict):
-            _deep_merge_dicts(prev, val)
-        elif isinstance(prev, list) and isinstance(val, list):
-            prev.extend(val)
-        else:
-            out[key] = val
-    if duplicates:
+    """Merge duplicate keys with the app's existing diagnostic behavior."""
+    def report_duplicates(unique):
         # logger may not be wired yet — fall back to print so we never lose the warning.
-        unique = sorted(set(duplicates))
         try:
             logger.warning("[INIT] config.json has duplicate keys (merged): %s", unique)
         except Exception:
             print("[INIT] config.json has duplicate keys (merged):", unique)
-    return out
+
+    return merge_duplicate_keys(pairs, on_duplicates=report_duplicates)
 
 
 def _migrate_chat_fallback(cfg) -> None:
@@ -1146,7 +1138,7 @@ def get_appdata_dir():
     data_path = os.path.join(get_data_root(), conf().get("appdata_dir", ""))
     if not os.path.exists(data_path):
         logger.info("[INIT] data path not exists, create it: {}".format(data_path))
-        os.makedirs(data_path)
+        os.makedirs(data_path, exist_ok=True)
     return data_path
 
 
@@ -1177,7 +1169,8 @@ def get_weixin_credentials_path(instance_id: str = ""):
 
 
 def subscribe_msg():
-    trigger_prefix = conf().get("single_chat_prefix", [""])[0]
+    prefixes = conf().get("single_chat_prefix") or [""]
+    trigger_prefix = prefixes[0]
     msg = conf().get("subscribe_msg", "")
     return msg.format(trigger_prefix=trigger_prefix)
 

@@ -1,9 +1,10 @@
-"""OpenAI-compatible HTTP adapter for 容大AI chat completions."""
+"""OpenAI protocol with database identity, scoped conversations and model grants."""
 
 from __future__ import annotations
 
-from common.utils import constant_time_equals
 import json
+import hashlib
+from contextvars import copy_context
 import queue
 import threading
 import time
@@ -11,6 +12,7 @@ import uuid
 from typing import Callable, Iterator
 
 from common.log import logger
+from common.utils import constant_time_equals
 from config import conf
 
 
@@ -28,6 +30,12 @@ _SESSION_LOCKS = tuple(threading.Lock() for _ in range(64))
 _STREAM_END = object()
 _STREAM_ERROR = object()
 _FIRST_EVENT_TIMEOUT_SECONDS = 30
+# Budget for each later stream event, matching the web SSE stream. Without it
+# a stalled run parks the consumer forever and keeps the session lock.
+_STREAM_IDLE_TIMEOUT_SECONDS = 600
+
+_TEXT_ROLES = ("system", "developer", "user", "assistant")
+_PASSTHROUGH_EVENTS = ("subagent_step", "artifact", "peer_start", "peer_end")
 
 
 def _authenticate(authorization: str, external_api_token: str) -> None:
@@ -50,16 +58,143 @@ def _authenticate(authorization: str, external_api_token: str) -> None:
         )
 
 
-def _request_values(payload: dict, completion_id: str):
+def _agent_registry():
+    from bridge.bridge import Bridge
+
+    return Bridge().get_agent_bridge().agent_registry
+
+
+def _resolve_agent(agent_id: str | None) -> str | None:
+    """The enabled Agent a request's ``agent_id`` names; None means the default Agent."""
+    if agent_id is None:
+        return None
+    try:
+        return _agent_registry().get_addressed(agent_id).id
+    except Exception as error:
+        raise OpenAIAPIError(
+            404,
+            f"The agent '{agent_id}' does not exist or is disabled.",
+            "agent_not_found",
+        ) from error
+
+
+def _model_catalog() -> list:
+    """Configured providers intersected with the caller's exact model grants."""
+    from channel.web.fork.runtime import _session_model_catalog
+    from common.runtime_identity import current_identity
+    ident = current_identity()
+    catalog = _session_model_catalog()
+    if not ident.user_id or not ident.tenant_id:
+        return []
+    from auth.service import get_identity_service
+    allowed = get_identity_service().resource_ids_for(
+        ident.user_id, ident.tenant_id, "model", "use", permission="model.use")
+    if allowed is None:
+        return catalog
+    result = []
+    for provider in catalog:
+        models = [name for name in provider.get("models", [])
+                  if name in allowed or f"provider:{provider['id']}:{name}" in allowed]
+        if models:
+            result.append({**provider, "models": models})
+    return result
+
+
+def _resolve_model(model: str | None) -> tuple | None:
+    """The ``(provider, model)`` a request names; None keeps the Agent's own model."""
+    if model is None:
+        return None
+    for provider in _model_catalog():
+        if model in provider.get("models") or ():
+            return provider["id"], model
+    raise OpenAIAPIError(
+        404,
+        f"The model '{model}' is not available. Use GET /v1/models to list the available models.",
+        "model_not_found",
+    )
+
+
+def _agent_model_name(agent_id: str | None) -> str:
+    """The model an Agent answers on when a request names none."""
+    try:
+        pinned = _agent_registry().get(agent_id).model
+    except Exception:
+        pinned = None
+    return pinned or conf().get("model") or ""
+
+
+def _authorized_default_model(agent_id, session_id):
+    """Resolve existing session/Agent/role/global defaults against the live catalog."""
+    from agent.registry import get_agent_registry
+    from agent.workspace import session_prefs
+    from auth.service import get_identity_service
+    from common.runtime_identity import current_identity
+    ident = current_identity()
+    prefs = session_prefs.get_prefs(session_id, agent_id)
+    profile = get_agent_registry().get_addressed(agent_id)
+    model, provider = prefs.get('model'), prefs.get('provider')
+    if not model and profile.model:
+        model, provider = profile.model, profile.bot_type
+    if not model:
+        try:
+            default = get_identity_service().model_defaults_for(ident.user_id, ident.tenant_id, 'chat')
+        except Exception as error:
+            raise OpenAIAPIError(503, 'Identity service unavailable.', 'unavailable') from error
+        if default.get('status') == 'conflict':
+            raise OpenAIAPIError(409, 'Select a model explicitly; role defaults conflict.', 'model_selection_required')
+        model = default.get('model')
+    if not model:
+        model = conf().get('model') or ''
+        provider = conf().get('bot_type') or None
+    if provider == 'chatGPT':
+        provider = 'openai'
+    for entry in _model_catalog():
+        for name in entry.get('models', []):
+            if (not provider or provider == entry['id']) and model in (name, f"provider:{entry['id']}:{name}"):
+                return entry['id'], name
+    raise OpenAIAPIError(403, 'No authorized default model is available; select one explicitly.', 'model_selection_required')
+
+
+def _message_text(message: dict) -> str:
+    """The text of one message; content may be a string or a list of text parts."""
+    content = message.get("content")
+    if content is None and message.get("role") == "assistant":
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        texts = []
+        for part in content:
+            if (
+                not isinstance(part, dict)
+                or part.get("type") != "text"
+                or not isinstance(part.get("text"), str)
+            ):
+                raise OpenAIAPIError(
+                    400, "Only text content parts are supported.", "invalid_request"
+                )
+            texts.append(part["text"])
+        return "".join(texts)
+    raise OpenAIAPIError(
+        400, "Message content must be a string or an array of text parts.", "invalid_request"
+    )
+
+
+def _request_values(payload: dict, completion_id: str) -> dict:
     if not isinstance(payload, dict):
         raise OpenAIAPIError(
             400, "Request body must be a JSON object.", "invalid_request"
         )
 
     model = payload.get("model")
-    if not isinstance(model, str) or not model.strip():
+    if model is not None and not isinstance(model, str):
+        raise OpenAIAPIError(400, "'model' must be a string.", "invalid_request")
+    model = (model or "").strip()
+
+    agent_id = payload.get("agent_id")
+    if agent_id is not None and (not isinstance(agent_id, str) or not agent_id.strip()):
         raise OpenAIAPIError(
-            400, "'model' must be a non-empty string.", "invalid_request"
+            400, "'agent_id' must be a non-empty string.", "invalid_request"
         )
 
     messages = payload.get("messages")
@@ -68,55 +203,94 @@ def _request_values(payload: dict, completion_id: str):
             400, "'messages' must be a non-empty array.", "invalid_request"
         )
 
-    query = None
+    turns = []
     for message in messages:
         if not isinstance(message, dict):
             raise OpenAIAPIError(
                 400, "Each message must be an object.", "invalid_request"
             )
         role = message.get("role")
-        content = message.get("content")
-        if role not in ("system", "user", "assistant"):
+        if role not in _TEXT_ROLES:
             raise OpenAIAPIError(
                 400, "Only text chat messages are supported.", "invalid_request"
             )
-        if not isinstance(content, str):
-            raise OpenAIAPIError(
-                400, "Message content must be a string.", "invalid_request"
-            )
-        if role == "user" and content.strip():
-            query = content
-    if query is None:
+        text = _message_text(message)
+        if role in ("user", "assistant") and text.strip():
+            turns.append((role, text))
+
+    last_user = max(
+        (index for index, (role, _) in enumerate(turns) if role == "user"),
+        default=None,
+    )
+    if last_user is None:
         raise OpenAIAPIError(
             400,
             "'messages' must contain a non-empty user message.",
             "invalid_request",
         )
+    query = turns[last_user][1]
 
     conversation_id = payload.get("conversation_id")
-    user = payload.get("user")
     if conversation_id is not None and (
         not isinstance(conversation_id, str) or not conversation_id.strip()
     ):
         raise OpenAIAPIError(
             400, "'conversation_id' must be a non-empty string.", "invalid_request"
         )
-    if user is not None and (not isinstance(user, str) or not user.strip()):
-        raise OpenAIAPIError(
-            400, "'user' must be a non-empty string.", "invalid_request"
-        )
 
+    # A named conversation keeps its history on the server. Otherwise the
+    # request is self-contained: the earlier messages are the context, and
+    # nothing is kept once it is answered.
+    transcript = None
     if conversation_id:
         session_id = f"openai:conversation:{conversation_id.strip()}"
-    elif user:
-        session_id = f"openai:user:{user.strip()}"
     else:
         session_id = f"openai:request:{completion_id}"
+        transcript = [
+            {"role": role, "content": [{"type": "text", "text": text}]}
+            for role, text in turns[:last_user]
+        ]
 
     stream = payload.get("stream", False)
     if not isinstance(stream, bool):
         raise OpenAIAPIError(400, "'stream' must be a boolean.", "invalid_request")
-    return model.strip(), query, session_id, stream
+    stream_options = payload.get("stream_options")
+    if stream_options is not None and not isinstance(stream_options, dict):
+        raise OpenAIAPIError(
+            400, "'stream_options' must be an object.", "invalid_request"
+        )
+    include_usage = bool(stream_options and stream_options.get("include_usage") is True)
+
+    return {
+        "model": model or None,
+        "agent_id": agent_id.strip() if agent_id else None,
+        "query": query,
+        "session_id": session_id,
+        "transcript": transcript,
+        "stream": stream,
+        "include_usage": include_usage,
+    }
+
+
+def _openai_usage(run_usage) -> dict | None:
+    """A run's provider usage, summed over its model calls, in OpenAI's shape."""
+    if not isinstance(run_usage, dict) or not run_usage:
+        return None
+
+    def count(key: str) -> int:
+        try:
+            return max(0, int(run_usage.get(key) or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    prompt = count("prompt_tokens")
+    completion = count("completion_tokens")
+    return {
+        "prompt_tokens": prompt,
+        "completion_tokens": completion,
+        "total_tokens": count("total_tokens") or prompt + completion,
+        "prompt_tokens_details": {"cached_tokens": count("prompt_cache_hit_tokens")},
+    }
 
 
 def _base_chunk(
@@ -145,39 +319,75 @@ def _base_chunk(
     return payload
 
 
-def _tool_events(chunk: dict) -> list[dict]:
-    chunk_type = chunk.get("chunk_type")
-    if chunk_type == "tool_start":
-        return [
-            {
-                "type": "tool_start",
-                "id": chunk.get("tool_id"),
-                "name": chunk.get("tool"),
-                "arguments": chunk.get("arguments") or {},
-            }
-        ]
-    if chunk_type == "tool_calls":
-        return [
-            {
-                "type": "tool_result",
-                "id": item.get("id"),
-                "name": item.get("name"),
-                "arguments": item.get("arguments") or {},
-                "result": item.get("result", ""),
-                "status": item.get("status"),
-                "elapsed": item.get("elapsed"),
-            }
-            for item in chunk.get("tool_calls") or []
-        ]
-    if chunk_type in ("subagent_step", "artifact"):
-        event = dict(chunk)
-        event["type"] = event.pop("chunk_type")
-        return [event]
-    return []
+class _ToolEvents:
+    """Turns the Agent's tool and teammate chunks into ``cow_event`` objects.
+
+    A call is reported when it starts and again when it finishes, with its
+    arguments; the closing batch of a turn repeats results already reported.
+    """
+
+    def __init__(self):
+        self._arguments = {}
+        self._finished = set()
+
+    def __call__(self, chunk: dict) -> list[dict]:
+        chunk_type = chunk.get("chunk_type")
+        if chunk_type == "tool_start":
+            arguments = chunk.get("arguments") or {}
+            self._arguments[chunk.get("tool_id")] = arguments
+            return [
+                {
+                    "type": "tool_start",
+                    "id": chunk.get("tool_id"),
+                    "name": chunk.get("tool"),
+                    "arguments": arguments,
+                }
+            ]
+        if chunk_type == "tool_end":
+            call_id = chunk.get("tool_id")
+            self._finished.add(call_id)
+            return [
+                {
+                    "type": "tool_result",
+                    "id": call_id,
+                    "name": chunk.get("tool"),
+                    "arguments": self._arguments.pop(call_id, {}),
+                    "result": chunk.get("result", ""),
+                    "status": chunk.get("status"),
+                    "elapsed": chunk.get("elapsed"),
+                }
+            ]
+        if chunk_type == "tool_calls":
+            events = []
+            for item in chunk.get("tool_calls") or []:
+                if item.get("id") in self._finished:
+                    continue
+                events.append(
+                    {
+                        "type": "tool_result",
+                        "id": item.get("id"),
+                        "name": item.get("name"),
+                        "arguments": item.get("arguments") or {},
+                        "result": item.get("result", ""),
+                        "status": item.get("status"),
+                        "elapsed": item.get("elapsed"),
+                    }
+                )
+            return events
+        if chunk_type in _PASSTHROUGH_EVENTS:
+            event = dict(chunk)
+            event["type"] = event.pop("chunk_type")
+            return [event]
+        return []
 
 
 def _sse_frame(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _session_lock(session_id: str, agent_id: str | None = None) -> threading.Lock:
+    owner = agent_id or _agent_registry().default_agent_id
+    return _SESSION_LOCKS[hash((owner, session_id)) % len(_SESSION_LOCKS)]
 
 
 def _request_cancel_scope(
@@ -216,17 +426,32 @@ def _cancel_agent_request(request_id: str, agent_id: str | None = None) -> bool:
     )
 
 
+def _run_kwargs(values: dict, agent_id: str | None, completion_id: str) -> dict:
+    kwargs = {
+        "channel_type": "openai_api",
+        "agent_id": agent_id,
+        "request_id": completion_id,
+    }
+    if values.get("model_route"):
+        kwargs["model_override"] = values["model_route"]
+    if values["transcript"] is not None:
+        kwargs["transcript"] = values["transcript"]
+        kwargs["ephemeral"] = True
+    return kwargs
+
+
 def _stream_completion(
     run_chat: Callable,
-    query: str,
-    session_id: str,
+    values: dict,
+    agent_id: str | None,
     completion_id: str,
     created: int,
-    model: str,
-    agent_id: str | None = None,
 ) -> Iterator[str]:
     from agent.protocol import get_cancel_registry
 
+    query = values["query"]
+    session_id = values["session_id"]
+    model = values["model"]
     registry = get_cancel_registry()
     cancel_key, scoped_session_key = _request_cancel_scope(
         completion_id, session_id, agent_id
@@ -235,6 +460,8 @@ def _stream_completion(
 
     output = queue.Queue(maxsize=256)
     closed = threading.Event()
+    tool_events = _ToolEvents()
+    run_usage = {}
 
     def publish(item) -> None:
         while not closed.is_set():
@@ -261,23 +488,22 @@ def _stream_completion(
                 )
             )
         else:
-            for event in _tool_events(chunk):
+            for event in tool_events(chunk):
                 publish(_base_chunk(completion_id, created, model, {}, cow_event=event))
 
     def execute() -> None:
         try:
-            lock = _SESSION_LOCKS[hash(session_id) % len(_SESSION_LOCKS)]
-            with lock:
+            with _session_lock(session_id, agent_id):
                 if closed.is_set():
                     return
-                run_chat(
+                usage = run_chat(
                     query,
                     session_id,
                     send_chunk,
-                    channel_type="openai_api",
-                    agent_id=agent_id,
-                    request_id=completion_id,
+                    **_run_kwargs(values, agent_id, completion_id),
                 )
+                if isinstance(usage, dict):
+                    run_usage.update(usage)
         except Exception:  # noqa: BLE001 - worker boundary becomes an SSE error
             logger.exception("[OpenAI API] Chat completion failed")
             publish(_STREAM_ERROR)
@@ -287,13 +513,8 @@ def _stream_completion(
             finally:
                 registry.unregister(cancel_key)
 
-    # Run the chat in a context-copied worker so a database-mode caller's
-    # resolved RuntimeIdentity (user/tenant/web session) is inherited by the
-    # model-authorization and tenant path scoping inside the run.
-    from common.runtime_identity import wrap
-
     worker = threading.Thread(
-        target=wrap(execute), name="openai-chat-completion", daemon=True
+        target=copy_context().run, args=(execute,), name="openai-chat-completion", daemon=True
     )
     try:
         worker.start()
@@ -322,6 +543,7 @@ def _stream_completion(
             yield _sse_frame(
                 _base_chunk(completion_id, created, model, {"role": "assistant"})
             )
+            timed_out = False
             while item is not _STREAM_END:
                 if item is _STREAM_ERROR:
                     finish_reason = "error"
@@ -339,8 +561,30 @@ def _stream_completion(
                     )
                 else:
                     yield _sse_frame(item)
-                item = output.get()
-            completed = True
+                try:
+                    item = output.get(timeout=_STREAM_IDLE_TIMEOUT_SECONDS)
+                except queue.Empty:
+                    # The worker stalled. completed stays False so the finally below cancels
+                    # the run and releases the session lock.
+                    timed_out = True
+                    finish_reason = "error"
+                    yield _sse_frame(
+                        _base_chunk(
+                            completion_id,
+                            created,
+                            model,
+                            {},
+                            cow_event={
+                                "type": "error",
+                                "message": (
+                                    "CowAgent stopped producing events before the "
+                                    "stream finished."
+                                ),
+                            },
+                        )
+                    )
+                    break
+            completed = not timed_out
             yield _sse_frame(
                 _base_chunk(
                     completion_id,
@@ -350,6 +594,18 @@ def _stream_completion(
                     finish_reason=finish_reason,
                 )
             )
+            usage = _openai_usage(run_usage)
+            if values["include_usage"] and usage is not None:
+                yield _sse_frame(
+                    {
+                        "id": completion_id,
+                        "object": "chat.completion.chunk",
+                        "created": created,
+                        "model": model,
+                        "choices": [],
+                        "usage": usage,
+                    }
+                )
             yield "data: [DONE]\n\n"
         finally:
             closed.set()
@@ -361,16 +617,16 @@ def _stream_completion(
 
 def _non_stream_completion(
     run_chat: Callable,
-    query: str,
-    session_id: str,
+    values: dict,
+    agent_id: str | None,
     completion_id: str,
     created: int,
-    model: str,
-    agent_id: str | None = None,
 ) -> dict:
+    session_id = values["session_id"]
     content = []
     reasoning = []
     tool_trace = []
+    tool_events = _ToolEvents()
 
     def send_chunk(chunk: dict) -> None:
         chunk_type = chunk.get("chunk_type")
@@ -379,35 +635,46 @@ def _non_stream_completion(
         elif chunk_type == "reasoning":
             reasoning.append(chunk.get("delta") or "")
         else:
-            tool_trace.extend(_tool_events(chunk))
+            # A finished call carries its arguments, so the start adds nothing here.
+            tool_trace.extend(
+                event for event in tool_events(chunk) if event["type"] != "tool_start"
+            )
+
+    # Registered like the streaming path so a session cancel can reach it.
+    from agent.protocol import get_cancel_registry
+
+    registry = get_cancel_registry()
+    cancel_key, scoped_session_key = _request_cancel_scope(
+        completion_id, session_id, agent_id
+    )
+    registry.register(cancel_key, session_id=scoped_session_key)
 
     try:
-        lock = _SESSION_LOCKS[hash(session_id) % len(_SESSION_LOCKS)]
-        with lock:
-            run_chat(
-                query,
+        with _session_lock(session_id, agent_id):
+            run_usage = run_chat(
+                values["query"],
                 session_id,
                 send_chunk,
-                channel_type="openai_api",
-                agent_id=agent_id,
-                request_id=completion_id,
+                **_run_kwargs(values, agent_id, completion_id),
             )
     except Exception as error:
         logger.exception("[OpenAI API] Chat completion failed")
         raise OpenAIAPIError(
             500, "容大AI failed to complete the request.", "internal_error"
         ) from error
+    finally:
+        registry.unregister(cancel_key)
 
     message = {"role": "assistant", "content": "".join(content)}
     if reasoning:
         message["reasoning_content"] = "".join(reasoning)
     if tool_trace:
         message["tool_trace"] = tool_trace
-    return {
+    response = {
         "id": completion_id,
         "object": "chat.completion",
         "created": created,
-        "model": model,
+        "model": values["model"],
         "choices": [
             {
                 "index": 0,
@@ -416,6 +683,10 @@ def _non_stream_completion(
             }
         ],
     }
+    usage = _openai_usage(run_usage)
+    if usage is not None:
+        response["usage"] = usage
+    return response
 
 
 def _encode_stream(stream: Iterator[str]) -> Iterator[bytes]:
@@ -436,28 +707,45 @@ def handle_chat_completions(
     run_chat: Callable,
     created: int | None = None,
     completion_id: str | None = None,
-    *,
-    preauthenticated: bool = False,
-    agent_id: str | None = None,
+    *, preauthenticated: bool = False, agent_id: str | None = None,
 ):
-    """Validate one request and return a completion dict or SSE iterator.
-
-    ``preauthenticated`` marks a database-mode request whose identity was
-    already resolved by the handler (DB session + X-Tenant-ID + agent binding);
-    the legacy ``external_api_token`` check is then skipped.
-    """
+    """Validate one request and return a completion dict or SSE iterator."""
     if not preauthenticated:
         _authenticate(authorization, external_api_token)
     completion_id = completion_id or f"chatcmpl-{uuid.uuid4().hex}"
     created = int(time.time()) if created is None else int(created)
-    model, query, session_id, stream = _request_values(payload, completion_id)
-    if stream:
-        return _stream_completion(
-            run_chat, query, session_id, completion_id, created, model, agent_id
-        )
-    return _non_stream_completion(
-        run_chat, query, session_id, completion_id, created, model, agent_id
-    )
+    values = _request_values(payload, completion_id)
+    agent_id = agent_id if preauthenticated else _resolve_agent(values["agent_id"])
+    if preauthenticated:
+        from common.runtime_identity import current_identity
+        ident = current_identity()
+        # Durable IDs include the trusted principal. Same client-provided name
+        # across users/tenants cannot collide in the composite-key store.
+        scope = json.dumps([ident.tenant_id, ident.user_id, agent_id, values["session_id"]],
+                           ensure_ascii=False, separators=(",", ":"))
+        values["session_id"] = "openai:scoped:" + hashlib.sha256(scope.encode()).hexdigest()
+    values["model_route"] = (_authorized_default_model(agent_id, values["session_id"])
+                             if preauthenticated and values["model"] is None
+                             else _resolve_model(values["model"]))
+    values["model"] = (values["model_route"][1] if values["model_route"]
+                       else values["model"] or _agent_model_name(agent_id))
+    if values["stream"]:
+        return _stream_completion(run_chat, values, agent_id, completion_id, created)
+    return _non_stream_completion(run_chat, values, agent_id, completion_id, created)
+
+
+def handle_list_models(authorization: str, external_api_token: str) -> dict:
+    """Every configured chat model a request may name."""
+    _authenticate(authorization, external_api_token)
+    data = []
+    seen = set()
+    for provider in _model_catalog():
+        for name in provider.get("models") or ():
+            if name in seen:
+                continue
+            seen.add(name)
+            data.append({"id": name, "object": "model", "created": 0, "owned_by": provider["id"]})
+    return {"object": "list", "data": data}
 
 
 def _is_database_mode() -> bool:
@@ -465,7 +753,21 @@ def _is_database_mode() -> bool:
     return True
 
 
-def _db_request_identity_and_agent() -> "tuple":
+def _db_request_identity_and_agent(payload=None):
+    import web
+    try:
+        return _resolve_db_request_identity_and_agent(payload)
+    except OpenAIAPIError:
+        raise
+    except web.HTTPError as error:
+        raise OpenAIAPIError(int(web.ctx.status[:3]), "Request rejected.", "forbidden") from error
+    except Exception as error:
+        # An unavailable identity/registry service never falls back to shared
+        # credentials or an unscoped default Agent.
+        raise OpenAIAPIError(503, "Identity service unavailable.", "unavailable") from error
+
+
+def _resolve_db_request_identity_and_agent(payload=None) -> "tuple":
     """Resolve identity + tenant-bound agent for a database-mode API request.
 
     Database mode accepts either:
@@ -511,6 +813,9 @@ def _db_request_identity_and_agent() -> "tuple":
         else:
             if not _session_token():
                 raise OpenAIAPIError(401, "Authentication required.", "unauthorized")
+            if not bearer:
+                from channel.web.auth_handlers import require_management_write
+                require_management_write()
             ctx = _resolve_ctx_svc(_get_service(), require_tenant=True)
             svc = get_identity_service()
     except IdentityContextError as error:
@@ -524,31 +829,39 @@ def _db_request_identity_and_agent() -> "tuple":
         raise OpenAIAPIError(
             403, "You are not authorized to use the chat API.", "forbidden"
         )
-    bound_ids = svc.tenant_agent_ids(ctx.tenant_id)
+    body_agent = (payload or {}).get("agent_id") if isinstance(payload, dict) else None
+    if body_agent is not None and (not isinstance(body_agent, str) or not body_agent.strip()):
+        raise OpenAIAPIError(400, "agent_id must be a non-empty string", "invalid_request")
     header_agent = (web.ctx.env.get("HTTP_X_AGENT_ID", "") or "").strip()
-    if header_agent:
-        if header_agent not in bound_ids:
-            raise OpenAIAPIError(
-                403, "Agent is not bound to your tenant.", "forbidden"
-            )
-        agent_id = header_agent
-    elif len(bound_ids) == 1:
-        agent_id = bound_ids[0]
-    elif not bound_ids:
-        raise OpenAIAPIError(404, "No agent is bound to your tenant.", "no_agent")
-    else:
-        raise OpenAIAPIError(
-            400,
-            "Multiple agents are available; select one with X-Agent-ID.",
-            "agent_ambiguous",
-        )
-    if not svc.check_resource_action(
-        ctx.user_id, ctx.tenant_id, "agent", f"agent:{agent_id}", "use",
-        permission="agent.use",
-    ):
-        raise OpenAIAPIError(
-            403, "You are not authorized to use this agent.", "forbidden"
-        )
+    from channel.web.fork.authorization import _require_agent_action, _require_tenant_agent_binding
+    from agent.registry import get_agent_registry
+    def canonical(value):
+        if not value:
+            return None
+        try:
+            return get_agent_registry().get_addressed(value).id
+        except (KeyError, ValueError):
+            # A named binding may be temporarily missing from the enabled
+            # registry, but never resolves to a different tenant's default.
+            return value
+    body_agent, header_agent = canonical(body_agent), canonical(header_agent)
+    if body_agent and header_agent and body_agent != header_agent:
+        raise OpenAIAPIError(400, "agent_id conflicts with X-Agent-ID", "invalid_request")
+    selected = body_agent or header_agent
+    if not selected:
+        from channel.web.fork.common import _resolve_tenant_default_agent
+        selected = _resolve_tenant_default_agent(ctx)
+        if not selected:
+            raise OpenAIAPIError(404, "No Agent is available in this tenant.", "no_agent")
+    try:
+        agent_id = _require_tenant_agent_binding(ctx, selected)
+        _require_agent_action(ctx, agent_id, "use", "agent.use")
+        try:
+            agent_id = get_agent_registry().get_addressed(agent_id).id
+        except (KeyError, ValueError) as error:
+            raise OpenAIAPIError(404, "Agent is unavailable.", "agent_not_found") from error
+    except web.HTTPError as error:
+        raise OpenAIAPIError(int(web.ctx.status[:3]), "Agent is unavailable or unauthorized.", "forbidden") from error
     return to_runtime_identity(ctx), agent_id
 
 
@@ -575,11 +888,17 @@ def _scoped_run_chat(ident, agent_id: str) -> Callable:
     return _run
 
 
-def _run_chat_service(*args, **kwargs):
+def _run_chat_service(*args, ephemeral: bool = False, **kwargs):
+    """Run one turn; an ephemeral one is neither stored nor kept in memory."""
     from agent.chat.service import ChatService
     from bridge.bridge import Bridge
 
-    return ChatService(Bridge().get_agent_bridge()).run(*args, **kwargs)
+    agent_bridge = Bridge().get_agent_bridge()
+    try:
+        return ChatService(agent_bridge).run(*args, persist=not ephemeral, **kwargs)
+    finally:
+        if ephemeral:
+            agent_bridge.clear_session(args[1], kwargs.get("agent_id"))
 
 
 def _error_body(error: OpenAIAPIError) -> str:
@@ -588,7 +907,9 @@ def _error_body(error: OpenAIAPIError) -> str:
             "error": {
                 "message": error.message,
                 "type": (
-                    "invalid_request_error" if error.status_code == 400 else "api_error"
+                    "invalid_request_error"
+                    if error.status_code in (400, 404)
+                    else "api_error"
                 ),
                 "code": error.code,
             }
@@ -597,74 +918,102 @@ def _error_body(error: OpenAIAPIError) -> str:
     )
 
 
-class OpenAIChatCompletionsHandler:
-    """web.py handler for ``POST /v1/chat/completions``."""
+_STATUS_LINES = {
+    400: "400 Bad Request",
+    401: "401 Unauthorized",
+    404: "404 Not Found",
+    500: "500 Internal Server Error",
+    503: "503 Service Unavailable",
+}
 
+# Bearer-authenticated and cookie-free, so callers on any origin may use it.
+_CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+}
+
+
+def _cors() -> None:
+    import web
+
+    for name, value in _CORS_HEADERS.items():
+        web.header(name, value)
+
+
+def _raise_http_error(error: OpenAIAPIError):
+    import web
+
+    raise web.HTTPError(
+        _STATUS_LINES[error.status_code],
+        {"Content-Type": "application/json; charset=utf-8", **_CORS_HEADERS},
+        _error_body(error),
+    )
+
+
+def _enabled():
+    # Existing rdai APIs stay on unless explicitly disabled by the operator.
+    if conf().get("external_api_enabled", True) is False:
+        raise OpenAIAPIError(503, "The chat API is disabled.", "api_disabled")
+
+
+def _identity_stream(stream, ident):
+    from common.runtime_identity import use_identity
+    try:
+        while True:
+            with use_identity(ident):
+                try:
+                    frame = next(stream)
+                except StopIteration:
+                    return
+            yield frame
+    finally:
+        with use_identity(ident):
+            stream.close()
+
+
+class OpenAIChatCompletionsHandler:
     def POST(self):
         import web
-
-        from config import conf
-
-        # Database identity mode shares the Web console identity stack (design
-        # decision 11): DB session Bearer/cookie + X-Tenant-ID (+ optional
-        # X-Agent-ID) authorize the call; the legacy bare external_api_token is
-        # a legacy-mode-only contract.
-        run_chat = _run_chat_service
-        preauthenticated = False
-        ident = None
-        agent_id = None
+        from common.runtime_identity import use_identity
         try:
-            if _is_database_mode():
-                ident, agent_id = _db_request_identity_and_agent()
-                preauthenticated = True
-                run_chat = _scoped_run_chat(ident, agent_id)
-
-            raw_body = web.data()
+            _enabled()
             try:
-                payload = json.loads(raw_body) if raw_body else {}
+                payload = json.loads(web.data() or b"{}")
             except (TypeError, ValueError) as error:
-                raise OpenAIAPIError(
-                    400, "Request body must be valid JSON.", "invalid_json"
-                ) from error
-
-            if preauthenticated:
-                from common.runtime_identity import use_identity
-                with use_identity(ident):
-                    result = handle_chat_completions(
-                        payload,
-                        authorization="",
-                        external_api_token="",
-                        run_chat=run_chat,
-                        preauthenticated=True,
-                        agent_id=agent_id,
-                    )
-            else:
+                raise OpenAIAPIError(400, "Request body must be valid JSON.", "invalid_json") from error
+            ident, agent_id = _db_request_identity_and_agent(payload)
+            with use_identity(ident):
                 result = handle_chat_completions(
-                    payload,
-                    authorization=web.ctx.env.get("HTTP_AUTHORIZATION", ""),
-                    external_api_token=conf().get("external_api_token", ""),
-                    run_chat=_run_chat_service,
-                )
+                    payload, "", "", _scoped_run_chat(ident, agent_id),
+                    preauthenticated=True, agent_id=agent_id)
         except OpenAIAPIError as error:
-            statuses = {
-                400: "400 Bad Request",
-                401: "401 Unauthorized",
-                403: "403 Forbidden",
-                404: "404 Not Found",
-                500: "500 Internal Server Error",
-                503: "503 Service Unavailable",
-            }
-            raise web.HTTPError(
-                statuses[error.status_code],
-                {"Content-Type": "application/json; charset=utf-8"},
-                _error_body(error),
-            )
-
+            _raise_http_error(error)
         if isinstance(result, dict):
             web.header("Content-Type", "application/json; charset=utf-8")
             return json.dumps(result, ensure_ascii=False)
-
         web.header("Content-Type", "text/event-stream; charset=utf-8")
         web.header("Cache-Control", "no-cache")
         web.header("X-Accel-Buffering", "no")
-        return _encode_stream(result)
+        return _encode_stream(_identity_stream(result, ident))
+
+
+class OpenAIModelsHandler:
+    def GET(self):
+        import web
+        from common.runtime_identity import use_identity
+        try:
+            _enabled()
+            ident, _agent_id = _db_request_identity_and_agent()
+            with use_identity(ident):
+                data, seen = [], set()
+                for provider in _model_catalog():
+                    for name in provider.get("models") or ():
+                        if name not in seen:
+                            seen.add(name)
+                            data.append({"id": name, "object": "model", "created": 0,
+                                         "owned_by": provider["id"]})
+        except OpenAIAPIError as error:
+            _raise_http_error(error)
+        web.header("Content-Type", "application/json; charset=utf-8")
+        return json.dumps({"object": "list", "data": data}, ensure_ascii=False)

@@ -136,7 +136,7 @@ from agent.permission import (
     global_mode as permission_global_mode,
     normalize_mode as permission_normalize_mode,
 )
-from channel.web.openai_api import OpenAIChatCompletionsHandler
+from channel.web.openai_api import OpenAIChatCompletionsHandler, OpenAIModelsHandler
 from channel.web.branding import (
     BrandingError,
     BrandingService,
@@ -164,6 +164,11 @@ from Scene.sap_workbench.backend.http import (
 
 # Handlers that moved into the fork package; imported so web.py can resolve
 # them against this module's globals.
+from channel.web.fork.handlers.artifacts import (
+    ArtifactsHandler, ArtifactAddHandler, ArtifactPinHandler,
+    ArtifactRenameHandler, ArtifactDeleteHandler,
+)
+from channel.web.fork.handlers.menu import MenuHandler
 from channel.web.fork.handlers.agents import (
     AgentAvatarHandler,
     AgentCoreFileHandler,
@@ -194,6 +199,7 @@ from channel.web.fork.handlers.chat import (
     PollHandler,
     StreamHandler,
 )
+from channel.web.fork.handlers.external_api import ExternalApiHandler
 from channel.web.fork.handlers.config import (
     ConfigHandler,
 )
@@ -299,6 +305,7 @@ from channel.web.fork.handlers.sessions import (
 )
 from channel.web.fork.skill_lifecycle import SkillUploadHandler
 from channel.web.fork.handlers.skills import (
+    SkillFilesHandler, SkillCreateHandler,
     SkillContentHandler,
     SkillsHandler,
     ToolsHandler,
@@ -583,6 +590,7 @@ from channel.web.fork.handlers.sessions import (
     _drop_team_runtimes,
 )
 from channel.web.fork.handlers.skills import (
+    SkillFilesHandler, SkillCreateHandler,
     SkillContentHandler,
     SkillsHandler,
     ToolsHandler,
@@ -761,6 +769,7 @@ URLS = (
     '/message', 'MessageHandler',
     '/upload', 'UploadHandler',
     '/uploads/(.*)', 'UploadsHandler',
+    '/api/file/reveal', 'FileRevealHandler',
     '/api/file', 'FileServeHandler',
     '/preview/(.+)', 'PreviewHandler',
     '/api/workspace/tree', 'WorkspaceTreeHandler',
@@ -769,6 +778,12 @@ URLS = (
     '/api/workspace/meta', 'WorkspaceMetaHandler',
     '/api/workspace/read', 'WorkspaceReadHandler',
     '/api/workspace/write', 'WorkspaceWriteHandler',
+    '/api/artifacts/add', 'ArtifactAddHandler',
+    '/api/artifacts/pin', 'ArtifactPinHandler',
+    '/api/artifacts/rename', 'ArtifactRenameHandler',
+    '/api/menu', 'MenuHandler',
+    '/api/artifacts/delete', 'ArtifactDeleteHandler',
+    '/api/artifacts', 'ArtifactsHandler',
     '/api/projects', 'ProjectsHandler',
     '/api/projects/select', 'ProjectSelectHandler',
     '/api/projects/create', 'ProjectCreateHandler',
@@ -781,7 +796,9 @@ URLS = (
     '/stream', 'StreamHandler',
     '/cancel', 'CancelHandler',
     '/v1/chat/completions', 'OpenAIChatCompletionsHandler',
+    '/v1/models', 'OpenAIModelsHandler',
     '/config', 'ConfigHandler',
+    '/api/external_api', 'ExternalApiHandler',
     '/api/models', 'ModelsHandler',
     '/api/channels', 'ChannelsHandler',
     '/api/weixin/qrlogin', 'WeixinQrHandler',
@@ -791,6 +808,8 @@ URLS = (
     '/api/mcp/servers/test', 'McpServerTestHandler',
     '/api/skills', 'SkillsHandler',
     '/api/skills/content', 'SkillContentHandler',
+    '/api/skills/files', 'SkillFilesHandler',
+    '/api/skills/create', 'SkillCreateHandler',
     '/api/skills/upload', 'SkillUploadHandler',
     '/api/memory', 'MemoryHandler',
     '/api/memory/content', 'MemoryContentHandler',
@@ -839,8 +858,10 @@ URLS = (
     # can ever shadow an API route above -- which is also why the
     # settings view is /settings and not /config, a path the config
     # API already owns.
-    '/(?:agents|settings|skills|memory|knowledge|channels|scheduler|logs)'
+    '/(?:agents|artifacts|settings|skills|memory|knowledge|channels|scheduler|logs)'
     '(?:/[a-z]+)?/?', 'ChatHandler',
+    # A page the user put in the menu: /m/<item id>.
+    '/m/[A-Za-z0-9_-]{1,40}/?', 'ChatHandler',
 )
 
 
@@ -858,7 +879,7 @@ def _upstream_namespace():
     import importlib
 
     modules = (
-        "agents", "auth", "channels", "chat", "config", "files", "knowledge",
+        "agents", "artifacts", "menu", "auth", "channels", "chat", "config", "files", "knowledge",
         "logs", "memory", "models", "openai_compat", "pages", "scheduler",
         "sessions", "skills", "update", "workspace",
     )

@@ -10,7 +10,6 @@ Description:
 
 import http.client
 import json
-import time
 import requests
 import datetime
 import hashlib
@@ -51,7 +50,7 @@ def text_to_speech_aliyun(url, text, appkey, token):
     response = requests.post(url, headers=headers, data=json.dumps(data), timeout=(5, 60), stream=True)
 
     if response.status_code == 200 and response.headers['Content-Type'] == 'audio/mpeg':
-        output_file = TmpDir().path() + "reply-" + str(int(time.time())) + "-" + str(hash(text) & 0x7FFFFFFF) + ".wav"
+        output_file = TmpDir().path() + "reply-" + uuid.uuid4().hex + ".wav"
 
         try:
             save_response(response, output_file, MAX_FILE_BYTES)
@@ -212,8 +211,10 @@ class AliyunTokenGenerator:
         signature = self.sign_request(params)
         params['Signature'] = signature
 
-        # 构造请求URL
-        url = 'http://nls-meta.cn-shanghai.aliyuncs.com/?' + urllib.parse.urlencode(params)
+        # 构造请求URL：必须走https。该请求行里带着AccessKeyId和针对本次
+        # Timestamp/SignatureNonce算出的Signature，明文传输的话任何人截获后
+        # 原样重放就能换到Token，之后所有识别/合成请求的X-NLS-Token都是它。
+        url = 'https://nls-meta.cn-shanghai.aliyuncs.com/?' + urllib.parse.urlencode(params)
 
         # 发送请求
         response = requests.get(url, timeout=(5, 60))

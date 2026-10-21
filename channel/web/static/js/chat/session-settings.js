@@ -22,8 +22,6 @@ const PERMISSION_META = {
 // Last state from GET /api/sessions/<id>/settings; null until first fetch.
 let _sessCfg = null;
 
-function _permBtn() { return document.getElementById('permission-selector-btn'); }
-function _permMenu() { return document.getElementById('permission-selector-menu'); }
 function _modelBtn() { return document.getElementById('model-selector-btn'); }
 function _modelMenu() { return document.getElementById('model-selector-menu'); }
 
@@ -31,7 +29,7 @@ function _permLabel(mode) { return t((PERMISSION_META[mode] || {}).key || 'perm_
 
 /** Close every composer popover except `keep` (so one chip's menu replaces another's). */
 function _closeComposerMenus(keep) {
-    [[_wsSelMenu(), _wsSelBtn()], [_permMenu(), _permBtn()], [_modelMenu(), _modelBtn()]]
+    [[_wsSelMenu(), _wsSelBtn()], [_modelMenu(), _modelBtn()]]
         .forEach(([menu, btn]) => {
             if (!menu || menu === keep) return;
             menu.classList.add('hidden');
@@ -43,43 +41,22 @@ function _closeComposerMenus(keep) {
 
 // Fetch this session's effective model + permission and repaint both chips.
 async function refreshSessionSettings() {
+    const requestSession = sessionId;
+    const requestAgent = activeAgentId;
+    const requestEpoch = _authEpoch;
     try {
         const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/settings`);
         const data = await res.json();
+        if (_authEpoch !== requestEpoch || sessionId !== requestSession || activeAgentId !== requestAgent) return;
         if (data.status !== 'success') return;
-        _sessCfg = { model: data.model, permission: data.permission, team: data.team };
+        _sessCfg = { model: data.model, team: data.team };
     } catch (e) {
         // Keep whatever the chips already show rather than blanking them.
         return;
     }
-    _renderPermissionChip();
     _renderModelChip();
     _renderInputPlaceholder();
     renderComposerIdentity();
-}
-
-function _renderPermissionChip() {
-    const btn = _permBtn();
-    if (!btn || !_sessCfg) return;
-    const state = _sessCfg.permission || {};
-    const mode = state.mode || 'full-access';
-    const meta = PERMISSION_META[mode] || PERMISSION_META['full-access'];
-
-    const label = document.getElementById('permission-selector-label');
-    if (label) label.textContent = _permLabel(mode);
-    const icon = document.getElementById('permission-selector-icon');
-    if (icon) icon.className = `fas ${meta.icon}`;
-
-    // One colour per mode, so an unrestricted session is visibly different from
-    // a read-only one without having to read the label.
-    btn.classList.remove('perm-read-only', 'perm-workspace-write', 'perm-full-access');
-    btn.classList.add(`perm-${mode}`);
-
-    const tip = t('perm_tip').replace('{name}', _permLabel(mode))
-        + (state.source === 'global' ? ` · ${t('perm_follow_global')}` : '');
-    btn.setAttribute('data-tooltip', tip);
-    btn.setAttribute('data-tooltip-pos', 'top');
-    btn.setAttribute('data-tip-float', '');
 }
 
 // The composer placeholder only advertises "@ an Agent" when the conversation
@@ -118,63 +95,8 @@ function _renderModelChip() {
     btn.setAttribute('data-tip-float', '');
 }
 
-function togglePermissionSelector(event) {
-    if (event) { event.preventDefault(); event.stopPropagation(); }
-    const menu = _permMenu();
-    if (!menu) return;
-    if (!menu.classList.contains('hidden')) {
-        _closeComposerMenus();
-        return;
-    }
-    _closeComposerMenus(menu);
-    const open = () => { renderPermissionMenu(); menu.classList.remove('hidden'); _permBtn()?.classList.add('open'); };
-    if (_sessCfg) open(); else refreshSessionSettings().then(open);
-}
-
-function renderPermissionMenu() {
-    const menu = _permMenu();
-    if (!menu) return;
-    const state = (_sessCfg && _sessCfg.permission) || {};
-    const modes = state.modes && state.modes.length ? state.modes : Object.keys(PERMISSION_META);
-    const current = state.mode || 'full-access';
-    const isGlobal = state.source === 'global';
-
-    const parts = [`<div class="composer-menu-title">${escapeHtml(t('perm_menu_title'))}</div>`];
-    // Menu order follows PERMISSION_META, not the backend tuple, so the list
-    // reads consistently even if the backend reorders its modes. "Follow global"
-    // is intentionally not a row of its own: picking a mode simply pins it, and
-    // clicking the already-active mode clears the pin (back to global) so the
-    // behaviour is still reachable without cluttering the menu.
-    Object.keys(PERMISSION_META).filter(m => modes.includes(m)).forEach(mode => {
-        const meta = PERMISSION_META[mode];
-        const active = mode === current;
-        // When this mode is the active one AND it is pinned, clicking it clears
-        // the pin; otherwise clicking pins this mode.
-        const arg = (active && !isGlobal) ? 'null' : `'${mode}'`;
-        parts.push(`
-            <button class="composer-menu-item ${active ? 'active' : ''}" onclick="selectSessionPermission(${arg})">
-                <i class="fas ${meta.icon}"></i>
-                <span class="composer-menu-body">
-                    <span class="composer-menu-name">${escapeHtml(t(meta.key))}</span>
-                    <span class="composer-menu-desc">${escapeHtml(t(meta.key + '_desc'))}</span>
-                </span>
-                ${active ? '<i class="fas fa-check composer-menu-check"></i>' : ''}
-            </button>`);
-    });
-
-    menu.innerHTML = parts.join('');
-}
-
-/** Pin this session's permission mode, or pass null to follow the global one. */
-async function selectSessionPermission(mode) {
-    _closeComposerMenus();
-    await _applySessionSettings({ permission: mode });
-}
-
-// Insert an actionable hint after a tool card whose call was refused by the
-// permission gate. Clicking it opens the permission selector under the input so
-// the user can raise the mode without hunting for the chip.
-function _appendPermissionDeniedHint(toolEl, mode) {
+// Refusals explain the current role or isolation boundary; they do not grant permissions.
+function _appendPermissionDeniedHint(toolEl, mode, kind) {
     if (!toolEl || !toolEl.parentElement) return;
     // Avoid stacking duplicate hints if the model retries the same blocked call.
     if (toolEl.nextElementSibling
@@ -182,19 +104,20 @@ function _appendPermissionDeniedHint(toolEl, mode) {
         && toolEl.nextElementSibling.classList.contains('perm-denied-hint')) {
         return;
     }
-    const label = _permLabel(mode || (_sessCfg && _sessCfg.permission && _sessCfg.permission.mode) || 'workspace-write');
+    // Only a legacy mode refusal names a mode; a role/isolation/quota refusal in
+    // database mode must not blame a session mode the user cannot change. Name
+    // the refusal's actual source where it is known: an isolation refusal is a
+    // tenant boundary, not an authorization gap the caller's role can close.
+    const text = (kind === 'mode' && mode)
+        ? t('perm_denied_hint').replace('{name}', _permLabel(mode))
+        : (kind === 'isolation'
+            ? t('perm_denied_isolation_hint')
+            : t('perm_denied_role_hint'));
     const hint = document.createElement('div');
     hint.className = 'perm-denied-hint';
     hint.innerHTML = `
         <i class="fas fa-shield-halved"></i>
-        <span class="perm-denied-text">${escapeHtml(t('perm_denied_hint').replace('{name}', label))}</span>
-        <button type="button" class="perm-denied-btn">${escapeHtml(t('perm_denied_action'))}</button>`;
-    hint.querySelector('.perm-denied-btn').addEventListener('click', (e) => {
-        e.stopPropagation();
-        const btn = _permBtn();
-        if (btn) { btn.scrollIntoView({ block: 'nearest' }); }
-        togglePermissionSelector();
-    });
+        <span class="perm-denied-text">${escapeHtml(text)}</span>`;
     toolEl.parentElement.insertBefore(hint, toolEl.nextElementSibling);
 }
 
@@ -260,24 +183,26 @@ async function selectSessionModel(provider, model) {
 // Single writer for both chips: POST the change, then repaint from the state the
 // backend echoes back so the UI can never disagree with what was stored.
 async function _applySessionSettings(body) {
+    const owner = {session: sessionId, agent: activeAgentId, epoch: _authEpoch};
+    const current = () => owner.epoch === _authEpoch && owner.session === sessionId && owner.agent === activeAgentId;
     try {
-        const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/settings`, {
+        const res = await fetch(`/api/sessions/${encodeURIComponent(owner.session)}/settings?agent_id=${encodeURIComponent(owner.agent)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
         const data = await res.json();
+        if (!current()) return;
         if (data.status !== 'success') { _wsToast(data.message || t('session_settings_failed')); return; }
-        _sessCfg = { model: data.model, permission: data.permission };
-        _renderPermissionChip();
+        _sessCfg = { model: data.model };
         _renderModelChip();
     } catch (e) {
-        _wsToast(t('session_settings_failed'));
+        if (current()) _wsToast(t('session_settings_failed'));
     }
 }
 
 document.addEventListener('click', (e) => {
-    [[_permMenu(), _permBtn()], [_modelMenu(), _modelBtn()]].forEach(([menu, btn]) => {
+    [[_modelMenu(), _modelBtn()]].forEach(([menu, btn]) => {
         if (!menu || menu.classList.contains('hidden')) return;
         if (menu.contains(e.target) || (btn && btn.contains(e.target))) return;
         menu.classList.add('hidden');

@@ -47,7 +47,8 @@ interface ChatState {
   getSession: (sid: string) => SessionRuntime
   ensureSession: (sid: string) => void
 
-  send: (sid: string, text: string, attachments: Attachment[]) => Promise<void>
+  /** `display` is shown for the turn instead of `text`, which the agent still gets. */
+  send: (sid: string, text: string, attachments: Attachment[], display?: string) => Promise<void>
   cancel: (sid: string) => Promise<void>
   regenerate: (sid: string, botMessageId: string) => Promise<void>
   editUserMessage: (sid: string, messageId: string) => { text: string; attachments: Attachment[] } | null
@@ -143,7 +144,7 @@ function addressedAgentId(text: string, roster: AgentBadge[]): string {
   }
   labels.sort((x, y) => y[0].length - x[0].length)
   for (const [label, id] of labels) {
-    const re = new RegExp(`^@${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[\\s，,：:、]|$)`, 'i')
+    const re = new RegExp(`^@${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[\\s,，:：、。！？；!?;]|$)`, 'i')
     if (re.test(stripped)) return id
   }
   return ''
@@ -267,6 +268,7 @@ function historyToMessage(m: HistoryMessage): ChatMessage {
       id: uid('user'),
       role: 'user',
       content: text,
+      display: m.display || undefined,
       timestamp: m.created_at,
       userSeq: m._seq,
       attachments,
@@ -299,9 +301,11 @@ function historyToMessage(m: HistoryMessage): ChatMessage {
   const finalContent = unanswered
     ? ''
     : answer || (lastContentIdx >= 0 ? stripCancelMarker(raw[lastContentIdx].content || '') : '')
-  const attachments = attachmentsFromSteps(raw)
   // Artifacts are rebuilt by the backend, which alone knows the workspace root.
   const artifacts = m.artifacts || []
+  // A sent document comes back as an artifact card too; show it once.
+  const carded = new Set(artifacts.map((a) => a.abs_path))
+  const attachments = attachmentsFromSteps(raw).filter((a) => !a.abs_path || !carded.has(a.abs_path))
 
   return {
     id: uid('assistant'),
@@ -313,6 +317,7 @@ function historyToMessage(m: HistoryMessage): ChatMessage {
     kind: m.kind,
     extras: m.extras,
     botSeq: m._seq,
+    usage: m.usage,
     isCancelled: cancelled || undefined,
     runState: m.run_state,
     attachments: attachments.length > 0 ? attachments : undefined,
@@ -434,6 +439,23 @@ export const useChatStore = create<ChatState>((set, get) => {
       closeStream()
     }
 
+    // Deltas may arrive in a burst (an upstream that buffers the reply and
+    // flushes it at once). Committing each one re-renders the whole answer, so
+    // they are buffered and committed at most once per frame.
+    let pendingText = ''
+    let pendingTarget = ''
+    let flushFrame: number | null = null
+    const flushDeltas = () => {
+      if (flushFrame !== null) {
+        cancelAnimationFrame(flushFrame)
+        flushFrame = null
+      }
+      if (!pendingText) return
+      const text = pendingText
+      pendingText = ''
+      updateMsg(sid, pendingTarget, (m) => ({ ...m, content: m.content + text }))
+    }
+
     es.onmessage = (event) => {
       let data: StreamEvent
       try {
@@ -441,6 +463,8 @@ export const useChatStore = create<ChatState>((set, get) => {
       } catch {
         return // keepalive
       }
+      // Every other event may read or replace the bubble's content.
+      if (data.type !== 'delta') flushDeltas()
       // Stopped: nothing more is said, but a step already running still ends.
       if (detached() && (data.type === 'delta' || data.type === 'reasoning')) return
 
@@ -449,9 +473,19 @@ export const useChatStore = create<ChatState>((set, get) => {
           updateMsg(sid, speaking(), (m) => ({ ...m, reasoning: (m.reasoning || '') + (data.content || '') }))
           break
 
-        case 'delta':
-          updateMsg(sid, speaking(), (m) => ({ ...m, content: m.content + (data.content || '') }))
+        case 'delta': {
+          const target = speaking()
+          if (target !== pendingTarget) flushDeltas()
+          pendingTarget = target
+          pendingText += data.content || ''
+          if (flushFrame === null) {
+            flushFrame = requestAnimationFrame(() => {
+              flushFrame = null
+              flushDeltas()
+            })
+          }
           break
+        }
 
         // A teammate given work answers as itself: its reply, reasoning and
         // tool calls arrive as the same events as anyone's, bracketed by this
@@ -650,6 +684,7 @@ export const useChatStore = create<ChatState>((set, get) => {
               ...m,
               content: next,
               botSeq: data.bot_seq ?? m.botSeq,
+              usage: data.usage ?? m.usage,
               isStreaming: false,
             }
           })
@@ -719,6 +754,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     }
 
     es.onerror = () => {
+      flushDeltas()
       // Stream closed (often the normal end after `done`/tail). Finalize.
       if (ended) finishStream()
       else dropStream()
@@ -743,11 +779,12 @@ export const useChatStore = create<ChatState>((set, get) => {
       if (!get().sessions[sid]) patchSession(sid, { ...EMPTY })
     },
 
-    send: async (sid, text, attachments) => {
+    send: async (sid, text, attachments, display) => {
       const userMsg: ChatMessage = {
         id: uid('user'),
         role: 'user',
         content: text,
+        display: display || undefined,
         timestamp: Date.now() / 1000,
         attachments: attachments.length ? attachments : undefined,
       }
@@ -779,6 +816,7 @@ export const useChatStore = create<ChatState>((set, get) => {
           attachments: attachments.length ? attachments : undefined,
           agentId: owner || undefined,
           speakerAgentId: addressed && addressed !== owner ? addressed : undefined,
+          display: display || undefined,
         })
         // The server is the authority on who took the turn; repaint the live
         // bubble if it resolved the mention differently than we guessed.
@@ -860,7 +898,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       // drop the user+bot messages locally from idx-? : remove from the user msg onward
       const userIdx = s.messages.indexOf(userMsg)
       patchMessages(sid, (msgs) => msgs.slice(0, userIdx))
-      await get().send(sid, userMsg.content, userMsg.attachments || [])
+      await get().send(sid, userMsg.content, userMsg.attachments || [], userMsg.display)
     },
 
     editUserMessage: (sid, messageId) => {

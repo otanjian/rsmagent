@@ -25,7 +25,7 @@ import time
 from typing import Optional
 
 import requests
-from models.bot import Bot
+from models.bot import Bot, read_error_body
 from models.openai_compatible_bot import OpenAICompatibleBot
 from models.session_manager import SessionManager
 from bridge.context import ContextType
@@ -212,8 +212,7 @@ class DeepSeekBot(Bot, OpenAICompatibleBot):
                     "content": response["choices"][0]["message"]["content"],
                 }
             else:
-                response = res.json()
-                error = response.get("error", {})
+                error = read_error_body(res)
                 logger.error(
                     f"[DEEPSEEK] chat failed, status_code={res.status_code}, "
                     f"msg={error.get('message')}, type={error.get('type')}"
@@ -341,6 +340,7 @@ class DeepSeekBot(Bot, OpenAICompatibleBot):
 
     def _handle_stream_response(self, request_body: dict):
         """Stream SSE chunks from DeepSeek and yield OpenAI-format deltas (with reasoning_content)."""
+        response = None
         try:
             headers = self._build_headers()
             url = f"{self.api_base}/chat/completions"
@@ -459,6 +459,9 @@ class DeepSeekBot(Bot, OpenAICompatibleBot):
             import traceback
             logger.error(traceback.format_exc())
             yield {"error": True, "message": str(e), "status_code": 500}
+        finally:
+            if response is not None:
+                response.close()
 
     # -------------------- sync --------------------
 

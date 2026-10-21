@@ -36,10 +36,11 @@
   "todo_enabled": false,
   "identity_mode": "database",
   "platform_file_root": "",
+  "external_api_enabled": true,
   "agent": true,
-  "agent_max_context_tokens": 64000,
+  "agent_max_context_tokens": 200000,
   "agent_max_context_turns": 30,
-  "agent_max_steps": 30,
+  "agent_max_steps": 100,
   "agent_permission_mode": "full-access",
   "image_input": {
     "max_bytes": 4194304,

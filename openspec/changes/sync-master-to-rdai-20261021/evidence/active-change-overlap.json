@@ -1,0 +1,21 @@
+{
+  "scope": [
+    "console-navigation-availability",
+    "conversation-artifact-catalog",
+    "role-model-assignment",
+    "service-account-api-access",
+    "session-context-controls",
+    "tenant-skills-tools-console",
+    "web-transport-configuration"
+  ],
+  "overlaps": [
+    {
+      "change": "add-desktop-local-runtime-with-enterprise-services",
+      "capabilities": [
+        "tenant-skills-tools-console"
+      ],
+      "open_tasks": 72,
+      "disposition": "Retain existing scope and open tasks; this sync does not archive or mark the related change complete."
+    }
+  ]
+}

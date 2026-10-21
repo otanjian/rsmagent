@@ -1,0 +1,18 @@
+{
+  "scenarios": [
+    {
+      "name": "http: console-created tasks dispatch into two owned sessions",
+      "passed": true
+    },
+    {
+      "name": "http: long completion, 205 rows, reconnect and two windows",
+      "passed": true
+    },
+    {
+      "name": "http: preference off consumes event and revoked grant rejects notification click",
+      "passed": true
+    }
+  ],
+  "pageErrors": [],
+  "scope": "real WSGI, IAM, scheduler dispatch, SQLite ledger and browser; captured OS notification"
+}

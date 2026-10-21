@@ -39,10 +39,21 @@ def _is_system_asset_rel(rel_path: str) -> bool:
     return p in _SYSTEM_ASSET_FILES or p.startswith(_SYSTEM_ASSET_PREFIXES)
 
 
-def _system_workspace_service():
+def _system_workspace_service(agent_id: str = None, rel_path: str = None):
     from agent.workspace.service import WorkspaceService
-    from common.state_dir import state_root_str
-    return WorkspaceService(state_root_str())
+    from common.runtime_identity import RuntimeIdentity
+    from common.state_dir import knowledge_dir, state_root_str
+    # HTTP handlers resolve their requested Agent explicitly; they do not
+    # install its runtime identity. A project's system-file fallback must
+    # follow that same Agent instead of the ambient/default workspace.
+    identity = RuntimeIdentity(agent_id=agent_id) if agent_id else None
+    root = state_root_str(identity)
+    if rel_path and rel_path.lstrip("./").startswith(("knowledge/", "knowledge\\")):
+        knowledge = knowledge_dir(identity)
+        # Keep the public knowledge/... path while validating its narrower root.
+        WorkspaceService(str(knowledge)).to_workspace_rel(os.path.join(str(knowledge.parent), rel_path))
+        root = str(knowledge.parent)
+    return WorkspaceService(root)
 
 
 def _decorate_entry(svc, entry: dict) -> dict:
@@ -61,8 +72,8 @@ class WorkspaceTreeHandler:
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            params = web.input(path='', show_hidden='', session='', agent='')
-            svc = _workspace_service(params.session or None, params.agent or None)
+            params = web.input(path='', show_hidden='', session='', agent='', agent_id='')
+            svc = _workspace_service(params.session or None, params.agent or params.agent_id or None)
             result = svc.list_dir(params.path, show_hidden=params.show_hidden == '1')
             result["entries"] = [_decorate_entry(svc, e) for e in result["entries"]]
             return json.dumps({"status": "success", **result}, ensure_ascii=False)
@@ -78,12 +89,12 @@ class WorkspaceSearchHandler:
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            params = web.input(q='', limit='30', session='', agent='')
+            params = web.input(q='', limit='30', session='', agent='', agent_id='')
             try:
                 limit = max(1, min(100, int(params.limit)))
             except (TypeError, ValueError):
                 limit = 30
-            svc = _workspace_service(params.session or None, params.agent or None)
+            svc = _workspace_service(params.session or None, params.agent or params.agent_id or None)
             result = svc.search(params.q, limit=limit)
             result["results"] = [_decorate_entry(svc, e) for e in result["results"]]
             return json.dumps({"status": "success", **result}, ensure_ascii=False)
@@ -105,12 +116,12 @@ class WorkspaceResolveHandler:
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             from agent.protocol.artifact import classify_kind, is_previewable
-            params = web.input(path='', session='', agent='')
+            params = web.input(path='', session='', agent='', agent_id='')
             raw_path = (params.path or '').strip()
             if not raw_path:
                 return json.dumps({"status": "error", "message": "path is required"})
 
-            svc = _workspace_service(params.session or None, params.agent or None)
+            svc = _workspace_service(params.session or None, params.agent or params.agent_id or None)
             if os.path.isabs(os.path.expanduser(raw_path)):
                 abs_path = os.path.realpath(os.path.expanduser(raw_path))
                 if not _is_path_allowed(abs_path):
@@ -136,7 +147,7 @@ class WorkspaceResolveHandler:
                     # Memory/knowledge live in state_root, not the project. Retry
                     # there so their cards still preview when a project is open.
                     if _is_system_asset_rel(raw_path):
-                        entry = _system_workspace_service().stat_file(raw_path)
+                        entry = _system_workspace_service(params.agent or params.agent_id or None, raw_path).stat_file(raw_path)
                     else:
                         raise
 
@@ -157,8 +168,8 @@ class WorkspaceMetaHandler:
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            params = web.input(session='', agent='')
-            svc = _workspace_service(params.session or None, params.agent or None)
+            params = web.input(session='', agent='', agent_id='')
+            svc = _workspace_service(params.session or None, params.agent or params.agent_id or None)
             return json.dumps({"status": "success", **svc.meta()}, ensure_ascii=False)
         except Exception as e:
             logger.error(f"[WebChannel] Workspace meta error: {e}")
@@ -176,16 +187,24 @@ def _editable_target(raw_path: str, session_id: str = None, agent_id: str = None
     assets that live there even while a project is open.
     """
     svc = _workspace_service(session_id, agent_id)
-    system = _system_workspace_service()
+    system = _system_workspace_service(agent_id)
     try:
         rel = svc.to_workspace_rel(raw_path)
     except ValueError:
-        # Absolute path outside the session workspace: the state root is the
-        # only other place the console is allowed to edit.
-        return system, system.to_workspace_rel(raw_path)
-    if svc.root != system.root and _is_system_asset_rel(rel) \
-            and not os.path.isfile(svc.resolve(rel)):
-        return system, rel
+        # Absolute paths may also name this Agent's state or its selected
+        # knowledge directory, never arbitrary files in the shared root.
+        try:
+            return system, system.to_workspace_rel(raw_path)
+        except ValueError:
+            from common.runtime_identity import RuntimeIdentity
+            from common.state_dir import knowledge_dir
+            from agent.workspace.service import WorkspaceService
+            identity = RuntimeIdentity(agent_id=agent_id) if agent_id else None
+            knowledge = knowledge_dir(identity)
+            knowledge_rel = WorkspaceService(str(knowledge)).to_workspace_rel(raw_path)
+            return WorkspaceService(str(knowledge.parent)), os.path.join(knowledge.name, knowledge_rel)
+    if _is_system_asset_rel(rel) and not os.path.isfile(svc.resolve(rel)):
+        return _system_workspace_service(agent_id, rel), rel
     return svc, rel
 
 
@@ -219,11 +238,11 @@ class WorkspaceReadHandler:
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            params = web.input(path='', session='', agent='')
+            params = web.input(path='', session='', agent='', agent_id='')
             raw_path = (params.path or '').strip()
             if not raw_path:
                 return json.dumps({"status": "error", "message": "path is required"})
-            svc, rel = _editable_target(raw_path, params.session or None, params.agent or None)
+            svc, rel = _editable_target(raw_path, params.session or None, params.agent or params.agent_id or None)
             return json.dumps({"status": "success", **svc.read_text(rel)}, ensure_ascii=False)
         except (ValueError, FileNotFoundError) as e:
             return json.dumps({"status": "error", "message": str(e)})
@@ -261,7 +280,7 @@ class WorkspaceWriteHandler:
             if not isinstance(content, str):
                 return json.dumps({"status": "error", "message": "content must be a string"})
 
-            agent_id = body.get("agent") or None
+            agent_id = body.get("agent") or body.get("agent_id") or None
             svc, rel = _editable_target(raw_path, body.get("session") or None, agent_id)
             try:
                 result = svc.write_text(rel, content, expected_mtime=body.get("expected_mtime"))
@@ -315,8 +334,8 @@ class ProjectsHandler:
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            params = web.input(session='', agent='')
-            state = _project_state(params.session or None, params.agent or None)
+            params = web.input(session='', agent='', agent_id='')
+            state = _project_state(params.session or None, params.agent or params.agent_id or None)
             return json.dumps({"status": "success", **state}, ensure_ascii=False)
         except Exception as e:
             logger.error(f"[WebChannel] Projects list error: {e}")
@@ -426,7 +445,7 @@ class ProjectManageHandler:
         try:
             from agent.workspace import project_store
             body = json.loads(web.data() or b"{}")
-            path = (body.get("path") or "").strip()
+            path = body.get("path") or ""
             if not path:
                 return json.dumps({"status": "error", "message": "path is required"})
             name = project_store.rename_project(path, body.get("name") or "")
@@ -441,7 +460,7 @@ class ProjectManageHandler:
         try:
             from agent.workspace import project_store
             body = json.loads(web.data() or b"{}")
-            path = (body.get("path") or "").strip()
+            path = body.get("path") or ""
             agent_id = body.get("agent") or body.get("agent_id")
             if not path:
                 return json.dumps({"status": "error", "message": "path is required"})
@@ -471,7 +490,7 @@ class ProjectBrowseHandler:
         try:
             from common.utils import expand_path
             params = web.input(path='')
-            raw = (params.path or '').strip()
+            raw = params.path or ''
 
             # On Windows, "__DRIVES__" is a virtual path listing all logical
             # drives, so the user can hop across drives from a drive root.

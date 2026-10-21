@@ -5,24 +5,24 @@
                                     transform -translate-x-full lg:relative lg:translate-x-0
                                     transition-transform duration-300 ease-in-out">
             <!-- Logo -->
-            <div class="flex items-center gap-3 px-5 h-14 border-b border-white/10 flex-shrink-0">
+            <div class="sidebar-brand flex items-center gap-3 px-5 h-14 border-b border-white/10 flex-shrink-0">
                 <!-- The mark itself goes home, as it does everywhere else on the
                      web. Only the image: the name beside it is a heading. -->
                 <img id="sidebar-home" role="button" tabindex="0"
-                     src="/assets/logo.jpg" alt="CowAgent"
-                     class="w-8 h-8 rounded-lg flex-shrink-0 cursor-pointer
+                     src="/assets/rongda-ai-mark.svg" alt="容大AI"
+                     class="brand-mark w-8 h-8 rounded-lg flex-shrink-0 cursor-pointer
                             hover:opacity-80 transition-opacity duration-150">
-                <div class="flex flex-col min-w-0">
-                    <span class="text-white font-semibold text-sm truncate">CowAgent</span>
-                    <span class="text-neutral-500 text-xs" data-i18n="console">控制台</span>
+                <div class="sidebar-brand-text flex flex-col min-w-0">
+                    <span id="sidebar-brand-name" class="text-white font-semibold text-sm truncate">容大AI</span>
+                    <span id="sidebar-brand-caption" class="text-neutral-500 text-xs" data-i18n="nav_workbench">业务工作台</span>
                 </div>
             </div>
 
             <!-- Navigation -->
-            <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+            <nav id="sidebar-nav" class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
                 <!-- Chat Group -->
                 <div class="menu-group open" data-group="chat">
-                    <button class="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-300 cursor-pointer transition-colors duration-150">
+                    <button class="menu-group-head w-full flex items-center gap-2 pl-3 pr-8 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-300 cursor-pointer transition-colors duration-150">
                         <i class="fas fa-chevron-right text-[10px] chevron"></i>
                         <span data-i18n="nav_chat">对话</span>
                     </button>
@@ -37,7 +37,7 @@
 
                 <!-- Management Group -->
                 <div class="menu-group open" data-group="manage">
-                    <button class="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-300 cursor-pointer transition-colors duration-150">
+                    <button class="menu-group-head w-full flex items-center gap-2 pl-3 pr-8 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-300 cursor-pointer transition-colors duration-150">
                         <i class="fas fa-chevron-right text-[10px] chevron"></i>
                         <span data-i18n="nav_manage">管理</span>
                     </button>
@@ -82,7 +82,7 @@
 
                 <!-- Monitor Group -->
                 <div class="menu-group open" data-group="monitor">
-                    <button class="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-300 cursor-pointer transition-colors duration-150">
+                    <button class="menu-group-head w-full flex items-center gap-2 pl-3 pr-8 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-300 cursor-pointer transition-colors duration-150">
                         <i class="fas fa-chevron-right text-[10px] chevron"></i>
                         <span data-i18n="nav_monitor">监控</span>
                     </button>
@@ -96,34 +96,122 @@
                 </div>
             </nav>
 
-            <!-- Sidebar Footer -->
-            <div class="px-4 py-3 border-t border-white/10 flex-shrink-0 relative">
-                <div class="flex items-center gap-2 text-xs text-neutral-600">
-                    <i class="fas fa-circle text-[6px] text-primary-400"></i>
-                    <button type="button" id="sidebar-version" onclick="toggleUpdateMenu(event)"
-                       class="update-version-btn hover:text-primary-400 transition-colors duration-150 cursor-pointer bg-transparent border-0 p-0 text-left"
-                       aria-haspopup="menu" aria-controls="update-menu" aria-expanded="false"></button>
-                </div>
-
-                <!-- Up-popover menu anchored to the version row -->
-                <div id="update-menu" class="update-menu hidden" role="menu" aria-labelledby="sidebar-version">
-                    <!-- Single update entry: "检查更新" turns into "立即更新" once a
-                         newer version is found (mirrors the desktop NavRail). -->
-                    <button type="button" id="update-action-item" class="update-menu-item" role="menuitem" onclick="onUpdateActionClick()">
-                        <span class="update-menu-icon">
-                            <i id="update-action-icon" class="fas fa-arrows-rotate"></i>
-                            <span id="update-dot" class="update-dot hidden" aria-hidden="true"></span>
-                        </span>
-                        <span id="update-action-label" class="update-menu-label" data-i18n="update_check">检查更新</span>
+            <div id="sidebar-account-footer" class="sidebar-account-footer">
+                <button id="sidebar-account-toggle" type="button" class="sidebar-account-toggle"
+                        onclick="toggleAccountMenu()" aria-controls="sidebar-account-menu" aria-expanded="false">
+                    <span class="sidebar-account-avatar" aria-hidden="true">
+                        <span id="sidebar-account-avatar" class="hidden"></span>
+                        <i id="sidebar-account-avatar-icon" class="fas fa-user"></i>
+                    </span>
+                    <span class="sidebar-account-copy">
+                        <span id="sidebar-account-name" class="sidebar-account-name">账号信息加载中</span>
+                        <span id="sidebar-account-subtitle" class="sidebar-account-subtitle"></span>
+                    </span>
+                    <svg class="sidebar-account-chevron" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>
+                    </svg>
+                </button>
+                <div id="sidebar-account-menu" class="sidebar-account-menu hidden" role="group" aria-labelledby="sidebar-account-name">
+                    <div id="account-menu-sheet-head" class="account-menu-sheet-head hidden">
+                        <p class="account-menu-sheet-title" data-i18n="account_menu_title">账号</p>
+                        <button id="account-menu-sheet-close" type="button" class="account-menu-sheet-close hidden"
+                                onclick="closeAccountMenu(true)" data-i18n-aria-label="close" aria-label="关闭">
+                            <i class="fas fa-xmark" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <div id="account-menu-identity" class="account-menu-identity hidden">
+                        <span id="account-menu-avatar" class="sidebar-account-avatar account-menu-avatar" aria-hidden="true"></span>
+                        <div class="account-menu-identity-copy">
+                            <p id="account-menu-name" class="account-menu-name"></p>
+                            <p id="account-menu-username" class="account-menu-username"></p>
+                        </div>
+                    </div>
+                    <p id="account-menu-status" class="account-menu-status hidden" role="status"></p>
+                    <button id="account-menu-retry" type="button" class="account-menu-action hidden"
+                            onclick="refreshAccountIdentity()">
+                        <svg class="account-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 17.9 17"/></svg>
+                        <span data-i18n="account_retry">重新检查</span>
                     </button>
-                    <button type="button" class="update-menu-item" role="menuitem" onclick="openReleaseNotes()">
-                        <span class="update-menu-icon"><i class="fas fa-file-lines"></i></span>
-                        <span class="update-menu-label" data-i18n="update_changelog">版本说明</span>
-                        <i class="fas fa-arrow-up-right-from-square update-menu-ext"></i>
+                    <div id="account-menu-settings" class="account-menu-group hidden">
+                        <p class="account-menu-group-title" data-i18n="account_menu_settings">账号设置</p>
+                        <button id="account-menu-profile" type="button" class="account-menu-action account-menu-item hidden"
+                                onclick="openAccountProfile()">
+                            <svg class="account-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20v-2a7 7 0 0 1 14 0v2"/></svg>
+                            <span data-i18n="account_menu_profile">个人资料</span>
+                        </button>
+                        <button id="account-menu-password" type="button" class="account-menu-action account-menu-item hidden"
+                                onclick="openAccountPassword()">
+                            <svg class="account-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 3v6c0 4.5-5.5 8-8 9-2.5-1-8-4.5-8-9V6l8-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+                            <span data-i18n="account_menu_password">账号安全</span>
+                        </button>
+                        <button id="account-menu-prefs" type="button" class="account-menu-action account-menu-item hidden"
+                                onclick="openAccountPrefs()">
+                            <svg class="account-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h8m4 0h4M4 17h4m4 0h8"/><circle cx="14" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+                            <span data-i18n="account_menu_prefs">个人偏好</span>
+                            <svg class="account-menu-trailing" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                        </button>
+                    </div>
+                    <button id="account-menu-about" type="button" class="account-menu-action account-menu-item hidden"
+                            onclick="openAccountAbout()">
+                        <svg class="account-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 1.5-2.5 2-2.5 3.5"/><path d="M12 16.5h.01"/></svg>
+                        <span id="account-menu-about-label" data-i18n="account_menu_about">帮助与关于</span>
                     </button>
+                    <button id="account-menu-logout" type="button" class="account-menu-action account-menu-logout hidden"
+                            onclick="handleLogout()">
+                        <svg class="account-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h5M10 12h10m-4-4 4 4-4 4"/></svg>
+                        <span id="account-menu-logout-label" data-i18n="account_logout">退出登录</span>
+                    </button>
+                    <div class="account-menu-version">
+                        <a id="sidebar-version"
+                           href="https://www.rsm.global/china/zh-hans"
+                           target="_blank" rel="noopener noreferrer">容大AI</a>
+                        <svg class="account-menu-trailing" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>
+                    </div>
+                    <button id="source-update-open" type="button" class="account-menu-action hidden"
+                            onclick="toggleUpdateMenu(event)">检查更新</button>
+                    <section id="update-menu" class="hidden p-3 text-sm" aria-live="polite">
+                        <p id="source-update-target" class="break-all"></p>
+                        <p id="source-update-status"></p>
+                        <button id="update-action-item" type="button" class="account-menu-action" onclick="onUpdateActionClick()">
+                            <span id="update-dot" class="hidden" aria-hidden="true">●</span>
+                            <span id="update-action-label">检查更新</span>
+                        </button>
+                    </section>
                 </div>
             </div>
+<!-- Sidebar Footer -->
+            <div class="sidebar-footer pl-6 pr-2 py-2 border-t border-white/10 flex-shrink-0 relative">
+                <div class="flex items-center gap-2 text-xs text-neutral-600">
+                    <button type="button" class="update-menu-item flex-1" onclick="menuEditorOpen()">
+                        <i class="fas fa-pen" aria-hidden="true"></i>
+                        <span data-i18n="menu_edit">自定义菜单</span>
+                    </button>
+                    <!-- Rail toggle (desktop widths only; phones use the drawer) -->
+                    <button type="button" id="sidebar-collapse-btn" class="sidebar-collapse-btn"
+                            onclick="toggleSidebarCollapsed()" data-tip-float aria-controls="sidebar">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            <rect x="1.75" y="2.25" width="12.5" height="11.5" rx="2.25" stroke="currentColor" stroke-width="1.3"/>
+                            <path d="M6.25 2.5v11" stroke="currentColor" stroke-width="1.3"/>
+                            <path class="sidebar-collapse-chevron" d="M10.6 6.2 9 8l1.6 1.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                </div>
+
+
+            </div>
         </aside>
+        <!-- Close the groups the user folded last time before the first paint,
+             so they don't flash open and then animate shut. -->
+        <script>
+        (function () {
+            try {
+                var groups = JSON.parse(localStorage.getItem('cow_sidebar_groups') || '{}');
+                document.querySelectorAll('#sidebar .menu-group[data-group]').forEach(function (g) {
+                    if (groups[g.getAttribute('data-group')] === false) g.classList.remove('open');
+                });
+            } catch (e) { /* unreadable state: keep the defaults */ }
+        })();
+        </script>
 
         <!-- Mobile Overlay -->
         <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden lg:hidden cursor-pointer" onclick="toggleSidebar()"></div>

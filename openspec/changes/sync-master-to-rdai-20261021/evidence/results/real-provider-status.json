@@ -1,0 +1,19 @@
+{
+  "status": "blocked",
+  "provider": "DeepSeek",
+  "observed_http_status": 401,
+  "source_config": "/Users/jiantan/ai_assistant/rsmagent/config.json",
+  "source_config_mtime": 1791346092,
+  "secret_recorded": false,
+  "acceptance": "Real model reply, tool write/read, file verification and service-account model acceptance remain pending; synthetic fixtures are not a substitute.",
+  "latest_recheck": {
+    "checked_at": "2026-10-21T11:51:20.912781+00:00",
+    "provider": "DeepSeek",
+    "endpoint": "/models",
+    "http_status": 401,
+    "source_config_mtime": 1791346092,
+    "credential_logged": false,
+    "error_code": "invalid_request_error",
+    "error_type": "authentication_error"
+  }
+}

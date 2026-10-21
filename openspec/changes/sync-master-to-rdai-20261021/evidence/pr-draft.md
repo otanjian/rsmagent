@@ -1,0 +1,15 @@
+# Sync master into rdai with upstream Web UI and scoped business services
+
+Draft review candidate. **Do not merge or mark ready** until the remaining real-provider Web checks and review are complete. Publishing this draft preserves the candidate and its evidence; it does not accept the unresolved checks or change the target branch.
+
+This merge brings `master@ee2dc0521714fc144e0c9923f363147fe865ad2f` into `rdai@c9bd4942261156f56c02ffd65e4d81c6153e1594`, preserving target history and database identity, tenant/owner boundaries, resource authorization and product branding. Shared Web pages use master's split modules, templates and interaction flow. The rdai-specific workbench is named **Business Workspace**; master pages and SAP retain their own content and routes.
+
+The integration scopes artifacts to trusted conversation owners, stores personal menu JSON in existing private directories, retains IAM service-account keys for the compatible API, and connects skill resource IDs, model discovery, context snapshots and TLS to actual fork entry points. It also carries upstream Agent/tool/model/channel fixes and preserves desktop source contracts. No new menu table, second router or replacement context panel is introduced.
+
+Validation evidence is indexed in `evidence/README.md`. The required gate checks the fixed source and target, actual assembly and resources, individually named backend/frontend cases and real browser flows. Broad backend results preserve the pre-existing missing `desktop-remote-web-workbench` specification failure and list Windows-native tests separately. Desktop type checks, builds, native D1–D6 and package testing are deferred by the agreed scope. Gitea API inspection confirms no branch protection rules; the latest target jobs remain queued without an assigned runner. Remote required-check blocking is not delivered; see `evidence/ci-status.md` for the read-only evidence and inherited GAP-007 ownership.
+
+**Outstanding:** the configured provider credential returned HTTP 401, so a real Web model/tool/file loop and real service-account model acceptance are not yet passed. Final review, merging into `rdai` and production smoke remain pending. Keep task 10.4, formal delivery tasks 11.3–11.5, GAP-007/task 9.4 and deferred task 12 open; do not archive this change as fully accepted.
+
+Local evidence: 39 actual browser scenarios passed with zero page errors; the full required synchronization gate and 266 core cases passed. The broader backend run recorded 3,083 passing cases/subcases, one reproduced target-baseline failure and 12 explicitly deferred Windows-native cases. Five historical sidebar/launch and three historical translation snapshot failures also reproduce on the target baseline and remain visible in the evidence. The runtime digest is `1305d2af4f6649de916faff7b9c96240b27cf8775536fefd7c2e6c33f93207da`.
+
+Target branch: `rdai`. Preserve the merge commit and both parent histories; do not squash, rebase or force-push the target. Review the migration/recovery notes in `evidence/api-and-deployment.md` before deployment.

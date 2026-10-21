@@ -109,7 +109,44 @@
                                         </button>
                                     </div>
                                 </div>
-                            </div>
+                            <div class="agent-field">
+                                    <div class="agent-field-label-row">
+                                        <label class="agent-field-label" data-i18n="agents_type">类型</label>
+                                        <span class="agent-field-tip" data-i18n-tip="agents_type_hint"><i class="fas fa-circle-info"></i></span>
+                                    </div>
+                                    <!-- The type decides which surface serves this Agent's
+                                         conversations (change add-opencode-coding-agents,
+                                         4.3). It is chosen at creation and not editable
+                                         afterwards, so the detail pane states it rather
+                                         than offering a switch. -->
+                                    <div id="agent-create-type" class="agent-seg" role="group">
+                                        <button type="button" class="agent-seg-btn active" data-type="normal">
+                                            <i class="fas fa-comments mr-1"></i><span data-i18n="agents_type_normal">普通</span>
+                                        </button>
+                                        <button type="button" class="agent-seg-btn" data-type="coding">
+                                            <i class="fas fa-terminal mr-1"></i><span data-i18n="agents_type_coding">编码（Opencode）</span>
+                                        </button>
+                                    </div>
+                                </div>
+<div class="agent-field hidden" id="agent-create-project-field">
+                                    <div class="agent-field-label-row">
+                                        <label class="agent-field-label" data-i18n="agents_coding_project">项目目录</label>
+                                        <span class="agent-field-tip" data-i18n-tip="agents_coding_project_hint"><i class="fas fa-circle-info"></i></span>
+                                    </div>
+                                    <input id="agent-create-project" class="agent-input font-mono"
+                                           data-i18n-placeholder="agents_coding_project_placeholder"
+                                           placeholder="如 /home/works/projects/demo">
+                                </div>
+<div class="agent-field hidden" id="agent-create-service-field">
+                                    <div class="agent-field-label-row">
+                                        <label class="agent-field-label" data-i18n="agents_coding_service">编码服务</label>
+                                        <span class="agent-field-tip" data-i18n-tip="agents_coding_service_hint"><i class="fas fa-circle-info"></i></span>
+                                    </div>
+                                    <!-- Read-only: the address is deployment configuration
+                                         and is never submitted from here. -->
+                                    <div id="agent-create-service" class="agent-field-hint"></div>
+                                </div>
+</div>
                             <div class="agent-modal-foot">
                                 <span id="agent-create-status" class="agent-field-hint text-red-500 mr-auto"></span>
                                 <button onclick="closeAgentCreateForm()" class="agent-btn agent-btn-text" data-i18n="cancel">取消</button>

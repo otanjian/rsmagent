@@ -287,7 +287,7 @@ class TasksPagePortDriftTests(unittest.TestCase):
         order = re.findall(r'<script defer src="/?assets/(js/[^"]+)"></script>', html)
         patch = order.index("js/fork/tasks-console.js")
         for relative in ("js/views/tasks.js", "js/views/tasks-modal.js",
-                         "js/console.js"):
+                         "js/fork/extensions.js"):
             self.assertIn(relative, order, f"{relative} is not loaded")
             self.assertLess(order.index(relative), patch,
                             f"{relative} must be evaluated before the patch module")

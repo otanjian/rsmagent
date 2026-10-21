@@ -1,0 +1,2650 @@
+{
+  "agent/admin.py": {
+    "decision": "Combine scene validation with upstream agent conversation cleanup; authorization remains at deletion entry.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "dcf1d351021a5cd82b2a262fb2cedf7ca430f4fc50e24372220b62ce9467c7a1",
+        "master_sha256": "afdb06d104c96bd510f33135d6e0579abde31d35f422956260a2a20edcecfa19",
+        "result_sha256": "bef9c36ea60fbfa42e1ee664aade6ee534b8472d0e28d0529fbb0f624f50555c"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "8953b89aa45b23333fa6577c744729bd88e83c9eec10f201fd531c8c850d8cb3"
+  },
+  "agent/evolution/backup.py": {
+    "decision": "Retain personal service backup boundary and add upstream containment/incomplete snapshot cleanup.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "3b3ea3cdc7068a9e97cfcddbcd9d8e0c54fe4d068347b80b158fdd8b14676e3b",
+        "master_sha256": "3727adff524e0616022eadd8f4af21a0778b29fc4c77bdfefd1afce2cbf5e4b7",
+        "result_sha256": "6354691e74665fe2b22d487a415490e86b597fc86d0032fce3291c7209582786"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "5d6318c3acc922b4cac179a28992405e399c1592f55fba3a356c80bd88ae71dc",
+        "master_sha256": "aa365e6382306abd257fcbcde55110975772aa90df916b2b5cf790d8228c4634",
+        "result_sha256": "c8b9c291a1c4b378101523a1569f88558897e2e2b9a59962fd60cdcc81abf6c3"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "1dc69931469868969f52e587e8030eb459f8ec47b40a941610a268ee6f1d5397"
+  },
+  "agent/permission/policy.py": {
+    "decision": "Apply upstream protected-file guard to every fork-supported write destination.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "d9702db153b523a6e350e13d72446f26fee7d68e009d7f02f1d43431e6c24cf0",
+        "master_sha256": "c7a068d46463cf15d285834b85b03c6e4dc7e6e837821fc387ccd34cd30341e7",
+        "result_sha256": "d64c1936e80742515efffeacf83a79cfb28dc8ce561bbff6f59e5f28f1b4a5d3"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "cd910b433202f1135d1e9d4e0cb011352750cb0441c0036496fadd37da57a3d7"
+  },
+  "agent/protocol/artifact.py": {
+    "decision": "Keep content hash and upstream JSON/regex artifact extraction imports.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "29e6316cad76208092feec86c32f8b82b0370f95b113cabd6f153019cce033c3",
+        "master_sha256": "96dd47b36ce3222a563367cb6ea76015ffd31ac438a779dba4218b46049f361c",
+        "result_sha256": "c21db5dc99ac404f176129cd55ca041f2c50590d5da51d52158a5d80a109be3a"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "3bea16115dd75afa731b1493cd91d62ef165f6db2f80794205f6d0f7149b1c0b"
+  },
+  "common/state_dir.py": {
+    "decision": "Preserve tenant root validation and upstream UUID temporary filenames.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "a830333312c4c9c2233bb02762bd498203b1c3bf0527614735693b4b79f6d167",
+        "master_sha256": "ab270e34de38d99f0364043ca1808983f498a9e3943133071931657340b5bc95",
+        "result_sha256": "a8cd9f0b41ec4b4994b27d38e4bb1fe354717b4a182da64ea3ffadfaa927591b"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "710f82910465d53c1e99530aaa73eff5fe95275f1e7b539f73ada27679967336"
+  },
+  "common/log.py": {
+    "decision": "Keep private rotating log modes and upstream borrowed UTF-8 console stream; remove obsolete io import.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "adc6ecc699c9efe41ce41846d719d9fe6aeb393e0348c472ba069e3eec896221",
+        "master_sha256": "4a454b9aa9d1c171bcec89f84637aba1bae99e5345c93f0364bfa41e75b4fdcb",
+        "result_sha256": "c5d6462f83ef23d8d8c136da28278fd94cb3ecd32a788ff732158130e1bad80f"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "c1568f590527183ed4953a6806cf247a690a814d45713c959d014eebd1ef41d2"
+  },
+  "agent/workspace/session_prefs.py": {
+    "decision": "Use upstream collision-safe atomic write and keep fork strict/best-effort error semantics.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "733586cbd98eddff5d90ee033dfb90063d8dc21e01a37649406915f0cc08f58a",
+        "master_sha256": "c4ea0f8b5bc494bf48a9069622d7a267d547db7bef80e7ffa90c1d8a12e2f8b7",
+        "result_sha256": "74d550a139339a1bd064b6ece74c842cf698095d698375b941eeb754a07fb1e9"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "0421f1a5208953a31e03de9f97e836793f414eaf8773853755ead08963b6c59b"
+  },
+  "agent/workspace/project_store.py": {
+    "decision": "Apply upstream corrupt-value normalization while retaining desktop execution references.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "dcacc96f4498e8fdcb82120c57f79adc86112f5f746e2d319639d56936694f0b",
+        "master_sha256": "2cbc8016b83e604c37daae2b7bbaf5a8c41c3d1b7f8b2d7577f952603f383f8a",
+        "result_sha256": "2cbc8016b83e604c37daae2b7bbaf5a8c41c3d1b7f8b2d7577f952603f383f8a"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "9c146cf9186ced8750133418e0878b549b38d94e2aa3900553cbf3fce6b7b042",
+        "master_sha256": "f2895f73f2ef1689e65382d4f8db4488f8322a521df7e4cc5138ce3ebd33e3f2",
+        "result_sha256": "5f364799a6386d0cfcfd9fa187b01a3af9f45ce0fcec3413fe04bddab1552e58"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "637cc3dbaf6feefba6935d9cc94000a0ca02c382475b20888e9f66610d60c759"
+  },
+  "bridge/agent_initializer.py": {
+    "decision": "Keep authorized personal memory-add tool alongside upstream memory search/get initialization changes.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "38a6612c5588d0cc42772f15191ef65a9eea5d5b201d27fc77473d0b038b93d9",
+        "master_sha256": "d8afbd5b71d074ef7778e0114ddce11cbea1ff666797cfa03b2c914d48d61899",
+        "result_sha256": "38a6612c5588d0cc42772f15191ef65a9eea5d5b201d27fc77473d0b038b93d9"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "18bc46fd8278fe095a2bc5217d4b188f972e4148422343bcea38488ffe117e4f"
+  },
+  "agent/knowledge/service.py": {
+    "decision": "Combine managed knowledge guards and background reindexing; protect new atomic update_document and retain managed-path error handling.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "0c0c96c36015e110e4ea4fe878146bcabecb2422b0a1bbafb0ffb12ad156b0ba",
+        "master_sha256": "6b0aa78b3ccc908c1b3a9fe115fbe35f07e84fc45ad944068d870c89754f8832",
+        "result_sha256": "83e90b1d8b221ab13b873f8892815471238f3b49f74d138f0ff67eb46ad56dfb"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "27c27d1c5a3f521b55b72a53ba145edf7e79bca2412b9867483a8d5a610192df",
+        "master_sha256": "ce2f72b7e1b37947eab2ea2dad6f1cbfe7f53e27638ecdf77a8f1455c6857fdc",
+        "result_sha256": "5830b18e5f168cff0c11161a98c58db0d0d3ee71f700a5da8ac4be1fbf26182c"
+      },
+      {
+        "hunk": 2,
+        "rdai_sha256": "5d5998828aa904176d25b92ca4642ba6602adbc65efe7fa003e4083e63a4b9ee",
+        "master_sha256": "7ed5939e3b52cca21254f5dcefaf4853cb2b80392bbfb95ad995bcce89d78033",
+        "result_sha256": "b862c8948d65b2492b349d82a449a70fcc92f55cc634bb67284e2ad559dbe214"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "5654e9313ec214ada04fa47e7c7456e699b7dad9c52f1ae6e574843b68161a31"
+  },
+  "agent/memory/manager.py": {
+    "decision": "Retain effective knowledge scope and personal generation transaction; carry upstream chunk-part identity for long-line fragments.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "84b649ba5b126e1d5d35b368e0ab2517bf8f79b9734d10323f6f99fed2534eda",
+        "master_sha256": "eb218438929fb2d6d6bdc82cbe78823a2d08948136db44499767732911100620",
+        "result_sha256": "84b649ba5b126e1d5d35b368e0ab2517bf8f79b9734d10323f6f99fed2534eda"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "80e0702b47fcb494971e97f702cf7d7a87df0086d1216c320a8b19c57e964f2a",
+        "master_sha256": "945fae3a8bae00ca9db79e85c09b70dd7c495b54b657ba2de43dd06d2e0dd9a1",
+        "result_sha256": "1123e978350f9e4b82a2bc9a90201d5e634168c1dea83b3c21c63b649fddee87"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "a51004627b6c9bbf28bb5190c04cba47284476897445fef057aa61c6869aa32c"
+  },
+  "agent/memory/service.py": {
+    "decision": "Retain personal safe filesystem and upstream bounded pagination helper.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "f80ed1f5420d05fcd6c32b3a31615a5ddd7b76cbfde28fdb971c9c805ad2f588",
+        "master_sha256": "f14df29bf306d0c929060540e9b1f7c9cf68349ba7501df932e99344d060cac8",
+        "result_sha256": "46b9643f5d03019a526cdd5606fff72a981c3c4b9244933c8acaf9c2c78f7eec"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "e75d594954b1983389ed2ade19e25cfe81ee6980d1ae4512b902d449672d319e"
+  },
+  "agent/memory/storage.py": {
+    "decision": "Append upstream hit-column migration alongside existing tenant isolation migration.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "d721c2bf5e4776dcf80cb924b9183162db481b9e0f9478481c352e079d8f2017",
+        "master_sha256": "1462da2613fb18ab7f7632585906eff0bb4042557b0e0b9f622c11bef7ff3f3b",
+        "result_sha256": "f9875241e792b4c448bf74a737bf1a0ca9afbae85e2c7451c28c2595ce07e5d4"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "cd971c1c2402efdcb18ec93c13c386fb9499196527b2fb76df8d933029e57fbf"
+  },
+  "agent/memory/summarizer.py": {
+    "decision": "Carry both personal scope generation and upstream daily-content deduplication through background flush.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "5554d5a025c22f88dc20ec520b6a30a98bbf92dd54688fd0fc0e58f83c657ec7",
+        "master_sha256": "1b11f5397c92f1daa0f236d91859f99a2223a7e025a6c5e3afbbfa43125f00b4",
+        "result_sha256": "894a0dde67ea806b5412f30f1142716f1ce72caa29fda511ef093d2535592e1d"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "e40788371a4a96f008c9c2f766deb84ceb2911c39fefc99fda1fa2c7585b72d5",
+        "master_sha256": "7ff28c6228129e14161ccc32b94f6f7cd817399c1676b377986b45b704739c8c",
+        "result_sha256": "e722b74491fe8637609b276334e40db752d428e4b56cdee36d725a4171e187b4"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "cc09185c14f17375ee20ca873e587e9b7c9354c423c0ef8e78e8bbf63d7eb5a7"
+  },
+  "agent/tools/memory/memory_get.py": {
+    "decision": "Retain personal path resolution; apply positive line count, credential denial and regular-file checks without duplicating workspace validation over personal paths.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+        "master_sha256": "037b96d1c02082a94b6ce7a779c514b6ac9363cb4a88123b9a1d655456c14fa5",
+        "result_sha256": "037b96d1c02082a94b6ce7a779c514b6ac9363cb4a88123b9a1d655456c14fa5"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "6f43f3eb441cd7e61396efb21f99e19a77af85dd30bc1981ce0178db825c46b9",
+        "master_sha256": "34abe20e9678d6cbb092f95d1cab7dbf8d49da385ad75a79a31b1fb69f48d9c4",
+        "result_sha256": "7c9f3609edb1d2c8a131a3e8cda6ba1b145d2fc32e8e3d037751b571621be6c4"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "6527f947626f57fa1befea4b555c957275e65b7153d7fa77b1c51e104bde308d"
+  },
+  "agent/tools/read/read.py": {
+    "decision": "Keep fork List annotation and upstream special-file validation.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "b4fc0968c711f4508e85016c01ea7d6aa6cfe6f18fd1636c0bd89f05749f76f4",
+        "master_sha256": "b299e8287b1be41873f2fc06b130ad382c71d041f4978ab26da480e67689de4a",
+        "result_sha256": "7047a6d1e19d8e9e5929930cddb98d5401f1f5128bda72f1f58bd197135e1759"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "7c37fa81128d8322652b9f0e45a7aa5d44285ebb0687957f2acb4117e6af2c0f"
+  },
+  "agent/tools/web_fetch/web_fetch.py": {
+    "decision": "Keep scoped fetch annotations and upstream HTML parser.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "c4ff0d2f9016c495a005796c872cca0f6e3f6cec1bc93ca9d2fa126b76e738dc",
+        "master_sha256": "fc950cc3c9293a128aa301fa2ad8b130c7b3cfe70ca08f110ec5747f8463e4e4",
+        "result_sha256": "c98116a5b0583a9fd8ca617830de4dc0561d791a573366dd4a01c48696d8953e"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "3aa6d211a87be92bf42d15f16e1defae37d220c94e4d946ba5af46f4b1bf93a3"
+  },
+  "bridge/agent_bridge.py": {
+    "decision": "Preserve scoped cancellation and frozen desktop run identity alongside unconflicted upstream execution fixes.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "0f3dcf88c72023f20cc64267a7b451c46458f930fd2f9d72cfb696283a035591",
+        "master_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "result_sha256": "0f3dcf88c72023f20cc64267a7b451c46458f930fd2f9d72cfb696283a035591"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "4de943eb7e354f149dc0c47217fea4a769d7e30b9c265f8936cb0fdc19ad94b5"
+  },
+  "channel/wecom_bot/wecom_bot_channel.py": {
+    "decision": "Preserve channel runtime identity and upstream temporary download cleanup.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "7678e927915bd0dcae93e6435d9d647921949f73d22c06eb56a22ca285c8839f",
+        "master_sha256": "b7167241194bf45481ace8be5a5da750c2148d2e9f1806cdc4c1401df38b9cca",
+        "result_sha256": "608be12fb18f1453d202ebd7d68a0a5d98a4a58547d02c405d878387906510ec"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "21ac3fba0864d14665a95b196ec0c76bcbe75784a005fee5ccc9f1cf113ee729"
+  },
+  "channel/weixin/weixin_channel.py": {
+    "decision": "Combine failed-download guard with tenant-scoped attachment cache key.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "f1b234d2d180f91816b9ab8dfed07f8002a870e890b15cf8cb423c2a2d9786a7",
+        "master_sha256": "e9582e0e8842996956e10b944bd90749e1a5e60df8ce7314507b4518e0c118f9",
+        "result_sha256": "d7c401934fd76e641663795d59e9d79387a6295e449cfa7375ae9183c7e31545"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "344f93f1748d69d916dd4777ef5a179a87a1a6a1ca134736bf775121f8b73f16"
+  },
+  "cli/commands/backup.py": {
+    "decision": "Retain branding export and upstream explicit default agent in backups.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "3b9b1455816cc0ab677326d0bad9fe995fedaa1c71b8c1dc448465845f8a0d3c",
+        "master_sha256": "9afa6e8f20a770f1658248f075ad4b01b056bff93ca719f10c52244ab89afd2e",
+        "result_sha256": "5a8e45c1b2b72056898dca5d34e8ce90c06f5315415598927a95f2f1154ca5b5"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "5ed0f1ce67111cc54190907bba8d796785f2f0f5bb2a7503eb507850eabaf5f0"
+  },
+  "cli/commands/skill.py": {
+    "decision": "Carry conditional registry browse output with existing rdai public link.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "11c486706115b8a652eb44fdd9bcb39c56b3d7be496092afe5fff35fae524389",
+        "master_sha256": "8c88881d00d62e78f36716581b7facdbc4afeaa18894d9d781b1221cc0870c87",
+        "result_sha256": "9575a6933d95d9e86b29150d9847363c78da72da3f6459f61569597948cbcfa3"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "e4c2132e5a50dbc369aff0c8c7081911fb310da0d124fadc9956950f2c92d1c6"
+  },
+  "cli/utils.py": {
+    "decision": "Use functional upstream registry API endpoint and private registry headers; public marketing URL cannot serve registry API.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "cd34e1b6eae570deae0579cf9ceddd3abca74cca629a4a0f1029deaa0f3459e3",
+        "master_sha256": "ea504ea14a654fb271393d6f01692b90ec5dbe2e8fab89bf39391f0b75bac512",
+        "result_sha256": "ea504ea14a654fb271393d6f01692b90ec5dbe2e8fab89bf39391f0b75bac512"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "aa0f5e32c6d9b3efc3cdc387c1ad44419819bbe9f84e524075d49e4ea431184c"
+  },
+  "config.py": {
+    "decision": "Keep database identity and secret-free environment logging; adopt HTTPS and API deployment toggle without shared API tokens.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "a127f23d22f568991090e1335066124de9199a733f8c640693544c34a70e39b5",
+        "master_sha256": "ea04cf7148a19888360c53db3be8813bbe547f08d26318d1ecf6ce7ddf78d328",
+        "result_sha256": "62b2d15b861c0df21edc7dc1e42e9585c60e16b530a44882b588a8a7444f9ce3"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "138059bc2feddf6563cbbb8de6e97f62dae47b083fb466a25b48e6279110a544",
+        "master_sha256": "d0df9f5ada2fc8421c14170f00e02a3868ff3c6b214f76bb24a58b49a1e97554",
+        "result_sha256": "138059bc2feddf6563cbbb8de6e97f62dae47b083fb466a25b48e6279110a544"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "0136879714cb9968d932ea4b159d1d236362babe3fba2f0e2262cedadc5857f9"
+  },
+  "config-template.json": {
+    "decision": "Keep database deployment defaults and add API deployment toggle; no shared password/token.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "b03b8f28f1144452f569aa5d59f970060eb4c1ec4aa8a107509ad1d8ff6c207f",
+        "master_sha256": "3f3a6668683116de910aa5cfb7b05e7415b00033b42373f92b4b7f2f4b22b8a7",
+        "result_sha256": "2ddede3426c4875df6233002719a48f7a7da0e5913d515aa0dcea510b4be16bb"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "a399c0bb14a8161368c68cb66eeb6c3c21cc8f5c971ddda5d85b6251cf2a7b91"
+  },
+  "plugins/cow_cli/cow_cli.py": {
+    "decision": "Keep rdai browse link only for default registry; custom registry avoids misleading public link.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "1f74a74e092f13492dbf339103ede57911dea0d65db592c69357d2e160dab957",
+        "master_sha256": "bef322ec098cfc9344da1f0c026871bd7c75182a91c650cdaa21dfb4ba819c5a",
+        "result_sha256": "cc16bb6d792c38c552e7afda82ad5e2104358b82ba2c4c256c78b353ddfbe7f5"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "3f9928168e120dd8661474468f7826f75042c3b944b86755f6a5c0f4e773ef2b"
+  },
+  "agent/tools/mcp/mcp_client.py": {
+    "decision": "Carry upstream pagination, structured/error tool results, bounded SSE body and failed-child cleanup through existing strict transport, credential policy and cancellation hooks.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "3bcc4029e574ef75b31c6598914023cc0d31867d017fb80e6132efb4d620c109",
+        "master_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "result_sha256": "3bcc4029e574ef75b31c6598914023cc0d31867d017fb80e6132efb4d620c109"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "a6d937ee1f37f0fb0f9bd2becdba7f55cd644e89aecc70d958ebc24e1d338654",
+        "master_sha256": "8f6528be2454239edd77bdc92a5f7a508ce34dee5be85b69e62c6b835497fad6",
+        "result_sha256": "a6d937ee1f37f0fb0f9bd2becdba7f55cd644e89aecc70d958ebc24e1d338654"
+      },
+      {
+        "hunk": 2,
+        "rdai_sha256": "a2bcdcd3ab365b34632b8710b3b89a66f39b7cf3100f17764946af237dc2c2fb",
+        "master_sha256": "27519bf40e5d35ea28f91c970e1288d9776a5983167ee10e982a03dbcffe1377",
+        "result_sha256": "823bb62612ccf11839ad848763b01631c817e84f3118720e2f96a1bfa2adba6c"
+      },
+      {
+        "hunk": 3,
+        "rdai_sha256": "f5e40fa91ecb806b85ba11a0226e74040672d03b327133527102b9eb8909fde5",
+        "master_sha256": "b830b3d709513c75d00a0d5bbd906b7d9a3499b46d1ab2b7aae1efa1e5030c1a",
+        "result_sha256": "54a27ba3bb762982b1600b3398cd539535505d6ee1da506e9e80b48cb688ec82"
+      },
+      {
+        "hunk": 4,
+        "rdai_sha256": "562750e629981baeb94caf88c5bcaf7f4636f40142bc8d06040126ec078e2ab5",
+        "master_sha256": "d77986e247550bef32c5f617b9e0faceddfdeac20c09841ee7d40ba4892ac5f9",
+        "result_sha256": "562750e629981baeb94caf88c5bcaf7f4636f40142bc8d06040126ec078e2ab5"
+      },
+      {
+        "hunk": 5,
+        "rdai_sha256": "6a45afb9a2c22deef9d911f20b14e7533c8abf6addacfa61d1fe24e2e06f671c",
+        "master_sha256": "fdaa6cb9d1c6db2908a840176ac39c90c5888ea66800c4172760a595b2d42a0f",
+        "result_sha256": "4e8149e04b27efe776121123f7f009ba5738c9ef5e1ddc044846158cefdb4987"
+      },
+      {
+        "hunk": 6,
+        "rdai_sha256": "91cef54bd7476cdbd47987cd24ac33ca5a0e9e2573519e1d1e704e52d6221cc2",
+        "master_sha256": "f977ace55c8ed2ae1ae0d3f7c592a022b029aa6e69ed3b466501b19f9c6f5457",
+        "result_sha256": "fdd8e66ce6beb3b5dd32eaa63ad722f8bd8aa4e405a951241819d7747663b3bc"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "f9a6ca15335f244280b6c6adea6bda2965c09c7760b3ef78c71b0571e092a283"
+  },
+  "agent/tools/scheduler/scheduler_tool.py": {
+    "decision": "Use upstream explicit scheduler error results, preserving actor/resource authorization and helpful recipient guidance.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "a5fcb1bc61fb6da4042658705f2e26cbb057f2b85d6ea929780807e76162ee7d",
+        "master_sha256": "30a5578963f49ecad02eaa30d1f54786a925e55709ed3954e4d8ead0a5967057",
+        "result_sha256": "a5fcb1bc61fb6da4042658705f2e26cbb057f2b85d6ea929780807e76162ee7d"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "cc595b30ab46310df18b3519d2c9cfe111d70c202f0bec9ce01804c61d8de953",
+        "master_sha256": "fe83de644b55d59970c4b55fdb22f95265fd78b7d11037351fc717c3b036fb5d",
+        "result_sha256": "44d04774532fe22bcd9bb802824e96d372c979e0a7e81bfdd3cfdb5fc019c187"
+      },
+      {
+        "hunk": 2,
+        "rdai_sha256": "4573433be0ecb8370e86e7fa2e40c1d10f878b8c1031d601d343a3b543ede7ed",
+        "master_sha256": "c2c9449bc7ab3eeb8afe81b4a2a60eeb166c1eea9297bf1c7309bea96d0a5f3d",
+        "result_sha256": "6047c138d99a32d7e86ce4786e52eb45ba1b1372c62aa522a8a47c2b24dd1434"
+      },
+      {
+        "hunk": 3,
+        "rdai_sha256": "b6b8f122d315380c517f09c04bc1558d236fc384b051cc7ab1410c0aeee6e7c4",
+        "master_sha256": "311e3e527c9fcf4ef3feb15597e0cf2c76017d22e0b2988d8b7e6e2be3f581c6",
+        "result_sha256": "9b1590f750dc8de8b8629422f11bb5f263a3f69ec5539a85e869fb4800936dc3"
+      },
+      {
+        "hunk": 4,
+        "rdai_sha256": "d4277e7f54594fb700db9802e7bc259d65ee155fe1b6694c489039cd83619bd8",
+        "master_sha256": "cd6c93328555a1535d1ab408cd1b2ad2e088d311ac9e8fa28f557ecf4669ff7e",
+        "result_sha256": "8b00bac9ebacc02826b26a83bd726cb6a85309023e741f4a157dc469dcef59a6"
+      },
+      {
+        "hunk": 5,
+        "rdai_sha256": "82f296e9d46904fb656ee653ab6380a1602b5d334ce049bcd5aae559a8a55f29",
+        "master_sha256": "a5d01bcbfe3196999e6bb6a97659261aa5851ba9b03870297199fdf6708a7bc7",
+        "result_sha256": "38a00b1ac3febae41b1085371059b458532e3051164ef0df654c063e8a25d419"
+      },
+      {
+        "hunk": 6,
+        "rdai_sha256": "56a827ba36e6db0999aa82ef31df9f7f0d644d7f25bcc5142088382d7590c86c",
+        "master_sha256": "807fd49e3bddb23dbcef89858a12cd4e42455777a65952ac00eca5975ea9ec8e",
+        "result_sha256": "061e0bdbd3b3eb8ae07396075e98953cdbd9076d344936d74605a464f56d43b8"
+      },
+      {
+        "hunk": 7,
+        "rdai_sha256": "14f2b16778fe377ed4755a695263e1de16fa25770850bead310392a07158e7cd",
+        "master_sha256": "49ae6db5a82927fcdd8430ef6ec130b7c9e428bac5cf2b1f06904b2d81d1b12e",
+        "result_sha256": "f844ade5986626cbaaa0ddc569ab15a65f6490d51628c9f7848a388d54005373"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "691c5deafc6fe9b3dbb38088ad3edb38678b98a2789d9f46f2488b9ce0ef510f"
+  },
+  "agent/tools/scheduler/task_store.py": {
+    "decision": "Preserve bare filename compatibility and writer lease; strict load prevents overwriting unrecoverable task data.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "58625eeacd1cb2f701d559c7ff9eb95ec0254e465415b61c6e7b84fbf21f5dab",
+        "master_sha256": "cd8171ac7c49a7724faa443233fe02f562d248bbe2b07d682f91fc3433c74604",
+        "result_sha256": "58625eeacd1cb2f701d559c7ff9eb95ec0254e465415b61c6e7b84fbf21f5dab"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "1e8d1b152afe447ddfe0b2c9508fdbec2c4ed2720b2401a43491ea737bf541ea",
+        "master_sha256": "ef2196ce8a62028eb503e791c995bf6c5da1fa133f874dc4a0cbf01bb53270df",
+        "result_sha256": "b2fdb926ffecc4b322a14c6e0784e9b5ebe0bf19dfd6003b48616f4c33964672"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "c2ba16c03a32036ef3b2b8a22dd307a598aa18e126b3102220497ce7859295d2"
+  },
+  "agent/tools/search_files/search_files.py": {
+    "decision": "Adopt bounded brace/directory glob support while retaining scoped directory predicate.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "394a49c1aa3a124738980bc0e160d5bcbb659306f82e0a44aeacdf001fca2e81",
+        "master_sha256": "0574cd67a6aacef9eb03edbf1355f7cedb3e355a6de26ef0f94a908058e2a12f",
+        "result_sha256": "43f4feb50fe31dd8a1b473855ccba3cf19b6bac257c198fd74f6d5eb550e14cd"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "0a5cd88336c60a18ce90dd3a2122db866f6ddb1305153c80ecb8f5ce4cf6c0bb"
+  },
+  "agent/skills/service.py": {
+    "decision": "Combine upstream multi-file skill editing/install metadata with stable resource identity and ambiguity checks, preserving upstream path argument and fork keyword callers.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "09fa3147e28104f9c7930b5c8db48bc697df78a0a7caabb65f5ff533e152ab99",
+        "master_sha256": "7740ce44a463b24a49c00307c8e1516d8948fd49ac5df6a012098943cf0d43d8",
+        "result_sha256": "bdf452626d0fb108a928d56a5581e297521b253eb22391f9830a94e4ed69b230"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "8c9c8da9aaf0263d253d65b8db54bf2c886a9503832eecc8e8075374e6f4112a",
+        "master_sha256": "74a2e0335b1bed253ce0a762b05fb10b2e41d480f30f37c999baa0287b55038e",
+        "result_sha256": "386ad5ea39801c8a37745a02c4a2f663dd8b75ca66677906ead19db7a8e954e3"
+      },
+      {
+        "hunk": 2,
+        "rdai_sha256": "e64303e33f24440102cfa6295d951720d6ac49a986fcf4b3c321c23ac2440819",
+        "master_sha256": "7d0c2a61a74a86bc2ea0f9822e2f67fdc3843836bb1a232646b66a44c22bb598",
+        "result_sha256": "c604b9b3c6c71364c4490415216dfa88eae35539b587a113b4d69cb97d0a2eb5"
+      },
+      {
+        "hunk": 3,
+        "rdai_sha256": "dd503ddf620946c3a3d22398c0416a44c665433d3acfae682cb0e2d49d292a56",
+        "master_sha256": "e062517f21240114497f6884228736defa33cbf760fec6993548f293febe4a6e",
+        "result_sha256": "ce05e495c0a5da8f3aedec10fdd96a12e6320cde673d5e2213f2efc4acc07406"
+      },
+      {
+        "hunk": 4,
+        "rdai_sha256": "11d07a6ad4e4a376b78af4cbe219904cddd97a78976ebd3c10d4c4cc2bea5079",
+        "master_sha256": "076c768f467b5559f67f1467a18c090cdc0d4219910e7ed075280f84475f8995",
+        "result_sha256": "fd1a2a524820434bc8fd9aa3599a148090458765b299641a5068dfc1c52c3257"
+      },
+      {
+        "hunk": 5,
+        "rdai_sha256": "a6907955d388e8783e90c4b949f354a80b622f7cad21c56cfe387a83694b3213",
+        "master_sha256": "04eadc94bc548314aa9241edb42fcc34f9340b7bf646444ceb33044d52000eb4",
+        "result_sha256": "ead95c4668578e5cf3af98aa938c6b1eb51134f8a0bc69f1451dff7a3524e6e1"
+      },
+      {
+        "hunk": 6,
+        "rdai_sha256": "17cf7c54a7bc7dee0331d792e909fc6e7624788b4e9668da8c90f13d77011f25",
+        "master_sha256": "7f38869a72de82d5caf52438de4a880cca0eb034fef8abd0c804c236fb303f5b",
+        "result_sha256": "c406e969d85111bb5089bcfcfa4c6f25019c3b4152cf4cdc6fb5032e76613fe1"
+      },
+      {
+        "hunk": 7,
+        "rdai_sha256": "faf7e77f4450997f9f1a604a0cec41a4e3f09ed6099ce8ae3cf30581a52147b7",
+        "master_sha256": "d12bc6fa904efbea4b26b457d51114a6de1481020691c7732ae44bb0c19844cd",
+        "result_sha256": "09b5bd6b2bd31af289c2cf8c2b34f6b1e3769235121d656f38672b1b377a94a4"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "c3ff0541b8e34b1dfb5a904c634326896c4b7ef0052ba01944612f9e962debfc"
+  },
+  "agent/protocol/agent.py": {
+    "decision": "Retain spec-mandated context_changed rejection on any concurrent modification, deep-copy snapshots and post-commit memory writes. Upstream new-message preservation is satisfied by refusal without overwriting; no duplicate compaction pass.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "0b448bc4c1d281d408eb736795b01c9cef3eb1ed4fc66c8b5dbf8bbbb0a54629",
+        "master_sha256": "9536620aed06f8c694de46f62a945bb68641134e6609ffffed2ed123ac2abeb3",
+        "result_sha256": "0b448bc4c1d281d408eb736795b01c9cef3eb1ed4fc66c8b5dbf8bbbb0a54629"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "master_sha256": "47071ee32758b724778a3d24e6c3a19a61e78ee9088219ae1ff8271ebf01b320",
+        "result_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "b11239138b86b151d8e1050e879d1b7c55a5a46f6d62f613120b830c7b451c82"
+  },
+  "agent/memory/conversation_store.py": {
+    "decision": "Keep composed tenant schema and owner-scoped queries; integrate upstream context usage, artifact index and title creation through existing seams. Artifact authority reviewed separately.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "58b536c358dabc67bcefcdde62ea28648cf7f7a9865a1731fc1c2575ccfd6e3e",
+        "master_sha256": "6af7a55eca0d93283ebb1f2b5a422b334cda320fb6fcfee67fd2b3ad786dd51e",
+        "result_sha256": "58b536c358dabc67bcefcdde62ea28648cf7f7a9865a1731fc1c2575ccfd6e3e"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "master_sha256": "8ebeb0390164b88334028e38be23878e374b373f555ef58f4fb36c87e50e34a3",
+        "result_sha256": "c95d83f0bfd387a9faccbeba5cd10017f6094ae93527e8e2be28755179440f16"
+      },
+      {
+        "hunk": 2,
+        "rdai_sha256": "ab26586939e5c0cdd385aaab6940a35850577377bd525cfe4ea1c5d893083951",
+        "master_sha256": "ff553731523c4c1e435ac91e06935eeb6383f62b421b5e2aeacacb6336e586fe",
+        "result_sha256": "a94283e7d48b2d7264a18c1011687469aa5d0322c0d7bf230374b0a07ee258bb"
+      },
+      {
+        "hunk": 3,
+        "rdai_sha256": "ccdfae86ce0ab5f950058ed7b605efe9452ac34e9c3452a33f070e107d83addd",
+        "master_sha256": "e77a553aaac624e79a5d83435c768fff350f857bd15c061e5b746200bbb7561b",
+        "result_sha256": "ea91d2230b9d16d58ce803543ee6fccb93391df4e79b38781808f85bfca44eac"
+      },
+      {
+        "hunk": 4,
+        "rdai_sha256": "63213900c72835c0226b5a2d790b431f176abac5f5fc60b37f27170e3bd9a0a7",
+        "master_sha256": "cb186c6e5c2adf80ccd53a70f354114f75b879c78a0b269a11d974ad0abdc356",
+        "result_sha256": "aa2925b1c45b00f6f96be59c903b5fbd18044a27cf7ba0b41155f218090ea4e1"
+      },
+      {
+        "hunk": 5,
+        "rdai_sha256": "6bef3ddef6d6acd9b113e739e2850c7a96b1deeb6e9c3c444e84c16b54e69716",
+        "master_sha256": "92a6f0c792fa63d0e066fa928328af0bf6c9cfa60ee4f0e1cfdd1f15ac2a8d4d",
+        "result_sha256": "be72b7c70c05a181e2d4da683a2fbb39a4bbeec7178f1b8770a345cc8cb18cb0"
+      },
+      {
+        "hunk": 6,
+        "rdai_sha256": "c235029bd7ccc97cf47d23d1c609a64274b0bc8351dd8ecbf262e72d6265eff0",
+        "master_sha256": "69d43c53d2dca4695a6e1e534b3d84ec1a9a61fbf8a86671cb84cd5142245355",
+        "result_sha256": "4a0cea7255e6d2dc07331b986d59202be9eb207cfb749588f2f155d3f254ad31"
+      },
+      {
+        "hunk": 7,
+        "rdai_sha256": "ddbdb0c51d79bd7c0f3128934ed2246b8bf9c7115e5c384f04064586637aa520",
+        "master_sha256": "5a5e202ec9bb2695d9ed897cef690f3a0e4c2bbd298f5f035def9b2230a74659",
+        "result_sha256": "ddbdb0c51d79bd7c0f3128934ed2246b8bf9c7115e5c384f04064586637aa520"
+      },
+      {
+        "hunk": 8,
+        "rdai_sha256": "3f8f76906327e560a596d7275a4d4df601008a371e286db05dc6f56d175558c1",
+        "master_sha256": "2d322825996bdd53a1a26c88a45e9a82f91232f5bdb6c02e67a9fdc5f3847cef",
+        "result_sha256": "a616655bb983d456a65291410c5ce0af869a3b6b7ef5aa29e47a134452b01741"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "d6bd1ed4c73b126c0345f30af74455d84eab7784c95db086cf70e9ad0e14552f"
+  },
+  "agent/protocol/agent_stream.py": {
+    "decision": "Union run-local dispatch and upstream usage/multi-file reporting; keep fail-safe artifact projection, typed device origin, real attachments and tenant execution isolation.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "f9d647f13d6b4aa27965847423ed9125243d6ef2ce6b7e534af526d64ce63c29",
+        "master_sha256": "61d416d3e60ac294a53202bd68cef9ebbce9fe25b090b65ee41e9cd257ad3a07",
+        "result_sha256": "6dcb7b2dc5a11da58dfa6d3caf99cdc2d1865d5a4b90cfef9db6ccc5564de730"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "88494105b2246534d5473a52f8a0df13036bea9df257794dcfe9d86e094dbcd2",
+        "master_sha256": "9394bc1252d933429df3230634817472282a72945123359d2379313d7346fdb1",
+        "result_sha256": "88494105b2246534d5473a52f8a0df13036bea9df257794dcfe9d86e094dbcd2"
+      },
+      {
+        "hunk": 2,
+        "rdai_sha256": "3842b08057b473aae711871ac3f142006cce6889fca9d25d2b52507acf14e10f",
+        "master_sha256": "b679b719ba81d8e99247fec7bfffb2cac0d364796628104d4746f45aa59eb849",
+        "result_sha256": "48f24fdc07a66051954cab9388ea0d72df4adf9c52322585c35492d19ad6de87"
+      },
+      {
+        "hunk": 3,
+        "rdai_sha256": "6fb62d3b76d06fc9a6ab33b27858cac7b04fdfb6a61389d2e6d61a93c35a610f",
+        "master_sha256": "4d01ec8c6e9b553e4ba3bc101a62a97fe3086b64963261383bbcda1d9baa10c7",
+        "result_sha256": "453a5c979abab1a06d20348406eab6fe58f2c0a7236f4f644b9b1e658e92c292"
+      },
+      {
+        "hunk": 4,
+        "rdai_sha256": "9bbb26aaccbfc46f65924db21a9141cce5294e7ace6420d0efc7fcf4bd6f54a3",
+        "master_sha256": "d3245abd6d2c0d734b695e1f087973bddfc3adebb4e09ab04b88c2911e46b53b",
+        "result_sha256": "9bbb26aaccbfc46f65924db21a9141cce5294e7ace6420d0efc7fcf4bd6f54a3"
+      },
+      {
+        "hunk": 5,
+        "rdai_sha256": "08efd27b7dfa8310d5b50325d10fe0b88b869622f78ffa50c73160b939b045ec",
+        "master_sha256": "933c1ec558093498d16489cf8a8a8170443772e1c4302db463aba6998154b761",
+        "result_sha256": "08efd27b7dfa8310d5b50325d10fe0b88b869622f78ffa50c73160b939b045ec"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "1bed98cb4c4e696cbb681ab96299e09ad6d66921a725ae891c7c843e8a57c800"
+  },
+  "channel/web/web_channel.py": {
+    "decision": "Keep the actual database-authorized fork handler assembly. New master routes will be added using scoped fork adapters, never raw upstream auth handlers.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "e90ac4685b1416bc0dbee5f95e15cc33b79e10ede91d5e6dbb65e0f9c7437db7",
+        "master_sha256": "5c03043b7553febcb0c93507bdff14d62338ea3f691fef238d64985f7cd981b2",
+        "result_sha256": "e90ac4685b1416bc0dbee5f95e15cc33b79e10ede91d5e6dbb65e0f9c7437db7"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "c208b01606280f5ee8674c173c015ae29243e4e09f8dfe775cc28fa19fa5ae9e",
+        "master_sha256": "92e3f6d7ad7936eeadb1fc52f1e02b0e061aef38ff4f17976cf2c9ceeb3088ff",
+        "result_sha256": "c208b01606280f5ee8674c173c015ae29243e4e09f8dfe775cc28fa19fa5ae9e"
+      },
+      {
+        "hunk": 2,
+        "rdai_sha256": "6cebf8ee4b953b4b6bfbb3f9e577f2156ae3f90eca2dda3d38686e60f7ab3182",
+        "master_sha256": "b7a8446a44f3273d50b439c84b8fc2116bd39c55d46e871f3e85b59d7dfe63df",
+        "result_sha256": "6cebf8ee4b953b4b6bfbb3f9e577f2156ae3f90eca2dda3d38686e60f7ab3182"
+      },
+      {
+        "hunk": 3,
+        "rdai_sha256": "242fd72b2c0ab1101e80dcbebfc67c7ffe3cf1e6ed8c4a3bd7694badd1f6c175",
+        "master_sha256": "6987059969fa394f2b2988e3e6486b04fac02a801248298b247b039dd256a32f",
+        "result_sha256": "242fd72b2c0ab1101e80dcbebfc67c7ffe3cf1e6ed8c4a3bd7694badd1f6c175"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "200c2ee61152aa1636c9560037a7cffd36021c9570bb45cd5336f65b61abf60b"
+  },
+  "desktop/src/main/index.ts": {
+    "decision": "Normalize CRLF before three-way merge; source and target changes then merge without overlapping edits. Preserve target remote authentication and local runtime lifecycle.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "153954ac563022f3aa96e2af96d235ef01a5d95d57aea675d6e3d009c81d351c",
+        "master_sha256": "6e78b12bf7ee6f2d358c8e46eda8fd75044ec9fc181856dafd1558f0e8c46de8",
+        "result_sha256": "26cd0ffd4a543c621fa458d47f933d268add4c00373b3809dd5c95827b084f5b"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "26cd0ffd4a543c621fa458d47f933d268add4c00373b3809dd5c95827b084f5b"
+  },
+  "desktop/package.json": {
+    "decision": "Keep delivered product version and brand; upstream dependency changes outside these lines are merged.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "e8501a04c7d440397a041f1fb58a2ae46fac5a95077edb9f010bb82c48b47019",
+        "master_sha256": "f81c9a1b8a7275281fe3667d80e90c35e178dab54dbdd935857fd4c64a77783b",
+        "result_sha256": "e8501a04c7d440397a041f1fb58a2ae46fac5a95077edb9f010bb82c48b47019"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "82156129369a9a5233c7defded5bcb46338db6125e8282259b6ca5d4c0190e2c"
+  },
+  "desktop/src/renderer/index.html": {
+    "decision": "Adopt upstream custom-page frame-src policy while retaining product title.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "2b3d1044f0f2e2648947ee0a15e869dbbe757d9224b2e323a92dec6d96b0fdbb",
+        "master_sha256": "efdbb1b7efa256493ab91cee42bd2831ae37eb887b75df6a1533462e4093da93",
+        "result_sha256": "1528e4dc2bc43de51036a45bbfbf931bf239ab392312730a9043a98e26de28f5"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "2b07e7a53797e7a15780d239e37d643819e820409da4ed51e60eaf9fae57585a"
+  },
+  "desktop/src/renderer/src/App.tsx": {
+    "decision": "Union new artifacts/custom menu pages with remote connection shell.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "e8096a29310a801d070be3d297a35618f6a7c4f38a66d788a99f96a7e4fbfea0",
+        "master_sha256": "4c9b3246ef092212856874cfe8ac90e5b440752c5ae88a2bcc8f9090437f5c35",
+        "result_sha256": "26c0f2d653b7f8047811a5a78d202cc979853ee3e0531047ac82616a19a74405"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "81a21ed733d9998d4a70e51bbdb186da6edc2a627aed2a3613efe4dfd8a7725c",
+        "master_sha256": "96398d9eb0a15efce53d6411fa12e0c7388095ccbe9420de84420eaa5462eb2a",
+        "result_sha256": "8eef866ec42366a212880c8bbdf45b12be7fccdab1a8c5d709eebad428ad74bc"
+      },
+      {
+        "hunk": 2,
+        "rdai_sha256": "7fcd241c2f4fbdc0a8416d397adba7144f8791d7cb3ed16218d9ced416e61019",
+        "master_sha256": "dee2e9a506c72dbf5a9e42722631ed354cd1f5a4df2a2dd054872535580e6e13",
+        "result_sha256": "4e576872dd8bb20c0987829cf3a39ee58091a235adb34b2c973fa9ada2fc8b7b"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "a0faf425c4f7bef3e4fdef15f646467e10542667990d479e37e431cc354f84ee"
+  },
+  "desktop/src/renderer/src/index.css": {
+    "decision": "Keep independent full-bleed remote shell fixes and menu sorting cursor rules.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "607dc8458d830b7d578fa6d9b5d7d155dfc861053fc9a795bf162f30794b8415",
+        "master_sha256": "45324f190bbe63a60c0e2bf846e00e84922116b268962d48f7bd7835ed0f87a1",
+        "result_sha256": "89c350510267912676a0f2d8ad99579e18cfbafc465c154582d8e39886b8ec5d"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "1a132779fc407c23abf12a395659e2b5cdee00c0ccc913b63e7e41b8f2b123b7"
+  },
+  "desktop/src/renderer/src/layout/NavRail.tsx": {
+    "decision": "Keep runtime BrandMark and upstream menu types; bundled upstream logo is not needed.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "7a603721a02993ee845e067b7732fa76487e417b89d3dac99044a3854fcb7eb4",
+        "master_sha256": "c50fddf2f8af31c8327c223b5057dc5555c9de107a210fbc609866b2602a4b3d",
+        "result_sha256": "9f6665e15293c6f58f0753dfe137e2435a056c27166aa1a01268495c3573d8e8"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "914a80fad3167e04b91361c1af8c0ef9fa716779a23b2202b673511b4434ad73"
+  },
+  "desktop/src/renderer/src/pages/ChatPage.tsx": {
+    "decision": "Keep branded icon and add upstream useMemo dependency.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "1133663ef746ff989f82c874a37ebef882b48ddaf77076a3f7acff2f9085943a",
+        "master_sha256": "8401b03abfa8a8f7ee21086053526f3abeaa88c4040459926308c28c75e9392c",
+        "result_sha256": "787d2537fdbcef4007668565fee9acbb1b5dbdaf89e1584e74bb7b3eee7b7f5c"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "08130c71851edc0c68b51437c316f151706c213d75f6bb2d4aa91910052e4200"
+  },
+  "desktop/src/renderer/src/types.ts": {
+    "decision": "Merge custom skill registry field; shared-password fields remain retired.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "master_sha256": "63af77605543df30756c5952f979c7603f2b4b546541598c251505234cc7c9fd",
+        "result_sha256": "e77cd929ef2d27679aad70db6232b98d6bd9e35b918bc3d604d213b8e4701447"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "1f176287abf909616ffbcf8d1379aeaf3e0201174ffc27b5fd0b662d759c6a31"
+  },
+  "desktop/src/renderer/src/store/agentStore.ts": {
+    "decision": "Use upstream default-Agent naming seam with product branding, preserving explicitly customized names.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "7526a2e610328015c2a0e1022ab6354127c788b0c38104307af9d2cc4e70c40e",
+        "master_sha256": "880b82e77d321849ea41903c175092ba765f02721eccf11ffa406b825bd64e2d",
+        "result_sha256": "880b82e77d321849ea41903c175092ba765f02721eccf11ffa406b825bd64e2d"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "284aa91135f36db4b2fde3530637e33f4563961f9bdcb8aa9141816755ae3d5d"
+  },
+  "desktop/src/renderer/src/i18n.ts": {
+    "decision": "Keep database account-security guidance; include new API labels for shared frontend, adapted to service-account credentials later.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "1bf572bcf1e52455f64e5b2922dd4244b12e00374f21174a47d5a3ba537fa8a7",
+        "master_sha256": "e125acb3401b737761e08c34b7b413939f1c3d8315057b8006188c494f21689b",
+        "result_sha256": "a6690210d81dafce84dc46bf6ba9a11211964a60cb50cdeda11e50c1af5ef0e7"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "6c68ef9833dcb5dbca055ddf38205447c0a9dab9942bb1b9d88103c779900cb2",
+        "master_sha256": "5731bf931f1b897d3ab39787bf4612686c28736a5d6a3fcdd35382471d01386b",
+        "result_sha256": "71780ba7e4d81ba2bfff11676bd46289b8eba2f829b385a498abba815df30a7b"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "f766b77e61f1f9a477ca74a25f191156619c71686dd27f7c7d8b57f167ca596a"
+  },
+  "tests/test_cli_backup.py": {
+    "decision": "Preserve both brand archive coverage and canonical agent-list restore cases.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "409bb6406505d8d04e4db51c3b320ee332f4d6d36c974480d467359ab04c5480",
+        "master_sha256": "81bb56f65d80eda10c44f613806c8182623c20360515e9b7ce8199afec5de849",
+        "result_sha256": "3dd3c0d97087f0d545f80ca618540fae1a17d8e26bd90d1a21825e7d82559706"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "6a848ce49d65f47541ebc0ed85256368fbb0be55c316f8ec7ef646e58f189343"
+  },
+  "channel/web/templates/views/chat.html": {
+    "decision": "Preserve device-source actions and recycle-bin controls; adopt upstream refresh tooltip.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "be9123aec1d4847ebc6485705444f957294887907b243c03400da9e8187a997c",
+        "master_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "result_sha256": "be9123aec1d4847ebc6485705444f957294887907b243c03400da9e8187a997c"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "efb4db75007607f3ba0b3da2cc2cb6794c2a8d097dc1ff7f3ccc57dc2b56cae7",
+        "master_sha256": "1c03e95e2f4ab60dcf25d87d9f2415642f14ffec8dc813eadf6aa77e301b3916",
+        "result_sha256": "f9b6fcab54dd935ff6a6274d646d367ca427bae2200dec8e3ebf626c98e3385f"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "ba031b32fd7a35ed43ba22be09cc3806104b6f3b03705cbe606cfbb2699de0cd"
+  },
+  "docker/docker-compose.yml": {
+    "decision": "Retain database-oriented deployed container settings and log limits. Upstream credential placeholders/shared password and full-access override conflict with existing identity model; existing config source continues to own these values.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "77a192befe66041ee59b438b8040028b9bd2477ea9448c323c6085cad32351a9",
+        "master_sha256": "5557e7b16caa0b5f3f6fe854441b432283afd9ab99f7d7e9505c1b75425517dd",
+        "result_sha256": "77a192befe66041ee59b438b8040028b9bd2477ea9448c323c6085cad32351a9"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "eaf0a0a316f3ef31f2f4fb40e6f3045b131541612500d8cc4077bd4bcc6d12dd"
+  },
+  "tests/test_openai_chat_api.py": {
+    "decision": "Preserve database HTTP fixture and new protocol assertions; use canonical per-Agent lock helper. Updated fixture accepts requested Agent payload.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "0ba40eaa9ff2e952135d888b3b80df57f7a82a33ba32c0eccc04f46e415e185c",
+        "master_sha256": "3f5bb1e8e342241870acd5bbf332dc563a4d2ae544a5cc2c5226e1b8f1cc4c9e",
+        "result_sha256": "0ba40eaa9ff2e952135d888b3b80df57f7a82a33ba32c0eccc04f46e415e185c"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "c91412ef9052177defd3daaac53560f3cd5710df783f24eb49ac3e05c843a38d",
+        "master_sha256": "e92c6c14f1206fcdbf0c3ccc413eb220a516e5deef3de26d34b57024aa190f2d",
+        "result_sha256": "e92c6c14f1206fcdbf0c3ccc413eb220a516e5deef3de26d34b57024aa190f2d"
+      },
+      {
+        "hunk": 2,
+        "rdai_sha256": "c91412ef9052177defd3daaac53560f3cd5710df783f24eb49ac3e05c843a38d",
+        "master_sha256": "e92c6c14f1206fcdbf0c3ccc413eb220a516e5deef3de26d34b57024aa190f2d",
+        "result_sha256": "e92c6c14f1206fcdbf0c3ccc413eb220a516e5deef3de26d34b57024aa190f2d"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "e683d266a56cebc8b79c7f3beda2df8f7bbba742ac066ed7055a1576eed51032"
+  },
+  "README.md": {
+    "decision": "Retain target deletion of duplicate README; maintained docs and fork deployment guide remain authoritative. Source code functionality is retained separately.",
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": null
+  },
+  "channel/web/README.md": {
+    "decision": "Retain target deletion of duplicate README; maintained docs and fork deployment guide remain authoritative. Source code functionality is retained separately.",
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": null
+  },
+  "channel/web/static/vendor/README.md": {
+    "decision": "Retain target deletion of duplicate README; maintained docs and fork deployment guide remain authoritative. Source code functionality is retained separately.",
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "2f718d7e0586a10bec03a055ce797fcc75a65ddf68e204771b94a188b3fbbb1b"
+  },
+  "channel/wechat_kf/README.md": {
+    "decision": "Retain target deletion of duplicate README; maintained docs and fork deployment guide remain authoritative. Source code functionality is retained separately.",
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": null
+  },
+  "docs/channels/dingtalk.mdx": {
+    "decision": "Adopt updated upstream capability descriptions with fork product name; retain explicit labeling for upstream-hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "d59ef8b70abc6dad08f7993c2fd881c78386ff773cccf5963e9dbf2a17b64ab9",
+        "master_sha256": "2d10b301ca0fa448ba2dab6555d136aa10d3ad182f0c2f6660b1a81fe1bca5e6",
+        "result_sha256": "5901acc3f34f4f2ce26471ebc8d9272827860c6d0b439f495a1c7dc52b40ef3f"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "6257781ca861e6104f9c0fb32c623934a22fa4aaf126f67289f48e34df131589"
+  },
+  "docs/channels/discord.mdx": {
+    "decision": "Adopt updated upstream capability descriptions with fork product name; retain explicit labeling for upstream-hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "ca069ee80c33a97690a6b44dc11b72a825f3204d79f2b727fc2b3128dcd43581",
+        "master_sha256": "d0be74bb3d1b27e4aafc09066c18987e17dc26f8304df97952cd882776d7f4f4",
+        "result_sha256": "a2a766e5d556cd3087d089fad605882a1350dc80199f8c40dcdcf018eebbcf13"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "9c483cf6f2ad2e4cd4409ba0fa4766e384323c5ab1db58ed46081b6300e3a162"
+  },
+  "docs/channels/feishu.mdx": {
+    "decision": "Adopt updated upstream capability descriptions with fork product name; retain explicit labeling for upstream-hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "c231420ae0bab0a2568a357df06680ad0fcba69a101131f9b7d36984ccbc889d",
+        "master_sha256": "0d8461a3bc666ffb19ab331ed09b83e8f98a6d089c674caf5ec9081e9271e83e",
+        "result_sha256": "1a6a180c1952ab51670811041803294df83a86c3e3de4c0b4e7bb19e8572c1a2"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "0debcc26069ca3b42c69c4405de19970056b632ee30144b039c02c74295f4fa1"
+  },
+  "docs/channels/index.mdx": {
+    "decision": "Adopt updated upstream capability descriptions with fork product name; retain explicit labeling for upstream-hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "26c205cb005f25f2baf4a6e9db6bf0f73b9e15347bde38fb0f7b15764084873c",
+        "master_sha256": "a9b1b4aaada21e87dfdf3eb3641ad3c86c45b0cc31e45f3dd1c9c4e076d2f8bf",
+        "result_sha256": "1c476e918eacefd7d0795ffff9f97bd8b5c098e613a59430b13df16e8f5a0eb6"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "eef60e4f13a829156595905bab7469545eda3dc5a831d280e16e0ae33f3f1437"
+  },
+  "docs/channels/qq.mdx": {
+    "decision": "Adopt updated upstream capability descriptions with fork product name; retain explicit labeling for upstream-hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "fe97927bfced53cf32fc5aaccd169d1c5bcd7d38429e246ad48301d589ab9595",
+        "master_sha256": "8a045ec9c6885e861c2782f9cd6538e965ca40b2c1cc783c845cc474792d5990",
+        "result_sha256": "e2550475320c62f161f1f14fdb50fb26fafcd94a5819bff8bb9fd23f65497908"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "970b782023c729c4c4fce48a2784a766dacb831df4dbfb574f948a6cbe30fc19"
+  },
+  "docs/channels/slack.mdx": {
+    "decision": "Adopt updated upstream capability descriptions with fork product name; retain explicit labeling for upstream-hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "5e0a153de7027c0d66eb32053027f76a7533677962b012ae6208ecc7bc05be5e",
+        "master_sha256": "34ef0326778ea394cdc9e292f79d1a77200be510a776e4db0508f1dc0b882272",
+        "result_sha256": "2d3c98025f50260868a02cc08f7cee2ed3600ad78601868c69f201580a3a49f1"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "943a9f8f715aac99682ccf53eb7018266966cc578af5c8e37b4285cda2ce761d"
+  },
+  "docs/channels/telegram.mdx": {
+    "decision": "Adopt updated upstream capability descriptions with fork product name; retain explicit labeling for upstream-hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "d5a8e143ee986143da828c1e085b21960188de153c4eeaf6a00e47c92aaeb006",
+        "master_sha256": "7baeb340a34f9a505c4f5e97a5717d2af7411ff23aa6472834859d3a28735ea5",
+        "result_sha256": "0008267b6a4289d502293c30f698ce73902eba9eea90bc556b33b58b163c9552"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "92a534ed2636b15fd42a6f652734786d1f44473409710125206cca9f47990fb4"
+  },
+  "docs/channels/wechat-kf.mdx": {
+    "decision": "Adopt updated upstream capability descriptions with fork product name; retain explicit labeling for upstream-hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "2a0151e94c6ec89ccf2d48a97354089e1009fbb23e64f026b9de31daf1767f96",
+        "master_sha256": "66843ce7971dc9a353558ed41cc7c5451a264d7b2cd7df570556d27611a86934",
+        "result_sha256": "feac74a4802aaef263e3ca87f6f0e1a8f167e9c6b72f10c4d633a05dba9cd471"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "f07a93e6aa73ad1419111791e3f7dcad321f771af31f701f1e12aae7cb5d069a"
+  },
+  "docs/channels/wechatmp.mdx": {
+    "decision": "Adopt updated upstream capability descriptions with fork product name; retain explicit labeling for upstream-hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "e454abe38ef5350bf21d8ec2b20ce4428c86bdff5123f818ed1fcd1021dd44eb",
+        "master_sha256": "31b5cd4616061fc374441a233c683800b4d267d2d6b96d08b14f9e9c18d3c759",
+        "result_sha256": "2c6d11da4e6b3d712fe8377a0958f15c7bc97fadbb98451d3a7bc2c9d9909e16"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "5327818eb8502ea38b07d0340c91670323efc86c91477d0cf4f675473c593cf3"
+  },
+  "docs/channels/wecom-bot.mdx": {
+    "decision": "Adopt updated upstream capability descriptions with fork product name; retain explicit labeling for upstream-hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "6a0499571b6fd7b306f25136bf47b0a3bcc460e9e2cee7f5e9c4b13a44caf54b",
+        "master_sha256": "60ae8bc5275198eb370c01f20c557c4444718dc1321cee5cf543a2b713bb428c",
+        "result_sha256": "d65e0e389b81bd539de9e60d9d7ccf8f7c83b2696111f5a87872c7065d36908e"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "22ae790424f872e402402bc5678f83b06e22909feea43a2ed65c649f213abd66"
+  },
+  "docs/channels/wecom.mdx": {
+    "decision": "Adopt updated upstream capability descriptions with fork product name; retain explicit labeling for upstream-hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "8ed59a020361575e09c1fa00a10a3e6bb64a7b1388b603d96e7a00f965c68afa",
+        "master_sha256": "1aedadca80bac9361013be9fe066ce56a43c8eba53ca308f35b8b0b1056d6e60",
+        "result_sha256": "9dda182edfd652db530549c5b8842f3974ab4ab43a2adff3964e37883cf074ec"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "890bd1a96c56a7d3e9202a449b7baf20964d013888cb30f3281c873fb57e334d"
+  },
+  "docs/channels/weixin.mdx": {
+    "decision": "Adopt updated upstream capability descriptions with fork product name; retain explicit labeling for upstream-hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "8df3c429baa8f80b0ff412fbdc1e2c069b6117c0c65ccaa34e8183c3c8b9f587",
+        "master_sha256": "9e0827761cf40912fc04e14273c7ec75893205f12a7baf95365d0ef8664c334f",
+        "result_sha256": "9163232b2dec16f5a130b2f5ac842794516ad6f3ec72b9faf551a05e62ec384a"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "c47e8d93a14e9baff5d7ee957c183ab373d9113b3014cb8bcef31f9dddde1bad"
+  },
+  "docs/cli/backup.mdx": {
+    "decision": "Adopt updated upstream capability descriptions with fork product name; retain explicit labeling for upstream-hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "ed7da0bc22a49080d189c43f7a2aa992369f99a66264511f80470c79706306eb",
+        "master_sha256": "4f5894f046f0dc26d1ad207dfd42cbc03a79dcbad80af68d633155d11f6cebfe",
+        "result_sha256": "68fa3a3ac0386655a875635b6d33928279a3ce27484e3764c03a58f18e13aa15"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "f1dcdd25ae0a4862b29ff429fbb47c159d5c7cd9dc9c3f3d5b27155110a71a78"
+  },
+  "docs/cli/index.mdx": {
+    "decision": "Adopt updated upstream capability descriptions with fork product name; retain explicit labeling for upstream-hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "757d0515ed2b8044056ad7b1b0d841f373ac7b6be34462acfee3ba594204a00f",
+        "master_sha256": "2001a2c37d473646d05d414d50990f6c7ff99c134944098061d1144eb604b6a1",
+        "result_sha256": "47481b78de10cae28262b833924079ce22c92c9691fd135973bf598b9d6f491b"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "74615160e8874c4960fd49c44867218ab0e2b220d8c42d525ce960d23407b84d"
+  },
+  "docs/cli/process.mdx": {
+    "decision": "Adopt updated upstream capability descriptions with fork product name; retain explicit labeling for upstream-hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "7277ebd6996f079c95c0d3c426f94b99c981c07e39a6e061ae01d176718bf615",
+        "master_sha256": "9b328f6beee4257fca0dee48a6789a2475f6833b1481e83a792a58d6aa4cabe8",
+        "result_sha256": "47fc668a25a26c5ecd369bf83045c95d26669d02e6517318349049cb2c542faa"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "11fe979cd18b759dc626385fc6a4021a11b43b8f90150831f7c9e983de71ba0e"
+  },
+  "docs/guide/desktop.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "1ac97ca809759acfb6cf80b52fe991964e68765a6e6951f8017f17085a0246f1",
+        "master_sha256": "5bae2185b73489c48d3757639ecea3a8b26dd4e5ad0ad91b8446af18b72e99e4",
+        "result_sha256": "1ac97ca809759acfb6cf80b52fe991964e68765a6e6951f8017f17085a0246f1"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "37a6fe13cdbd09992036e34fba6d475d33031b2ae86cbbc2e0db5f980047e2f4"
+  },
+  "docs/guide/manual-install.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "08adc1841eeae3894805cde6d5916c1ecc78697a241f6b1ab856483f013c17da",
+        "master_sha256": "8c351e7ad2d1fc6a658e8a24d86d4d7581c47f1c0413efdf185ac7458d179a14",
+        "result_sha256": "11d0495dd0612014d381f9f05276f1a74b735242ed8705b9b0a19eab90ab5428"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "ccddc07b1cd655bdab60b8123afea1d28fc4f6ed61cd58fa73580bfb52454561"
+  },
+  "docs/guide/quick-start.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "54df54ffc99a1f923364bc15daccea06a722a3c39351dcb797273017fca145e5",
+        "master_sha256": "9364b26622b4c049e70406fdb8c2178b69f7f5b7ab85353c2a43f19bc8d638aa",
+        "result_sha256": "e660ced39203a87e8ca12419e15349c1ca050da48058d16cd4cc674c052361bf"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "75dd8f053737b437efad085f343605398d200a8bb18e0ea8b945acb0da26f19c"
+  },
+  "docs/guide/upgrade.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "7d1226df01b417f7fdbfbbb3a50581da5a2cb7de8f64801470c5dc1d70f7383f",
+        "master_sha256": "b52ba211cf81a75f87997ba7dbe95fb43881e95afb4df7a089605e2e20b80579",
+        "result_sha256": "4270860176cef372ebe08d91eb1bfc500d8ca9582cb6ad4cb014be5f0e5f45ec"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "442e4cf791e77383271527ba6817a80a0514c2efc18d0f1d5c8746ea5dcd7a55"
+  },
+  "docs/intro/architecture.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "236968079732d0cbc4946cc79ee1904ad3713464737d99a899fe2ab903dec3f0",
+        "master_sha256": "4afdf53768456180b552d31c5ed3592e349b117cc2a4109b7e3f7a5b100a2108",
+        "result_sha256": "bb397f5c04cbb7f666f083b143507afeb0a847dd09fcf967668b71dea4f93eec"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "c6ae40bb6bf85a0f1329fb58a908c24d075d4dd5b5116813fe5bb033a04566c0"
+  },
+  "docs/intro/features.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "69eba8ee0c00e65cb234a8b1600ceffa9c1c4698436f87a34cc3adbdec8a39d0",
+        "master_sha256": "6a1db87f74fe90da45c22ad18fc21ba9f237aad5d7c94a8776c8db7187a60e8c",
+        "result_sha256": "c8ec92cb4caf11c2de0ab70f98e894358359adebe3e3fe2cf01305fdd9140b3b"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "1de239a517623832fdb5e737122799eadb6b2482e3467e4962b00714d28edfc3"
+  },
+  "docs/intro/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "385712aaa9f2d699681a692558299c3fe83565f48d8869aba4c99d65e2535c01",
+        "master_sha256": "9f215d2235702197e7b0f9f008a7648835d005722dcfce866a85e268fbc251ff",
+        "result_sha256": "a7686cd0960c262cc7788aed21376c9f4162575c59d5fe1b80823fc91334eece"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "c525cd5b543e7c4ed08a5022ef1fd2c8a1cfcaaa2fb63156b2f08af1eaccfc2f",
+        "master_sha256": "f2ccdc259c3a63d209a07434fc4d68a5eb5cb733ab8dd22887745f452e957011",
+        "result_sha256": "c525cd5b543e7c4ed08a5022ef1fd2c8a1cfcaaa2fb63156b2f08af1eaccfc2f"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "2b157d817812f24acc609c1a5c6ab67e254ddb0064313e1e94235c8dec03b9c1"
+  },
+  "docs/ja/README.md": {
+    "decision": "Retain target deletion of duplicate README; maintained docs and fork deployment guide remain authoritative. Source code functionality is retained separately.",
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": null
+  },
+  "docs/ja/channels/dingtalk.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "541c62ec0c1e8e878234fac5d82706f9675e01b1619808876311dfaebeef51a0",
+        "master_sha256": "7c1c6e3803736b09a394d658d2fac7ab65f498e77a69a6320019cac5c947b3ea",
+        "result_sha256": "99179a39e0217af6664f14612018de56bd503c28b7c6d50ec3b6bc24d1b21acf"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "ceab49c5f3d630f5a9231c633c1b2eb5ebec0c9b69d9928fa3d6ce17055930b3"
+  },
+  "docs/ja/channels/discord.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "24a3ff2c273046cf52cd002f58fb185094d894fa2fa57e37f1edcf32a943cc66",
+        "master_sha256": "904cb507be6e575356b42d0d31abfb8e304289b46794556a89d09715730d3ac7",
+        "result_sha256": "5951f7f780f3e0b542710fae56f950179db189655c6c101a34eb21361ae727ff"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "d0a381a3ff2af7b571e9d867514dff0aa174f394fc15e9d14179a01128f867b7"
+  },
+  "docs/ja/channels/feishu.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "998e45218e15722c1a32fba7cd108099c29d9e071704247c5ca6ea248f87fc6d",
+        "master_sha256": "288155d9c0625adbb6cf9a352da536028bbf457073771c698b0f5155744606a4",
+        "result_sha256": "7451161e7f3602424642d44aebdb977678e1ff5f509a114ea4f4a6fb238983ac"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "cd668172ecdc6a7c64349e0857f8c6554396c72e9c1a9a1a7c4dd60a7b5a764f"
+  },
+  "docs/ja/channels/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "1a3c0df1517797c050699525aec5514d9ebda4d0d548c84c65390f9805459806",
+        "master_sha256": "adc09279ea5fd08a4a67dea6a678f66328b1089b7dab4216fff7e708fa897f2d",
+        "result_sha256": "db0e5a426dad5163bb3bcbcc70db311bc067561e3c8174c5baa074184997f89a"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "b4b72e7b9c6cc44a1d7f2a7e175aab91dc9319ebdc1fe856bc082a8fd56c878b"
+  },
+  "docs/ja/channels/qq.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "bf279caac764e5766df34d7a63e802e95f993a9b23e432fdf6eecdc31040c528",
+        "master_sha256": "421029b77448485815c7b7a62bd2fc081d31d6dd2e247a999707b4f299704522",
+        "result_sha256": "35790f93919b0218801a46216d7abe01ebde3c5cb2630e050dc67caed39e9e17"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "bbf9d17ccf3f5a37aaf6b4600e7e2ebebac6c309d11a4815800c86415666709d"
+  },
+  "docs/ja/channels/slack.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "c8914aac3b8e0eea17ca1b7270ab82c5316f9e34e4031ff68b9cb1cfedc44e18",
+        "master_sha256": "4a8239429c818cf272f8fe0b21b40a86f95132c50b81275458c0bc68cdf80e9d",
+        "result_sha256": "4a284cc28615e7f6b47353be32b0b83cb4da0b8b95169d85fa62a91ef54f8e31"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "df41e752ffac0cb7b7d18423f6e227bc1e7653bc7ef8403d8c7ca2bdc17168b1"
+  },
+  "docs/ja/channels/telegram.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "71409b0008b584fc97c9665caaaf47b0c7c11ce86ec9d1c48d3454f67504db11",
+        "master_sha256": "b449feaf9dddab87eada2f72d5d0d4ac731e65d488d2080b9621cb35a6100e20",
+        "result_sha256": "f5fac25dae7a3f4d23f1d5fab4d59bfb6e5ca6b3295d7142732d4360d3afd905"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "c56c193403c9f43b31ff8d4a6b8c673e750cc25e60a5b5a92462aaf151e686f0"
+  },
+  "docs/ja/channels/wechat-kf.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "51c95927854de6cd6dcaed71fc3e4c574fc73c6419ecc6f2f260ac329ecdeb79",
+        "master_sha256": "b7614105af60277f684f877bed50987e227d57d9db8411b324425780c31771c1",
+        "result_sha256": "3a3b673ccb75437dc6d3f07686880c06fa695a8079d149aa8bc2945ec517e92d"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "6b6a8bbcb598acb74e8d63a94e10a29a11e78973c19b2464d6cf93afe374da13"
+  },
+  "docs/ja/channels/wechatmp.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "c43845eaf30c6541ad40bd5f42690eeaf659a7b7e7f32db32d6dc791438f267a",
+        "master_sha256": "71a00baf91796ffca011d87b19c715516e30b04db48636aea123bf50203aaeb9",
+        "result_sha256": "9b4f3dc406af3ab52d514e64a14667697107af2fed03617c24b3552e44bc3972"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "d342220a21801602d62b9be806f67280cb9f729f5827fd47b2d59d0c498bfd03"
+  },
+  "docs/ja/channels/wecom.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "b8cab68ae3d485faa4fe12f9f359bc5c9f2d86a5ee8750370e8529f6f6a30e24",
+        "master_sha256": "10fd5aee5ad40d0565fe784f1031d3b357dcaca4129464d71611d05f21801bcb",
+        "result_sha256": "dd95a0809cbf692c6ffc50c046702114b01d1efba37a216db038b9f55ec7b4f4"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "901480a977de25bade9cc69c329c91387eae6236cdef920d5b1463daa5d825d0"
+  },
+  "docs/ja/channels/weixin.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "c874648ae2c057c391b9a478fa8f57bf639c3faa90c3cc9c0ced30a8417114c2",
+        "master_sha256": "d424f8414f9c5fe488d2175057dccc2c19fc3e874cd135ac5e50837fd98a4c19",
+        "result_sha256": "db760ec92217619adce0b4e83548fac86d01351007dd2089fc2b48c9e7ea60d4"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "ee2f82730a5f2f4e6ba2262322c7172494e3d1c6c5afc2e4444090ac8816243a"
+  },
+  "docs/ja/cli/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "7aed14d21f33ca9534183957bd0050a33a35a83ae4cc6a1c5a49d11296344d67",
+        "master_sha256": "7a47d9d980120dcf5ade0dbccd82fd19fb8d71b69ef8fffab6c2638b7deecc5d",
+        "result_sha256": "db15cd644491126fa661bd88e0fd9fa84935d24c5ecb53b7decf0b4d167a2a53"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "52ef3af9cde07a9f99c829e60226aff0a371a85806b7620e9a023a4be4e6b88d"
+  },
+  "docs/ja/cli/process.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "dc0bbcd6aec93f95783ad47417542f8759161d35898fa5d19b7af3b25eaa7c07",
+        "master_sha256": "8028e9e79fa35a49bef9ff61cdb4f6d48adb086e365de6153ea344341e7eba29",
+        "result_sha256": "3514b02c34b2571ad3abd101993f7f0ced2c681c2e7a6077390716a1bff7e3b0"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "eeac567c15a3bf4c3e3884f36dc2bb7a0efa3127f38896f6e0ec9240647aa47d"
+  },
+  "docs/ja/guide/desktop.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "de71a17fa16f67ad9bdfd1bc8c541c9fec768aa6b7db78635b8f02cdebb3586e",
+        "master_sha256": "e7415058eb2aadbd568c1a05380e960155c9f857bd2f950fdb0c901c650622f7",
+        "result_sha256": "de71a17fa16f67ad9bdfd1bc8c541c9fec768aa6b7db78635b8f02cdebb3586e"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "aee26ccbda2ce1aaa3def9637d73676c19f418573e15a92db700210ad4fbe28d"
+  },
+  "docs/ja/guide/manual-install.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "8ef6ae1668033df2b58a5cff684be4fad5f012b8e4a45a05447a582b3aece108",
+        "master_sha256": "c2f61aae03d81a250774c0329bb670ffbeb1aa00d49456f231acbc28cc8d0366",
+        "result_sha256": "d34035f9bd22fb9d4dfe2d87ab13fe337c43c8492e002ae09a83b19f015e001c"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "b8249dd931ef56cef2c7d9f414ecac6925d584550608aeef662429470eaaa65d"
+  },
+  "docs/ja/guide/quick-start.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "88acfb8d72dab79912ea6b0588b8f110e2cb4b9f03f96dbffef88bbea014b98a",
+        "master_sha256": "9a6285ba471c12de8232c44ce417dfd6b45b7df8aa151568991604a137ccf51c",
+        "result_sha256": "13036e88a8ae7f067c4bc7c51d840ef7ab43095ba9de87a612cf9fe4cd681215"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "70fb2435292a7dcd210aa9c14ddc340d824eae96ccb6941a317167c3a9fd42ac"
+  },
+  "docs/ja/guide/upgrade.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "09f610ea9d1a86cd365e17a3a2add693cd31d6d1e4d08626ac36a6545f9fdd01",
+        "master_sha256": "9e2c36aaa2695d9f897f19e0bf986ed8c08fab20d8004592f023fbd9ea6a4c42",
+        "result_sha256": "1979c075a28d0f91c3ee5d97f10a16dca33d1e456a3b06396f21a2039f31fa66"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "6f9d05744bcebe5034e0026cefb21cce01abc2c99b5fcce8629c3572fb58559b"
+  },
+  "docs/ja/intro/architecture.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "d028e72cc993f7b80cecb16babc06f6eff63acd735bfc9bc025863cb5a8955a2",
+        "master_sha256": "cbaa15e457e2d232a884d8d001420a2ddbd03ae0f964f09c13e3bed76eed5935",
+        "result_sha256": "b4ab5bb1cf6a3c85234d4e65509a8bc13e72fc693184e4c3903cd9145f28595e"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "ba01dcd6c00eaf5dd0670a206def9c1d5a93babe84375ca42df870341abe6ce4"
+  },
+  "docs/ja/intro/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "327ff16ae005ecb9ba35fd6ad4e43127e9688ab6bdad9a6cfcc8aa38f5437598",
+        "master_sha256": "f18532898e34b76b4fb4ff17a4309f9f57dce56154cb31b499bcb7d5191866d1",
+        "result_sha256": "92240b2d24b2b23874ca9d2d3aae2140a2580d56ce4226eb75bcff7cd2d06afe"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "980c64ccdeb8128c7d5721ee6e584ddbde33954bc673b8828287e7400560d976"
+  },
+  "docs/ja/knowledge/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "7f2b0e76f57e79a2da6955af9c6d9c5cd0e9f81306e56daaab7c3e5fd5830f1d",
+        "master_sha256": "a6c16772fc202f079685619dcf9978a02793928b34b28b3e4454d9c67413e389",
+        "result_sha256": "8366e0dc374670c266010aaf7747c3d6275fa0220841d2ad5b18a865af063745"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "84eefd13f0a651b6e84842153253aa41bb5f535bcca535140b4773651c0cd0a0"
+  },
+  "docs/ja/memory/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "0952ca610e40b7cade47eb7e64d75fa60a5467864cd9e6dda82449de2ed4ac89",
+        "master_sha256": "e0017ed425cbdb5554ddc830c978706e1f61032e163dee4f896151ef79bb1407",
+        "result_sha256": "a37d7b5863ef6cbd9f25e89ec38640f21debe5beff0479533968e7b89955f97e"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "44c9f32c6c5e7d326d0330467919ca458cf3f09238d3a6952f01039a7c06401a"
+  },
+  "docs/ja/models/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "8918e99b3818476c9374667081c4752e25dfdf955cbafbe6e915ddd2615d4366",
+        "master_sha256": "9b18da72ae5b928430139f57eff3e58852a661d4c4473d98171a80e43b5d5e83",
+        "result_sha256": "17fa62f8c5ee9c104366f297406c06046dfd830d9ea85e911ec576376d7c2949"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "615fbc878a1dd7ea88ed1fc8ec6e7e51b8017622d941aa860538f8a99c974b0a"
+  },
+  "docs/ja/releases/overview.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "4deef586b0c807b85ece2d6b480c1cea6ddc0f0660ba9d6151f52245410556cb",
+        "master_sha256": "b58173a07ed38c0d658a3a4bb6b4892164bbebc2f34b63aad9f3afa1d0d49dff",
+        "result_sha256": "9211dc57be36b7493494a3999cf38404bd1abe065ab6b64b0d6a9792548c8879"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "1a6458ed9b92cab60e06540d2278cb7be76e2b2adbc9c00ab80eb2bd0f614cbf"
+  },
+  "docs/ja/releases/v2.0.0.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "b8c3ad6194b23f5f91cb972dd0eb635f4097c6e48b81e3f7a363dd53b9e81774",
+        "master_sha256": "1a26ceab23451d5b04f4e91e104d45d1f1cd3e8de6622eb2e3cce7d45d846cce",
+        "result_sha256": "bcdc74a66458413c6aa4488af440f613e9d8ac286792ce90b692bc15ce1ebfe6"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "d63ff68b1a224c4551a6a8025b68e5e034f31764216d405ce4cec45c33479b60"
+  },
+  "docs/ja/releases/v2.0.1.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "9999d2195bec20bf5f2bc3f6f8b9c1d087f2e258879b8af0ddf657eb15a70e17",
+        "master_sha256": "3916585248aa19254534aff7697a9b003a44745d4d3b8a53540f73c9fa08635b",
+        "result_sha256": "c0514d47a3d202d309f3ac77b95215ffb7eb8d3f788d6db6dea6c69bb90492d0"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "32c2d62bede33876319b10f0deb32ea470f6d17082c75c637df9b34604240634"
+  },
+  "docs/ja/releases/v2.0.2.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "40798e9f749faa89cfd636333e29e9e1d41c9ed2e35173c68aba385281b908dc",
+        "master_sha256": "e76a0e3e3d79a70b09c6c8a74355cd4cda08a4366a5cd5f23de2e3d6d6d0a4b1",
+        "result_sha256": "89a905a5dc915d0c5d1c0f012f60ce503a1bfda948b94299a1a607286725785d"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "06f95ccd85d2c270376acad64151cc0cbb9cd887ef869f4d3c245f83709d405c"
+  },
+  "docs/ja/releases/v2.0.3.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "52ae60c69bc1ec3a12fd3845fdbb5a36b21dd0e1d63eac50e2be7c8c684fa119",
+        "master_sha256": "382432b839a4913f6e6e8022700b4617126187e77174d0658a1d24a1e109ab6f",
+        "result_sha256": "cd0f552b4e537b437d316b5d7f5d2ccdada1ec7035671334039a679d7f412895"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "1d5d40a7633224a1c5d71470a789d2a013308bc2d241999cfd2ee011e6f9859d"
+  },
+  "docs/ja/releases/v2.0.4.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "b7720c3d57c1a82177af7867fb863005ae2718acc609fbca0a9788602838df0b",
+        "master_sha256": "42a08ad90dbdaff96923cbf89ee79ad093b2457ccae4a48498838acc25da2627",
+        "result_sha256": "cd28e46f5e25c8874a297a96035e0f175b87531d7884474c4b97e12871b05b50"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "2ad2753aed6d08e4fd86efda898d0585009253de7199c6c5c545feab41674227"
+  },
+  "docs/ja/releases/v2.0.5.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "4dfee3bc6d10ca62a8ffc60b9c72657b10dc918dde736e74e6e266d50dcda3aa",
+        "master_sha256": "f7bbd4ba69f20f71fac881e1abf0ce26157b5c444b6bfbc8def6ed5f2d485699",
+        "result_sha256": "ba6246fc89acc21ff8ee70529afd581227ad243e82f4fdc5b4669c7b637ac33f"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "96f1b0bb790662c4cc3537e170305a03416b5ef0879fc75d55fbc9e8c6760d67"
+  },
+  "docs/ja/releases/v2.0.8.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "45c4f4c77768330094b701e231d6104aff2ebdd3a1a58df5f12652552bb34927",
+        "master_sha256": "851b29a3a8868dcff4a7f62a7cda842c2f693212f66d9070ebe8d37c053e2fa1",
+        "result_sha256": "f124410df4ccfd6f6434fa86c3c79c44896bdcd9d0621e196aee9d975d5de21c"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "233dcfdc241d424ac575bdaca9dafdc5332c765dd75bce4e2f139f4a0e9a5743"
+  },
+  "docs/ja/releases/v2.1.0.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "375bf17cb5e1eac9f90dd4800ec90bb0332aa9020596598ee15daba23374b40a",
+        "master_sha256": "75d179c3aa985379d3f12f9efd9dbc3f93d497fe92539a7cb00b4c813943b713",
+        "result_sha256": "1f091e2e712540edcc800f501e7653e59218ef5f5a5dcbf5902b6473e3854492"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "d1370e9ed27d6600144db0a37d0eb7b15acf5bab12b48d4b91de6537107e7964"
+  },
+  "docs/ja/releases/v2.1.3.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "b8d898d3f549306902f6388e59e52d07938f847580e5ab90f493d1faf438879b",
+        "master_sha256": "2766bc2ce349784ffb2d658936e24bd70e635dd642f501e6c960cd4753dcfc60",
+        "result_sha256": "d4b4434c7424ad7960d098752b28606a27cf68dfe62531dff948d6e57911839d"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "456efd3ab0979cb392deb1b5ad2b4a6eb1851ade657e96e3188ce99a228bc81a"
+  },
+  "docs/ja/skills/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "0def7c6b3e3b27942277807ac5e5a93db327cc19b62be3fdd8df9ea7912fc0dd",
+        "master_sha256": "2680c6a7b5c8f89364093e4c067e15146fb58dc7fdfed591b6634694e06dda41",
+        "result_sha256": "5d7e7b75c2c8c7b40a3c5829a0a9c2a90007e831a960a45e44dd3caecdd98f80"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "c11517353d276e844c4e23fba7dbdf1eba8105a046f2ccb3049e754c94027aba"
+  },
+  "docs/ja/tools/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "876db91c14068aca46aa1d937022cffb6785c7a073fa713085089eaa508e283c",
+        "master_sha256": "9a99f4d636dfe0e0c57b83c05172a56371c772524c67168a70f7a23339396954",
+        "result_sha256": "036e2e188f6e10249a7abbf10109def91458d7785abdc1c11f5f9d57397768be"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "46e8b925fd268bc5cbe7167424de6e50682c3bb27449d31f13004b11f54d2705"
+  },
+  "docs/knowledge/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "8ccd6b0488338fbc488c0412cc8f4484b467416f8c35064d7b2bf59ce13c0cb6",
+        "master_sha256": "47c5cc3abc23af1ddcb0ee9b76b970736a33be4c2ad0c79cac9ad795a54b2b9e",
+        "result_sha256": "78be0e0fdf093635672310d994f61275644184add62c6695d04d85fea8f28819"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "4c82a329935079abf2a2ba54e534d394eb326af8e673aa4e37522409cfc79d5f"
+  },
+  "docs/memory/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "f4b10f5ac5ad679d4f537fc2c53d1ecea6e8f3397011b03f574984561bdfec9d",
+        "master_sha256": "40d94afefa03da6e4f98c0a565a82e7695e32594af94da2a72d4c702aef2fa8a",
+        "result_sha256": "da3fde245456542132aeaecad8d5d247f7aedb5a83fe92cc24501dd90a06141e"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "f0e9b941f99eb9a84a851f37ec525cc410b2eaa42f93e9522494a90436b1cdd9"
+  },
+  "docs/models/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "26ab4ba3293de6a944f9ec1ba3ff40c3477345431731d9213e8e97f6b0f41529",
+        "master_sha256": "3b133aa3c78e7ad42575b4fbf67400a1d584353f8dc4e5a18fc4a5588c260e5c",
+        "result_sha256": "da1132ddf142806d87017a544d2f8d6c9d6367271e2854e580f64dda8144c088"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "1b83a784fa29f8709c3d64664106bbdd828c5b5695fcb629720f5742f4f16849"
+  },
+  "docs/releases/overview.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "a37aee45256895d4d2be6868276192d62ca72e1027c32681d3523ad0b3c7b341",
+        "master_sha256": "d11e3a8b7595163a14b9e7c7d3d06918cb99c16f4a258999e863d9205d7965ed",
+        "result_sha256": "a7d6eba89bddb2263cdb4f798980392fb53fba7d251868dc489f8d1dcfbcc597"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "aa38c5d6fb4b7bf640ffc8fda35cee049e8aa9b9e364fd5707a36b9c79c6a032"
+  },
+  "docs/releases/v2.0.0.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "c316661c554f050eff2b800bb25f89896a21b9c40d137ceee31d4fba93ab5a4a",
+        "master_sha256": "6788189d995cf76c098a3ae0876e89e73ae33a59a3a50af7c3a898742278ca4d",
+        "result_sha256": "58efa8ae6c2749b9f7eab74f94c2f096a8d4c8ce0be4313a69802464e893633d"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "ca1999438cdbb8fafa5804355cd489d2ca9948f54375193f2d4ea52d1a8e06e5"
+  },
+  "docs/releases/v2.0.1.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "0912b82abceb6195840b4de387fb58487a8e01de3e9e580cb34ce8d1977c7c88",
+        "master_sha256": "bb9c0a048aa5528145b9c0641e510c6babc1d8cdfa0f0ea0baefe103e060fe90",
+        "result_sha256": "98309b3c26b9a8396d28cf99a78504d4ff4749b264d62de9598b727034e0c0a6"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "bce43cc0c0e12582e9a4fa9c6963c6501a7f52c124281cf17ebcae62813c0160"
+  },
+  "docs/releases/v2.0.2.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "63b40fc0af1578f412882291c12ad25bc5b1904ca835f6831771ef98d2da2cee",
+        "master_sha256": "e745e9701f9c4b21489eeb0d2328bde09adc43b33caa3d286818aacbac741f16",
+        "result_sha256": "364e1d5e11b69275be6cb3661598ae6ebee5bcfc887992406ca4c6cd31030b63"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "757b105bf3a22c07ccc890a0535b8ab41be275c9a6b637fb842156be3167fb98"
+  },
+  "docs/releases/v2.0.3.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "aef7a147c9c32696b5445af17d98a3a2006b08b213133ae9b349581113e64297",
+        "master_sha256": "936050b3c8efe0b4941768c2a62e8bab8b40514bcde21bff8a265943760714b2",
+        "result_sha256": "6d5028dd40c966d652cdd7902d5d98c3fb2a3cee7fd4b20a974a5992e3de937e"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "57d8211fb0deb70320d8b2cdb59d731920bd13fad9b56ebaf5feea6c4646dc6d"
+  },
+  "docs/releases/v2.0.4.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "5658c1c22e87cbd1b2e0af53d5f1137996bd37101d1cd9dcb89b97c945d06f69",
+        "master_sha256": "4cf6b50649b9f7ef3bc32b1825e7a084033aef68feee3c3165b6f6a0d9dbc239",
+        "result_sha256": "63149e82ea740994141355501ab076a22e9dd043ad7a24ea1c34091478555c3b"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "c6130e06583ca625734ec9e788795c60f0b73c669445f0672b1a1816d9bd5015"
+  },
+  "docs/releases/v2.0.5.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "457cce8fbc7f19f6ec6d42fbf1f0aa7996d07f16f78294761f8ffd6dce74fd22",
+        "master_sha256": "26b50c7df62fafcd17d000f91ad4a11e43b83c8565ad9bf8aa788488b01e0fd7",
+        "result_sha256": "461d054eaa5303e5651e0eb257b3c5174a5ff2c95ea7bf8bf375aa028063a01c"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "ea15dddfbd5f9dfa263700e5b86a32a74f91e773e67f6ed4805852545a6a3c59"
+  },
+  "docs/releases/v2.1.3.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "d549f53755f3f5066965c80e678acb67c17d4b2ecf6582349e8b59e65ca05d12",
+        "master_sha256": "4534a3a3fb7664a7cacb1c24989c3e46eed856ebe1b052aeb64c629dd7bb2369",
+        "result_sha256": "3e3d170a54d8c1526d065e995b62c2b7d9649532d2047872c69bbc01b85e5e6c"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "1381032c87321058a919d54f070628753058117fdef2f0955ffcbafd37e84562"
+  },
+  "docs/skills/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "3fb7cfc8af93f494ead943c7fd5150a90ec7372fe1f88c0810e149bd52164766",
+        "master_sha256": "770baf60b189e734333603e7edb6059e918376e0b0782b9e465a496385262a2a",
+        "result_sha256": "7f1e5d03774bfa9dbe5533247552307d8def51e6a9aaa4bce056ce0ffd0c108f"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "4551c4030347cd5d46117b54875f63775b944bd826893f8f0c24a924a310d24a"
+  },
+  "docs/tools/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "952bd13238d7a2e9a8b18dda038b03aee0a012c8a9b4714cf0ee0f8b5aa92290",
+        "master_sha256": "5066d6d3262e334db20000b39d7ab453b2992b96899ce41ff11b769a5d4b298c",
+        "result_sha256": "496d6224e78983acf4c3e437da90f94637418af954987f6b2c811a8fe93668ff"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "f6596565e6f393e238034736c970766518f17849183dbc1e09fea75bd064acfa"
+  },
+  "docs/zh/README.md": {
+    "decision": "Retain target deletion of duplicate README; maintained docs and fork deployment guide remain authoritative. Source code functionality is retained separately.",
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": null
+  },
+  "docs/zh/channels/dingtalk.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "686e568b3e74410d8cb3c540f027f28e33cbc16c23f6de6a2b2e441e79f62958",
+        "master_sha256": "3c5c19f8f34d750a182b5cbae13b40d432644531b987cbb13dbb1d24e21e5666",
+        "result_sha256": "a73296e415d062a243a01889ccaea0f97bc6bccbcaf22ba0d26f6d14fdf8c217"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "840cc3043407db7de40fe88f311db4e1a3972e97cc6dc87f59a8c89d2ac88d65"
+  },
+  "docs/zh/channels/discord.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "4b86ef5b9e0a7f378234ac9ef1dc5132cf2bef10006ad1922c4d450951376c6c",
+        "master_sha256": "93b2088e497a4bde462534945c1c87c825a5b5472f0532b2f4b386ad0635e82f",
+        "result_sha256": "c51cb03c5e1d41e98639ae41828d4041e4a7381f22e46dede471f86a556e3d4b"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "9d65592d4dd3bdcaa4318d8481107cdee130e01618a1c78df2250b47ee488302"
+  },
+  "docs/zh/channels/feishu.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "09d46c2a2fd11eb8fdeab7e6f66629e765eacc4c3aa6e27ba931e8db2a06572c",
+        "master_sha256": "596c4a1e953fed8b6931e7ee56b92918c1f34488521cda653ad01e15e47eef89",
+        "result_sha256": "14348cfe28af925f3cbe80fd79952a42906ba507c8d553db744738e292c44203"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "9c5e2619d3baf360face51abe20dc444c16eb055dbfcb926deb672b664b17f2b"
+  },
+  "docs/zh/channels/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "53f0262c4b7ac66cd877f1b5fafe942c9477a14355886834c47d13c091b9dbd7",
+        "master_sha256": "b40851b87a1bc3c0c5cd09911d7ad03e9f8ea271f79dd9b117324b46a5300f8d",
+        "result_sha256": "bba05b3c17374c66f90676a59c8716d5fa120c6a48c73f3c700c4d09cf5355df"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "fc185802b28478949ac19f464ffe3971e7b890586b6be6575b4c73b089dfc1f8"
+  },
+  "docs/zh/channels/qq.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "63866c12147842dfe851a42311bfc7132f25de684569485c88e05956c1a28ac0",
+        "master_sha256": "68ab1ef00b4581931f0fc5334dea8b3de6902ffeb475d64f51a483c67f4a3e77",
+        "result_sha256": "0f4289fdec4145259bc8ee0037f8fb1f5ba0019d2ae72ce45c2feb4b5b6fcc9e"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "ebe4c9ab0f85979e1ba9a2b5e9b411f182bc74fbe7615b942dfd9b6616604f31"
+  },
+  "docs/zh/channels/slack.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "f630f0fbda53f79653032e974f8b460538d37274bc922b336a6a3eb620d51f00",
+        "master_sha256": "e66ac2b90553fd45aebc5c01b50570d50c50c0ea303a0df63f76216da89a5648",
+        "result_sha256": "bf46eef0914540063770d4b094028f7ca4ec5f83ad115861c5152299441e3d37"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "00d803191f730afff5c5bb5f8fe7b8ceb8c068e8fddb1ab9b8906306a9198050"
+  },
+  "docs/zh/channels/telegram.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "5ccd15067e6f65048276ae702dbef600bf8476034f35fb9626efe5884b0ab87f",
+        "master_sha256": "44f0a7eafea798e6a40c7de81d668a3468aa899870946ad7cefcd5bc29ae5364",
+        "result_sha256": "88a0fc795fb562bc610e5847cfafc50408216096c26c94831875cad6966dfb41"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "2ec5c1c983e69828839b6f1f1fe9a3e2d6808e62627580b2a2cd08a34a79fd19"
+  },
+  "docs/zh/channels/wechat-kf.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "bf433286273c9434dd1c78219fc1c77f24323c16a7dd0d22cb856118655bc4a0",
+        "master_sha256": "8aa5a2056505cf97fd2c3e3fd0ff6d4264a0505615e43eb126dac65fa715b001",
+        "result_sha256": "04e95d27dd3c77ab9c764f2496ddadef06a267ad6c0f171e03a4148ab6f28caa"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "7c5304f85acce1d93fd190b30da571a31f584fdc4ae5f53b40610f6fc5f781d3"
+  },
+  "docs/zh/channels/wechatmp.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "b10bf8122e0c430cb38b0d9d2979595e11f08b8313bbb83ac4447382ac680d1a",
+        "master_sha256": "2d8b617f6357be0ec5f227b1125d5dc3dfbe7f3e8e572cd3457082cd46e5da41",
+        "result_sha256": "6585e48b1071e355cc3215d27ff2ae53faaecfc990d48dfeda6632c865bfe26c"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "68c8d2c1a16f496e1ce9ab8e05d4ab5c78344fb6b167e0f7448473cb6970bcff"
+  },
+  "docs/zh/channels/wecom-bot.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "a1046349e2142bcee4b131caf8a4db28dd205296a6d7105c16943c332171e684",
+        "master_sha256": "005d9b97e0c20980f3143c05390d304d7881b94de5120f47a57c138b8db20e4c",
+        "result_sha256": "42967c5812544ad31fa5268a680ccc0137191c03005d0e17683f021c08e64547"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "c812c756ad394f1db5588eaef4f3161aa0227befe979caef56b23d8bc8e485a6"
+  },
+  "docs/zh/channels/wecom.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "2a565c2e8fa4511489863d92094e4709a8654940ef04ff099520852999f238b3",
+        "master_sha256": "a87e35bcf38e32ac43ec171352fabb3750776a0856dbdb5810b55411ed70917b",
+        "result_sha256": "d657c1cfba693a6f25ffbc7888f55cf104cdeca4e1070b652d50a9101c4f6d29"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "39bf81e719b03b626f21dc37b0db53ad83d4822fb2d79627567be122b29c3217"
+  },
+  "docs/zh/channels/weixin.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "49b7eea1591a982afb0d263969577ccc52e8c6333b0a6dd7064a081bc33bc7aa",
+        "master_sha256": "a23e57adbc236cd72c24f966b92d8792f1b57c5623bf07b13a124e4be8106ec4",
+        "result_sha256": "e12cb9f9c612904395ed10418d1e5188373eb3c26e8a753208b9756daacb95a0"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "089fd4a060f048ad3e6283d422d78a881041e93b9bdb62fa596e0ed1a9e86319"
+  },
+  "docs/zh/cli/backup.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "cbe8840d749fe823c710ebc007bc889f15df13c60da879ac39d48854ba6e3105",
+        "master_sha256": "1526734339ae6ef04f3b7276c0856efccd54a025621eafe3ed672d7f5dd2df1e",
+        "result_sha256": "772e3c0876c8db2b5771bce9642a825da219b369834bbfc195066e2d26cdc74f"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "3d9190632dcc200bd711b37a6d340d9785eafc845b9f4f8bac548d6e7f413ca1"
+  },
+  "docs/zh/cli/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "9cefd1a31f2ca1a9096b46bc84959f38b2012a2642137ceaeebb471d22af027d",
+        "master_sha256": "99af68fa566cfdf2269fd8584809e29245de60370cfb103a29f77770f95bd660",
+        "result_sha256": "4c43b6e212f5af92a415697d59dcc3235934b342cb9b2df472d67d96cf6d4892"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "31da2e0d8866e18559c40ae9fa02c7ac6e1acd83f521b3335eb08b8b832b84bd"
+  },
+  "docs/zh/cli/process.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "9325c57a7e65897fd2b70088fda8f49533331e0fe630c33f0af6e09ab6eeab8e",
+        "master_sha256": "3c5c2832722bb9fc80ad985b535e74ef44dae9a765ff1d4d37bb804ef08316a0",
+        "result_sha256": "ebedd112fefbc6f44aa7263a4708f42c9806ce0aea1f509bf9709696b15680f0"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "d79eeb4fe6f119d3ad29049ee8c6a24caa09a3b86cc78008c048a9e116cccd90"
+  },
+  "docs/zh/guide/desktop.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "c7b2c9934b81fdfe9031ea897622ab48e0ee8dae5c359a05bfa9635068a62885",
+        "master_sha256": "308612b3c3ba0c0420a68c97e2d7f80f1fa9fe514f3e7deba9d52a727a4a3ce0",
+        "result_sha256": "c7b2c9934b81fdfe9031ea897622ab48e0ee8dae5c359a05bfa9635068a62885"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "b53540a216c0fcd5bb6fd18b3d34896c1c4edda5a7c9b585bdf9a64fe592cf9f"
+  },
+  "docs/zh/guide/manual-install.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "fa54a8a02a3c91020a6f06e888b195f56cb8fcfc909b2c9a741f58f1bf7f8e2d",
+        "master_sha256": "3dcc3a70c44311579cfb75bed5f15b7f282be887b53c05d94386e9ef62e2660e",
+        "result_sha256": "ca74bb5fca57bf4d859df210361a8dc600adbe1f3a9cd45272b47df9a0c69569"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "092692354c95ad1ae10c80f466a251e4e1984c6a2773ea09fc9ce9e20299ae25"
+  },
+  "docs/zh/guide/quick-start.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "546b5b489a362ae17c33b15dc2b30bf9598be95b3914e0d473bab215280c52c0",
+        "master_sha256": "a1aec39616048c1f6032629a080cd5155d4d4bd3acef8f616d50db833d8550cb",
+        "result_sha256": "6ef80c93d8bcf38fe93a966a9b96b9ea68d129932c1351f0c7506a3469feda91"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "ff8f9175ecfc8efd92016ff535bf1ddba9367b38095cbf9aac80fbe0c87c0109"
+  },
+  "docs/zh/guide/upgrade.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "ea4c7d2c2fbedf4a03587ac5e17378ca1f42dfb8a827c01d82568502776d11b1",
+        "master_sha256": "a95375c1d5d87469f220805f7362d35d7623568a0ea9681104a020493fa24188",
+        "result_sha256": "427ad1bbae00ab243be47588fd43dbc65899db444081b52534d31046e9e3c72d"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "9429930207c42d2429855d8d14b1936e28ffb6d57fc36c4219cd3fd23f7f7cf4"
+  },
+  "docs/zh/intro/architecture.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "9e865fbe956eac47a50cc6f0171696753b5fb3eac5d25905c966974529c6a219",
+        "master_sha256": "ab288682ec29e952629aa1903c90a092c59cf56eb26a09b7d5e382b1da053cc5",
+        "result_sha256": "2ce699c40cf8220914b17e8ee3380c34e4171aef06a93ebe57bc6d50183e9a7b"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "7b1ccb6d21a4f0d3ae72113ac2d0f92a8fb99d04cf34f76b0c4faaf3009901c6"
+  },
+  "docs/zh/intro/features.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "5cf25466db87fa8b9dfbf0ffbc1024b8f436334da13d1ab5e652f438766d832e",
+        "master_sha256": "b97b0221e0863c6219009981d7ea0978ab1a4af08205332cacc02bcd87dedf02",
+        "result_sha256": "5045187c5af2390995976afd79aa4d0b5a93ea743040cf1026603082bedfadf3"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "87845d9a6e49ed627017838bc87355090b022de3ad41af3e73f23ea061a28af3"
+  },
+  "docs/zh/intro/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "1b405c054139ede6e910885115d42fe11c403b345bc3aacbe2bfb067eed7cbcb",
+        "master_sha256": "23825408ca75798bdd8a85a322b84cb8951175587c190e552f091dbefc099c0c",
+        "result_sha256": "298d4a267c6e5c3e84bd0defc163363426f01d0e450c7e4d34699a184f14a566"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "6e6d50216c79fa4125ef95bb15eb38d2ae0915d85448f822b0086b51505845e0",
+        "master_sha256": "b73e248954e13207a17de822bebb58d8640016b376c662e9737e5ff7f37f5328",
+        "result_sha256": "6e6d50216c79fa4125ef95bb15eb38d2ae0915d85448f822b0086b51505845e0"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "40ede961bf35150f06ca55fb32dcc6592a3d7b15cafb8a91a53a8dfa8d094c27"
+  },
+  "docs/zh/knowledge/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "a238ce8c123f8fe977ee9834d4183df342ef6b8adccbec1b414c62f5144f2c6a",
+        "master_sha256": "46cc13f28675868186df58868923016d08b51e8d9b66e1a65ed5adf601c2071a",
+        "result_sha256": "2a2a6ed91ff0d01072669cca743d80a1b07540dc95ad2d18292a190b56b5c41d"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "53e13be8815f1e73b1a33f07125dbb5d7bdaec5b7d6625fb837a740b7642ae98"
+  },
+  "docs/zh/memory/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "a994b5311e46702a1f25ea5a480843d47e61ab720d2c519088ab167ac8a99aeb",
+        "master_sha256": "bb9b3c113f879ececb9af4d7fdbc8f3876ba13bb6f4991ad5c0ef44302773c8b",
+        "result_sha256": "5c146127ad1f76e8edfc71c78b2deb3383270d657f5492f6b4e160158d70abd8"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "63fa6b90e027deb0053f988076fcda80080f19a5f259c505078611bcee4580f2"
+  },
+  "docs/zh/models/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "bca1605b67ba523419269a25742a6c46dfaefa8673ac771ce7887708f09385e1",
+        "master_sha256": "30a0e0b3be6c89626281573f528604d6c192b631be54291990555d301198c52c",
+        "result_sha256": "7fea68d65732a7795858b436ba71bf0f677d69f60df1867a23e2fa11bbe8aca8"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "e048b941eb900f3bbf014388e8e10e8ea7ce8df9d9079b5cf2d14644d34be022"
+  },
+  "docs/zh/releases/overview.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "785e29e0bdef8f51e095461b80643291b2075ea17a57fdb6afca85a210de2fb5",
+        "master_sha256": "9d23d26459fe12e6dffed623f1d07683aefab2f22e2bc07b406707bf0866147b",
+        "result_sha256": "b86da0ba3e55f90c9e66cd9df64f773878ce24715294a8f3d7fc9c59209a96d3"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "1440c80a426a3123981d8ec46a06984b15251adaee52b02942e7765eef7f9d60"
+  },
+  "docs/zh/releases/v2.0.0.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "ea4124fcf06bf76904a1b806ef9613615a3fd72b659a9cc63ad4f0f6bd512cca",
+        "master_sha256": "c34f5a872b2cfaae515fec9d7a451b8b4839fb903551064696738ca8a0b94791",
+        "result_sha256": "504d3a1e0b2a2e3bda5ad7b0500d406696ca92f4d866eaea5168f48e5acc6e2c"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "5e51005ba96301f51266aefb5165e30e518207b83d4e0625045582fab8fa086a"
+  },
+  "docs/zh/releases/v2.0.1.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "7d574d872a5af6ef64428e9deb08545d19993ef1b7d895d8361da2a4d1fb7734",
+        "master_sha256": "0984541fdfc548c031a6d758ab3908c30ab56a0d0979a86c7b329b976f25efe0",
+        "result_sha256": "225f72f279317a26e2d22ae7f803586e99e5abd5dc5ba29e0e129bda58216e9d"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "4dda8ed444a0f1cdd3ea6cd7ac445563ec7741d74d289ecadceabe39bbb4eab2"
+  },
+  "docs/zh/releases/v2.0.2.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "b225624bd9194124599e1e02cb6e9ec748d4a66e673b378a0835b43124c7f261",
+        "master_sha256": "fa753f6de2a60fced960d4c0f4afa95ae08c96b5f4d98fd7ae195d33047718b3",
+        "result_sha256": "906cc5cb321fffbaa716483f37d9c2d394ae3d2f315906e8fed8090dcc0b1000"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "641d9ac95f0d7e4a025fbf7536ad28061b6b15bb29d7c89550f5b45df04660f3"
+  },
+  "docs/zh/releases/v2.0.3.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "1304356117d24ee8d0e2b9985e0ba89bbdf7976cbe85b722c9c1297b07f5c5cb",
+        "master_sha256": "05d71ea1df77ac49cef964fcc5d648f9a977d1c31be72bdd0d7ab0bc99604e97",
+        "result_sha256": "99a139c947ca298d19d2f33b8dc77d40f5813aba32128d304241a95488354dc4"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "0b31ef6281cbe63e75b387de81a071f9fd5291e7d7ebf758f27473b8fd1edebe"
+  },
+  "docs/zh/releases/v2.0.4.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "d5c884513266c3adf22c13e2aa7f60f82ae4ca5b66e327f6f33eda2849603bed",
+        "master_sha256": "e0cbf8f85b45ee3d081c906f4eeb8ce384e172f0b7218276e76dfe29672ab045",
+        "result_sha256": "2b51be60fa26609fdfc3e222bb1119ff251592e3176ffcf051d68f42ebceb702"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "2dcf48f4379c45571d78024b2991f73ef39d5b455f431d967a27411ecdca233f"
+  },
+  "docs/zh/releases/v2.0.5.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "1814d8f57037a98eb56e289bec02d22181a7944073f88a12ed72f5ae3c579631",
+        "master_sha256": "9de532fa6c93fcd3791e3b4ccbb43a7a15afef44c87f04399810e6db24f6a5a3",
+        "result_sha256": "5585fbcbcee1eb209353027da30a4d5bab67becefad0bb80f14f4841174e58a0"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "bc5069c5f1a5f8c701c55d6827894223d0f3f3eb3a6597f245cee4d98a1896ac"
+  },
+  "docs/zh/releases/v2.0.6.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "37570ef72e0bd055a946fc907d01da952cf2c3a289f0460d3723f8baded77548",
+        "master_sha256": "a521486d6a2b660e377012baa7edd67d7efb63867a9da787cf65e398ca715f6c",
+        "result_sha256": "ee4ccc76b171b4dd658e93fffc214fd5f8c001cb0c5b5d51319fd4f80a501423"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "a19afd4f30771210c4b75811fc505b6baabd05d3a7cc7a1bc6bed8fa1c0bc40f"
+  },
+  "docs/zh/releases/v2.0.7.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "50fbf8e90d7f3deaa88fb6712ffbadfb4f88bcf4ace7ce693ea596755ec04104",
+        "master_sha256": "e0a274ee71bc9c9381b51940b2ead3193e1625e81bcf6de1f01ea19f844fc9b8",
+        "result_sha256": "5b3e92ede85ce7a222eea79d1249859f5c2dc729a0f58c60a55850f963d84172"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "abf8553ff46a6f0b63ca563f60b126a3bc31e20aa5a677b52ebde665a9a15530"
+  },
+  "docs/zh/releases/v2.0.9.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "ac041f40b1f5afc30a87222b869adef7f8d35a99996490c01708497297730f1a",
+        "master_sha256": "0c5894cdbfca798032be188331640146bd397e4d3562ae1db852d84f22da919b",
+        "result_sha256": "27cc54fa167633476af55c8679f91b7c8ffb4140e784ae7c144cbbc91b261a81"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "6de5deb928014e747149d7d970e442e8bde5b32627928c3561fb61df8e75f9f9"
+  },
+  "docs/zh/releases/v2.1.1.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "6cd89822aba858f7a2e4bed5fded5cc31ee13175beec2ead8c3a386f719698d5",
+        "master_sha256": "8c5c7185ab4ab9690c022dde832f669bb7f6b9ae58b232b52cd156807e2da54b",
+        "result_sha256": "3b6e3fa8025a855467af5dd399d9fb9621a3a7bc070c1f7183012557a8691097"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "ffd40b067cc6369ed73c4a84608b85daa8898a9cb967fc045a07c8a8a8d9ac72"
+  },
+  "docs/zh/releases/v2.1.5.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "6c6b40a835050bcf8257a001f3be720942330d42bf0eb7342a4390063d81710c",
+        "master_sha256": "e802f543c812d77a4de911313bd6c3c2eab1488d6a24d46893b8eb6a069b8d03",
+        "result_sha256": "29743e8465a8012b8271c5e8e15cc22c1ab8c7d68d2c9df3f472ac154621bc0c"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "54d4628914e1e5ed9169213a4ac598b4672e562e1a4190871f3b3f2570308ad0"
+  },
+  "docs/zh/releases/v2.1.6.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "81eaad0348305825d6bf76692b851477350b887bd5d91fcc41b8d9fd73573e49",
+        "master_sha256": "d412aae90251c3bb1694f4d00b78965ca43720acd56854b9b92e6e6410eb31b3",
+        "result_sha256": "a844ce4995001e4c89f6c2ce16389a2640073e7a61bc92295978f76b17742cf3"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "de1c08da582939cd083fab276a36501a50a5f0086fbf7f37b2ecb6d2121043d3"
+  },
+  "docs/zh/releases/v2.1.7.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "657a69966bbb3f980b88383348de2f19132427e4f4132362b99e53c088383359",
+        "master_sha256": "7b8b82dfafd9e3055b16d86d7f16653f9f1dba050132bc2c1a3ce740116c0c66",
+        "result_sha256": "7cd0215396f4b9297309e74a8d6abd7f5e02ecc47d84f9e698ab6611fd2476bf"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "19a7d2bd6ef008d5f3598382fcdd2c0c61592e1873a68577fcca9690cfc17d74"
+  },
+  "docs/zh/skills/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "02ecd2505fae9b3ba40f173cd775a98a79026f69e4370cfd050995caa8b7a0c4",
+        "master_sha256": "1f73c32c6126bc9d4ecf5b7db84f700b289981f1bb279ef68b640d0e5daa42b0",
+        "result_sha256": "8751ed9ed7d1f48add475a8e2e904467fa56f9e4f61c7e15e7d1d32594db870b"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "5e57b5706a0935f51751262b2f0493250efb62f413912ffd4ff17c2fdd39ade6"
+  },
+  "docs/zh/tools/index.mdx": {
+    "decision": "Adopt upstream capability descriptions with fork product name; keep explicit upstream labeling for upstream builds and hosted services.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "4d575ba68ff92c1d2f7c8b059ed4ebebb652aab8ad796dd981b2965c4f000354",
+        "master_sha256": "b3d73738cbc9e4aba35812a25975864c27f0f86b3a3576220e1fd81b49c35347",
+        "result_sha256": "57792b120a2b9cab3296dd71cb38c7009a585c0c6fbd7c5bafdfc839bec0daec"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "991b029ea097a560ba29b4e34f22ecdcadba92c723cf23125607e219f605d43d"
+  },
+  "plugins/linkai/README.md": {
+    "decision": "Retain target deletion of duplicate README; maintained docs and fork deployment guide remain authoritative. Source code functionality is retained separately.",
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": null
+  },
+  "channel/web/static/js/workspace.js": {
+    "decision": "Preserve typed local/remote file origins and stale identity checks; use master resizer/preview target/artifact actions. Server reveal stays unavailable without the native host.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "3614bcf2332de26a74b97ea454ea8eefdf06c87f1c77ae01ec9879a811c0968e",
+        "master_sha256": "059a9c451783689c1ed9e7dec7063a6ebbc5392660f1a11275af82aa5d7c93c6",
+        "result_sha256": "6e00e7441d890320a876a634daca2d810cd74eeb7e2a3d63bd0eb2cf5287dd00"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "ebe00b4a5dd4a8bc67e3d02d637f55c3b840c0cea5abaa982b97bf4c27e6f71b",
+        "master_sha256": "a6a1e803f279510ade463fff50fa5eee48f1b92cbddb5fd136c51225f8b01ae9",
+        "result_sha256": "8d67e09270d2b37a6206c8bbe21488418c97e2d6d897e6a433a4e54e9222829a"
+      },
+      {
+        "hunk": 2,
+        "rdai_sha256": "637dd196924b28872b35e3ebbf565fda2db040ec7ae8cac13f928978194dbb76",
+        "master_sha256": "8d770a9942005106992ae78c0af1b79a5226fd7971771b7f7e9378b032aabbc3",
+        "result_sha256": "369c920927fce1801c0805a6d75916f9372ad2c5b302347f8abc3f7a01fb87b5"
+      },
+      {
+        "hunk": 3,
+        "rdai_sha256": "4b12045492b7093aa2b1b3dfbae697c4120b0d4435ed049ec4e3f32ab73b550a",
+        "master_sha256": "08daa121b73f3afd410fce644f9629a2157a6411de5c2e536c29d29445c704f2",
+        "result_sha256": "4b12045492b7093aa2b1b3dfbae697c4120b0d4435ed049ec4e3f32ab73b550a"
+      },
+      {
+        "hunk": 4,
+        "rdai_sha256": "57f7724b482dc2bfd5a806885ee8992349f7c5546d339a1d8e9238a5555bd8e9",
+        "master_sha256": "823576703cf45a08ec40f587a25ad44dd5cbfc81b2991c85baf1d4446198477f",
+        "result_sha256": "2338292666e0920286a5a5ce86a3c5a5077dff86d11a2a42e5bdf1c14c304e86"
+      },
+      {
+        "hunk": 5,
+        "rdai_sha256": "d06c4666950a0de41ac003e74b2dc23de136e72d81b5c6ce4699077cc052bfb8",
+        "master_sha256": "e721704aeee2134f8cf510b1afcc9877a03e95937f763dc75de9c34069feb99d",
+        "result_sha256": "5054db24d335f6be587f7657cf6b186ffd8020dbdbf61cfd4661c1497b1d13e3"
+      },
+      {
+        "hunk": 6,
+        "rdai_sha256": "f48e806b51cfa60bedbe2a6865cb2ed0e18c91801e9cd8375d117f5f90ab734f",
+        "master_sha256": "8e24df19f578fd65f5751d4cbd0d2174d4d540681a332b836faa729dbf8458d7",
+        "result_sha256": "b939839fe731f146b1215eb22121adcba148f713b4af9bf4cdd40de8831c82ea"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "a5d01101397ea4a5f0dbb37522c5ab4752d492e55ecb80268917f3be2668b8db"
+  },
+  "tests/test_doc_edit.py": {
+    "decision": "Keep fork authorization fixtures plus source default parameters and all editor assertions; shared source now read from split modules.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "3d8e906675574e1d1a83e51d2343d5ed945bf6320779b47685ba3a705884f683",
+        "master_sha256": "22c527ffc140f71237810d80f43025349c40e6c0d015e2a53584e58b8fd6a922",
+        "result_sha256": "0b43536a960302709db776736b12e1cad353889c6499d6145e4d309207bea59e"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "13b31ff84f91202473bdf8e0b350b1388fcdc90ae9a0b8b1a8f2210d0ff5af14",
+        "master_sha256": "7ac64bbaa7e208c0314001e6bf195cb9c2d4a7134be7f66644a999368c4c12e9",
+        "result_sha256": "5868412dc6460ff963d9a3c1c579bee9baabf10fb0717d99b0ba8d22472c4f9f"
+      },
+      {
+        "hunk": 2,
+        "rdai_sha256": "a45fa19eea0e1f1f51171a9162942359c3ac06eb1f398198fb075856f1e652d5",
+        "master_sha256": "481510764f23aa60c1a3f889ca248e511decf74aaf8db293c9f4d1ae3221fdcf",
+        "result_sha256": "e7c1591c112d8b5a163f514315d92735a7bb1639ce3d85c75f81d55b71a3c8b8"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "4c137ef1bde3d743af454518c5960c58bf0353210cbf00408d0e88467cda6797"
+  },
+  "tests/test_scheduler_web_update.py": {
+    "decision": "Preserve all member owner/revision and upstream action-type whitelist assertions; drive source scenarios through real fork Web app and IAM.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "d8c1299b295e2a8f35b75d68718d4b1dfac22b4db6dea8c29e06c2d668847788",
+        "master_sha256": "443e6c0b5087861520a3444467bc4b522750d6b326b1e4409397f9f37718f781",
+        "result_sha256": "464a257af5e16912d3a2ed8e26b856e6f2ac1970b806b044b30d28604a5e10a2"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "0cab14e7214528533454941a7603c9c45688bbffdb95da29344882f41813d014"
+  },
+  "desktop/src/renderer/src/pages/SkillsPage.tsx": {
+    "decision": "Retain master file tree, cards and creation UX; adapt resource-level actions to rdai catalog and reuse the existing external connection management entry. Desktop runtime validation explicitly deferred.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "530391b48aca96e5f227f027e2efe602659e98c173ec24e57b859d21c728472e",
+        "master_sha256": "6b87488ff916f7acd21e845e861abd0cb05a68e80cf1d2a2482423d3c9c8088d",
+        "result_sha256": "6b87488ff916f7acd21e845e861abd0cb05a68e80cf1d2a2482423d3c9c8088d"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "master_sha256": "29dcec12b637915f19a77b598c0540c72c68e6a8984e4fd4066d1f5277a8d003",
+        "result_sha256": "29dcec12b637915f19a77b598c0540c72c68e6a8984e4fd4066d1f5277a8d003"
+      },
+      {
+        "hunk": 2,
+        "rdai_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "master_sha256": "140c845df647c8fd825f11849a9d4c0bc583c181f8da69ca4cc66732431c60f7",
+        "result_sha256": "140c845df647c8fd825f11849a9d4c0bc583c181f8da69ca4cc66732431c60f7"
+      },
+      {
+        "hunk": 3,
+        "rdai_sha256": "204904277e26238188779aac0dba34f24f5f81f9d8383a79171f381c46471351",
+        "master_sha256": "f07898a8c715287646978438f6fcb5a632557d2f2766d9b4f20554100cb0430a",
+        "result_sha256": "f07898a8c715287646978438f6fcb5a632557d2f2766d9b4f20554100cb0430a"
+      },
+      {
+        "hunk": 4,
+        "rdai_sha256": "60d42daf9b88b6eaa7d839cf6ec4b0c0b65b04c4b81907b0488afa1fc2ad67ab",
+        "master_sha256": "a4e4514ef6269e3d904461787da04063e34efefd1dd2b78d2d625131c5326c21",
+        "result_sha256": "a4e4514ef6269e3d904461787da04063e34efefd1dd2b78d2d625131c5326c21"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "b4fcf77c8a8ad933b3e9e9fdf1446788d9b9542aa417146ff54f275496878977"
+  },
+  "docs/channels/web.mdx": {
+    "decision": "Keep database identities, brand and business documentation; add master TLS and artifact/menu content. Replace obsolete compatibility API text with scoped SAK contract.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "e906266e2e9c9b64346f1c9a032b10e755e5c1e8142cfa56122acdf2614264ab",
+        "master_sha256": "33cc4e912653b14e1349fe755c4a38baa268af2a1eb755cee3d303ac8722b79c",
+        "result_sha256": "e906266e2e9c9b64346f1c9a032b10e755e5c1e8142cfa56122acdf2614264ab"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "fc8c8c8807612ffb88b3f2990f05dd5393c409887ac07e76b9535bc149710f97",
+        "master_sha256": "3f3a6668683116de910aa5cfb7b05e7415b00033b42373f92b4b7f2f4b22b8a7",
+        "result_sha256": "fc8c8c8807612ffb88b3f2990f05dd5393c409887ac07e76b9535bc149710f97"
+      },
+      {
+        "hunk": 2,
+        "rdai_sha256": "6ed4d9b45fc3f133ed5b59cf89e1b4f401f1e94ebbf1713078dd8e61656a939b",
+        "master_sha256": "4bb72ddf7743844f19c4c365968620583dbf679f3e996b86b3aeacdee2e23218",
+        "result_sha256": "6ed4d9b45fc3f133ed5b59cf89e1b4f401f1e94ebbf1713078dd8e61656a939b"
+      },
+      {
+        "hunk": 3,
+        "rdai_sha256": "7e5f47b337c216c84f280fd910b1f991bb69e4e13a520b922137b7107a934c82",
+        "master_sha256": "190cc08e269820eb52c1d00e347c95608888370483b616188b6ba78f21b697ec",
+        "result_sha256": "190cc08e269820eb52c1d00e347c95608888370483b616188b6ba78f21b697ec"
+      },
+      {
+        "hunk": 4,
+        "rdai_sha256": "46d52efd46bf1a9f3b3d406daf5e634ee0039db0d26854bcd4311bd4f294a614",
+        "master_sha256": "22a4bd1f8b67f3b4759ada0e267f7104ccdf750750f291ce63e354362fc70b05",
+        "result_sha256": "22a4bd1f8b67f3b4759ada0e267f7104ccdf750750f291ce63e354362fc70b05"
+      },
+      {
+        "hunk": 5,
+        "rdai_sha256": "16c17cc75074951453d24de63171eb950e87d3ac2f6834bcba3a75f73ad5a99c",
+        "master_sha256": "486f6f7f6f0a4dc3aeffe4134b6720b4cc876dc72376e9f7846e4231552e8dd5",
+        "result_sha256": "486f6f7f6f0a4dc3aeffe4134b6720b4cc876dc72376e9f7846e4231552e8dd5"
+      },
+      {
+        "hunk": 6,
+        "rdai_sha256": "c9f7560a90d09448112f935fa0ea16260dfb69c425bc8bbe8eb60e7a33c0bebe",
+        "master_sha256": "59122320deb29d499a5640f084a7585e8933b3d2b5ae1c7c61c794d677ed4e5c",
+        "result_sha256": "fa881a7d6032f4112d26400d7c6720e0fdbed24eff61257841f675c2b3822566"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "5fefc1d602a0a6af5e0f42a6039b6bcef84b7402493fa8eeacede30b8e58058b"
+  },
+  "docs/zh/channels/web.mdx": {
+    "decision": "Preserve rdai database account and business instructions, with master TLS/artifact/menu additions and scoped API migration.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "f10d33a9b597c5714cec49db9179006d0e8bcc44a77f811c73725d02278932ca",
+        "master_sha256": "53e4d895ffd8012645821119f98ceb35c44ff68d240f4cfc0948e4f9973c7bea",
+        "result_sha256": "f10d33a9b597c5714cec49db9179006d0e8bcc44a77f811c73725d02278932ca"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "0f7cd9efb1fa04086a8e94e91e6f75b544a1e43305983b42b8a945bdefed8cc0",
+        "master_sha256": "2e7b1174252159e4ff4da643cbbd5ae51c3b7f921b64a3e454c734dea23110a1",
+        "result_sha256": "45fffa2873610ab917d207f568cda93ca1987d51d74803f804adb72e7ac5db9b"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "427c2a82554c656f5626459d989531900dfbc2b4d09d74f7f6d05f6fd38cd4d0"
+  },
+  "docs/ja/channels/web.mdx": {
+    "decision": "Preserve rdai database account and business instructions, with master TLS/artifact/menu additions and scoped API migration.",
+    "hunks": [
+      {
+        "hunk": 0,
+        "rdai_sha256": "293453ea7356413f38f330d2270227ec45eefe47badf3b5f5fb57e9321745223",
+        "master_sha256": "5af5a686a653c4ccd555ce51b42ccb4fe766d6e73db7db332e49bd40a9822a3b",
+        "result_sha256": "293453ea7356413f38f330d2270227ec45eefe47badf3b5f5fb57e9321745223"
+      },
+      {
+        "hunk": 1,
+        "rdai_sha256": "fd14302b8ae84092445a31f39b0cda5b9bc1d9935175efc83d749db46acb194d",
+        "master_sha256": "d9bcf05a27ac1b77010092c081c69d2b34015ffba2556f9dda23ecadb0fdfd32",
+        "result_sha256": "b1952afac63aabb7188d9c4435c0b4834b654c2bd7e0a68202f642746eece64c"
+      }
+    ],
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "80ba325f3d2084550bb6888f8df6d91198295df920d17a0f14a281bfb7b4b8c4"
+  },
+  "channel/web/chat.html": {
+    "decision": "Master split layout/scripts and shared page components; rdai database login/account dialogs/business views and typed-device adapters mounted separately. Shared script semantic merge decisions retained; browser smoke passed login and navigation, full acceptance pending.",
+    "result_sha256": "806ff19a2386a17ac238c8b41c1bbbce0fc98183869ed3478aab15e987bbc4f9",
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained.",
+    "integrated_file_sha256": "8c2ceb71c6964e57cca19c2693e7c0ddd806f27403eb4868957a504c3e100634"
+  },
+  "docs/zh/README-Hant.md": {
+    "decision": "Retain target deletion of legacy root README; documentation is served from MDX navigation.",
+    "integrated_file_sha256": null,
+    "validation": "See implementation-status.md and results; Desktop runtime deferred; real-provider acceptance pending. Original hunk hashes retained."
+  }
+}

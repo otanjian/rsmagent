@@ -1,0 +1,37 @@
+{
+  "scope": "required-local-behavior",
+  "production_acceptance": false,
+  "candidate_digest": "1305d2af4f6649de916faff7b9c96240b27cf8775536fefd7c2e6c33f93207da",
+  "source_sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+  "layers": {
+    "ledger": [],
+    "source-history": [],
+    "actual-entry-dependencies": [],
+    "brand-decoupling": [],
+    "check-route-coverage.py": [],
+    "check-web-module-seams.py": [],
+    "required-cases": [],
+    "candidate-stability": []
+  },
+  "ending_digest": "1305d2af4f6649de916faff7b9c96240b27cf8775536fefd7c2e6c33f93207da",
+  "unaccepted_capabilities": [
+    "GAP-001",
+    "GAP-002",
+    "GAP-003",
+    "GAP-004",
+    "GAP-005",
+    "GAP-006",
+    "GAP-007",
+    "GAP-008",
+    "SYNC-009",
+    "SYNC-001",
+    "SYNC-002",
+    "SYNC-003",
+    "SYNC-004",
+    "SYNC-005",
+    "SYNC-006",
+    "SYNC-007",
+    "SYNC-008"
+  ],
+  "passed": true
+}

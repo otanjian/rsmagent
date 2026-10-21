@@ -7,13 +7,14 @@
 // =====================================================================
 
 const SESSION_PANEL_KEY = 'cow_session_panel_open';
-let sessionPanelOpen = localStorage.getItem(SESSION_PANEL_KEY) === '1';
+let sessionPanelOpen = false;
 // Whether the history panel was open before entering the team page, so it can
 // be restored on the way out (the team page force-closes it for room).
 let _sessionPanelWasOpen = false;
 
 function _persistPanelState() {
-    localStorage.setItem(SESSION_PANEL_KEY, sessionPanelOpen ? '1' : '0');
+    writeScopedPreference(SESSION_PANEL_KEY, sessionPanelOpen ? '1' : '0');
+    syncSessionHistorySurface();
 }
 
 function _isMobileView() {
@@ -100,7 +101,12 @@ function _applyInputTooltips() {
     // otherwise both would pop at once.
     set('attach-btn', 'tip_attach');
     set('steer-btn', 'steer_active');
+    set('workspace-toggle-btn', 'ws_toggle', 'bottom');
+    // The history page's inline refresh button carries a translated tooltip.
+    const historyRefresh = document.querySelector('.history-refresh-btn');
+    if (historyRefresh) _setBtnTooltip(historyRefresh, t('ws_refresh'));
     set('session-toggle-btn', 'session_history', 'bottom');
+    set('artifacts-toggle-btn', 'artifacts_title', 'bottom');
     set('workspace-toggle-btn', 'ws_toggle', 'bottom');
     set('timeline-toggle-btn', 'timeline_nav', 'bottom');
     // Optimize / mic buttons carry state-dependent tooltips managed in their
@@ -110,9 +116,8 @@ function _applyInputTooltips() {
     set('mic-btn', 'mic_idle_title');
     // Send button only carries a tooltip while it acts as the cancel button.
     _setBtnTooltip(sendBtn, sendBtnMode === 'cancel' ? t('tip_cancel') : '');
-    // The permission / model chips carry translated labels and tooltips, so they
-    // are repainted here too (this runs on every language switch).
-    _renderPermissionChip();
+    // The model chip carries translated labels and tooltips, so it is repainted
+    // here too (this runs on every language switch).
     _renderModelChip();
     // applyI18n resets the placeholder to the solo hint via data-i18n-placeholder,
     // so re-apply the team-aware variant for group conversations.
@@ -123,17 +128,25 @@ function _applyInputTooltips() {
 // pressed "new chat" and has not sent the first message. Rendered from the same
 // path as real sessions so it lands in the right group.
 function _addOptimisticSessionItem(sid) {
+    if (_historyQuery || sid !== sessionId) return;
     const container = document.getElementById('session-list');
     if (!container) return;
-    if (_sessionItems.some(s => s.session_id === sid)) return;
+    _sessionItems = _sessionItems.filter(s => !s.optimistic);
+    if (_sessionItems.some(s => s.session_id === sid && s.agent?.id === activeAgentId)) return;
 
     // This runs from a callback, so a chat opened as a group may already have its
     // members by now: seed the faces from them rather than waiting for a change
     // that has already happened.
-    const roster = sid === sessionId && _sessCfg ? _rosterFromTeam(_sessCfg.team) : [];
 
+    // This runs from a callback, so a chat opened as a group may already have its
+    // members by now: seed the faces from them rather than waiting for a change
+    // that has already happened.
+
+    const roster = sid === sessionId && _sessCfg ? _rosterFromTeam(_sessCfg.team) : [];
     _sessionItems.unshift({
         session_id: sid,
+        agent: { id: activeAgentId },
+        optimistic: true,
         title: t('new_chat'),
         last_active: Math.floor(Date.now() / 1000),
         pinned: 0,
@@ -215,50 +228,230 @@ function _saveCollapsed(set) {
 }
 let _collapsedProjects = _loadCollapsed();
 
-function loadSessionList(onDone) {
+function loadSessionList(onDone, opts) {
+    if (_sidebarRecentDenied()) return;
     const container = document.getElementById('session-list');
-    if (!container) return;
+    if (!container || _historySearchComposing) return;
+    const silent = !!(opts && opts.silent);
+    const fill = opts && Object.prototype.hasOwnProperty.call(opts, 'fill') ? !!opts.fill : !silent;
+    if (container.querySelector('.session-title-input') || _dragSpaceKey !== null) {
+        _historyDirty = true;
+        _historyRefreshQueued = false;
+        return;
+    }
+    _syncHistorySearchQuery();
+    if (silent && _sessionLoading && _sessionReqAgent === _sessionListContext()) {
+        _historyRefreshQueued = true;
+        return;
+    }
+    if (_sessionLoading && _sessionReqAgent === _sessionListContext()) {
+        const context = _sessionListContext(), generation = _sessionReqSeq;
+        return _historyRequestPromise?.then(() => {
+            if (context === _sessionListContext() && generation === _sessionReqSeq
+                    && !_historyPageFailed && typeof onDone === 'function') onDone();
+        });
+    }
+    if (Array.from(_historyQuery).length > 100) {
+        _setHistoryState('history_search_limit', true);
+        return;
+    }
+    if (opts && opts.revalidate && !_historyDirty && !_historyPageFailed
+            && _historyLastLoadedContext === _sessionListContext()
+            && Date.now() - _historyLastLoadedAt < 15000) return Promise.resolve();
+    _restoreHistoryCache();
 
-    _sessionPage = 1;
-    _sessionHasMore = false;
+    // A user-facing (re)load supersedes any in-flight read. Silent refreshes
+    // keep the in-flight request and queue a trailing read instead.
+    if (!silent) {
+        _cancelHistoryRequest();
+        _sessionPage = 1;
+        _sessionHasMore = false;
+        if (!_sessionItems.length) _historyTotal = null;
+        container.scrollTop = 0;
+    } else {
+        _sessionReqSeq++;
+    }
+    _historyDirty = false;
+    _historyPageFailed = false;
+    _sessionReqAgent = _sessionListContext();
+    const seq = _sessionReqSeq;
 
-    _fetchSessionPage(1, true, onDone);
+    return _fetchSessionPage(1, true, onDone, seq, { silent, fill });
 }
 
-function _fetchSessionPage(page, clear, onDone) {
+function _fetchSessionPage(page, clear, onDone, seq, opts) {
     if (_sessionLoading) return;
+    opts = opts || {};
+    const silent = !!opts.silent;
+    const fill = !!opts.fill;
+    const existingList = document.getElementById('session-list');
+    if (existingList && (existingList.querySelector('.session-title-input') || _dragSpaceKey !== null)) {
+        _historyDirty = true;
+        return;
+    }
+    if (!seq) seq = ++_sessionReqSeq;
+    // A re-entry or identity change invalidates prior reads: drop the request so
+    // a stale result cannot repaint the current list.
+    if (seq !== _sessionReqSeq) return;
     _sessionLoading = true;
+    _historyPageFailed = false;
+    const keepRows = clear && _sessionItems.length;
+    if (!keepRows) {
+        _setHistoryState(_historyQuery ? 'history_search_loading' : 'session_history_loading');
+    } else _setHistoryState('');
+    _updateHistorySearchControls();
 
     const container = document.getElementById('session-list');
     if (!container) { _sessionLoading = false; return; }
-
-    fetch(`/api/sessions?page=${page}&page_size=${_SESSION_PAGE_SIZE}&scope=all`)
-        .then(r => r.json())
-        .then(data => {
+    const ctx = _sessionListContext();
+    const query = _historyQuery;
+    const controller = new AbortController();
+    _historyRequestController = controller;
+    const current = () => seq === _sessionReqSeq && ctx === _sessionListContext();
+    const fail = (key, message) => {
+        if (!current()) return;
+        _historyRequestController = null;
+        if (container.querySelector('.session-title-input') || _dragSpaceKey !== null) {
+            _historyDirty = true;
+            _historyRefreshQueued = false;
             _sessionLoading = false;
-            if (data.status !== 'success') return;
+            _setHistoryState('');
+            _updateHistorySearchControls();
+            return;
+        }
+        _historyPageFailed = true;
+        if (clear && !keepRows) { _sessionItems = []; _historyTotal = null; }
+        _setHistoryState(key, true, () => _fetchSessionPage(page, clear, onDone, seq, opts), message);
+        _renderSessionList();
+        _updateHistorySearchControls();
+        _historyLoadSettled();
+    };
+    const url = `/api/sessions?page=${page}&page_size=${_SESSION_PAGE_SIZE}&scope=all`
+        + (query ? `&q=${encodeURIComponent(query)}` : '');
 
-            if (clear) _sessionItems = [];
+    let timedOut = false;
+    let timer;
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+            reject(new Error('History request timed out'));
+        }, _HISTORY_REQUEST_TIMEOUT);
+        _historyRequestTimer = timer;
+    });
+    const transport = fetch(url, { signal: controller.signal })
+        .then(async r => {
+            const data = await r.json().catch(error => {
+                if (r.status === 401 || r.status === 403) return { status: 'error' };
+                throw error;
+            });
+            if (r.status === 403 || r.status === 503) data._historyUnavailable = true;
+            if (r.status === 401 || r.status === 403) data._historyDenied = true;
+            return data;
+        });
+    const request = Promise.race([transport, timeout])
+        .then(data => {
+            // Late / stale result: the page changed or the identity moved on.
+            if (!current()) return;
+            // Editing can begin after this request was sent. Defer its result
+            // rather than replacing a focused editor or a dragged project.
+            if (container.querySelector('.session-title-input') || _dragSpaceKey !== null) {
+                _historyRequestController = null;
+                _historyDirty = true;
+                _historyRefreshQueued = false;
+                _sessionLoading = false;
+                _setHistoryState('');
+                _updateHistorySearchControls();
+                return;
+            }
 
+            if (data.status !== 'success') {
+                if (data._historyDenied) {
+                    _invalidateHistoryCache();
+                    _sessionItems = [];
+                    _historyTotal = null;
+                }
+                fail(data._historyUnavailable ? 'session_history_not_enabled' : 'session_history_failed');
+                return;
+            }
+            if (query && data.query !== query) {
+                fail('history_search_unsupported');
+                return;
+            }
+            _historyRequestController = null;
+
+            const pending = _sessionItems.find(s => s.optimistic && s.session_id === sessionId
+                && s.agent?.id === activeAgentId);
+            const sessionKey = s => `${(s.agent && s.agent.id) || ''}::${s.session_id}`;
             const sessions = data.sessions || [];
-            _sessionPage = page;
-            _sessionHasMore = !!data.has_more;
+
+            if (clear && silent && keepRows && !query) {
+                const incoming = new Set(sessions.map(sessionKey));
+                const rest = _sessionPage > 1
+                    ? _sessionItems.filter(s => !incoming.has(sessionKey(s)))
+                    : [];
+                _sessionItems = sessions.concat(rest);
+                if (typeof _sortSessionItems === 'function') _sortSessionItems();
+                if (page >= _sessionPage) _sessionPage = page;
+                if (_sessionPage <= 1) _sessionHasMore = !!data.has_more;
+            } else {
+                if (clear) _sessionItems = [];
+                _sessionPage = page;
+                _sessionHasMore = !!data.has_more;
+                const seen = new Set(_sessionItems.map(sessionKey));
+                sessions.forEach(s => {
+                    const key = sessionKey(s);
+                    if (seen.has(key)) {
+                        const index = _sessionItems.findIndex(item => item.optimistic && sessionKey(item) === key);
+                        if (index >= 0) _sessionItems[index] = s;
+                        return;
+                    }
+                    seen.add(key);
+                    _sessionItems.push(s);
+                });
+            }
+
+            _historyTotal = Number.isFinite(data.total) ? data.total : null;
             _sessionGroupMode = data.group_mode === 'project' ? 'project' : 'time';
             if (Array.isArray(data.project_order)) _projectOrder = data.project_order;
+            if (page === 1) {
+                _historyLastLoadedAt = Date.now();
+                _historyLastLoadedContext = ctx;
+                if (!query) _writeHistoryCache(data);
+            }
 
-            const sessionKey = s => `${(s.agent && s.agent.id) || ''}::${s.session_id}`;
             const seen = new Set(_sessionItems.map(sessionKey));
-            sessions.forEach(s => {
-                const key = sessionKey(s);
-                if (seen.has(key)) return;
-                seen.add(key);
-                _sessionItems.push(s);
-            });
+            if (pending && !query && !seen.has(sessionKey(pending))) _sessionItems.unshift(pending);
+            _sessionItems = _sessionItems.filter(s => !s.optimistic
+                || (s.session_id === sessionId && s.agent?.id === activeAgentId));
 
+            // First-page (full) reloads paint the list state; subsequent-page
+            // loads keep whatever is already confirmed on screen.
+            _setHistoryState(_sessionItems.length ? '' : query ? 'history_search_empty' : 'session_history_empty');
             _renderSessionList();
+            _updateHistorySearchControls();
             if (typeof onDone === 'function') onDone();
+            _historyLoadSettled();
+            // A tall screen may not produce a scroll event after the first page.
+            // Fill until scrolling is possible or all matching sessions arrived.
+            // Silent refreshes keep already-loaded later pages instead of
+            // chaining another full scan.
+            if (fill) requestAnimationFrame(() => {
+                if (current() && _historyVisible && _sessionHasMore && !_sessionLoading
+                        && container.clientHeight > 0 && container.scrollHeight <= container.clientHeight + 60) {
+                    _fetchSessionPage(_sessionPage + 1, false, undefined, seq);
+                }
+            });
         })
-        .catch(() => { _sessionLoading = false; });
+        .catch(error => {
+            if (error.name !== 'AbortError' || timedOut) fail('session_history_failed');
+        }).finally(() => {
+            clearTimeout(timer);
+            if (_historyRequestTimer === timer) _historyRequestTimer = null;
+            if (_historyRequestPromise === request) _historyRequestPromise = null;
+        });
+    _historyRequestPromise = request;
+    return request;
 }
 
 // Split the loaded sessions into ordered, labelled groups.
@@ -312,13 +505,20 @@ function _sessionGroups() {
 function _renderSessionList() {
     const container = document.getElementById('session-list');
     if (!container) return;
+    _closeSessionActionMenu();
 
     if (!_sessionItems.length) {
-        container.innerHTML = '<div class="session-empty">' + t('untitled_session') + '</div>';
+        // The state (empty / error / loading) is shown in the status line above;
+        // the list itself is left blank.
+        container.innerHTML = '';
         return;
     }
 
     container.innerHTML = '';
+    if (_historyQuery) {
+        _sessionItems.forEach(s => container.appendChild(_sessionItemEl(s, false)));
+        return;
+    }
     const projectMode = _sessionGroupMode === 'project';
     // Indent sessions under their project header when several projects are
     // shown, so the list reads as a tree aligned to the folder icon above.
@@ -348,8 +548,16 @@ function _renderSessionList() {
                 <i class="fas fa-chevron-down session-group-caret ${collapsed ? 'collapsed' : ''}"></i>
                 <i class="fas ${group.icon} session-group-icon"></i>
                 <span class="session-group-name">${escapeHtml(group.label)}</span>
-                <span class="session-group-count">${group.items.length}</span>
+                <span class="session-group-count">${group.items.filter(s => !s.optimistic).length}</span>
                 <span class="session-group-actions">${actions}</span>`;
+            header.tabIndex = 0;
+            header.setAttribute('role', 'button');
+            header.setAttribute('aria-expanded', String(!collapsed));
+            header.addEventListener('keydown', event => {
+                if (event.target === header && (event.key === 'Enter' || event.key === ' ')) {
+                    event.preventDefault(); _toggleProjectCollapse(group.key);
+                }
+            });
             header.addEventListener('click', () => _toggleProjectCollapse(group.key));
             _wireGroupDrag(header, group.key);
         } else if (group.icon) {
@@ -370,6 +578,7 @@ function _toggleProjectCollapse(key) {
     else _collapsedProjects.add(key);
     _saveCollapsed(_collapsedProjects);
     _renderSessionList();
+    requestAnimationFrame(_onSessionListScroll);
 }
 
 // --- Project group drag-to-reorder -------------------------------------------
@@ -384,6 +593,7 @@ function _wireGroupDrag(header, key) {
     header.addEventListener('dragend', () => {
         _dragSpaceKey = null;
         header.classList.remove('dragging');
+        if (_historyDirty) { _historyDirty = false; _refreshHistoryList(); }
         document.querySelectorAll('.session-group-project.drop-target')
             .forEach(el => el.classList.remove('drop-target'));
     });
@@ -433,7 +643,7 @@ function renameProject(path, currentName) {
             .then(r => r.json())
             .then(data => {
                 if (data.status !== 'success') { _wsToast(data.message || t('session_settings_failed')); return; }
-                loadSessionList();
+                _refreshHistoryList();
             })
             .catch(() => _wsToast(t('session_settings_failed')));
     });
@@ -454,7 +664,7 @@ function deleteProject(path, name) {
                 .then(r => r.json())
                 .then(data => {
                     if (data.status !== 'success') { _wsToast(data.message || t('session_settings_failed')); return; }
-                    loadSessionList();
+                    _refreshHistoryList();
                 })
                 .catch(() => _wsToast(t('session_settings_failed')));
         }
@@ -471,36 +681,33 @@ function _sessionItemEl(s, indent) {
     if (ownerId) item.dataset.agentId = ownerId;
 
     const title = s.title || t('untitled_session');
-    const sid = _wsAttr(s.session_id);
-    const owner = ownerId ? _wsAttr(ownerId) : '';
     // Faces mark a conversation that has several Agents in it, the way a group
-    // chat is distinguishable from a direct one. A conversation with a single
-    // Agent stays a plain row, whatever the roster looks like elsewhere. We show
-    // at most three overlapping faces to keep the row tidy; when more took part,
-    // a small "+N" caps the stack so the group's size is still legible.
-    const roster = s.participants || [];
-    const crowd = roster.length > 1 ? roster.slice(0, 3) : null;
-    const overflow = roster.length - 3;
-    const face = crowd
-        ? `<span class="session-faces">${crowd.map(a => agentAvatarHTML(a, 20)).join('')}`
-            + (overflow > 0 ? `<span class="session-face-more">+${overflow}</span>` : '')
-            + `</span>`
-        : `<i class="fas ${s.pinned ? 'fa-thumbtack' : 'fa-message'} session-icon"></i>`;
+    // chat is distinguishable from a direct one; a single-Agent conversation
+    // stays a plain row. Shared with the sidebar preview so both agree.
+    const face = sessionTypeMarker(s).html;
+    const agentName = (s.agent && (s.agent.name || s.agent.id)) || t('agents_default');
+    const projectName = s.project && s.project.name || t('ws_default_workspace');
+    const time = _historyTimeLabel(s.last_active);
     item.innerHTML = `
-        ${face}
-        <span class="session-title" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
-        <button class="session-pin" onclick="event.stopPropagation(); toggleSessionPin('${sid}', '${owner}')"
-                title="${escapeHtml(t(s.pinned ? 'unpin_session' : 'pin_session'))}">
-            <i class="fas fa-thumbtack"></i>
+        <button type="button" class="session-row-main">
+            ${face}
+            <span class="session-copy">
+                <span class="session-title-line"><span class="session-title" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
+                    ${isActive ? `<span class="session-current-label">${escapeHtml(t('history_current'))}</span>` : ''}</span>
+                <span class="session-meta">${escapeHtml(agentName)} · ${escapeHtml(projectName)}</span>
+            </span>
         </button>
-        <button class="session-rename" onclick="event.stopPropagation(); renameSession('${sid}')" title="${escapeHtml(t('rename_session'))}">
-            <i class="fas fa-pen"></i>
-        </button>
-        <button class="session-delete" onclick="event.stopPropagation(); deleteSession('${sid}', '${owner}')" title="Delete">
-            <i class="fas fa-trash-can"></i>
-        </button>
+        <span class="session-time" title="${escapeHtml(time.full)}">${escapeHtml(time.text)}</span>
+        <button type="button" class="session-more-btn" aria-haspopup="menu" aria-expanded="false"
+                aria-label="${escapeHtml(t('history_more') + ': ' + title)}"><i class="fas fa-ellipsis" aria-hidden="true"></i></button>
     `;
-    item.addEventListener('click', () => switchSession(s.session_id, ownerId || undefined));
+    item.querySelector('.session-row-main').addEventListener('click', () => switchSession(s.session_id, ownerId || undefined));
+    const more = item.querySelector('.session-more-btn');
+    more.hidden = !!s.optimistic;
+    more.addEventListener('click', e => _openSessionActionMenu(e, s, more));
+    item.querySelector('.session-row-main').addEventListener('keydown', e => {
+        if (e.key === 'F2' && !s.optimistic) { e.preventDefault(); renameSession(s.session_id, ownerId); }
+    });
     return item;
 }
 
@@ -519,7 +726,7 @@ function _sortSessionItems() {
 
 function toggleSessionPin(sid, agentId) {
     const entry = _sessionItems.find(s => s.session_id === sid && (!agentId || (s.agent && s.agent.id) === agentId));
-    if (!entry) return;
+    if (!entry || entry.optimistic) return;
     const pinned = !entry.pinned;
 
     // Move it optimistically: the reorder is the whole point of the click, and
@@ -532,6 +739,7 @@ function toggleSessionPin(sid, agentId) {
     _renderSessionList();
 
     const owner = agentId || (entry.agent && entry.agent.id) || activeAgentId;
+    const cacheKey = _historyCacheKey();
     fetch(`/api/sessions/${encodeURIComponent(sid)}?agent_id=${encodeURIComponent(owner || '')}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -539,7 +747,10 @@ function toggleSessionPin(sid, agentId) {
     })
         .then(r => r.json())
         .then(data => {
-            if (data.status === 'success') return;
+            if (data.status === 'success') {
+                if (cacheKey === _historyCacheKey()) _patchHistoryCache(sid, owner, { pinned });
+                return;
+            }
             // Most often an empty brand-new chat: it has no row to pin until the
             // first message is stored.
             _wsToast(data.message || t('session_settings_failed'));
@@ -555,12 +766,16 @@ function toggleSessionPin(sid, agentId) {
 }
 
 function _onSessionListScroll() {
-    if (!_sessionHasMore || _sessionLoading) return;
+    if (!_sessionHasMore || _sessionLoading || _historyPageFailed) return;
     const container = document.getElementById('session-list');
     if (!container) return;
     // Trigger when scrolled near the bottom (within 60px)
     if (container.scrollHeight - container.scrollTop - container.clientHeight < 60) {
-        _fetchSessionPage(_sessionPage + 1, false);
+        // Carry the current generation sequence so a page loading under a newer
+        // read (or after re-entry) is dropped rather than appended to the wrong
+        // list. A pagination failure is not fatal: keep what is confirmed and
+        // allow the user to retry by scrolling again.
+        _fetchSessionPage(_sessionPage + 1, false, undefined, _sessionReqSeq);
     }
 }
 
@@ -626,29 +841,67 @@ function _reattachStream(sid) {
 }
 
 function switchSession(newSessionId, agentId) {
-    if (agentId && agentId !== activeAgentId) {
-        activeAgentId = agentId;
-        localStorage.setItem('cow_active_agent', activeAgentId);
+    const seam = (typeof codingSeam === 'function') ? codingSeam() : null;
+    // A coding conversation is served by the embedded pane, so it is opened
+    // through the module rather than by filling the message list. The identity
+    // and the selection are committed by the same helper either way.
+    if (seam && seam.isCodingAgent(agentId || activeAgentId)) {
+        if (newSessionId === sessionId && (!agentId || agentId === activeAgentId)
+            && seam.activeSession()) {
+            // Already showing it: bring the view back without reloading the
+            // frame (a reload would drop whatever the user has open in there).
+            if (currentView !== 'chat') navigateTo('chat');
+            renderComposerIdentity();
+            if (typeof finishSessionPanelSelection === 'function') finishSessionPanelSelection();
+            return;
+        }
+        seam.open(agentId || activeAgentId, newSessionId);
+        return;
     }
-    if (newSessionId === sessionId) {
+    // A normal conversation replaces a mounted coding pane, and only once the
+    // page's leave confirmation has agreed.
+    if (seam && !seam.leave()) return;
+    // Carry the target across the guard: the identity/session flip must not
+    // happen unless the navigation and the unsaved-editor check pass, so a
+    // cancel keeps the current Agent and session untouched.
+    if (newSessionId === sessionId && (!agentId || agentId === activeAgentId)) {
         if (currentView !== 'chat') navigateTo('chat');
+        // Re-open a conversation whose previous history request did not load.
+        if (!historyLoading && historyPage === 0) loadHistory(1);
         renderComposerIdentity();
+        if (typeof finishSessionPanelSelection === 'function') finishSessionPanelSelection();
+        focusChatComposer();
         return;
     }
 
     // The preview panel is scoped to a session's workspace, so switching tears
     // down an open editor. Settle unsaved edits before committing to the switch.
+    // Preserve the target agentId so a confirm re-runs with the same destination.
     if (typeof wsGuardUnsaved === 'function'
-        && !wsGuardUnsaved(() => switchSession(newSessionId))) return;
+        && !wsGuardUnsaved(() => switchSession(newSessionId, agentId))) return;
 
     // Do NOT close active streams here: sessions run in parallel, so any
     // in-flight reply for another session must keep streaming in the
     // background (it self-guards against rendering into the foreign view).
     // Switching back re-attaches and resumes live streaming.
 
+    // Commit the identity switch only after the guard passed.
+    if (agentId && agentId !== activeAgentId) {
+        activeAgentId = agentId;
+        writeScopedPreference('cow_active_agent', activeAgentId);
+    }
+
     sessionId = newSessionId;
+    _sessCfg = null;
+    _wsSelState = { current: null, recents: [], defaultWorkspace: '', projectsRoot: '' };
+    // The committed local selection belonged to the session being left; the new
+    // session gets its own pick, so drop the reference rather than let the
+    // key check be the only thing standing between it and a stale binding
+    // (task 2.6).
+    _desktopContextClear();
+    _wsSelUpdateLabel();
     updateEditButtonsState();
-    localStorage.setItem(activeSessionStorageKey(), sessionId);
+    writeScopedPreference(activeSessionStorageKey(), sessionId);
     refreshWorkspaceSelector();
     refreshSessionSettings();
     // Reflect the new session's context in the mini pie right away.
@@ -677,18 +930,27 @@ function switchSession(newSessionId, agentId) {
     }
 
     document.querySelectorAll('.session-item').forEach(el => {
-        el.classList.toggle('active', el.dataset.sessionId === sessionId);
+        el.classList.toggle('active', el.dataset.sessionId === sessionId
+            && (!el.dataset.agentId || el.dataset.agentId === activeAgentId));
     });
 
-    if (_isMobileView()) closeSessionPanel();
     if (currentView !== 'chat') navigateTo('chat');
+    if (typeof finishSessionPanelSelection === 'function') finishSessionPanelSelection();
     renderComposerIdentity();
+    focusChatComposer();
+    // A session switch moves the context panel to a row the server has written,
+    // so re-mount it and let it re-read that session's usage.
+    if (typeof _contextAfterSessionChange === 'function') _contextAfterSessionChange(true);
 }
 
 // In-place rename a session title: replace the title <span> with an <input>,
 // commit on Enter/blur, cancel on Escape. Persists via PUT /api/sessions/<id>.
-function renameSession(sid) {
-    const item = document.querySelector(`.session-item[data-session-id="${sid}"]`);
+function renameSession(sid, agentId) {
+    if (_isOptimisticSession(sid, agentId)) return;
+    const owner = agentId || activeAgentId;
+    const same = s => s.session_id === sid && (!owner || (s.agent && s.agent.id) === owner);
+    const item = [...document.querySelectorAll('.session-item')].find(el =>
+        el.dataset.sessionId === sid && (!owner || el.dataset.agentId === owner));
     if (!item) return;
     const titleEl = item.querySelector('.session-title');
     if (!titleEl || item.querySelector('.session-title-input')) return;
@@ -700,6 +962,15 @@ function renameSession(sid) {
     input.className = 'session-title-input';
     input.value = oldTitle;
     input.maxLength = 100;
+    input.setAttribute('aria-label', t('rename_session'));
+
+    // Keep the editor outside a button while retaining the original button's
+    // click listener when the edit finishes.
+    const mainButton = item.querySelector('.session-row-main');
+    const editWrap = document.createElement('div');
+    editWrap.className = 'session-row-main';
+    while (mainButton.firstChild) editWrap.appendChild(mainButton.firstChild);
+    mainButton.replaceWith(editWrap);
 
     // Avoid switching session while interacting with the input
     const stop = e => e.stopPropagation();
@@ -712,7 +983,7 @@ function renameSession(sid) {
 
     let done = false;
 
-    const restore = (title) => {
+    const restore = (title, refreshDeferred = true) => {
         if (done) return;
         done = true;
         const span = document.createElement('span');
@@ -720,17 +991,22 @@ function renameSession(sid) {
         span.title = title;
         span.textContent = title;
         input.replaceWith(span);
+        item.querySelector('.session-more-btn')?.setAttribute('aria-label', t('history_more') + ': ' + title);
+        while (editWrap.firstChild) mainButton.appendChild(editWrap.firstChild);
+        editWrap.replaceWith(mainButton);
+        if (_historyDirty && refreshDeferred) { _historyDirty = false; _refreshHistoryList(); }
     };
 
     // Undo the optimistic rename in both the DOM and the cached entry.
     const revert = () => {
-        const cachedEntry = _sessionItems.find(s => s.session_id === sid);
+        const cachedEntry = _sessionItems.find(same);
         if (cachedEntry) cachedEntry.title = oldTitle;
         const span = item.querySelector('.session-title');
         if (span) {
             span.title = oldTitle;
             span.textContent = oldTitle;
         }
+        _refreshHistoryList();
     };
 
     const commit = () => {
@@ -742,50 +1018,44 @@ function renameSession(sid) {
         }
         // Optimistically show the new title, then persist. The cached entry is
         // updated too, or the next re-render (a pin, say) would revive the old one.
-        restore(newTitle);
-        const cached = _sessionItems.find(s => s.session_id === sid);
+        restore(newTitle, false);
+        const cached = _sessionItems.find(same);
         if (cached) cached.title = newTitle;
-        fetch(`/api/sessions/${encodeURIComponent(sid)}`, {
+        const cacheKey = _historyCacheKey();
+        fetch(`/api/sessions/${encodeURIComponent(sid)}?agent_id=${encodeURIComponent(owner || '')}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: newTitle })
+            body: JSON.stringify({ title: newTitle, agent_id: owner })
         })
             .then(r => r.json())
             .then(data => {
-                if (data.status !== 'success') revert();
+                if (data.status !== 'success') { revert(); _wsToast(data.message || t('session_settings_failed')); }
+                else {
+                    if (cacheKey === _historyCacheKey()) _patchHistoryCache(sid, owner, { title: newTitle });
+                    if (_historyQuery || _historyDirty) _refreshHistoryList();
+                }
             })
             .catch(revert);
     };
 
     input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); commit(); }
         else if (e.key === 'Escape') { e.preventDefault(); restore(oldTitle); }
     });
     input.addEventListener('blur', commit);
 }
 
 function deleteSession(sid, agentId) {
+    if (_isOptimisticSession(sid, agentId)) return;
+    const owner = agentId || activeAgentId || '';
     showConfirmModal(t('delete_session_title'), t('delete_session_confirm'), () => {
-        const owner = agentId || activeAgentId;
         const deletingCurrent = sid === sessionId && (!owner || owner === activeAgentId);
-        const next = deletingCurrent ? _findNextSession(sid, owner) : null;
-
-        fetch(`/api/sessions/${encodeURIComponent(sid)}?agent_id=${encodeURIComponent(owner || '')}`, { method: 'DELETE' })
-            .then(r => r.json())
-            .then(data => {
-                if (data.status !== 'success') return;
-                if (!deletingCurrent) {
-                    loadSessionList();
-                    return;
-                }
-                if (next) {
-                    switchSession(next.sessionId, next.agentId);
-                    loadSessionList();
-                } else {
-                    newChat(false);
-                }
-            })
-            .catch(() => {});
+        // Settle an open editor before anything is submitted; a cancel must
+        // send no delete at all. Runs once, before the request, so the success
+        // path never asks the leave confirmation again.
+        if (deletingCurrent && typeof wsGuardUnsaved === 'function'
+            && !wsGuardUnsaved(() => submitSessionDelete(sid, owner))) return;
+        submitSessionDelete(sid, owner);
     });
 }
 
@@ -896,17 +1166,19 @@ function clearContext() {
         .catch(() => {});
 }
 
-function generateSessionTitle(sid, userMsg, assistantReply) {
-    fetch(`/api/sessions/${encodeURIComponent(sid)}/generate_title`, {
+function generateSessionTitle(sid, userMsg, assistantReply, agentId = activeAgentId) {
+    const authEpoch = _authEpoch;
+    const tenantId = sessionStorage.getItem('cow_tenant_id') || '';
+    fetch(`/api/sessions/${encodeURIComponent(sid)}/generate_title?agent_id=${encodeURIComponent(agentId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_message: userMsg, assistant_reply: assistantReply }),
+        body: JSON.stringify({ user_message: userMsg, assistant_reply: assistantReply, agent_id: agentId }),
     })
         .then(r => r.json())
         .then(data => {
-            if (data.status === 'success' && sessionPanelOpen) {
-                loadSessionList();
-            }
+            if (data.status !== 'success' || authEpoch !== _authEpoch
+                || tenantId !== (sessionStorage.getItem('cow_tenant_id') || '')) return;
+            _touchHistorySession(sid, agentId, { title: data.title });
         })
         .catch(() => {});
 }

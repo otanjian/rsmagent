@@ -12,7 +12,7 @@ import copy
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -198,8 +198,32 @@ def _close_run(store, run_id: str, result: Dict[str, Any]) -> None:
         logger.debug(f"[SubAgent] could not close run {run_id}: {e}")
 
 
+_POLL_SECONDS = 0.1
+_PARENT_CANCELLED = "The parent run was cancelled."
+
+# Time left on the budget when a still-running sub agent is told to wrap up,
+# so it can write a report from what it has instead of being cut off with
+# nothing. Long enough for one final model reply.
+_WRAP_UP_MAX_SECONDS = 60.0
+_WRAP_UP_FRACTION = 0.2
+_WRAP_UP_INSTRUCTION = (
+    "Your time budget is almost used up. Stop calling tools and reply now "
+    "with what you have so far, noting anything left unfinished."
+)
+
+
+def _unfinished(index: int, template, status: str, error: str, on_state=None) -> Dict[str, Any]:
+    """Result for a task that was stopped or timed out instead of finishing."""
+    result = {"task_index": index, "subagent_type": template.name,
+              "status": status, "error": error}
+    _notify(on_state, index, result)
+    return result
+
+
 def _run_one(parent, template, task: SubagentTask, index: int, cancel_event,
-             on_state=None, on_event=None) -> Dict[str, Any]:
+             on_state=None, on_event=None, steer_inbox=None) -> Dict[str, Any]:
+    if cancel_event.is_set():
+        return _unfinished(index, template, "cancelled", _PARENT_CANCELLED, on_state)
     started = time.time()
     run_id = uuid.uuid4().hex[:12]
     # Before identity_scope below, so the parent's run id is still ambient.
@@ -226,7 +250,7 @@ def _run_one(parent, template, task: SubagentTask, index: int, cancel_event,
             child = _build_child(parent, template, task)
             summary = child.run_stream(
                 task.goal, clear_history=True, cancel_event=cancel_event,
-                on_event=child_events,
+                on_event=child_events, steer_inbox=steer_inbox,
             )
         result["status"] = "cancelled" if cancel_event.is_set() else "completed"
         result["summary"] = summary or ""
@@ -248,12 +272,16 @@ def run_tasks(
     settings: SubagentSettings,
     on_state=None,
     on_event=None,
+    cancel_event=None,
 ) -> List[Dict[str, Any]]:
     """Run every task and return one result per task, in the order given.
 
     Tasks run concurrently. A task that times out is cancelled and reported as
     such rather than abandoned, so the parent always gets a full-length result
     list and can tell the difference between "nothing found" and "never ran".
+
+    The optional parent ``cancel_event`` stops the whole spawn. Child timeout
+    events stay independent and never set the parent event.
 
     `on_state(index, state)` is called as each task starts and again as it
     settles, so a caller can follow tasks individually while they run rather
@@ -265,11 +293,18 @@ def run_tasks(
     this is for whoever is watching the run, who otherwise spends the minutes
     it takes looking at a spinner.
     """
+    from agent.protocol.steer import SteerInbox
+
     cancel_events = [threading.Event() for _ in tasks]
+    steer_inboxes = [SteerInbox() for _ in tasks]
     resolved = []
     for task in tasks:
         name = task.subagent_type or ""
         resolved.append(templates[name] if name in templates else templates[_default_name(templates)])
+
+    if cancel_event is not None and cancel_event.is_set():
+        return [_unfinished(i, t, "cancelled", _PARENT_CANCELLED, on_state)
+                for i, t in enumerate(resolved)]
 
     pool = ThreadPoolExecutor(
         max_workers=min(len(tasks), settings.max_concurrent),
@@ -285,33 +320,49 @@ def run_tasks(
             futures.append(
                 pool.submit(
                     ctx.run, _run_one, parent, template, task, index,
-                    cancel_events[index], on_state, on_event,
+                    cancel_events[index], on_state, on_event, steer_inboxes[index],
                 )
             )
 
         deadline = time.time() + settings.timeout_seconds
+        wrap_up_at = deadline - min(_WRAP_UP_MAX_SECONDS,
+                                    settings.timeout_seconds * _WRAP_UP_FRACTION)
+        wrapped_up = False
         results: List[Optional[Dict[str, Any]]] = [None] * len(tasks)
-        for index, future in enumerate(futures):
-            remaining = max(0.0, deadline - time.time())
-            try:
-                results[index] = future.result(timeout=remaining)
-            except FutureTimeout:
-                # Tell the run to stop and report it. The worker winds down at
-                # its next checkpoint, which may be a whole LLM response away.
-                cancel_events[index].set()
-                results[index] = {
-                    "task_index": index,
-                    "subagent_type": resolved[index].name,
-                    "status": "timeout",
-                    "error": (
-                        f"Exceeded the {settings.timeout_seconds:g}s sub agent budget. "
-                        f"Split the task or raise subagent.timeout_seconds."
-                    ),
-                }
-                # The worker is still winding down and will not report this
-                # itself, so close the task out here rather than leave whoever
-                # is following it waiting on a task that is never coming back.
-                _notify(on_state, index, results[index])
+        pending = dict(enumerate(futures))
+        while True:
+            for index in [i for i, f in pending.items() if f.done()]:
+                results[index] = pending.pop(index).result()
+            if not pending:
+                break
+            stopped = cancel_event is not None and cancel_event.is_set()
+            if not wrapped_up and not stopped and time.time() >= wrap_up_at:
+                wrapped_up = True
+                for index in pending:
+                    steer_inboxes[index].submit(_WRAP_UP_INSTRUCTION)
+                logger.info(f"[SubAgent] Asked {len(pending)} task(s) to wrap up before the time budget runs out")
+            remaining = deadline - time.time()
+            if stopped or remaining <= 0:
+                timeout_error = (
+                    f"Exceeded the {settings.timeout_seconds:g}s sub agent budget. "
+                    f"Split the task or raise subagent.timeout_seconds."
+                )
+                for index, future in pending.items():
+                    # Tell the run to stop and close it out here: the worker winds
+                    # down at its next checkpoint, which may be a whole LLM
+                    # response away, and will not report this itself.
+                    future.cancel()
+                    cancel_events[index].set()
+                    results[index] = _unfinished(
+                        index, resolved[index],
+                        "cancelled" if stopped else "timeout",
+                        _PARENT_CANCELLED if stopped else timeout_error,
+                        on_state,
+                    )
+                break
+            # Bounded so a user Stop reaches the children while they still run.
+            wait(list(pending.values()), timeout=min(remaining, _POLL_SECONDS),
+                 return_when=FIRST_COMPLETED)
     finally:
         # Deliberately not waiting: a `with` block would join the very threads
         # we just gave up on, so the tool call would overrun the budget it is

@@ -9,6 +9,7 @@
 // must degrade gracefully when a field is missing.
 // ============================================================
 import type React from 'react'
+import type { SkillInfo } from '../types'
 
 // Optional gate rendered before the main UI. When present, the core shows
 // <Gate/> until the extension reports the session no longer needs it.
@@ -95,12 +96,38 @@ export interface ProductLinks {
   // The "what's new" page for a given version. `lang` is the UI language
   // (e.g. 'zh'). Return null to use the core docs site.
   releaseNotesUrl?: (version: string, lang: string) => string | null
+  // Hide the "what's new" entry of the update panel.
+  hideReleaseNotes?: boolean
+}
+
+export interface ProductSkillMarketProps {
+  // What is installed now, so the catalogue can mark installed and outdated entries.
+  installed: SkillInfo[]
+  // Report skills just installed: the page's list refreshes and highlights them.
+  onInstalled: (names: string[]) => void
+}
+
+export interface ProductSkillLabel {
+  name?: string
+  description?: string
 }
 
 export interface ProductSkills {
   // Set true to only offer local upload when adding a skill, hiding the
   // online sources and the skill hub link. Defaults to all sources.
   uploadOnly?: boolean
+  // A catalogue to browse and install from, shown as the first tab of the
+  // install dialog in place of the online sources. The page then lists
+  // built-in skills first and the rest newest first.
+  Market?: React.FC<ProductSkillMarketProps>
+  // Name of that tab; defaults to the generic market label.
+  marketLabel?: string
+  // Set true to open the page on skills, with built-in tools and MCP servers
+  // moved to a second tab. Defaults to one page with every section.
+  skillsFirst?: boolean
+  // Display name and description of built-in skills, by skill name, in place
+  // of the ones in their SKILL.md. The agent still reads SKILL.md.
+  builtinLabels?: Record<string, ProductSkillLabel>
 }
 
 export interface ProductSuggestion {
@@ -111,12 +138,22 @@ export interface ProductSuggestion {
   prompt?: string
   // Defaults to the built-in icon at the same position.
   icon?: React.ComponentType<{ size?: number | string; className?: string }>
+  // Takes over the click instead of filling the input, e.g. to collect a few
+  // values first. `display`, if given, is shown for the turn while the agent
+  // still gets the full `text`.
+  onSelect?: (actions: { send: (text: string, display?: string) => void }) => void
 }
 
 export interface ProductChat {
   // Replaces the suggestion cards on the new-chat screen. Return null to keep
   // the defaults; an empty list shows no cards.
   useSuggestions?: () => ProductSuggestion[] | null
+}
+
+export interface ProductAgents {
+  // Name shown for the built-in default agent while it still has its stock
+  // name; one the user gave it is kept. Return null to keep the stock name.
+  defaultAgentName?: () => string | null
 }
 
 export interface ProductExtension {
@@ -129,4 +166,5 @@ export interface ProductExtension {
   links?: ProductLinks
   skills?: ProductSkills
   chat?: ProductChat
+  agents?: ProductAgents
 }

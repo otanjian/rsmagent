@@ -59,6 +59,61 @@ Web 控制台可以展示你自己的品牌：品牌名称、Logo 简述、自�
   请确保服务器防火墙和安全组已放行对应端口。
 </Note>
 
+## HTTPS 与域名访问
+
+如需通过域名和 HTTPS 访问控制台，可任选以下一种方式。
+
+**方式一：nginx 反向代理（推荐）**。由 nginx 负责 TLS，并以 HTTP 转发到控制台；同时设置 `"web_host": "127.0.0.1"`，让控制台只能经 nginx 访问：
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name cow.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/cow.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/cow.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:9899;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # Replies stream over SSE: keep connections open and unbuffered
+        proxy_read_timeout 3600s;
+        proxy_buffering off;
+        # File uploads up to 512 MB
+        client_max_body_size 512m;
+    }
+}
+```
+
+**方式二：直接启用 HTTPS**。由控制台自身提供 TLS：
+
+```json
+{
+  "web_https_enabled": true,
+  "web_ssl_certfile": "/etc/letsencrypt/live/cow.example.com/fullchain.pem",
+  "web_ssl_keyfile": "/etc/letsencrypt/live/cow.example.com/privkey.pem"
+}
+```
+
+| 参数 | 说明 | 默认值 |
+| --- | --- | --- |
+| `web_https_enabled` | 控制台直接以 HTTPS 提供服务 | `false` |
+| `web_ssl_certfile` | PEM 证书文件（建议使用完整证书链） | `""` |
+| `web_ssl_keyfile` | PEM 私钥文件 | `""` |
+
+证书文件缺失或不可读时会直接报错并停止启动，不会退回 HTTP。
+
+<Note>
+  控制台需部署在根路径，请使用独立子域名，不支持 `/cow/` 这类子路径。如使用需要 OAuth 授权的 MCP 服务，还需设置 `"mcp_oauth_redirect_base": "https://cow.example.com"`。
+</Note>
+
+## 对话 API
+
+接口通过数据库服务账号密钥（`sak_…`）鉴权，每次调用重新检查成员、租户、智能体和模型权限。部署开关默认保持开启，以兼容既有 rdai API；无有效身份仍会拒绝。配置页只在创建或轮换时显示一次明文，不读取共享 token。参见 [对话 API](/zh/extensions/chat-api)。
+
 ## 功能介绍
 
 ### 账号菜单
@@ -145,6 +200,12 @@ Agent 能触及的文件与命令范围由权限模式决定：只读（read-onl
 - **留痕**：指派、转交、收回、退回都会写入处理记录，显示操作人、接收人与时间；同时写入审计日志（成功记 `todo.assign` / `todo.transfer` / `todo.recall` / `todo.reject`，被拒绝记 `result=denied`）。
 - **权限**：委派由「委派待办」（`todo.assign`）控制，默认授予「成员」与「租户管理员」，可在「管理 → 角色」中调整。无该权限时界面不提供接收人选择并说明未开放，其余待办操作不受影响；接收人候选列表只返回同租户可委派成员的用户名与显示名，不涉及角色、部门与联系方式。
 - **与对话的关系**：可以在对话中让 Agent 代为指派，但只在**本轮明确点名**接收人时执行；Agent 不会从会话参与方、成员目录或历史记录里自行推断人选，也不会一次委派给多人。
+
+### 产物中心
+
+按时间线汇集 Agent 生成的网页、文档、图片和视频，支持预览、置顶和跳转回原对话。页面默认隐藏，可在 [自定义菜单](/zh/extensions/custom-menu) 中开启：
+
+<img width="850" src="https://cdn.link-ai.tech/doc/artifacts-zh.png" />
 
 ### 模型管理
 

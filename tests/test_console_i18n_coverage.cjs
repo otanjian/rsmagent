@@ -1,8 +1,7 @@
 // Every i18n key the console asks for must exist in the table the page merges.
 //
 // The split console (task 8.5) keeps its dictionaries in `static/js/i18n/*.js`
-// and merges them at load; `static/js/core/i18n.js` holds the pre-split table
-// and is loaded by no template at all. Adding a key to the wrong one of those
+// and merges them into the loaded master `static/js/core/i18n.js` table. Adding a key to the wrong one of those
 // two files is silent: the parity test still passes (it only compares the
 // namespaces with the snapshot), the console still runs, and the user sees the
 // raw key where a label belongs. That is exactly what happened to the coding
@@ -53,21 +52,21 @@ const DYNAMIC_SUFFIX = '_';
 const KNOWN_MISSING = new Set(['admin_loading', 'delete']);
 
 function mergedTable() {
-    const context = { window: {} };
+    // Execute the dictionaries in the actual shell order, including master's
+    // base table and the rdai namespace merge at the loaded core entry point.
+    const context = { window: {}, document: { addEventListener() {} },
+        navigator: { language: 'zh-CN' }, localStorage: { getItem: () => 'zh' } };
     vm.createContext(context);
-    for (const file of fs.readdirSync(I18N_DIR).filter(f => f.endsWith('.js')).sort()) {
-        vm.runInContext(fs.readFileSync(path.join(I18N_DIR, file), 'utf8'), context,
-            { filename: file });
-    }
-    const registry = context.window.__cowI18N__;
-    assert.ok(registry, 'the namespace files register window.__cowI18N__');
-    const merged = {};
-    for (const domain of Object.keys(registry)) {
-        for (const lang of Object.keys(registry[domain])) {
-            Object.assign(merged[lang] || (merged[lang] = {}), registry[domain][lang]);
+    for (const relative of pageScripts()) {
+        if (relative.startsWith('js/i18n/')) {
+            vm.runInContext(fs.readFileSync(path.join(STATIC, relative), 'utf8'), context);
+        } else if (relative === 'js/core/i18n.js') {
+            const source = fs.readFileSync(path.join(STATIC, relative), 'utf8');
+            vm.runInContext(source + '\nglobalThis.runtimeTable = I18N;', context);
+            return context.runtimeTable;
         }
     }
-    return merged;
+    throw new Error('No runtime i18n entry point in the assembled shell');
 }
 
 /** The scripts the assembled page loads, in the order it loads them. */
@@ -139,12 +138,13 @@ test('the coding Agent surface is translated, not shown as keys', () => {
     assert.deepEqual(keysFromMarkup().filter(k => unresolved([k]).length), []);
 });
 
-test('the pre-split table is not mistaken for the runtime table', () => {
-    // `static/js/core/i18n.js` defines a second `I18N` literal that no template
-    // loads. If a page ever starts loading it, or the namespaces move back into
-    // it, this test's whole premise changes -- so the premise is asserted.
-    const legacy = fs.readFileSync(path.join(STATIC, 'js/core/i18n.js'), 'utf8');
-    assert.match(legacy, /const I18N = \{/, 'the pre-split table is where we think it is');
-    assert.deepEqual(pageScripts().filter(s => s.includes('js/core/')), [],
-        'no page script comes from the pre-split directory');
+test('the actual master table merges every loaded fork namespace before lookup', () => {
+    const scripts = pageScripts();
+    const core = scripts.indexOf('js/core/i18n.js');
+    assert.ok(core >= 0);
+    assert.equal(scripts.includes('js/console.js'), false);
+    for (const script of scripts.filter(s => s.startsWith('js/i18n/'))) {
+        assert.ok(scripts.indexOf(script) < core, script);
+    }
+    assert.ok(mergedTable().en.agents_coding_project);
 });

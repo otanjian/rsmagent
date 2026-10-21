@@ -11,7 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const source = fs.readFileSync(path.join(__dirname, '../channel/web/static/js/console.js'), 'utf8');
+const source = require('./support/console_sources.cjs').script('js/views/knowledge.js');
 
 function element() {
     const classes = new Set(['hidden']);
@@ -84,12 +84,16 @@ function setup(payload, authCtx) {
     // canWriteKnowledge() consults the selected Agent's projection through it.
     ctx.findAgent = id => (ctx.agentCatalog || []).find(a => a.id === id) || null;
     vm.createContext(ctx);
+    const fork = require('./support/console_sources.cjs').script('js/fork/extensions.js');
+    vm.runInContext(fork.slice(fork.indexOf('let _knowledgeLoadSeq ='), fork.indexOf('let _knowledgeSourceCapabilities =')), ctx);
+    vm.runInContext(require('./support/console_sources.cjs').script('js/doc-editor.js'), ctx);
+    ctx.docRenderTitle = () => {};
     const from = source.indexOf('// Knowledge View');
     const to = source.indexOf('function _hasFilterMatch');
     assert.ok(from >= 0 && to > from, 'knowledge section not found');
     vm.runInContext(source.slice(from, to), ctx);
-    vm.runInContext(source.slice(source.indexOf('function _setKnowledgePanelHidden('),
-        source.indexOf('function knowledgeMobileBack(')), ctx);
+    vm.runInContext(source.slice(source.indexOf('function switchKnowledgeTab('),
+        source.indexOf('let _d3LoadPromise')), ctx);
     return { ctx, get: id => ctx.document.getElementById(id) };
 }
 

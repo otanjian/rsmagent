@@ -24,6 +24,20 @@ const _CTX_LEGEND = [
     { key: 'history', labelKey: 'ctx_history' },
     { key: 'free', labelKey: 'ctx_free' },
 ];
+let _ctxOperationSeq = 0;
+function _ctxCan(action) {
+    return typeof _identityMode !== 'function' || _identityMode() !== 'database'
+        || _featureAvailable('session_context.' + action);
+}
+function _ctxScope() { return [_authEpoch, sessionId, activeAgentId, _ctxOperationSeq].join(':'); }
+function resetContextUsage() {
+    ++_ctxOperationSeq;
+    _ctxCompacting = false;
+    _ctxSetComposerLocked(false);
+    _ctxLastUsage = null;
+    if (_ctxHideCard) _ctxHideCard();
+    _ctxRenderMiniPie(null);
+}
 function _ctxFmtTokens(n) {
     if (n < 1000) return String(n);
     if (n < 10000) return (n / 1000).toFixed(1) + 'k';
@@ -56,7 +70,7 @@ function _ctxRenderCard(usage) {
     if (!usage || usage.status === 'error') {
         return '<div class="ctx-usage-empty">' + t('ctx_error') + '</div>';
     }
-    if (!usage.available || !usage.breakdown) {
+    if ((!usage.available && !usage.restored) || !usage.breakdown) {
         return '<div class="ctx-usage-empty">' + t('ctx_empty') + '</div>';
     }
     const b = usage.breakdown;
@@ -78,22 +92,23 @@ function _ctxRenderCard(usage) {
         '<div class="ctx-usage-head">' +
         '<span class="ctx-usage-title">' + t('ctx_usage_title') + '</span>' +
         (usage.estimated ? '<span class="ctx-usage-est">' + t('ctx_estimated') + '</span>' : '') +
+        (usage.restored ? '<span class="ctx-usage-est">' + t('ctx_restored') + '</span>' : '') +
         '</div>' +
         '<div class="ctx-usage-donut-wrap">' + _ctxDonutSvg(slices) +
         '<span class="ctx-usage-pct">' + percent + '%</span></div>' +
         '<div class="ctx-usage-legend">' + rows + '</div>' +
         '<div class="ctx-usage-foot">' + usedLine + '</div>' +
-        _ctxActionsBar()
+        _ctxActionsBar(usage)
     );
 }
 
 // Action row at the bottom of the usage card: clear / compact / adjust budget.
 // Buttons carry data-ctx-action so one delegated handler on the card element
 // wires them (the card's innerHTML is re-rendered on every refresh).
-function _ctxActionsBar() {
+function _ctxActionsBar(usage) {
     return (
         '<div class="ctx-usage-actions">' +
-        '<button type="button" class="ctx-act-btn" data-ctx-action="compact" data-tooltip="' + t('ctx_act_compact_tip') + '">' +
+        '<button type="button" class="ctx-act-btn" data-ctx-action="compact" ' + (!usage?.available || !_ctxCan('compact') ? 'disabled' : '') + ' data-tooltip="' + t('ctx_act_compact_tip') + '">' +
         '<i class="fas fa-compress"></i><span>' + t('ctx_act_compact') + '</span></button>' +
         '<button type="button" class="ctx-act-btn" data-ctx-action="clear" data-tooltip="' + t('ctx_act_clear_tip') + '">' +
         '<i class="fas fa-trash-can"></i><span>' + t('ctx_act_clear') + '</span></button>' +
@@ -108,7 +123,7 @@ function _ctxActionsBar() {
 // thin stroke; grey ring when there's no context yet.
 function _ctxMiniPieSvg(usage) {
     const size = 16, stroke = 4, r = (size - stroke) / 2, c = 2 * Math.PI * r;
-    if (!usage || !usage.available || !usage.breakdown) {
+    if (!usage || (!usage.available && !usage.restored) || !usage.breakdown) {
         // Empty: a faint full ring.
         return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '">' +
             '<circle cx="' + size / 2 + '" cy="' + size / 2 + '" r="' + r +
@@ -193,7 +208,7 @@ function installContextUsagePopover() {
         btn.removeAttribute('data-tooltip');
         // Empty / error states are just one line, so shrink the card (compact
         // modifier) instead of showing a wide box padded around a single line.
-        const isEmpty = !usage || usage.status === 'error' || !usage.available || !usage.breakdown;
+        const isEmpty = !usage || usage.status === 'error' || (!usage.available && !usage.restored) || !usage.breakdown;
         _ctxUsageEl.classList.toggle('ctx-usage-pop--compact', isEmpty && !_ctxCompacting);
         _ctxUsageEl.innerHTML = _ctxCompacting
             ? _ctxRenderCard(usage) + _ctxLoadingOverlay()
@@ -205,9 +220,12 @@ function installContextUsagePopover() {
     // Fetch fresh usage and (re)draw the mini pie + card if open.
     _ctxRefresh = (opts) => {
         opts = opts || {};
+        if (!_ctxCan('usage')) return Promise.resolve(null);
+        const scope = _ctxScope();
         return fetch('/api/sessions/' + encodeURIComponent(sessionId) + '/context_usage')
             .then((r) => r.json())
             .then((data) => {
+                if (scope !== _ctxScope()) return null;
                 const ok = data && data.status !== 'error';
                 _ctxLastUsage = ok ? data : null;
                 _ctxRenderMiniPie(_ctxLastUsage);
@@ -221,7 +239,7 @@ function installContextUsagePopover() {
                 return _ctxLastUsage;
             })
             .catch(() => {
-                if (opts.openCard) _ctxShowCard(null);
+                if (scope === _ctxScope() && opts.openCard) _ctxShowCard(null);
                 return null;
             });
     };
@@ -340,19 +358,23 @@ function _ctxDoAdjust() {
 // Synchronous compaction: lock the composer + show a spinner on the card, then
 // refresh the chart from the fresh usage the server returns.
 function _ctxDoCompact() {
+    if (!_ctxCan('compact')) return;
     if (_ctxCompacting) return;
     if (_ctxTurnActive()) { _wsToast(t('ctx_busy_turn')); return; }
     // Nothing to compact on an empty session.
     if (!_ctxLastUsage || !_ctxLastUsage.available) return;
+    const scope = _ctxScope();
+    const requestAgent = activeAgentId;
     _ctxCompacting = true;
     _ctxPinned = true;
     _ctxSetComposerLocked(true);
     // Re-render current card with the loading overlay.
     if (_ctxShowCard) _ctxShowCard(_ctxLastUsage);
 
-    fetch('/api/sessions/' + encodeURIComponent(sessionId) + '/compact_context', { method: 'POST' })
+    fetch('/api/sessions/' + encodeURIComponent(sessionId) + '/compact_context?agent_id=' + encodeURIComponent(requestAgent), { method: 'POST' })
         .then((r) => r.json())
         .then((data) => {
+            if (scope !== _ctxScope()) return;
             _ctxCompacting = false;
             _ctxSetComposerLocked(false);
             if (!data || data.status === 'error') {
@@ -382,6 +404,7 @@ function _ctxDoCompact() {
             }
         })
         .catch(() => {
+            if (scope !== _ctxScope()) return;
             _ctxCompacting = false;
             _ctxSetComposerLocked(false);
             _wsToast(t('ctx_compact_failed'));

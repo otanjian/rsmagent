@@ -101,8 +101,8 @@ def test_actual_assembly_detects_removed_route_script_and_style(tmp_path):
     (root / 'scripts').unlink()
     shutil.copytree(ROOT / 'scripts', root / 'scripts', ignore=shutil.ignore_patterns('__pycache__'))
     changes = [
-        ('channel/web/chat.html', '<script defer src="/assets/js/fork/router.js"></script>', ''),
-        ('channel/web/static/css/console.css', 'overflow-wrap: anywhere', 'overflow-wrap: normal'),
+        ('channel/web/chat.html', '<script defer src="/assets/js/core/router.js"></script>', ''),
+        ('channel/web/static/css/markdown.css', 'overflow-wrap: anywhere', 'overflow-wrap: normal'),
         ('channel/web/route_registry.py', 'RouteEntry(path, "ChatHandler",', 'RouteEntry(path + "/missing", "ChatHandler",'),
     ]
     assert not module.runtime_errors(root)
@@ -165,3 +165,32 @@ def test_candidate_digest_includes_uncommitted_source_but_not_installed_dependen
     evidence.parent.mkdir(parents=True)
     evidence.write_text('{}')
     assert module.candidate_digest(tmp_path) == current
+
+
+def test_integration_review_is_bound_to_source_candidate_and_real_consumers(tmp_path):
+    import hashlib
+    module = gate()
+    for name in ('review.md', 'runtime.py', 'test.py'):
+        (tmp_path / name).write_text('evidence')
+    content = b'reviewed implementation'
+    review = {'path': 'module.js', 'owner': 'maintainers', 'evidence': ['review.md'],
+              'integration': {'source_blob': 'upstream', 'candidate_sha256': hashlib.sha256(content).hexdigest(),
+                              'reason': 'IAM adapter', 'consumers': ['runtime.py'], 'tests': ['test.py']}}
+    data = {'source_reviews': [review]}
+    assert module.reviewed_integration(tmp_path, data, 'module.js', 'upstream', content)
+    assert not module.reviewed_integration(tmp_path, data, 'module.js', 'changed-source', content)
+    assert not module.reviewed_integration(tmp_path, data, 'module.js', 'upstream', content + b'changed')
+    (tmp_path / 'runtime.py').unlink()
+    assert not module.reviewed_integration(tmp_path, data, 'module.js', 'upstream', content)
+
+
+def test_brand_gate_allows_only_internal_host_predicate(tmp_path):
+    module = gate()
+    root = tmp_path / 'candidate'; root.mkdir()
+    dist = tmp_path / module.BRAND_WEB_DIST; dist.mkdir(parents=True)
+    bundle = dist / 'app.js'
+    bundle.write_text('location.hostname.includes("opencode.ai")')
+    assert not module.brand_errors(root)
+    for value in ('https://opencode.ai/help', 'OpenCode', '"opencode.ai"'):
+        bundle.write_text(value)
+        assert module.brand_errors(root)

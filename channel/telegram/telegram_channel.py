@@ -492,10 +492,12 @@ class TelegramChannel(ChatChannel):
         """Check whether entities/caption_entities contain a @mention of the bot."""
         bot_at = "@" + bot_username.lower()
         text = (message.text or message.caption or "").lower()
-        if bot_at in text:
+        if re.search(re.escape(bot_at) + r"(?![A-Za-z0-9_])", text):
             return True
         # Also check entities strictly to support text_mention (no-username @)
-        for ent in (message.entities or []) + (message.caption_entities or []):
+        # PTB 22.x: entities is a tuple, caption_entities a list (or None) —
+        # concatenating them raises TypeError and aborts the whole handler.
+        for ent in list(message.entities or []) + list(message.caption_entities or []):
             if ent.type == "mention":
                 src = message.text or message.caption or ""
                 if src[ent.offset: ent.offset + ent.length].lower() == bot_at:
@@ -506,7 +508,7 @@ class TelegramChannel(ChatChannel):
         """Strip @bot_username from group text (case-insensitive)."""
         if not content or not self.bot_username:
             return content
-        pattern = re.compile(r"@" + re.escape(self.bot_username), re.IGNORECASE)
+        pattern = re.compile(r"@" + re.escape(self.bot_username) + r"(?![A-Za-z0-9_])", re.IGNORECASE)
         return pattern.sub("", content).strip()
 
     @staticmethod

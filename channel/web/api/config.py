@@ -7,6 +7,7 @@ page also renders is served by api/models.py.
 
 import json
 import os
+import threading
 
 import web
 
@@ -16,6 +17,7 @@ from agent.permission import (
     normalize_mode as permission_normalize_mode,
 )
 from channel.web.core._common import (
+    _can_reveal_in_file_manager,
     _read_config_file_for_write,
     _require_auth,
     _write_config_file_for_write,
@@ -29,6 +31,9 @@ from common import i18n
 from common.log import logger
 from config import conf, get_data_root
 from models.reasoning_capabilities import provider_reasoning_metadata
+
+
+_settings_save_lock = threading.Lock()
 
 
 class ConfigHandler:
@@ -45,6 +50,7 @@ class ConfigHandler:
         "agent_max_context_tokens", "agent_max_context_turns", "agent_max_steps",
         "enable_thinking", "reasoning_effort", "reasoning_effort_by_model", "self_evolution_enabled", "web_password",
         "agent_permission_mode",
+        "skill_hub_url", "skill_hub_api_key",
     }
 
     # Switches the API exposes flat - one key, one control - while the config
@@ -137,9 +143,9 @@ class ConfigHandler:
                 "channel_type": local_config.get("channel_type", ""),
                 # Manual cap on the input budget (compact once reached); 0
                 # disables the cap and follows the model window.
-                "agent_max_context_tokens": local_config.get("agent_max_context_tokens", 64000),
-                "agent_max_context_turns": local_config.get("agent_max_context_turns", 20),
-                "agent_max_steps": local_config.get("agent_max_steps", 20),
+                "agent_max_context_tokens": local_config.get("agent_max_context_tokens", 200000),
+                "agent_max_context_turns": local_config.get("agent_max_context_turns", 30),
+                "agent_max_steps": local_config.get("agent_max_steps", 100),
                 "enable_thinking": bool(local_config.get("enable_thinking", False)),
                 "reasoning_effort": local_config.get("reasoning_effort", "high"),
                 "reasoning_effort_by_model": local_config.get("reasoning_effort_by_model", {}),
@@ -154,6 +160,9 @@ class ConfigHandler:
                 "api_keys": api_keys_masked,
                 "providers": providers,
                 "web_password_masked": masked_pwd,
+                "skill_hub_url": local_config.get("skill_hub_url", ""),
+                # Whether "show in folder" can open this machine's file manager.
+                "can_reveal_files": _can_reveal_in_file_manager(),
             }
             # The desktop app runs on the local trusted machine, so it can edit
             # the real password in place (cursor at the end, delete to clear).
@@ -166,6 +175,11 @@ class ConfigHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def POST(self):
+        # Serialized so the file and the live config are updated in the same order.
+        with _settings_save_lock:
+            return self._save_settings()
+
+    def _save_settings(self):
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
@@ -208,7 +222,6 @@ class ConfigHandler:
                     merged = dict(local_config.get("reasoning_effort_by_model") or {})
                     merged.update(value)
                     value = merged
-                local_config[key] = value
                 applied[key] = value
 
             if not applied and not nested:
@@ -225,9 +238,12 @@ class ConfigHandler:
                 merged = dict(file_cfg.get(section) or {})
                 merged.update(values)
                 file_cfg[section] = merged
-                local_config[section] = merged
                 applied[section] = merged
             _write_config_file_for_write(config_path, file_cfg)
+
+            # Publish only after the file is saved, so a failed save changes nothing.
+            for key, value in applied.items():
+                local_config[key] = value
 
             logger.info(f"[WebChannel] Config updated: {list(applied.keys())}")
 
@@ -272,33 +288,68 @@ class ConfigHandler:
                 except Exception as reset_err:
                     logger.warning(f"[WebChannel] Failed to reset bridge: {reset_err}")
 
-            # Evict cached agent runtimes when a config that is baked into the
-            # Agent at construction time changes. These values (context budget,
-            # turn/step caps) are read once in agent_initializer and cached on
-            # the Agent instance, so without eviction an edit only takes effect
-            # after a restart — the user changes the budget in the UI and sees
-            # no change (the context-usage chart keeps the old limit). Clearing
-            # the instances makes the next turn rebuild each agent from the new
-            # config, no restart needed.
-            agent_rebuild_keys = {
-                "agent_max_context_tokens",
-                "agent_max_context_turns",
-                "agent_max_steps",
-            }
-            if any(k in applied for k in agent_rebuild_keys):
+            # The context budget and step cap are cached on each Agent at build
+            # time, so push them onto the live agents (agent_max_context_turns
+            # is read per run and needs nothing).
+            if any(k in applied for k in ("agent_max_context_tokens", "agent_max_steps")):
                 try:
                     from bridge.bridge import Bridge
                     agent_bridge = Bridge().get_agent_bridge()
                     if agent_bridge is not None:
-                        agent_bridge.clear_all_sessions()
-                        logger.info(
-                            "[WebChannel] Cleared cached agents so new "
-                            f"{sorted(agent_rebuild_keys & applied.keys())} takes effect"
-                        )
-                except Exception as rebuild_err:
-                    logger.warning(f"[WebChannel] Failed to clear agents: {rebuild_err}")
+                        agent_bridge.apply_runtime_limits()
+                except Exception as limits_err:
+                    logger.warning(f"[WebChannel] Failed to apply runtime limits: {limits_err}")
 
             return json.dumps({"status": "success", "applied": applied, "warning": password_warning}, ensure_ascii=False)
         except Exception as e:
             logger.error(f"Error updating config: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+
+class ExternalApiHandler:
+    """/api/external_api: the OpenAI-compatible chat API's switch and key.
+
+    Turning the API off keeps its key, so callers keep working once it is
+    back on; only regenerating replaces the key.
+    """
+
+    ACTIONS = ("enable", "disable", "regenerate")
+
+    @staticmethod
+    def _state() -> dict:
+        local_config = conf()
+        token = str(local_config.get("external_api_token", "") or "")
+        enabled = bool(local_config.get("external_api_enabled")) and bool(token)
+        return {"status": "success", "enabled": enabled, "api_key": token}
+
+    def GET(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        return json.dumps(self._state(), ensure_ascii=False)
+
+    def POST(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            import secrets
+
+            action = (json.loads(web.data() or b"{}") or {}).get("action")
+            if action not in self.ACTIONS:
+                return json.dumps({"status": "error", "message": f"unknown action: {action!r}"})
+            local_config = conf()
+            token = str(local_config.get("external_api_token", "") or "")
+            if action == "regenerate" or (action == "enable" and not token):
+                token = "sk-cow-" + secrets.token_hex(24)
+            updates = {"external_api_token": token}
+            if action != "regenerate":
+                updates["external_api_enabled"] = action == "enable"
+            file_cfg = _read_config_file_for_write()
+            file_cfg.update(updates)
+            _write_config_file_for_write(os.path.join(get_data_root(), "config.json"), file_cfg)
+            for key, value in updates.items():
+                local_config[key] = value
+            logger.info(f"[WebChannel] Chat API {action}d")
+            return json.dumps(self._state(), ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] Chat API setting failed: {e}")
             return json.dumps({"status": "error", "message": str(e)})

@@ -30,6 +30,8 @@ function _wsToast(msg) {
 // Refresh the selector state + label for the current session.
 async function refreshWorkspaceSelector() {
     const label = document.getElementById('workspace-selector-label');
+    const requestSession = sessionId;
+    const requestAgent = activeAgentId;
     try {
         // Scope the request to the active Agent so the default-workspace hint
         // matches the file panel's real root in multi-Agent setups.
@@ -38,9 +40,17 @@ async function refreshWorkspaceSelector() {
         if (aid) url += `&agent=${encodeURIComponent(aid)}`;
         const res = await fetch(url);
         const data = await res.json();
+        if (sessionId !== requestSession || activeAgentId !== requestAgent) return;
         if (data.status !== 'success') return;
+        // A local project is not a server project: the backend cannot report it,
+        // so taking its `current` at face value would drop the chip -- and, with
+        // it, the panel's source -- while the project was still open, which is
+        // precisely the panel and the session's target drifting apart (9.3). The
+        // local entry survives only while its reference is still the live one for
+        // *this* Agent and session; every other answer is the server's.
+        const local = _desktopContextForRequest() ? _wsSelState.current : null;
         _wsSelState = {
-            current: data.current || null,
+            current: local || data.current || null,
             recents: data.recents || [],
             defaultWorkspace: data.default_workspace || '',
             projectsRoot: data.projects_root || '',
@@ -99,47 +109,15 @@ function _wsSelHide() {
 function renderWorkspaceSelectorMenu() {
     const menu = _wsSelMenu();
     if (!menu) return;
-
-    const parts = [];
-    const isDefault = !_wsSelState.current;
-    parts.push(`<div class="ws-sel-section-title">${escapeHtml(t('ws_sel_title'))}</div>`);
-    // Default workspace: hovering shows the full ~/cow absolute path.
-    parts.push(`
-        <button class="ws-sel-item ${isDefault ? 'active' : ''}" onclick="selectWorkspaceProject(null)"
-                data-tip-float data-tooltip="${escapeHtml(_wsSelState.defaultWorkspace || '')}" data-tooltip-pos="bottom">
-            <i class="fas fa-house"></i>
-            <span class="ws-sel-name">${escapeHtml(t('ws_default_workspace'))}</span>
-            ${isDefault ? '<i class="fas fa-check ws-sel-check"></i>' : ''}
-        </button>`);
-
-    if ((_wsSelState.recents || []).length) {
-        parts.push(`<div class="ws-sel-divider"></div>`);
-        parts.push(`<div class="ws-sel-section-title">${escapeHtml(t('ws_sel_recents'))}</div>`);
-        _wsSelState.recents.forEach(r => {
-            const active = _wsSelState.current && _wsSelState.current.path === r.path;
-            parts.push(`
-                <button class="ws-sel-item ${active ? 'active' : ''}" onclick="selectWorkspaceProject('${_wsAttr(r.path)}')"
-                        data-tip-float data-tooltip="${escapeHtml(r.path)}" data-tooltip-pos="bottom">
-                    <i class="fas fa-folder"></i>
-                    <span class="ws-sel-name">${escapeHtml(r.name)}</span>
-                    ${active ? '<i class="fas fa-check ws-sel-check"></i>' : ''}
-                </button>`);
-        });
-    }
-
-    parts.push(`<div class="ws-sel-divider"></div>`);
-    parts.push(`
-        <button class="ws-sel-item" onclick="wsSelOpenProjectDialog()">
-            <i class="fas fa-folder-open"></i>
-            <span class="ws-sel-name">${escapeHtml(t('ws_sel_open'))}</span>
-        </button>`);
-    parts.push(`
-        <button class="ws-sel-item" onclick="wsSelNewProjectDialog()">
-            <i class="fas fa-folder-plus"></i>
-            <span class="ws-sel-name">${escapeHtml(t('ws_sel_new'))}</span>
-        </button>`);
-
-    menu.innerHTML = parts.join('');
+    menu.innerHTML = _wsSelBuildMenuParts(false).join('');
+    if (typeof CowDesktopHost === 'undefined'
+            || typeof CowDesktopHost.canChooseWorkspace !== 'function') return;
+    CowDesktopHost.canChooseWorkspace().then((ok) => {
+        if (!ok) return;
+        const live = _wsSelMenu();
+        if (!live || live.classList.contains('hidden')) return;
+        live.innerHTML = _wsSelBuildMenuParts(true).join('');
+    }).catch(() => { /* keep the browser menu */ });
 }
 
 // Escape a path for safe embedding inside a single-quoted inline handler.
@@ -297,6 +275,11 @@ function _wsSelRevealFiles() {
 // Kept for callers that select without a dialog (default / recents).
 async function selectWorkspaceProject(projectDir) {
     _wsSelHide();
+    // Leaving the local directory: drop the reference now rather than relying on
+    // the next request noticing. Switching back to a directory later mints a new
+    // binding, and carrying the old one over that gap is the stale-selection bug
+    // this change fixes (task 2.6).
+    _desktopContextClear();
     await _wsSelApply('/api/projects/select', { session: sessionId, project_dir: projectDir });
 }
 

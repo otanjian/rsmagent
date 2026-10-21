@@ -1,0 +1,20 @@
+{
+  "target": "c9bd4942261156f56c02ffd65e4d81c6153e1594",
+  "suite": "tests/test_console_i18n_parity.cjs",
+  "target_failed_cases": [
+    "the merged namespace table deep-equals the pre-split snapshot",
+    "each namespace declares the same keys in every language it uses",
+    "every i18n namespace loads before console.js merges the table"
+  ],
+  "candidate_failed_cases": [
+    "the merged namespace table deep-equals the pre-split snapshot",
+    "each namespace declares the same keys in every language it uses",
+    "every i18n namespace loads before console.js merges the table"
+  ],
+  "target_counts": {
+    "passed": 3,
+    "failed": 3
+  },
+  "scope": "Historical immutable namespace snapshot and console.js loader assumptions; not used as proof of current runtime translation. The actual loaded core+fork dictionaries pass locale-current-final.log and the browser language scenario.",
+  "target_log_sha256": "0afe6d13aca62f9d4b62eb11ce36163446aa311bb320e6cf381b7f3e6ae2514d"
+}
