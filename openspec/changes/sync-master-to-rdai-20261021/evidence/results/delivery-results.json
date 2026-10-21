@@ -7,5 +7,8 @@
   "web_accepted": true,
   "desktop_verified": false,
   "remote_ci_enforcement_verified": false,
-  "production_deployed": false
+  "production_deployed": false,
+  "accepted_fix_commit": "d60d06808afb760d33dd8c70a94725260bae36c6",
+  "commit_hook_changed_tree": false,
+  "source_and_target_ancestors": true
 }
