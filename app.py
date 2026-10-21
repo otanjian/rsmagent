@@ -988,7 +988,13 @@ def run():
         else:
             _warmup_scheduler()
 
-        logger.info(f"[App] Starting channels: {channel_names}")
+        # Never log the ChannelInstance dataclass: its repr contains the
+        # plaintext credential bundle (observed: a live Feishu app_secret in
+        # run.log). Startup only needs to say which instances are coming up.
+        logger.info(
+            "[App] Starting channels: %s",
+            [(item.instance_id, item.channel_type, item.agent_id)
+             for item in channel_names])
 
         channel_mgr = ChannelManager()
         set_channel_manager(channel_mgr)
