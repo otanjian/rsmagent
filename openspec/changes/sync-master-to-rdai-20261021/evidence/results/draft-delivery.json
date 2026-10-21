@@ -1,0 +1,36 @@
+{
+  "review_merge": {
+    "tree": "6d39f4948dc67d0eba27496208eaaa7f862f7335",
+    "first_parent": "c9f80a8ae51ae7e327be18930eb63a3facd119d9",
+    "second_parent": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+    "candidate_digest": "1305d2af4f6649de916faff7b9c96240b27cf8775536fefd7c2e6c33f93207da",
+    "configured_secret_matches": 0,
+    "unexpected_runtime_files": 0,
+    "merge_commit": "6396213e5cf396ad85d895aed65403820865986c",
+    "merge_tree": "6d39f4948dc67d0eba27496208eaaa7f862f7335",
+    "parents": [
+      "c9f80a8ae51ae7e327be18930eb63a3facd119d9",
+      "ee2dc0521714fc144e0c9923f363147fe865ad2f"
+    ],
+    "accepted_for_delivery": false
+  },
+  "pull_request_at_creation": {
+    "number": 2,
+    "html_url": "https://rd.rsmxm.com.cn/Gitea/rsmai/rsmagent/pulls/2",
+    "title": "WIP: merge master into rdai with upstream Web UI",
+    "draft": true,
+    "state": "open",
+    "merged": false,
+    "mergeable": false,
+    "head_sha": "6396213e5cf396ad85d895aed65403820865986c",
+    "head_branch": "codex/sync-master-to-rdai-20261021-web",
+    "base_branch": "rdai",
+    "created_at": "2026-10-21T11:57:43.888023+00:00",
+    "accepted_for_delivery": false
+  },
+  "purpose": "Blocked draft review only; not accepted for delivery",
+  "formal_tasks_closed": false,
+  "target_branch_updated": false,
+  "production_deployed": false,
+  "artifact_attachment": "Codex attachment attempted; tool does not accept this Gitea PR URL. The ordinary HTTPS PR link is retained."
+}

@@ -52,3 +52,4 @@
 
 - [现用翻译/外观检查](results/locale-current-final.log)、[历史翻译基线](results/legacy-i18n-baseline.json)、[CI 状态](ci-status.md)。
 - [Gitea 只读核查](results/remote-ci-status.json)：无分支保护规则，目标 CI 排队且未分配 runner；[真实模型重试](results/real-provider-status.json)：仍为 401，未记录凭据。
+- [草稿 PR #2](https://rd.rsmxm.com.cn/Gitea/rsmai/rsmagent/pulls/2) 与 [草稿交付记录](results/draft-delivery.json)：服务器确认 draft，保留双亲 merge 历史；尚未正式验收或合入 rdai。

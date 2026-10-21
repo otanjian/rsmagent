@@ -1,0 +1,20 @@
+{
+  "checked_at": "2026-10-21T11:58:34.195571+00:00",
+  "pr_url": "https://rd.rsmxm.com.cn/Gitea/rsmai/rsmagent/pulls/2",
+  "draft": true,
+  "merged": false,
+  "mergeable": false,
+  "observed_head": "6396213e5cf396ad85d895aed65403820865986c",
+  "target_sha": "c9bd4942261156f56c02ffd65e4d81c6153e1594",
+  "matching_recent_runs": [
+    {
+      "id": 729,
+      "event": "pull_request",
+      "path": "production-readiness.yml@refs/pull/2/head",
+      "head_sha": "6396213e5cf396ad85d895aed65403820865986c",
+      "head_branch": null,
+      "status": "queued",
+      "conclusion": null
+    }
+  ]
+}
