@@ -1,4 +1,4 @@
-/* Menu editor: the dialog behind the sidebar's edit button. It works on a copy
+/* Menu editor: the dialog opened from personal account settings. It works on a copy
    of the menu in force and saves the whole of it to POST /api/menu; entries
    this console does not have (a desktop-only page) stay in the copy as they
    are, so saving from here never drops them.
@@ -12,6 +12,7 @@
 const ME_DEFAULT_VIEWS = new Set(MENU_DEFAULT.flatMap(g => g.views));
 
 let meDraft = null;
+let meReturnFocus = null;
 let meDragging = null;
 let mePopAnchor = null;
 let meArtTimer = null;
@@ -35,6 +36,7 @@ function _meFind(id) {
 
 /** Open the editor; `options.add` puts a new entry in the first group, ready to place. */
 function menuEditorOpen(options) {
+    meReturnFocus = document.activeElement;
     meDraft = JSON.parse(JSON.stringify(menuDoc));
     let focusId = (options && options.focus) || '';
     if (options && options.add) {
@@ -47,6 +49,7 @@ function menuEditorOpen(options) {
     _meRender();
     document.getElementById('menu-editor-overlay').classList.remove('hidden');
     document.addEventListener('keydown', _meOnKey, true);
+    if (!focusId) document.querySelector('#menu-editor-body input')?.focus();
     if (focusId) {
         const row = document.querySelector(`#menu-editor-body .me-item[data-iid="${CSS.escape(focusId)}"]`);
         if (row) {
@@ -63,6 +66,8 @@ function menuEditorClose() {
     document.getElementById('menu-editor-overlay').classList.add('hidden');
     document.removeEventListener('keydown', _meOnKey, true);
     meDraft = null;
+    if (meReturnFocus?.isConnected) meReturnFocus.focus();
+    meReturnFocus = null;
 }
 
 function _meOnKey(e) {

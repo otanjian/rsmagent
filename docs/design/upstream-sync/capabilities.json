@@ -1899,7 +1899,8 @@
       "owner": "rdai-maintainers",
       "evidence": [
         "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/navigation-areas.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/navigation-areas.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/account-menu-entry.md"
       ]
     },
     {
@@ -2171,12 +2172,13 @@
       "owner": "rdai-maintainers",
       "evidence": [
         "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/navigation-areas.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/navigation-areas.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/account-menu-entry.md"
       ],
       "integration": {
         "source_blob": "76b3f70fbfaae4a0e24fdf2f65dcee20d38d3e39",
-        "candidate_sha256": "23b61ab3231cfbfd1b2ee2c342ed3a125f8dc7f02209e7d2be38979de38bc66c",
-        "reason": "Preserve original rdai menu names, positions, groups and order; switch areas above the account footer using existing routes and permissions. Keep master components, complete personal layouts and navigation guards.",
+        "candidate_sha256": "21afcfa160920cc3e4ec40dc7a97f647721c7aedf7c7e700bf352c179f19bdbe",
+        "reason": "Keep rdai menu labels, order and area routing with master components; expose personal menu editing in account settings, preserve personal layouts and restore focus on close.",
         "consumers": [
           "channel/web/chat.html"
         ],
@@ -2202,12 +2204,13 @@
       "owner": "rdai-maintainers",
       "evidence": [
         "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/navigation-areas.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/navigation-areas.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/account-menu-entry.md"
       ],
       "integration": {
         "source_blob": "9cd39db57a3eee90c1bff1c5e279bdc768235551",
-        "candidate_sha256": "9d8fc65dbf3f012cd4cc4b94ff1ea9a46dcaf872383d5efd96ee815f4375b63b",
-        "reason": "Preserve original rdai menu names, positions, groups and order; switch areas above the account footer using existing routes and permissions. Keep master components, complete personal layouts and navigation guards.",
+        "candidate_sha256": "9475b4b5506f197fe968c62ee7a962f93cfaaebeaf7c6ec291276c8605449f6c",
+        "reason": "Keep rdai menu labels, order and area routing with master components; expose personal menu editing in account settings, preserve personal layouts and restore focus on close.",
         "consumers": [
           "channel/web/chat.html"
         ],
@@ -2513,12 +2516,13 @@
       "classification": "behavior",
       "owner": "rdai-maintainers",
       "evidence": [
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/account-menu-entry.md"
       ],
       "integration": {
         "source_blob": "7fa1f0c53f35e85163f7ab67d368625d5a8fb6e2",
-        "candidate_sha256": "f0a66153cf37499b0534aea6f4f77d22dadabdad16d108b5d065f18fd85c83ba",
-        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "candidate_sha256": "c17e3844be23829812d71105831e153b1666698f62abf5f0a9df9ca7187425b9",
+        "reason": "Keep rdai menu labels, order and area routing with master components; expose personal menu editing in account settings, preserve personal layouts and restore focus on close.",
         "consumers": [
           "channel/web/chat.html"
         ],
@@ -2659,7 +2663,8 @@
       "owner": "rdai-maintainers",
       "evidence": [
         "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/navigation-areas.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/navigation-areas.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/account-menu-entry.md"
       ]
     },
     {
@@ -2683,7 +2688,8 @@
       "classification": "behavior",
       "owner": "rdai-maintainers",
       "evidence": [
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/account-menu-entry.md"
       ]
     },
     {
