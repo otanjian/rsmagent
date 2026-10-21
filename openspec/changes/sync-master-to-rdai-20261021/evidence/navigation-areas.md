@@ -18,3 +18,5 @@
 - localhost:9899 的实际用户页面已人工核对名称、顺序和底部切换；保留账号已有品牌文案。实际用户截图仅保存在本机预览目录，不纳入仓库。
 - 受影响后端补充集合（sync contract、menu grant、navigation mode、console menu mapping）为 67 passed / 2 failed。两个失败是 `ZeroVisibilityRegressionTests::test_a_member_keeps_every_page_it_could_already_open` 和 `test_a_tenant_admin_keeps_its_management_pages`，涉及 migration 20 的历史 `workbench.artifacts` 投影；同命令选中两例在原 rdai `0bd9406e` 上也失败。该历史基线问题不计为本次通过项，当前修正没有改动后端迁移或权限。
 - OpenSpec strict、delta 基线和活动 change 同能力重叠检查通过。完整必要 Web 门禁通过，见 `results/navigation/required-report.json`，候选摘要 `230773555f70d8fae7594070851bf22ad85071f6e8577a516b391b515ed0f634` 在运行前后一致。此前菜单语言切换未更新页面标题的问题已修复。随后仅增加移动截图等待抽屉展开的稳定性断言；最终提交由实际 required CI 全量复验。
+
+Gitea [run 749](https://rd.rsmxm.com.cn/Gitea/rsmai/rsmagent/actions/runs/749) 对提交 `fd9136921ec672635931d16aaba92c77d352dde5` 的实际必需 Web 检查成功，41 份证据文件上传成功。最终运行摘要 `76d6443c4f304608e10496644213817c3134fdf96fd243554016554d29d74d61` 在检查前后一致；已包含移动抽屉展开断言，全部必需用例执行通过。API 运行状态和从实际 job log 提取的原始报告保存在 `ci-run-749.json`、`ci-required-report.json`。后续仅补充本验收文档、截图及任务状态，不修改运行代码；最终 PR head 仍须在同一保护下再次通过检查后正常合入。
