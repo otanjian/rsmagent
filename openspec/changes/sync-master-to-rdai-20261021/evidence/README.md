@@ -55,3 +55,5 @@
 - [草稿 PR #2](https://rd.rsmxm.com.cn/Gitea/rsmai/rsmagent/pulls/2) 与 [草稿交付记录](results/draft-delivery.json)：服务器确认 draft，保留双亲 merge 历史；尚未正式验收或合入 rdai。
 
 真实模型及文件闭环：`results/real-provider-status.json`、`real-chat-result.json`、`real-file-browser-result.json`、`real-api-result.json`。最终受影响检查：`results/affected-final/`（376 项通过）。
+
+PR #2 已合入 `c7b981b0068e817cd0cef4fab28f19f0385e2bf1`，合入后 Web 真实模型与文件冒烟通过。任务 53/58；未完成项仅为远端 CI 阻断证明与 4 项 Desktop 延期验证。

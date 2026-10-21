@@ -14,6 +14,8 @@
   "review_merge_commit": "6396213e5cf396ad85d895aed65403820865986c",
   "review_merge_tree": "6d39f4948dc67d0eba27496208eaaa7f862f7335",
   "draft_pr": "https://rd.rsmxm.com.cn/Gitea/rsmai/rsmagent/pulls/2",
-  "delivery_accepted": false,
-  "real_provider_accepted": true
+  "delivery_accepted": true,
+  "real_provider_accepted": true,
+  "delivery_commit": "c7b981b0068e817cd0cef4fab28f19f0385e2bf1",
+  "pr_status": "merged"
 }

@@ -36,3 +36,7 @@ The final full synchronization gate passed on runtime digest `391d9c49ac4f6489f8
 The staged review checks the minimal final fixes, preserved merge parents/history, source classifications, actual screenshots and bundles, schema/recovery notes, and credential exclusion. Review was performed by this coding agent under the user's instruction to execute the recommended path; no independent human approval is claimed. Gitea has no branch protection and its production jobs are queued. The change's approved Web/manual-equivalent scope permits delivery while task 9.4 / inherited GAP-007 and four Desktop tasks remain open. Production rollout and desktop packages are not part of this branch merge.
 
 The initial merge is `6396213e5cf396ad85d895aed65403820865986c` with first parent `c9f80a8ae51ae7e327be18930eb63a3facd119d9` and second parent `ee2dc0521714fc144e0c9923f363147fe865ad2f`. Follow-up fixes preserve that history. Final PR/delivery details are recorded after merge in `results/delivery-results.json`. The change remains active for its explicitly deferred tasks.
+
+## Delivered
+
+PR #2 merged as `c7b981b0068e817cd0cef4fab28f19f0385e2bf1`; its tree equals the accepted head and retains both fixed source and target ancestry. Post-merge Web smoke restarted the isolated server and repeated real model write/read, artifact preview/jump, workspace preview and byte-exact download. All passed. See `results/delivery-results.json`. The checklist is 53/58: only inherited CI enforcement and four explicitly deferred Desktop tasks remain.
