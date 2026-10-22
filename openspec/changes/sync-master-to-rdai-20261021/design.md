@@ -82,6 +82,8 @@ rdai 自有工作台区域的默认展示名使用「业务工作台」（繁体
 
 顶部栏外链：按用户验收意见，在共享 `layout/header.html` 中为文档、官网和 GitHub 三个入口使用既有 `hidden` 样式，所有 Web 导航区域和视口统一隐藏。保留文档节点及标识，使既有语言和品牌链接更新逻辑继续兼容；语言、主题、租户选择不受影响，不新增开关或偏好存储。
 
+用户追加验收：恢复原 rdai `sidebar-new-chat-wrap` 模板到品牌与主菜单之间，直接复用既有 `onNewChatButton`、`startSidebarNewChat`、下拉菜单及样式；控制台区域沿用既有隐藏规则，收起侧栏保留加号，手机入口继续关闭抽屉并转入对话。智能体新会话路径原先仅复制 welcome 内部 HTML，丢失 master 容器样式，再套上旧 `chat-home` 的 `display: contents` 和顶部留白。本次克隆完整原始欢迎节点，旧 hero 布局只在真实存在 `.home-intro` 时启用；恢复后的示例卡片按 master 的可见提示和 `data-send` 填写输入框。账号更新入口原由 `account-ready` 重新显示，本次让其保持隐藏，保留底层受控更新的权限、确认及身份失效保护。
+
 ### D5. 兼容 API 复用上游语义，服务账号凭据和会话归属保持唯一
 
 把 `channel/web/api/openai_compat.py` 的请求解析、事件格式、用量和资源释放修复接入实际 `channel/web/openai_api.py`；能抽为纯值变换的部分复用，不继承上游共享 token 认证。新增模型目录路由须明确注册并使用相同服务账号认证和当前允许集合；配置 UI 消费既有服务账号凭据管理能力，不复制上游 ChatApiCard 的共享明文密钥模式。

@@ -96,10 +96,13 @@ exports.run = async function (scenario) {
     }});
 
     let updateStarts = [], updateChecks = 0;
-    await scenario('parity: source update binds confirmation and clears it across identities', async page => {
+    await scenario('parity: hidden source update entry retains confirmation and identity guards', async page => {
         assert.equal(updateChecks, 0, 'Opening the page must not contact the release source');
         await page.evaluate(() => toggleAccountMenu());
-        await page.locator('#source-update-open').click();
+        assert.equal(await page.locator('#source-update-open').isVisible(), false);
+        // The launcher is intentionally hidden; exercise the retained update
+        // controller directly so its confirmation/identity guards stay covered.
+        await page.evaluate(() => toggleUpdateMenu());
         await page.locator('#update-action-item').click();
         await page.waitForFunction(() => document.getElementById('source-update-target').textContent.includes('bbbbbbbbbbbb'));
         assert.equal(updateChecks, 1);

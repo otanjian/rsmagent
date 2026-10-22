@@ -63,6 +63,7 @@ async function main() {
         }
         async function openPersonalMenu(page) {
             await page.locator('#sidebar-account-toggle').click();
+            assert.equal(await page.locator('#source-update-open').isVisible(),false);
             await page.locator('#account-menu-customize').click();
             await page.locator('#menu-editor-overlay').waitFor({state:'visible'});
             assert.equal(await page.locator('#sidebar-account-menu').isVisible(),false);
@@ -100,6 +101,63 @@ async function main() {
             await alice.waitForFunction(()=>document.getElementById('lang-label').textContent==='简');
             await assertHeaderShortcutsHidden(alice);
             assert.equal(globalWrites,0);alice.off('request',observe);
+        });
+        await scenario('sync: agent conversation entry preserves centered welcome and visible composer',async()=>{
+            const entry=await login('alice');currentPage=entry;
+            async function checkLayout(screenshot) {
+                await entry.locator('#welcome-screen').waitFor({state:'visible'});
+                await entry.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+                if(screenshot)await entry.screenshot({path:path.join(output,screenshot+'.png')});
+                const main=await entry.locator('#chat-main').boundingBox();
+                for(const selector of ['#welcome-screen > img','#welcome-title','#welcome-screen > .grid']) {
+                    const box=await entry.locator(selector).boundingBox();
+                    assert.ok(Math.abs(box.x+box.width/2-main.x-main.width/2)<2,selector+' stays centered in the conversation pane');
+                }
+                const composer=await entry.locator('#chat-composer').boundingBox();
+                assert.ok(composer.y+composer.height<=entry.viewportSize().height+1,'composer stays inside the viewport');
+                assert.ok(await entry.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'page has no horizontal overflow');
+            }
+            await checkLayout();
+            const brandBox=await entry.locator('#sidebar .sidebar-brand').boundingBox();
+            const launchBox=await entry.locator('#sidebar-new-chat').boundingBox();
+            const menuBox=await entry.locator('#sidebar-nav').boundingBox();
+            assert.ok(launchBox.y>=brandBox.y+brandBox.height && launchBox.y+launchBox.height<=menuBox.y,'new chat stays between brand and navigation');
+            const initialSession=await entry.evaluate(()=>sessionId);
+            await entry.locator('#sidebar-new-chat').click();
+            await entry.waitForFunction(previous=>sessionId!==previous,initialSession);
+            assert.equal(await entry.locator('#chat-input').evaluate(el=>el===document.activeElement),true);
+            await entry.locator('#sidebar-nav [data-view="agent-workbench"]').click();
+            await entry.locator('#agent-workbench-grid [data-agent-id="secondary"]').click();
+            await entry.waitForFunction(()=>currentView==='chat' && activeAgentId==='secondary');
+            await entry.locator('#session-panel').waitFor({state:'visible'});
+            await checkLayout('agent-conversation-history');
+            await entry.locator('#welcome-screen .example-card[data-send="/help"]').click();
+            assert.equal(await entry.locator('#chat-input').inputValue(),'/help');
+            await entry.locator('#chat-input').fill('');
+            await entry.locator('#welcome-screen .example-card').first().click();
+            assert.equal(await entry.locator('#chat-input').inputValue(),await entry.locator('#welcome-screen .example-card').first().locator('p').innerText());
+            await entry.locator('#chat-input').fill('');
+            await entry.locator('#history-new-chat-btn').click();
+            await checkLayout();
+            await entry.locator('#session-toggle-btn').click();
+            await checkLayout('agent-conversation-no-history');
+            await entry.reload();
+            await entry.locator('#sidebar-nav [data-view="chat"]').waitFor({state:'visible'});
+            await checkLayout();
+            await entry.setViewportSize({width:1024,height:768});
+            await entry.locator('#new-chat-btn').click();
+            await checkLayout();
+            await entry.setViewportSize({width:390,height:844});
+            await entry.locator('#session-panel-close, .session-panel-close').click();
+            await entry.locator('#new-chat-btn').click();
+            await checkLayout('agent-conversation-mobile');
+            await entry.locator('#menu-toggle').click();
+            const mobileSession=await entry.evaluate(()=>sessionId);
+            await entry.locator('#sidebar-new-chat').click();
+            await entry.waitForFunction(previous=>sessionId!==previous,mobileSession);
+            assert.equal(await entry.locator('#menu-toggle').getAttribute('aria-expanded'),'false');
+            await checkLayout();
+            await entry.context().close();
         });
         await scenario('sync: personal menu saves, reloads and isolates two browser identities',async()=>{
             await editTitle(alice,'Alice navigation');await second.reload();
@@ -326,6 +384,9 @@ async function main() {
             assert.equal(await manager.locator('#sidebar-collapse-btn').getAttribute('aria-expanded'),'true');
             await manager.locator('#sidebar-collapse-btn').press('Space');
             await manager.waitForFunction(()=>document.getElementById('sidebar').getBoundingClientRect().width<=72);
+            const collapsedSession=await manager.evaluate(()=>sessionId);
+            await manager.locator('#sidebar-new-chat').press('Enter');
+            await manager.waitForFunction(previous=>sessionId!==previous,collapsedSession);
             await manager.locator('#sidebar-collapse-btn').press('Enter');
         });
         await scenario('sync: skill creation uses the rendered form and persists an authorized resource',async()=>{
