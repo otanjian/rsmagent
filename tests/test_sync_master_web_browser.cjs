@@ -56,8 +56,12 @@ async function main() {
         await scenario('sync: todos work by default with persistent personal creation and completion',async()=>{
             const owner=await login('todoalice'), other=await login('todobob');
             currentPage=owner;
-            await owner.goto(app.origin+'/todos');
+            await owner.locator('#todo-bell-btn').waitFor({state:'visible'});
+            assert.equal(await owner.locator('#todo-bell-btn').count(),1);
+            assert.equal(await owner.locator('#todo-bell-btn').evaluate(el=>el.nextElementSibling.id),'theme-toggle');
+            await owner.locator('#todo-bell-btn').click();
             await owner.locator('#todo-empty').waitFor({state:'visible'});
+            assert.equal(await owner.locator('#todo-bell-badge').isVisible(),false);
             assert.equal(await owner.locator('#todo-banner').isVisible(),false);
             await owner.locator('#todo-create-btn').click();
             await owner.locator('#todo-edit-field-title').fill('Default-enabled personal todo');
@@ -66,6 +70,14 @@ async function main() {
             const response=await created;assert.equal(response.status(),200);
             const {item}=await response.json();
             const row=owner.locator('#todo-list [data-id="'+item.id+'"]');
+            await row.waitFor({state:'visible'});
+            await owner.waitForFunction(()=>document.getElementById('todo-bell-badge')?.textContent==='1');
+            await owner.goto(app.origin+'/history');
+            await owner.locator('#view-history').waitFor({state:'visible'});
+            await owner.locator('#todo-bell-badge').waitFor({state:'visible'});
+            assert.equal(await owner.locator('#todo-bell-badge').innerText(),'1');
+            await owner.screenshot({path:path.join(output,'todo-bell-history.png')});
+            await owner.locator('#todo-bell-btn').click();
             await row.waitFor({state:'visible'});
             await owner.reload();await row.waitFor({state:'visible'});
             assert.equal(await owner.locator('#todo-banner').isVisible(),false);
@@ -79,6 +91,8 @@ async function main() {
             await owner.locator('#todo-detail-actions button[onclick*="completed"]').click();
             const result=await completed;assert.equal(result.status(),200);
             assert.equal((await result.json()).item.status,'completed');
+            await owner.locator('#todo-bell-badge').waitFor({state:'hidden'});
+            assert.equal(await owner.locator('#todo-bell-btn').isVisible(),true);
             await owner.locator('#todo-detail-overlay .todo-detail-close').click();
             await owner.reload();
             await owner.locator('.todo-status-tab[data-status="completed"]').click();

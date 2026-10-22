@@ -166,13 +166,17 @@ function setup(responses, options = {}) {
     const gatedStarts = [];
 
     if (options.mountBell) {
-        // The workbench header with the tenant selector as the anchor the bell
-        // is inserted before.
+        // The split header no longer carries the legacy workbench-header class.
         const header = element('header');
+        if (!options.legacyHeader) {
+            const theme = element('button');
+            theme.id = 'theme-toggle';
+            header.appendChild(theme);
+        }
         const tenant = element('div');
         tenant.id = 'tenant-selector';
         header.appendChild(tenant);
-        selectors.set('.workbench-header', header);
+        selectors.set(options.legacyHeader ? '.workbench-header' : '#main-content > header', header);
     }
 
     if (options.sidebarTodo) {
@@ -283,7 +287,7 @@ function setup(responses, options = {}) {
     vm.runInNewContext(source, ctx, { filename: 'todos.js' });
     return {
         ctx, node, findById,
-        header: selectors.get('.workbench-header') || null,
+        header: selectors.get('#main-content > header') || selectors.get('.workbench-header') || null,
         sidebarBadge: selectors.get('.sidebar-item[data-view="todo"] .nav-badge') || null,
         listRequests: () => requests.filter(r => r.url.startsWith('/api/todos?')),
         delegatedRequests: () => requests.filter(r => r.url.startsWith('/api/todos/delegated?')),
@@ -388,12 +392,13 @@ test('failed refresh clears stale results and pagination, then retries on revisi
 // Top-bar bell entry (change add-todo-header-bell)
 // ---------------------------------------------------------------------------
 
-test('bell mounts before the tenant selector and is idempotent', () => {
+test('bell mounts in the split header before the theme toggle and is idempotent', () => {
     const h = setup([], { mountBell: true, absent: BELL_IDS });
     const bell = h.findById('todo-bell-btn');
     assert.ok(bell, 'bell entry is mounted');
-    assert.equal(h.header.children[0], bell, 'bell sits before the tenant selector');
-    assert.equal(h.header.children[1].id, 'tenant-selector');
+    assert.equal(h.header.children[0], bell, 'bell sits before the theme toggle');
+    assert.equal(h.header.children[1].id, 'theme-toggle');
+    assert.equal(h.header.children[2].id, 'tenant-selector');
     assert.equal(bell.getAttribute('data-tip-key'), 'menu_todo');
     assert.equal(bell.getAttribute('data-tooltip'), messages.menu_todo);
     assert.equal(bell.getAttribute('aria-label'), messages.menu_todo);
@@ -407,6 +412,13 @@ test('bell mounts before the tenant selector and is idempotent', () => {
         h.header.children.filter(child => child.id === 'todo-bell-btn').length, 1,
         'a second mount does not add a second entry',
     );
+});
+
+test('bell still mounts in the legacy header before the tenant selector', () => {
+    const h = setup([], { mountBell: true, legacyHeader: true,
+        absent: new Set([...BELL_IDS, 'theme-toggle']) });
+    assert.equal(h.header.children[0], h.findById('todo-bell-btn'));
+    assert.equal(h.header.children[1].id, 'tenant-selector');
 });
 
 test('bell count shows the capped summary total and hides at zero', async () => {
