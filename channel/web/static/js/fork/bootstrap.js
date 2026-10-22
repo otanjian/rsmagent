@@ -175,7 +175,7 @@ NEW_CHAT_SURFACES = {
         // The sidebar's own entry point: it keeps the branding/unsaved guard
         // and hands focus to the composer, which a bare newChat() would skip.
         start: () => startSidebarNewChat(),
-        available: () => sidebarLaunchV2(),
+        available: () => true,
     },
 };
 

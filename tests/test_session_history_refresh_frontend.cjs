@@ -49,6 +49,7 @@ function setup(transport = () => response({ status: 'success', stream: true, req
         activeStreams: {}, streamBuffers: {}, sessionActiveRequest: {}, loadingContainers: {},
         pollGeneration: 0, isPolling: false,
         syncTeamFromText() {}, renderComposerIdentity() {}, resetComposerHeight() {},
+        focusChatComposer() {}, closeSidebar() {},
         renderAttachmentPreview() {}, addressedAgentId: () => '',
         addUserMessage() {}, addUserVoiceMessage() {}, addLoadingIndicator: () => ({ remove() {} }),
         readMessageResponse: r => r.json(), rememberLiveSpeaker() {}, setLoadingSpeaker() {},

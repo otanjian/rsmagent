@@ -118,9 +118,6 @@
     root.onUpdateActionClick = () => checked && !checked.up_to_date ? root.startConsoleUpdate() : root.checkForConsoleUpdate();
     root.addEventListener('account-invalidated', reset);
     root.addEventListener('pagehide', reset);
-    root.addEventListener('account-ready', () => {
-        reset();
-        element('source-update-open').textContent = text('检查更新', 'Check for updates');
-        element('source-update-open').classList.toggle('hidden', !admin());
-    });
+    // Keep the account-menu entry hidden, including after an identity refresh.
+    root.addEventListener('account-ready', reset);
 })(window);

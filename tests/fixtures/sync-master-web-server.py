@@ -33,12 +33,16 @@ def main(root):
     from channel.web.fork.handlers import menu
 
     app = WebAppHarness(root, settings={'external_api_enabled': True})
+    # Todos must work without an operator opting in through configuration.
+    app._settings.pop('todo_enabled', None)
     app.add_agent('primary', 'secondary')
     app.write_roster([{'id':'primary', 'workspace':str(Path(app.shared_root) / 'agents' / 'primary')}, {'id':'secondary', 'name':'Second Agent'}])
     role = app.role('reader', ['chat.use', 'history.read', 'agent.read', 'agent.use'],
                     [('agent', 'agent:'+aid, action) for aid in ('primary','secondary') for action in ('read','use')])
     password = 'SyntheticWeb2026!'
     ids = {name: app.member(name, [role['code']], password=password) for name in ('alice', 'bob')}
+    for name in ('todoalice', 'todobob'):
+        ids[name] = app.member(name, ['member', role['code']], password=password)
     limited = app.role('workbench-only', ['chat.use', 'history.read', 'agent.read', 'agent.use'],
         [('agent', 'agent:primary', 'read'), ('agent', 'agent:primary', 'use'),
          ('menu', 'nav:workbench.chat', 'view'), ('menu', 'nav:workbench.history', 'view')])

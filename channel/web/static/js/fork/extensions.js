@@ -2835,7 +2835,7 @@ function fetchPublicBrand(seq) {
     }).catch(() => { /* keep last known brand; never break the console */ });
 }
 
-const welcomeTemplateHTML = document.getElementById('welcome-screen')?.innerHTML || '';
+const welcomeTemplate = document.getElementById('welcome-screen').cloneNode(true);
 
 function syncChatHomeLayout() {
     const main = document.getElementById('chat-main');
@@ -2846,7 +2846,9 @@ function syncChatHomeLayout() {
     // so presence of the markup is not enough to answer the question. This also
     // keeps a later re-render (the observer below) from putting the home layout
     // back on top of the frame the module just mounted.
-    const home = !!document.getElementById('welcome-screen') && !codingPaneMounted();
+    // The legacy hero rules require its own wrapper. Master's welcome keeps
+    // its flex container and the composer at the bottom of the chat pane.
+    const home = !!document.querySelector('#welcome-screen .home-intro') && !codingPaneMounted();
     const changed = home !== main.classList.contains('chat-home');
     main.classList.toggle('chat-home', home);
     if (changed) main.scrollTop = 0;
@@ -2891,7 +2893,10 @@ function watchHomeHero(main) {
 function bindWelcomeSuggestions(root) {
     root.querySelectorAll('.example-card').forEach(card => {
         card.addEventListener('click', () => {
-            chatInput.value = t(card.dataset.promptKey);
+            const text = card.dataset.send || (card.dataset.promptKey
+                ? t(card.dataset.promptKey) : card.querySelector('[data-i18n*="text"]')?.textContent);
+            if (!text) return;
+            chatInput.value = text;
             chatInput.dispatchEvent(new Event('input'));
             chatInput.focus();
         });
@@ -3051,11 +3056,9 @@ function paintWelcomeAgentIntro() {
 }
 
 function renderWelcomeScreen() {
-    const welcome = document.createElement('div');
-    welcome.id = 'welcome-screen';
-    welcome.className = 'workbench-welcome';
-    welcome.innerHTML = welcomeTemplateHTML;
+    const welcome = welcomeTemplate.cloneNode(true);
     welcome.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+    welcome.querySelectorAll('[data-i18n-html]').forEach(el => { el.innerHTML = t(el.dataset.i18nHtml); });
     messagesDiv.appendChild(welcome);
     bindWelcomeSuggestions(welcome);
     applyBrandToDocument();
@@ -3828,6 +3831,8 @@ function commitPreparedSession(preparedSessionId, { optimistic = true, inherit =
     // A fresh session has no server-side context row yet: keep the usage entry
     // quiet until the first turn persists it.
     if (typeof _contextAfterSessionChange === 'function') _contextAfterSessionChange(false);
+    if (window.innerWidth < 1024) closeSidebar();
+    focusChatComposer();
     return true;
 }
 
