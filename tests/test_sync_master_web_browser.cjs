@@ -53,6 +53,40 @@ async function main() {
             return page;
         }
         const alice=await login('alice'), second=await login('alice'), bob=await login('bob');
+        await scenario('sync: todos work by default with persistent personal creation and completion',async()=>{
+            const owner=await login('todoalice'), other=await login('todobob');
+            currentPage=owner;
+            await owner.goto(app.origin+'/todos');
+            await owner.locator('#todo-empty').waitFor({state:'visible'});
+            assert.equal(await owner.locator('#todo-banner').isVisible(),false);
+            await owner.locator('#todo-create-btn').click();
+            await owner.locator('#todo-edit-field-title').fill('Default-enabled personal todo');
+            const created=owner.waitForResponse(r=>new URL(r.url()).pathname==='/api/todos'&&r.request().method()==='POST');
+            await owner.locator('#todo-edit-submit').click();
+            const response=await created;assert.equal(response.status(),200);
+            const {item}=await response.json();
+            const row=owner.locator('#todo-list [data-id="'+item.id+'"]');
+            await row.waitFor({state:'visible'});
+            await owner.reload();await row.waitFor({state:'visible'});
+            assert.equal(await owner.locator('#todo-banner').isVisible(),false);
+            await other.goto(app.origin+'/todos');
+            await other.locator('#todo-empty').waitFor({state:'visible'});
+            assert.equal(await other.locator('#todo-list [data-id="'+item.id+'"]').count(),0);
+            assert.equal(await other.evaluate(async id=>(await fetch('/api/todos/'+id)).status,item.id),404);
+            await row.click();
+            const completed=owner.waitForResponse(r=>new URL(r.url()).pathname==='/api/todos/'+item.id&&r.request().method()==='PATCH');
+            owner.once('dialog',dialog=>dialog.accept());
+            await owner.locator('#todo-detail-actions button[onclick*="completed"]').click();
+            const result=await completed;assert.equal(result.status(),200);
+            assert.equal((await result.json()).item.status,'completed');
+            await owner.locator('#todo-detail-overlay .todo-detail-close').click();
+            await owner.reload();
+            await owner.locator('.todo-status-tab[data-status="completed"]').click();
+            await row.waitFor({state:'visible'});
+            await owner.screenshot({path:path.join(output,'todo-enabled-default.png')});
+            await owner.context().close();await other.context().close();
+            currentPage=alice;
+        });
         const readMenu=p=>p.evaluate(async()=>{const r=await fetch('/api/menu');return r.json();});
         async function assertHeaderShortcutsHidden(page) {
             for (const selector of ['#docs-link', 'a[title="Website"]', 'a[title="GitHub"]']) {

@@ -135,6 +135,12 @@ TLS 复用 `core/tls.py` 的显式配置并接入实际启动路径；保留交�
 
 对源新增的 `test_artifact_index.py`、`test_web_menu.py`、`test_openai_chat_api.py`、`test_openai_default_session_lock.py`、`test_external_api_switch.py`、`test_session_context_usage.py`、`test_model_discovery.py`、技能替换/配置保存、`test_web_tls.py`、`test_bash_multiline_python.py` 的适用后端行为及 Web scroll 登记本轮用例；Desktop 专属部分归入延期清单，不按整个文件粗略跳过混合用例。源独立测试通过仅证明上游行为，rdai 要补真实装配的授权组合。
 
+### D9. 待办默认可用（2026-10-22 用户验收调整）
+
+配置声明、`config-template.json` 与 `agent/todo/service.py:default_enabled` 的缺省值统一为 true；现有配置缺少 `todo_enabled` 时，重启即按开启处理，不写入或重建用户配置。部署者显式设置 false 时继续关闭，配置读取异常仍拒绝。Web API 与 Agent 工具复用同一判断，真实用户/租户、成员状态、todo.read/write、可信工具委托和私有存储检查继续逐次执行。此调整不产生待办、不自动执行事项，也不导入历史任务。
+
+使用无开关配置的真实数据库接口及浏览器表单验证默认可用、创建、完成、刷新恢复和用户隔离；显式关闭仍返回关闭摘要且不创建存储。当前 localhost 配置未包含该键，最终代码重启后自动生效。历史会话自动收起仍处于上一轮方案阶段，本次不实施该导航行为。
+
 ## Risks / Trade-offs
 
 - 876 个路径中有 284 个双侧修改，文本冲突和无冲突遗漏都可能发生 → 全量分类、按能力记录处置和证据，冲突及行为差异逐项复核，禁止以旧 keep-fork 直接舍弃增量。

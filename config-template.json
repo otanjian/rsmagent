@@ -33,7 +33,7 @@
   "wecom_bot_id": "",
   "wecom_bot_secret": "",
   "web_host": "",
-  "todo_enabled": false,
+  "todo_enabled": true,
   "identity_mode": "database",
   "platform_file_root": "",
   "external_api_enabled": true,

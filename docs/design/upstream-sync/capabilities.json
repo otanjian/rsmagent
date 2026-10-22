@@ -375,7 +375,8 @@
       "entrypoints": [
         "config.py",
         "app.py",
-        "config-template.json"
+        "config-template.json",
+        "agent/todo/service.py"
       ],
       "dependencies": [
         "W09",
@@ -392,12 +393,15 @@
       ],
       "required_tests": [
         "tests/test_web_tls.py",
-        "tests/test_http_policy.py"
+        "tests/test_http_policy.py",
+        "tests/test_todo_web_database.py",
+        "tests/test_sync_master_web_browser.cjs"
       ],
       "evidence": [
         "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
         "openspec/changes/sync-master-to-rdai-20261021/evidence/source-classification.json",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/web-acceptance.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/todo-default-enabled.md"
       ],
       "previous_verification": "pending",
       "verification_scope": "本轮 Web/共享后端适用切片见 web-acceptance；完整 supported_forms 仍含桌面、外部渠道或远端交付待补项，pending 不表示 Web 切片未实施。",
