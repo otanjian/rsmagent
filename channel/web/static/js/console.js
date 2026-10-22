@@ -20353,6 +20353,18 @@ function stopFeishuRegisterPoll() {
     }
 }
 
+// The scope a Feishu scan is started for. A scan is bound to one target by the
+// server (the grant it mints can only create that target's instance), and the
+// target belongs to the *form*, not to the console's active Agent: the shared
+// page scans for the tenant and must name no Agent at all, while the member's
+// own workbench must name their private Agent or the grant cannot create their
+// instance (auth/service.py: scan_scope = "personal" if scope == "user").
+function feishuScanStartUrl(forInstanceId, pageScope, agentId) {
+    const ownSurface = !!forInstanceId && pageScope === 'self';
+    if (!ownSurface) return '/api/feishu/register?scope=tenant';
+    return '/api/feishu/register?scope=personal&agent_id=' + encodeURIComponent(agentId || '');
+}
+
 function startFeishuRegister(targetStatusId, forInstanceId) {
     const statusId = targetStatusId || 'feishu-scan-status';
     // When a tenant form started this scan, the result must pre-fill that form
@@ -20364,7 +20376,10 @@ function startFeishuRegister(targetStatusId, forInstanceId) {
     }
     stopFeishuRegisterPoll();
     _feishuRegisterHandle = '';
-    fetch('/api/feishu/register')
+    const agentEl = document.getElementById('tenant-channel-agent');
+    const scanAgent = (agentEl && agentEl.value)
+        || (tenantChannelDraft && tenantChannelDraft.agent_id) || '';
+    fetch(feishuScanStartUrl(forInstanceId, channelPageScope(), scanAgent))
         .then(r => r.json().then(data => ({ httpStatus: r.status, data })))
         .then(({ httpStatus, data }) => {
             if (!data || data.status !== 'success') {
@@ -20422,10 +20437,15 @@ function renderFeishuSdkDownloading(statusId) {
 function renderFeishuRegisterError(statusId, message) {
     const statusEl = document.getElementById(statusId);
     if (!statusEl) return;
+    // Retry must resume the same target. Restarting without it would turn a
+    // form-started scan into a platform connect and lose the target the grant
+    // was meant for (_feishuScanTarget survives every terminal state except
+    // success). The value is read as the global it is: ids come from the
+    // server and must not be spliced into a quoted handler argument.
     statusEl.innerHTML = `
         <div class="flex flex-col items-center gap-2 py-2">
             <p class="text-sm text-red-500 text-center">${message}</p>
-            <button onclick="startFeishuRegister('${statusId}')"
+            <button onclick="startFeishuRegister('${statusId}', _feishuScanTarget)"
                 class="mt-1 px-4 py-1.5 rounded-md text-xs font-medium
                        bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-200
                        hover:bg-slate-200 dark:hover:bg-white/20 cursor-pointer">

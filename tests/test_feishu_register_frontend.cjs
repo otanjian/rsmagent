@@ -9,6 +9,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const source = fs.readFileSync(
     path.join(__dirname, '../channel/web/static/js/console.js'), 'utf8');
@@ -77,4 +78,93 @@ test('leaving the scan tab drops the handle', () => {
     const body = functionBody(source, 'switchFeishuMode');
     assert.match(body, /_feishuRegisterHandle\s*=\s*''/,
         'switching away from the scan tab keeps a live handle');
+});
+
+// --- The scan start's target ------------------------------------------------
+//
+// Regression: the console's transport wrapper appends `?agent_id=<active>` to
+// every same-origin /api call. The scan start reads agent_id as "the target
+// this scan is for", so a shared scan arrived naming a personal target and the
+// server refused it before any QR existed ("a shared scan must not name a
+// personal target"). The target belongs to the form, never to the transport.
+test('a shared scan names no target and the member scan names their own', () => {
+    // `functionBody` yields the braces only; keep the parameter list so the
+    // helper can be called the way the page calls it.
+    const head = source.indexOf('function feishuScanStartUrl(');
+    assert.ok(head >= 0, 'feishuScanStartUrl still exists');
+    const body = functionBody(source, 'feishuScanStartUrl');
+    const signature = source.slice(head, source.indexOf(body, head));
+    const fn = new Function('encodeURIComponent',
+        'return (' + signature + body + ')')(encodeURIComponent);
+    assert.equal(fn('new', 'tenant', 'agent-1'),
+        '/api/feishu/register?scope=tenant',
+        'a shared scan must not carry the active/picked Agent');
+    assert.equal(fn('', 'self', 'agent-1'),
+        '/api/feishu/register?scope=tenant',
+        'a scan that does not pre-fill a form stays shared');
+    assert.equal(fn('new', 'self', 'agent 1'),
+        '/api/feishu/register?scope=personal&agent_id=agent%201',
+        'a member scan must name their own private Agent');
+});
+
+// The wrapper itself, up to the fetch it delegates to, with its closure
+// declarations injected so the section can run alone.
+function loadTransport(activeAgentId) {
+    const from = source.indexOf('const _nativeFetch = window.fetch.bind(window);');
+    const to = source.indexOf('function generateSessionId()', from);
+    assert.ok(from >= 0 && to > from, 'the fetch wrapper still exists');
+    const calls = [];
+    const sandbox = {
+        window: {
+            location: { href: 'http://localhost/channels', origin: 'http://localhost' },
+            fetch: (input, init) => {
+                calls.push({ url: typeof input === 'string' ? input : input.url, init });
+                return Promise.resolve({ ok: true });
+            },
+        },
+        sessionStorage: { getItem: () => null },
+        Headers,
+        Request,
+        URL,
+        console,
+    };
+    sandbox.window.sessionStorage = sandbox.sessionStorage;
+    vm.createContext(sandbox);
+    vm.runInContext('let activeAgentId = ' + JSON.stringify(activeAgentId) + ';\n'
+        + source.slice(from, to), sandbox);
+    return { fetch: sandbox.window.fetch, calls };
+}
+
+test('the transport does not turn a scan start into a personal-target scan', async () => {
+    const { fetch, calls } = loadTransport('chat-agent');
+    await fetch('/api/feishu/register?scope=tenant', { method: 'GET' });
+    assert.equal(calls[0].url, '/api/feishu/register?scope=tenant',
+        'the active Agent was appended to the scan start');
+});
+
+test('the scan poll is not rewritten either', async () => {
+    const { fetch, calls } = loadTransport('chat-agent');
+    const body = JSON.stringify({ action: 'poll', handle: 'handle-1' });
+    await fetch('/api/feishu/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+    });
+    assert.equal(calls[0].url, '/api/feishu/register');
+    assert.deepEqual(JSON.parse(calls[0].init.body),
+        { action: 'poll', handle: 'handle-1' },
+        'the poll body still carries the scan session only');
+});
+
+test('the exemption is the scan endpoints only', async () => {
+    const { fetch, calls } = loadTransport('chat-agent');
+    await fetch('/api/tenant/channels', { method: 'GET' });
+    assert.match(calls[0].url, /[?&]agent_id=chat-agent/,
+        'the channel write lost the active Agent');
+});
+
+test('a retry resumes the scan target the form started with', () => {
+    const body = functionBody(source, 'renderFeishuRegisterError');
+    assert.match(body, /startFeishuRegister\('\$\{statusId\}', _feishuScanTarget\)/,
+        'retrying a form-started scan would drop back to a platform connect');
 });

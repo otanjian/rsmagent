@@ -35,6 +35,10 @@ function loadWrapper() {
     const calls = [];
     const sandbox = {
         window: {
+            // The wrapper resolves every request against the page URL before it
+            // decides same-origin and exempt paths, so the harness has to offer
+            // a location (it was added to the wrapper after these tests were).
+            location: { href: 'http://localhost/', origin: 'http://localhost' },
             fetch: (input, init) => {
                 calls.push({ url: typeof input === 'string' ? input : input.url, init });
                 return Promise.resolve({ ok: true });
