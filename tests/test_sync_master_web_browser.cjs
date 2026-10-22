@@ -172,8 +172,10 @@ async function main() {
             assert.ok(launchBox.y>=brandBox.y+brandBox.height && launchBox.y+launchBox.height<=menuBox.y,'new chat stays between brand and navigation');
             const initialSession=await entry.evaluate(()=>sessionId);
             await entry.locator('#sidebar-new-chat').click();
-            await entry.waitForFunction(previous=>sessionId!==previous,initialSession);
-            assert.equal(await entry.locator('#chat-input').evaluate(el=>el===document.activeElement),true);
+            // Composer focus is scheduled for the next animation frame after
+            // the session id changes; wait for both parts of the interaction.
+            await entry.waitForFunction(previous=>sessionId!==previous
+                && document.activeElement===document.getElementById('chat-input'),initialSession);
             await entry.locator('#sidebar-new-chat-caret').click();
             await entry.locator('#sidebar-new-chat-menu').waitFor({state:'visible'});
             await entry.screenshot({path:path.join(output,'sidebar-agent-picker.png')});
