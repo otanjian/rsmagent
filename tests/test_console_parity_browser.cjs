@@ -51,6 +51,10 @@ exports.run = async function (scenario) {
             contentType:'text/css',path:require('node:path').resolve(__dirname,'../Scene/sap_workbench/frontend/workbench.css')}));
         await page.route('**/api/scenes/sap-workbench/**', route=>{
             const endpoint=new URL(route.request().url()).pathname;
+            // Scene entry looks for a resumable session before creating one.
+            if (endpoint.endsWith('/sessions') && route.request().method()==='GET') {
+                return route.fulfill({json:{status:'success',sessions:[]}});
+            }
             return route.fulfill({json:endpoint.endsWith('/config')
                 ? {status:'success',can_manage:false,capabilities:{visual:true},config:{},checks:[],blockers:[]}
                 : {status:'success',binding_id:'parity-sap',display_mode:'iframe',sap_url:'http://sap.parity.test/start',agent_id:'agent-a'}});
