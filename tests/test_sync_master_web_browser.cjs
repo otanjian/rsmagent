@@ -262,6 +262,7 @@ async function main() {
             assert.equal(await manager.locator('#menu-toggle').getAttribute('aria-expanded'),'false');
             await manager.locator('#menu-toggle').click();
             await manager.waitForFunction(()=>document.getElementById('sidebar').getBoundingClientRect().left>=0);
+            assert.equal(await manager.locator('#sidebar-collapse-btn').isVisible(),false);
             await manager.screenshot({path:path.join(output,'navigation-mobile.png')});
             await openPersonalMenu(manager);
             assert.equal(await manager.locator('.menu-editor-foot > button').evaluateAll(buttons => buttons.every(button => {
@@ -274,14 +275,45 @@ async function main() {
             await manager.locator('#nav-return-workbench').click();
             await manager.locator('#view-chat').waitFor({state:'visible'});
             await manager.setViewportSize({width:1440,height:1000});
+            assert.equal(await manager.locator('#sidebar > .sidebar-footer').count(),0);
+            const accountBox=await manager.locator('#sidebar-account-toggle').boundingBox();
+            const collapseBox=await manager.locator('#sidebar-collapse-btn').boundingBox();
+            assert.ok(collapseBox.x>=accountBox.x+accountBox.width);
+            assert.ok(Math.abs((collapseBox.y+collapseBox.height/2)-(accountBox.y+accountBox.height/2))<1);
+            await manager.screenshot({path:path.join(output,'sidebar-account-expanded.png')});
+            await manager.locator('#sidebar-account-toggle').click();
+            assert.equal(await manager.locator('#sidebar-account-menu').isVisible(),true);
             await manager.locator('#sidebar-collapse-btn').click();
+            assert.equal(await manager.locator('#sidebar-account-menu').isVisible(),false);
+            await manager.waitForFunction(()=>document.getElementById('sidebar').getBoundingClientRect().width<=72);
+            const avatarBox=await manager.locator('#sidebar-account-toggle').boundingBox();
+            const expandBox=await manager.locator('#sidebar-collapse-btn').boundingBox();
+            assert.ok(expandBox.y>=avatarBox.y+avatarBox.height);
+            assert.equal(await manager.locator('#sidebar-collapse-btn').getAttribute('aria-expanded'),'false');
+            assert.match(await manager.locator('#sidebar-collapse-btn').getAttribute('aria-label'),/展开/);
             await openPersonalMenu(manager);
             await manager.keyboard.press('Escape');
             assert.equal(await manager.locator('#sidebar-account-toggle').evaluate(el=>el===document.activeElement),true);
+            await manager.reload();
+            await manager.locator('#sidebar-nav [data-view="chat"]').waitFor({state:'visible'});
+            await manager.waitForFunction(()=>document.getElementById('sidebar').getBoundingClientRect().width<=72);
+            await manager.screenshot({path:path.join(output,'sidebar-account-collapsed.png')});
+            await manager.locator('#sidebar-account-toggle').click();
+            assert.equal(await manager.locator('#account-menu-customize').evaluate(el=>{
+                const b=el.getBoundingClientRect();
+                return el.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2));
+            }),true);
+            await manager.screenshot({path:path.join(output,'sidebar-account-collapsed-menu.png')});
+            await manager.keyboard.press('Escape');
             await manager.locator('#nav-open-admin').click();
             await manager.waitForURL(app.origin+'/admin');
             await manager.locator('#nav-return-workbench').click();
-            await manager.locator('#sidebar-collapse-btn').click();
+            await manager.locator('#sidebar-collapse-btn').press('Enter');
+            await manager.waitForFunction(()=>document.getElementById('sidebar').getBoundingClientRect().width>200);
+            assert.equal(await manager.locator('#sidebar-collapse-btn').getAttribute('aria-expanded'),'true');
+            await manager.locator('#sidebar-collapse-btn').press('Space');
+            await manager.waitForFunction(()=>document.getElementById('sidebar').getBoundingClientRect().width<=72);
+            await manager.locator('#sidebar-collapse-btn').press('Enter');
         });
         await scenario('sync: skill creation uses the rendered form and persists an authorized resource',async()=>{
             currentPage=manager;await manager.goto(app.origin+'/skills');

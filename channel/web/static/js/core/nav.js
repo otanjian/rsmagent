@@ -184,10 +184,7 @@ function _switchToView(viewId) {
 
 function toggleSidebar() {
     if (window.innerWidth >= 1024) {
-        closeAccountMenu();
-        const collapsed = document.getElementById('app').classList.toggle('sidebar-collapsed');
-        document.getElementById('menu-toggle')?.setAttribute('aria-expanded', String(!collapsed));
-        if (typeof syncSessionHistorySurface === 'function') syncSessionHistorySurface();
+        toggleSidebarCollapsed();
         return;
     }
     const sidebar = document.getElementById('sidebar');
@@ -250,6 +247,10 @@ function isSidebarCollapsed() {
 // instead. Re-run on language switch (applyI18n) and on every toggle.
 function syncSidebarTips() {
     const collapsed = isSidebarCollapsed();
+    // Older rdai styles and account/history helpers read #app; mirror the
+    // persisted master state so both consume the same collapsed rail.
+    document.getElementById('app')?.classList.toggle('sidebar-collapsed', collapsed);
+    if (window.innerWidth >= 1024) document.getElementById('menu-toggle')?.setAttribute('aria-expanded', String(!collapsed));
     document.querySelectorAll('#sidebar .sidebar-item').forEach(item => {
         const label = item.querySelector(':scope > span');
         if (collapsed && label) {
@@ -265,17 +266,20 @@ function syncSidebarTips() {
     const toggle = document.getElementById('sidebar-collapse-btn');
     if (toggle) {
         toggle.setAttribute('data-tooltip', t(collapsed ? 'sidebar_expand' : 'sidebar_collapse'));
+        toggle.setAttribute('aria-label', t(collapsed ? 'sidebar_expand' : 'sidebar_collapse'));
         toggle.setAttribute('data-tooltip-pos', collapsed ? 'right' : 'top');
         toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     }
 }
 
 function toggleSidebarCollapsed() {
+    if (typeof closeAccountMenu === 'function') closeAccountMenu();
     const collapsed = !isSidebarCollapsed();
     document.documentElement.classList.toggle('sidebar-collapsed', collapsed);
     try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch (_) { /* private mode */ }
     if (typeof closeUpdateMenu === 'function') closeUpdateMenu();
     syncSidebarTips();
+    if (typeof syncSessionHistorySurface === 'function') syncSessionHistorySurface();
 }
 
 syncSidebarTips();

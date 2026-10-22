@@ -2228,12 +2228,13 @@
       "owner": "rdai-maintainers",
       "evidence": [
         "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/navigation-areas.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/navigation-areas.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/sidebar-account-collapse.md"
       ],
       "integration": {
         "source_blob": "7246433c7e7a78c61055438d72176f01b7e2f7d0",
-        "candidate_sha256": "a3860562ce5148241c07e49f5529c6b6731f410c6e6f4a884b21a385974e18ab",
-        "reason": "Preserve original rdai menu names, positions, groups and order; switch areas above the account footer using existing routes and permissions. Keep master components, complete personal layouts and navigation guards.",
+        "candidate_sha256": "5d5a82fd056460afee63581640bc5010d2ca7058a8e019cb04983b6b61f796fa",
+        "reason": "Use the shared navigation controller and existing collapsed preference for rdai area routing, account-row collapse control, compatible rail styles and accessible account interactions.",
         "consumers": [
           "channel/web/chat.html"
         ],
@@ -2664,7 +2665,8 @@
       "evidence": [
         "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
         "openspec/changes/sync-master-to-rdai-20261021/evidence/navigation-areas.md",
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/account-menu-entry.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/account-menu-entry.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/sidebar-account-collapse.md"
       ]
     },
     {
