@@ -1,0 +1,15 @@
+{
+  "scenarios": [
+    {
+      "name": "sync: header language reflects the personal choice without changing instance configuration",
+      "passed": true
+    },
+    {
+      "name": "sync: agent conversation entry preserves centered welcome and visible composer",
+      "passed": false,
+      "message": "Expected values to be strictly equal:\n\n'true' !== 'false'\n"
+    }
+  ],
+  "pageErrors": [],
+  "scope": "actual Web browser, IAM, files and persistence; no model substitute"
+}

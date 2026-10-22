@@ -260,6 +260,27 @@
     outline: none;
 }
 .sidebar-recent-rename-input::placeholder { color: #737373; }
+.sidebar-account-row { display: flex; align-items: center; gap: 4px; }
+.sidebar-account-row > .sidebar-account-toggle { flex: 1; min-width: 0; width: auto; }
+.sidebar-account-row > .sidebar-collapse-btn {
+    width: 32px;
+    height: 32px;
+    color: var(--web-sidebar-muted, #929aa3);
+}
+.sidebar-account-row > .sidebar-collapse-btn:hover {
+    color: var(--web-sidebar-title, #f1f5f9);
+    background: var(--web-sidebar-hover, rgba(255, 255, 255, .07));
+}
+.sidebar-account-row > .sidebar-collapse-btn:focus-visible {
+    outline: 2px solid var(--web-sidebar-accent, #8ae1a6);
+    outline-offset: -2px;
+}
+@media (min-width: 1024px) {
+    /* The nav scrolls inside the rail; the account popover opens beside it. */
+    html.sidebar-collapsed #sidebar { overflow: visible; }
+    html.sidebar-collapsed .sidebar-account-row { flex-direction: column; }
+    html.sidebar-collapsed .sidebar-account-row > .sidebar-account-toggle { width: 100%; justify-content: center; padding: 6px 0; }
+}
 .sidebar-account-toggle {
     display: flex;
     align-items: center;
