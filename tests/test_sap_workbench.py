@@ -144,8 +144,9 @@ def test_admin_save_is_persistent_versioned_and_audited(app):
 
 
 def test_saving_a_binding_installs_the_skill_and_plugin_into_the_project(app, tmp_path):
-    """The coding project's `.opencode` is where a standard coding service
-    discovers skills and plugins, so a saved binding must leave them there."""
+    """The coding project's `rsmcode` is where a standard coding service
+    discovers skills and plugins (`.opencode` is the upstream alias), so a saved
+    binding must leave them there."""
     project = tmp_path / "sap-workbench-project"
     project.mkdir()
     app.add_coding_agent("sap-coder", str(project))
@@ -155,8 +156,8 @@ def test_saving_a_binding_installs_the_skill_and_plugin_into_the_project(app, tm
     assert report["conflicts"] == []
     outcomes = {item["path"]: item["result"] for item in report["artifacts"]}
     assert set(outcomes.values()) == {"installed"}
-    assert (project / ".opencode/skills/sap-workbench/SKILL.md").is_file()
-    assert (project / ".opencode/plugins/rsm-sap-workbench-navigation.js").is_file()
+    assert (project / "rsmcode/skills/sap-workbench/SKILL.md").is_file()
+    assert (project / "rsmcode/plugins/rsm-sap-workbench-navigation.js").is_file()
     # Saving the same binding again reconciles instead of duplicating.
     again = payload(app, app.put(API + "/config", {"version": 1, "config": configured()}, token=token))
     assert {item["result"] for item in again["project_toolkit"]["artifacts"]} == {"unchanged"}

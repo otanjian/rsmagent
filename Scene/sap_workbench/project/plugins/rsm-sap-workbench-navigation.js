@@ -1,7 +1,7 @@
 /**
  * SAP 工作台导航工具（标准 OpenCode 插件）。
  *
- * 安装位置：`<project>/.opencode/plugins/rsm-sap-workbench-navigation.js`
+ * 安装位置：`<project>/rsmcode/plugins/rsm-sap-workbench-navigation.js`（`.opencode/plugins/` 同样识别）
  * 由 OpenCode 自动发现（`ConfigPlugin.load` 扫描配置目录下的 `{plugin,plugins}/*.{js,ts}`），
  * 不需要在项目配置里登记，也不需要场景专用构建。
  *

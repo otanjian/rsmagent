@@ -11,8 +11,8 @@ import pytest
 
 from Scene.sap_workbench.backend import project_toolkit
 
-SKILL = ".opencode/skills/sap-workbench/SKILL.md"
-PLUGIN = ".opencode/plugins/rsm-sap-workbench-navigation.js"
+SKILL = "rsmcode/skills/sap-workbench/SKILL.md"
+PLUGIN = "rsmcode/plugins/rsm-sap-workbench-navigation.js"
 
 
 def results(report):
@@ -32,7 +32,7 @@ def test_fresh_install_writes_every_artifact(tmp_path):
     assert (tmp_path / SKILL).is_file()
     assert (tmp_path / PLUGIN).is_file()
     assert "name: sap-workbench" in (tmp_path / SKILL).read_text(encoding="utf-8")
-    references = list((tmp_path / ".opencode/skills/sap-workbench/references").glob("*.md"))
+    references = list((tmp_path / "rsmcode/skills/sap-workbench/references").glob("*.md"))
     assert len(references) == 2
     # The project config denies the SAP tool by default, so it is not presented
     # to ordinary coding sessions of the same project. The scene's own sessions
@@ -158,7 +158,7 @@ def test_a_missing_project_directory_is_refused(tmp_path):
 
 def test_nested_directories_are_created(tmp_path):
     project_toolkit.install(tmp_path)
-    assert (tmp_path / ".opencode/skills/sap-workbench/references").is_dir()
+    assert (tmp_path / "rsmcode/skills/sap-workbench/references").is_dir()
 
 
 def test_personal_mode_keeps_one_install_under_the_project_root(tmp_path):
@@ -180,7 +180,7 @@ def test_personal_mode_keeps_one_install_under_the_project_root(tmp_path):
     assert results(report)[PLUGIN] == "installed"
     assert (project / PLUGIN).is_file()
     assert (project / project_toolkit.CONFIG_FILE).is_file()
-    assert not (account / ".opencode").exists()
+    assert not (account / "rsmcode").exists()
 
 
 def test_every_declared_artifact_has_a_shipped_source():

@@ -3,10 +3,15 @@
 为什么不放在场景自管宿主里：工作台的对话现在由平台的标准编码会话承载，
 标准 OpenCode 服务**天然**会从项目目录发现 skill 与插件：
 
-* skill：配置目录下的 `{skill,skills}/**/SKILL.md`（`<project>/.opencode` 是配置目录）；
+* skill：配置目录下的 `{skill,skills}/**/SKILL.md`（`<project>/rsmcode` 是配置目录）；
 * 插件：配置目录下的 `{plugin,plugins}/*.{js,ts}`，由 `ConfigPlugin.load` 自动发现。
 
-因此场景只需要把文件写进项目的 `.opencode/`，不需要场景专用构建，也不需要在
+落点用分叉自己的目录名 `rsmcode`：上游只认 `.opencode`，RSM Code 的
+`ConfigPaths.directoryNames`（`packages/opencode/src/config/paths.ts`）两个名字都
+认，`rsmcode` 是"项目目录改名也不丢 skill/插件/配置"的别名。两个名字都能被发现，
+但安装只写一处：同一项目出现两份产物会让"改了一份、跑的是另一份"变成常态。
+
+因此场景只需要把文件写进项目的 `rsmcode/`，不需要场景专用构建，也不需要在
 项目配置里登记插件。
 
 幂等规则（与既有 `opencode_adapter/native-host.ts` 的 `installNavigationGuidance`
@@ -28,13 +33,13 @@ _ROOT = Path(__file__).resolve().parents[1] / 'project'
 
 #: 要安装的产物：来源（相对场景包）→ 项目内的落点。
 ARTIFACTS = (
-    ('skills/sap-workbench/SKILL.md', '.opencode/skills/sap-workbench/SKILL.md'),
+    ('skills/sap-workbench/SKILL.md', 'rsmcode/skills/sap-workbench/SKILL.md'),
     ('skills/sap-workbench/references/boundaries.md',
-     '.opencode/skills/sap-workbench/references/boundaries.md'),
+     'rsmcode/skills/sap-workbench/references/boundaries.md'),
     ('skills/sap-workbench/references/transactions.md',
-     '.opencode/skills/sap-workbench/references/transactions.md'),
+     'rsmcode/skills/sap-workbench/references/transactions.md'),
     ('plugins/rsm-sap-workbench-navigation.js',
-     '.opencode/plugins/rsm-sap-workbench-navigation.js'),
+     'rsmcode/plugins/rsm-sap-workbench-navigation.js'),
 )
 
 #: 默认拒绝规则写在项目的 OpenCode 配置里。插件与 skill 对该项目的**所有**会话可见
@@ -42,7 +47,7 @@ ARTIFACTS = (
 #: 看不到 `sap_transaction_open`（`resolveTools` → `Permission.disabled`）。场景发起的
 #: 会话由平台入口下发**会话级** allow 重新放开（见 `agent.coding.permissions`）。
 #: 这只是减少误调用，不是授权依据——每次调用仍由服务端按会话归属校验。
-CONFIG_FILE = '.opencode/opencode.json'
+CONFIG_FILE = 'rsmcode/opencode.json'
 #: Tools the project config denies by default. Both ship into the same project
 #: directory, so both are visible to *every* session of that project; only a
 #: scene-issued session re-allows them (see ``agent.coding.permissions``).
@@ -93,6 +98,18 @@ UPGRADEABLE_REVISIONS = frozenset({
     '647c3bbef423bd19aaba6ea0a5bb837c380ee645a402768017d18928efffd206',  # plugins/rsm-sap-workbench-navigation.js
     '5c33fde00b6da78627b136c457e526b23d2b9ef0cda1694f293e49af4b93409c',  # skills/sap-workbench/SKILL.md
     '5dc9c6bb186cb538986d2021db5149c2e3c07d62261c9654860d887d83473fdd',  # .../references/boundaries.md
+
+    # The revision the toolkit installed while the landing point was still the
+    # upstream directory name ``.opencode/``: the install moved to the fork's own
+    # ``rsmcode/`` name (``ConfigPaths.directoryNames``), so the plugin's header
+    # comment names the new location. A project that has not been opened since
+    # still holds the bytes below at its old landing point, and a project whose
+    # files were already moved by hand holds the new plugin content there -- both
+    # are our own output, not a user edit, so both must migrate rather than
+    # block. Same rule as above: computed from the installed files, because
+    # those bytes are what a live project actually has on disk.
+    '5497491323a350e195333d0f971de6fc530a010caea2aebaadd6cf70e28af85a',  # plugins/... ('.opencode' comment)
+    'ca85ac414c79e11d1a2a2bbb906380edcf5a9bfad47dbd44c5ab8fc619ebb87f',  # .../references/boundaries.md, pre-Windows revision
 })
 
 
@@ -184,7 +201,7 @@ def _ensure_hidden_tool(root):
 
 
 def install(project_dir):
-    """把 skill 与插件写入 `project_dir/.opencode/`；幂等，且不覆盖用户改动。
+    """把 skill 与插件写入 `project_dir/rsmcode/`；幂等，且不覆盖用户改动。
 
     返回逐项结果，调用方据此如实报告（界面不得以"工具已注册"宣称能力可用）。
     """

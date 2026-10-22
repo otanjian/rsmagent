@@ -184,6 +184,10 @@ function setupWorkbench({dirty = false, hostGuard = true, canManage = false, ses
                     iframe_url: CODING_ORIGIN + '/L3RtcC9wcm9qZWN0/session/ses_test?rsm_embed=1'})};
             }
             if (url.endsWith('/sessions')) {
+                // A GET lists this account's bindings. The default has none, so
+                // the card's reuse-or-create still reserves a new one exactly as
+                // before; a test that wants the reuse path overrides this.
+                if (!options?.method) return {ok: true, json: async () => ({status: 'success', sessions: []})};
                 const port = sessionPorts[Math.min(sessionCount++, sessionPorts.length - 1)];
                 return {ok: true, json: async () => ({status: 'success', port,
                     binding_id: 'binding-test', remote_session_id: 'ses_test',
@@ -1115,7 +1119,7 @@ test('SAP input commits CJK once, clears local values and pastes without a remot
     assert.equal(socket.sent.length, 2, 'detached inputs cannot reach an old SAP target');
 });
 
-test('card body starts a new bound session without a second button or history lookup', async () => {
+test('card body starts a new bound session when no earlier session can be reused', async () => {
     const h = setupWorkbench({canManage: true}), posts = [];
     const fetch = h.ctx.fetch;
     h.ctx.fetch = (url, options) => {
@@ -1123,13 +1127,35 @@ test('card body starts a new bound session without a second button or history lo
         return fetch(url, options);
     };
     await h.ctx.SapWorkbench.open({view: 'new-session'});
-    assert.deepEqual(h.requests, ['/api/scenes/sap-workbench/config', '/api/scenes/sap-workbench/sessions']);
+    // The card looks for this account's sessions before deciding, but the
+    // default has none, so it reserves a new binding exactly once.
+    assert.deepEqual(h.requests, ['/api/scenes/sap-workbench/config', '/api/scenes/sap-workbench/sessions',
+        '/api/scenes/sap-workbench/sessions']);
     assert.deepEqual(posts, [{request_id: 'test-request'}]);
     assert.equal(h.sockets.length, 1);
     assert.equal(h.frames.length, 1);
     assert.equal(h.dialogs[0].dataset.live, 'true');
     assert.equal(h.dialogs[0].querySelector('[data-sap="code-pane"]').hidden, true);
     assert.equal(h.dialogs[0].querySelector('[data-sap="chat-toggle"]').hidden, false);
+});
+
+test("card body continues the account's newest session instead of creating one", async () => {
+    const h = setupWorkbench({canManage: true}), posts = [];
+    const fetch = h.ctx.fetch;
+    h.ctx.fetch = (url, options) => {
+        if (url.endsWith('/sessions') && !options?.method)
+            return Promise.resolve({ok: true, json: async () => ({status: 'success',
+                sessions: [{id: 'replaced', state: 'closed'}, {id: 'active', state: 'paused'}]})});
+        if (options?.method === 'POST') posts.push(JSON.parse(options.body));
+        return fetch(url, options);
+    };
+    await h.ctx.SapWorkbench.open({view: 'new-session'});
+    await flush();
+    // Reopening the dialog continues the newest still-open binding rather than
+    // reserving a new one, so no request_id is ever minted.
+    assert.deepEqual(posts, [{binding_id: 'active'}]);
+    assert.equal(h.dialogs[0].dataset.live, 'true');
+    assert.equal(h.sockets.length, 1);
 });
 
 test('card body stays on unavailable overview without allocating a session', async () => {
@@ -1154,8 +1180,9 @@ test('card body config failure reports sign-in and never starts a session', asyn
 });
 
 test('two card opens during config loading discard the stale load and start once', async () => {
-    const h = setupWorkbench(), pending = [], fetch = h.ctx.fetch;
+    const h = setupWorkbench(), pending = [], posts = [], fetch = h.ctx.fetch;
     h.ctx.fetch = (url, options) => {
+        if (options?.method === 'POST') posts.push(url);
         const response = fetch(url, options);
         if (url.endsWith('/config')) return new Promise(resolve => pending.push(() => resolve(response)));
         return response;
@@ -1165,7 +1192,11 @@ test('two card opens during config loading discard the stale load and start once
     assert.equal(pending.length, 2);
     pending[1](); await second;
     pending[0](); await first;
-    assert.equal(h.requests.filter(url => url.endsWith('/sessions')).length, 1);
+    // The card lists this account's sessions before reserving, but the stale
+    // first open must not add a second allocation: exactly one list and one
+    // reserve are sent.
+    assert.equal(h.requests.filter(url => url.endsWith('/sessions')).length, 2);
+    assert.equal(posts.length, 1);
     assert.equal(h.sockets.length, 1);
     assert.equal(h.frames.length, 1);
 });
@@ -1175,17 +1206,22 @@ test('repeated card clicks during session allocation or after binding do not rel
     let finish;
     h.ctx.fetch = (url, options) => {
         const response = fetch(url, options);
-        if (url.endsWith('/sessions')) return new Promise(resolve => {finish = () => resolve(response);});
+        // The card first lists this account's sessions and only then reserves a
+        // binding. Only the reserve is held pending, so the repeated open lands
+        // while allocation is still in flight instead of after it finished.
+        if (url.endsWith('/sessions') && options?.method === 'POST')
+            return new Promise(resolve => {finish = () => resolve(response);});
         return response;
     };
     const first = h.ctx.SapWorkbench.open({view: 'new-session'});
     await flush();
     await h.ctx.SapWorkbench.open({view: 'new-session'});
-    assert.deepEqual(h.requests, ['/api/scenes/sap-workbench/config', '/api/scenes/sap-workbench/sessions']);
+    assert.deepEqual(h.requests, ['/api/scenes/sap-workbench/config',
+        '/api/scenes/sap-workbench/sessions', '/api/scenes/sap-workbench/sessions']);
     finish(); await first;
     const frame = h.frames[0], socket = h.sockets[0];
     await h.ctx.SapWorkbench.open({view: 'new-session'});
-    assert.equal(h.requests.length, 2);
+    assert.equal(h.requests.length, 3);
     assert.equal(h.frames.length, 1); assert.equal(h.frames[0], frame);
     assert.equal(h.sockets.length, 1); assert.equal(h.sockets[0], socket);
 });
@@ -1362,4 +1398,73 @@ test('SAP layout restores across mounts and narrow windows do not overwrite the 
     h.ctx.SapWorkbench.close();const next=await start();
     assert.equal(next.dialogs[0].querySelector('[data-sap="code-pane"]').hidden,true);
     next.ctx.SapWorkbench.close();
+});
+
+test('the card entry shows an opening progress panel instead of the connection overview', async () => {
+    const h = setupWorkbench({nativeSap: true});
+    await h.ctx.SapWorkbench.open({view: 'new-session'});
+    await flush();
+    const dialog = h.dialogs[0];
+    assert.equal(dialog.dataset.opening, 'true');
+    assert.equal(dialog.dataset.openingError, 'false');
+    assert.equal(dialog.querySelector('[data-sap="opening-title"]').textContent, '正在打开 SAP 智能工作台');
+    const steps = dialog.querySelector('[data-sap="opening-steps"]').children;
+    assert.deepEqual(steps.map(step => step.textContent),
+        ['读取连接配置', '创建并绑定工作台会话', '嵌入 SAP 页面', '打开智能体对话']);
+    // Configuration and the binding are done; both panes are still opening.
+    assert.deepEqual(steps.map(step => step.dataset.state), ['done', 'done', 'active', 'pending']);
+    assert.equal(dialog.querySelector('[data-sap="opening-fill"]').style.width, '34%');
+    h.ctx.SapWorkbench.close();
+});
+
+test('a plain open and the connection form never show the opening panel', async () => {
+    const h = setupWorkbench({canManage: true});
+    await h.ctx.SapWorkbench.open();
+    assert.equal(h.dialogs[0].dataset.opening, 'false');
+    h.ctx.SapWorkbench.close();
+    await h.ctx.SapWorkbench.open({view: 'settings'});
+    assert.equal(h.dialogs[0].dataset.opening, 'false');
+    h.ctx.SapWorkbench.close();
+});
+
+test('the opening panel clears once the SAP page and the conversation are both ready', async () => {
+    const h = setupWorkbench({nativeSap: true});
+    await h.ctx.SapWorkbench.open({view: 'new-session'});
+    await flush();
+    const dialog = h.dialogs[0];
+    const sap = h.frames.find(frame => frame.className === 'sap-native-frame');
+    const frame = dialog.querySelector('[data-sap="code-pane"]').children.find(child => child.tagName === 'iframe');
+    sap.dispatch('load');
+    assert.equal(dialog.dataset.opening, 'true', 'the SAP page alone does not finish the open');
+    h.emit('message', {source: frame.contentWindow, origin: CODING_ORIGIN,
+        data: {type: 'rsm.opencode.ready', channel: new URL(frame.src).searchParams.get('rsm_channel')}});
+    assert.equal(dialog.dataset.opening, 'false');
+    assert.equal(dialog.dataset.live, 'true');
+    h.ctx.SapWorkbench.close();
+});
+
+test('a failed card open reports the reason in the panel and retries the same open', async () => {
+    const h = setupWorkbench({nativeSap: true});
+    const original = h.ctx.fetch;
+    h.ctx.fetch = (url, options) => (url.endsWith('/sessions') && options?.method === 'POST')
+        ? Promise.resolve({ok: false, status: 429, json: async () => ({status: 'error', code: 'browser_capacity_exhausted'})})
+        : original(url, options);
+    await h.ctx.SapWorkbench.open({view: 'new-session'});
+    await flush();
+    const dialog = h.dialogs[0];
+    assert.equal(dialog.dataset.opening, 'true');
+    assert.equal(dialog.dataset.openingError, 'true');
+    assert.match(dialog.querySelector('[data-sap="opening-detail"]').textContent, /并发已满/);
+    const actions = dialog.querySelector('[data-sap="opening-actions"]');
+    assert.equal(actions.hidden, false);
+    assert.equal(actions.children[0].textContent, '重试');
+    assert.equal(h.frames.some(frame => frame.className === 'sap-native-frame'), false);
+    // The retry runs the same open once capacity frees up.
+    h.ctx.fetch = original;
+    actions.children[0].dispatch('click');
+    await flush();
+    assert.equal(dialog.dataset.openingError, 'false');
+    assert.equal(dialog.dataset.live, 'true');
+    assert.ok(h.frames.some(frame => frame.className === 'sap-native-frame'));
+    h.ctx.SapWorkbench.close();
 });

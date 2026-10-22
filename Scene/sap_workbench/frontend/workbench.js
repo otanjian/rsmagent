@@ -184,6 +184,9 @@
     let codeMount = 0;
     let layout = {ratio: 0.32, open: false}, layoutLoaded = false;
     let composer = null, promptRequest = null, promptTimer = null, pageCapture = null, pageFeedback = '';
+    // Opening progress state. Null whenever no session is being created or
+    // resumed, so every opening helper is a no-op for a plain overview.
+    let opening = null;
     Object.assign(messages.zh, {
         accountMenu: '账号与连接', memoryOn: '登录记忆已开启', memoryOff: '登录记忆未开启',
         memorySaved: '账号密码已保存', memoryHint: '清除记忆只删除本机保存的登录信息，不会退出当前 SAP。退出请使用 SAP 页面内的“退出”。',
@@ -414,6 +417,17 @@
         flagsHint: '這些開關管理場景能力；原生高級智能體工具與 MCP 按自身設定及權限執行。',
         setupHint: '新增工作階段會自動結束目前帳號的舊工作階段。SAP Web GUI 直接嵌入；右下角 AI 對話展開高級智能體。對話使用已設定的 MCP，SAP 頁面由你直接操作。',
         sap_login_required: '請先在 SAP 頁面完成登入。'});
+    // Opening progress: what the middle of the dialog says while a workbench
+    // session is created or resumed, until both panes are mounted.
+    Object.assign(messages.zh, {openingTitle: '正在打开 SAP 智能工作台', openingHint: '正在准备工作台，请稍候…',
+        openingConfig: '读取连接配置', openingSession: '创建并绑定工作台会话', openingSap: '嵌入 SAP 页面',
+        openingAgent: '打开智能体对话', openingRetry: '重试'});
+    Object.assign(messages.en, {openingTitle: 'Opening the SAP Intelligent Workbench', openingHint: 'Preparing the workbench. Please wait…',
+        openingConfig: 'Loading connection settings', openingSession: 'Creating and binding the workbench session',
+        openingSap: 'Embedding the SAP page', openingAgent: 'Opening the agent conversation', openingRetry: 'Retry'});
+    Object.assign(messages['zh-Hant'], {openingTitle: '正在開啟 SAP 智能工作台', openingHint: '正在準備工作台，請稍候…',
+        openingConfig: '讀取連線設定', openingSession: '建立並綁定工作台工作階段', openingSap: '嵌入 SAP 頁面',
+        openingAgent: '開啟智能體對話', openingRetry: '重試'});
     const t = key => {
         const lang = typeof currentLang === 'string' ? currentLang : document.documentElement.lang;
         return (messages[lang] || messages.zh)[key] || messages.zh[key] || messages.zh.failure;
@@ -479,6 +493,7 @@
         if (codingReadyTimer !== null) { window.clearTimeout(codingReadyTimer); codingReadyTimer = null; }
         codeStateBox()?.remove();
         dressCodeFrame();
+        markOpening('openingAgent');
     }
     // The scene owns this pane's chrome. Inside the frame the platform's compact
     // session/changes tabs, Advanced Agent's own (now empty) title strip and the
@@ -509,7 +524,7 @@
     function close() {
         if (!dialog?.open) return;
         if (!allowDiscard()) return;
-        pauseSession(); generation++; startingSession = false; clearCodingState(); dirty = false; data = null; stopView(); unmountCode(); binding = null;
+        pauseSession(); generation++; startingSession = false; clearCodingState(); clearOpening(); dirty = false; data = null; stopView(); unmountCode(); binding = null;
         dialog.dataset.live = 'false'; dialog.close();
         find('form').replaceChildren();
         previousFocus?.focus();
@@ -520,6 +535,7 @@
         generation++; startingSession = false; pendingRequest = null;
         dirty = false; data = null; binding = null; previousFocus = null;
         if (!dialog) return;
+        clearOpening();
         stopView(false); unmountCode();
         dialog.dataset.live = 'false';
         dialog.close(); find('form').replaceChildren();
@@ -532,14 +548,20 @@
     function build() {
         if (dialog) return;
         const style = el('link'); style.rel = 'stylesheet';
-        style.href = '/scene-assets/sap_workbench/frontend/workbench.css?v=20261006-compact'; document.head.appendChild(style);
+        style.href = '/scene-assets/sap_workbench/frontend/workbench.css?v=20261012-opening'; document.head.appendChild(style);
         dialog = el('dialog'); dialog.id = 'sap-workbench-dialog';
         dialog.setAttribute('aria-labelledby', 'sap-workbench-title');
         dialog.dataset.desktop = String(Boolean(window.desktopHost || window.electronAPI));
+        dialog.dataset.opening = 'false';
         dialog.innerHTML = '<header><div class="sap-heading"><button type="button" data-sap="home"></button><div><p class="sap-kicker">SAP · 高级智能体</p><h1 id="sap-workbench-title"></h1></div></div><nav data-sap="toolbar"></nav></header>' +
             '<p data-sap="notice" role="status" aria-live="polite"></p>' +
             '<main data-sap="main"><section class="sap-overview"><span class="sap-badge" data-sap="badge"></span><p data-sap="hint"></p>' +
             '<div data-sap="actions" class="sap-actions"></div><div data-sap="checks" class="sap-checks"></div></section>' +
+            '<section class="sap-opening" data-sap="opening"><p class="sap-kicker" data-sap="opening-kicker"></p><h2 data-sap="opening-title"></h2>' +
+            '<div class="sap-opening-bar" data-sap="opening-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><span class="sap-opening-fill" data-sap="opening-fill"></span></div>' +
+            '<p class="sap-opening-detail" data-sap="opening-detail" role="status" aria-live="polite"></p>' +
+            '<ol class="sap-opening-steps" data-sap="opening-steps"></ol>' +
+            '<div class="sap-opening-actions" data-sap="opening-actions" hidden></div></section>' +
             '<div class="sap-panes" data-sap="panes"><section class="sap-pane" data-sap="sap-pane"><h2></h2><div class="sap-view-controls" data-sap="view-controls"></div><div class="sap-view" data-sap="view" hidden></div><div class="sap-empty" data-sap="empty"><span aria-hidden="true">▧</span><p></p></div></section>' +
             '<div class="sap-chat-resizer" data-sap="chat-resizer" role="separator" aria-orientation="vertical" aria-controls="sap-chat-pane" tabindex="0" hidden></div>' +
             '<section id="sap-chat-pane" class="sap-pane" data-sap="code-pane" role="region" aria-labelledby="sap-chat-title" hidden inert><header class="sap-chat-header"><h2 id="sap-chat-title"></h2><nav><button type="button" data-sap="chat-fullscreen" aria-pressed="false"></button><button type="button" data-sap="chat-close"></button></nav></header><div class="sap-page-context" data-sap="page-context"><button type="button" data-sap="read-page"></button><p data-sap="page-capture" role="status" aria-live="polite"></p><p data-sap="prompt-feedback" role="status" aria-live="polite" hidden></p></div><section class="sap-starters" data-sap="starters" hidden></section><div class="sap-empty"><span aria-hidden="true">◇</span><p></p></div></section>' +
@@ -583,7 +605,7 @@
     function showSettings() {
         if (!data?.can_manage) return;
         if (!find('form').hidden) return;
-        pauseSession(); generation++; startingSession = false; stopView(); unmountCode(); binding = null;
+        pauseSession(); generation++; startingSession = false; clearOpening(); stopView(); unmountCode(); binding = null;
         dialog.dataset.live = 'false';
         find('main').hidden = true; find('form').hidden = false;
         notice('checkHint');
@@ -591,9 +613,80 @@
     }
     function showMain() {
         if (!allowDiscard()) return;
-        generation++; dirty = false; find('form').replaceChildren(); find('form').hidden = true; find('main').hidden = false; render(); notice('checkHint');
+        generation++; dirty = false; clearOpening(); find('form').replaceChildren(); find('form').hidden = true; find('main').hidden = false; render(); notice('checkHint');
+    }
+    // The card entry opens the dialog and creates its session in the same
+    // breath, so the screen the user asked for is the workbench itself, not a
+    // page of connection checks that were never the reason for the click.
+    // Until the SAP page and the conversation are both mounted, the middle
+    // shows one progress panel driven by the real milestones of the open; the
+    // overview, the notice and both panes stay out of the way entirely. Every
+    // helper below is a no-op unless a session open/resume is in flight, so a
+    // plain overview or the connection form is untouched.
+    const OPENING_STEPS = ['openingConfig', 'openingSession', 'openingSap', 'openingAgent'];
+    const OPENING_FLOORS = {openingConfig: 12, openingSession: 34, openingSap: 62, openingAgent: 86};
+    const openingTarget = () => OPENING_STEPS.find(name => !opening.done[name]) || null;
+    function renderOpening() {
+        const box = find('opening');
+        if (!box || !opening) return;
+        const target = openingTarget();
+        find('opening-title').textContent = t('openingTitle');
+        find('opening-kicker').textContent = t('title');
+        find('opening-bar').setAttribute('aria-valuenow', String(opening.percent));
+        find('opening-fill').style.setProperty('width', opening.percent + '%');
+        find('opening-detail').textContent = opening.error ? t(opening.error) : t('openingHint');
+        find('opening-steps').replaceChildren(...OPENING_STEPS.map(name => {
+            const item = el('li', t(name));
+            item.dataset.state = opening.done[name] ? 'done' : name === target ? 'active' : 'pending';
+            return item;
+        }));
+        dialog.dataset.openingError = String(Boolean(opening.error));
+        const actions = find('opening-actions');
+        actions.replaceChildren();
+        if (opening.error) actions.append(button('openingRetry', () => {
+            const resume = Boolean(opening && opening.resume);
+            beginOpening();
+            // Configuration is already loaded, so the retry resumes at the
+            // session step instead of claiming to read it again.
+            markOpening('openingConfig');
+            void startSession(resume);
+        }));
+        actions.hidden = !opening.error;
+    }
+    function beginOpening() {
+        if (!dialog) return;
+        clearOpening();
+        opening = {done: {}, percent: 6, error: '', resume: false};
+        dialog.dataset.opening = 'true';
+        dialog.dataset.openingError = 'false';
+        renderOpening();
+    }
+    function markOpening(step) {
+        if (!opening || opening.done[step]) return;
+        opening.done[step] = true;
+        opening.percent = Math.max(opening.percent, OPENING_FLOORS[step] || opening.percent);
+        if (OPENING_STEPS.every(name => opening.done[name])) { finishOpening(); return; }
+        renderOpening();
+    }
+    function failOpening(code) {
+        if (!opening) return;
+        opening.error = code || 'failure';
+        renderOpening();
+    }
+    function finishOpening() {
+        if (!opening) return;
+        clearOpening();
+        render();
+    }
+    function clearOpening() {
+        opening = null;
+        if (dialog) { dialog.dataset.opening = 'false'; dialog.dataset.openingError = 'false'; }
     }
     function render() {
+        // A binding that has been released (expired login, revoked access, end
+        // of session) takes the opening panel with it; its session step is the
+        // proof the open actually began.
+        if (opening && opening.done.openingSession && !binding && !startingSession) clearOpening();
         dialog.dataset.live = binding ? 'true' : 'false';
         dialog.querySelector('h1').textContent = t('title');
         find('home').textContent = t('home');
@@ -727,30 +820,56 @@
     function sessionRequest(body) {
         return request('/sessions', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
     }
-    async function startSession(resume) {
+    // `reuseIfAvailable` is the automatic entry (the scene card, a retry): it
+    // first looks for this logged-in account's newest session that is still
+    // reopenable and continues it, reserving a new binding only when there is
+    // none. Passing false is the one explicit "新建" action, and always
+    // reserves a new binding.
+    async function startSession(reuseIfAvailable) {
         if (startingSession || binding) return;
         startingSession = true; render(); notice('sessionStarting');
+        // A resume starts from the overview, a card entry already began the
+        // panel before loading configuration: keep whichever is live.
+        if (!opening) beginOpening();
+        if (opening) opening.resume = Boolean(reuseIfAvailable);
         const current = ++generation;
         try {
-            let body, requestId = null;
-            if (resume) {
+            let body = null, requestId = null;
+            if (reuseIfAvailable) {
                 const list = await request('/sessions');
                 if (current !== generation || !dialog.open) return;
+                // The list already comes back newest first and scoped to this
+                // account, so the first still-open binding is the one continued.
                 const previous = list.sessions.find(session => session.state !== 'closed');
-                if (!previous) throw new Error('noSessions');
-                body = {binding_id: previous.id};
-            } else {
+                if (previous) body = {binding_id: previous.id};
+            }
+            if (!body) {
                 requestId = pendingRequest || window.crypto.randomUUID();
                 pendingRequest = requestId;
                 body = {request_id: requestId};
             }
-            const session = await sessionRequest(body);
+            let session;
+            try {
+                session = await sessionRequest(body);
+            } catch (error) {
+                // A binding that can no longer be reopened (replaced, closed, or
+                // retired by a configuration change) is not a failure to act on:
+                // fall through to a fresh binding.
+                if (body.binding_id && ['session_not_running', 'session_closed', 'config_conflict'].includes(error.message)) {
+                    requestId = pendingRequest || window.crypto.randomUUID();
+                    pendingRequest = requestId;
+                    session = await sessionRequest({request_id: requestId});
+                } else {
+                    throw error;
+                }
+            }
             if (current !== generation || !dialog.open) return;
             pendingRequest = null; binding = session; binding.requestId = requestId;
+            markOpening('openingSession');
             stopView(); connectView(session); void mountCode(session, requestId);
             notice(session.display_mode === 'iframe' ? 'sapEmbedded' : 'sessionConnecting');
         } catch (error) {
-            if (current === generation) notice(error.message, true);
+            if (current === generation) { notice(error.message, true); failOpening(error.message); }
         } finally {
             if (current === generation) {
                 startingSession = false;
@@ -898,13 +1017,16 @@
             // sentence or a localized code from ``codingRequest``.
             const text = t('codingOpenFailed').replace('{reason}', error.message);
             showCodingState(text, {retry: true}); noticeText(text, true);
+            // The conversation owns this failure and offers its own retry, so
+            // the opening panel hands the screen back rather than covering it.
+            finishOpening();
             return;
         }
         // A retry that landed while this open was in flight supersedes it: mount
         // only the newest attempt, or the pane would grow a second frame and a
         // second readiness wait for the same conversation.
         if (mount !== codeMount || binding !== current || !dialog.open) return;
-        if (!opened.iframe_url) { showCodingState(t('codingNotReady'), {retry: true}); return; }
+        if (!opened.iframe_url) { showCodingState(t('codingNotReady'), {retry: true}); finishOpening(); return; }
         if (opened.session_id) binding.coding_session_id = opened.session_id;
         if (opened.external_session_id) binding.remote_session_id = opened.external_session_id;
         // The channel is minted here, per mount, and echoed by the client inside
@@ -926,6 +1048,7 @@
             codingReadyTimer = null;
             if (mount !== codeMount) return;
             showCodingState(t('codingNotReady'), {retry: true});
+            finishOpening();
         }, READY_TIMEOUT_MS);
         setChatOpen(wasOpen);
         setChatFullscreen(wasFullscreen);
@@ -1133,7 +1256,8 @@
         const readProtocol = typeof session.desktop_sap_page_read_enabled === 'boolean';
         let disposed = false, supported = false, reading = null, documentVersion = 0;
         pageCapture = null; pageFeedback = ''; state.readSupported = false;
-        const loaded = () => { documentVersion++; if (pageCapture) pageCapture.stale = true; renderAssistantTools(); };
+        const loaded = () => { documentVersion++; if (pageCapture) pageCapture.stale = true; renderAssistantTools();
+            if (!state.sapLoaded) { state.sapLoaded = true; markOpening('openingSap'); } };
         state.frame.addEventListener('load', loaded);
         const live = () => !disposed && view === state && binding === session && dialog.open;
         if (session.desktop_sap_page_read_enabled && window.desktopHost?.readSapPage) {
@@ -1298,6 +1422,7 @@
                         view.ready = true;
                         reconnects = 0;
                         notice('sessionReady');
+                        markOpening('openingSap');
                     }
                 }
             } catch (error) { /* a control frame we do not understand is ignorable */ }
@@ -1439,7 +1564,7 @@
         try {
             const result = await request('/config');
             if (current !== generation || !dialog.open) return false;
-            data = result; render(); notice('checkHint');
+            data = result; render(); notice('checkHint'); markOpening('openingConfig');
             return true;
         } catch (error) {
             if (current === generation && dialog.open) notice(error.message, true);
@@ -1558,10 +1683,14 @@
             build();
             if (wantNewSession && dialog.open && (binding || startingSession)) return Promise.resolve();
             if (!dialog.open) {previousFocus = document.activeElement; find('form').inert = false; dialog.showModal();}
+            // Show the opening panel before the overview can paint: the card
+            // entry means "open the workbench", not "read these checks".
+            if (wantNewSession) beginOpening();
             return Promise.all([load(), loadLayout()]).then(function ([loaded]) {
-                if (!loaded) return;
+                if (!loaded) { if (wantNewSession) clearOpening(); return; }
                 if (wantSettings && data?.can_manage) showSettings();
-                else if (wantNewSession && data?.capabilities.visual) return startSession(false);
+                else if (wantNewSession && data?.capabilities.visual) return startSession(true);
+                else if (wantNewSession) clearOpening();
             });
         };
         if (typeof window.wsGuardUnsaved === 'function' && !window.wsGuardUnsaved(proceed)) return false;

@@ -190,3 +190,32 @@
 #sap-workbench-dialog .sap-account-menu,
 #sap-workbench-dialog .sap-page-context,
 #sap-workbench-dialog .sap-starters { display:none; }
+
+/* Opening progress. The card entry creates a session in the same breath as it
+   opens the dialog, so the connection overview is not what the user asked for.
+   While a session is created or resumed, the middle shows one progress panel
+   and the overview, the notice and both panes stay out of the way; the panel is
+   removed the moment the SAP page and the conversation are both mounted. */
+#sap-workbench-dialog:not([data-opening=true]) [data-sap=opening] { display:none; }
+#sap-workbench-dialog[data-opening=true] > [data-sap=notice],
+#sap-workbench-dialog[data-opening=true] .sap-overview,
+#sap-workbench-dialog[data-opening=true] .sap-details,
+#sap-workbench-dialog[data-opening=true] .sap-panes { display:none !important; }
+#sap-workbench-dialog .sap-opening { display:grid; place-content:center; justify-items:center; gap:14px; min-height:340px; padding:44px 24px; text-align:center; }
+/* Live layout makes main a flex column; let the panel take the freed space so
+   it stays centred instead of hugging the header. */
+#sap-workbench-dialog[data-live=true][data-opening=true] .sap-opening { flex:1; }
+#sap-workbench-dialog .sap-opening h2 { margin:0; padding:0; border:0; font-size:20px; font-weight:650; }
+#sap-workbench-dialog .sap-opening-bar { width:min(460px,72vw); height:8px; border-radius:99px; background:var(--sap-soft); border:1px solid var(--sap-line); overflow:hidden; }
+#sap-workbench-dialog .sap-opening-fill { display:block; height:100%; width:0; border-radius:99px; background:linear-gradient(135deg,#4aa3f0 0%,#1667b1 100%); transition:width .4s cubic-bezier(.2,.8,.2,1); }
+#sap-workbench-dialog[data-opening-error=true] .sap-opening-fill { background:#c45527; }
+#sap-workbench-dialog .sap-opening-detail { margin:0; min-height:22px; color:var(--sap-muted); line-height:1.7; }
+#sap-workbench-dialog[data-opening-error=true] .sap-opening-detail { color:#c45527; }
+#sap-workbench-dialog .sap-opening-steps { display:flex; flex-wrap:wrap; justify-content:center; gap:8px 18px; margin:0; padding:0; list-style:none; color:var(--sap-muted); font-size:12px; }
+#sap-workbench-dialog .sap-opening-steps li { display:inline-flex; align-items:center; gap:7px; }
+#sap-workbench-dialog .sap-opening-steps li::before { content:'○'; }
+#sap-workbench-dialog .sap-opening-steps li[data-state=active] { color:#1667b1; }
+#sap-workbench-dialog .sap-opening-steps li[data-state=active]::before { content:'◍'; }
+#sap-workbench-dialog .sap-opening-steps li[data-state=done]::before { content:'●'; color:#1667b1; }
+#sap-workbench-dialog .sap-opening-actions { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; }
+@media (prefers-reduced-motion: reduce) { #sap-workbench-dialog .sap-opening-fill { transition:none; } }
