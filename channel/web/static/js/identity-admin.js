@@ -179,13 +179,17 @@
     function _resetResourceState(initialGrants, modelDefaults) {
         _resourceState = {};
         _resourceKinds.forEach(function (k) {
-            _resourceState[k] = { q: '', page: 1, pageSize: 12, selected: new Set(), loaded: false };
+            _resourceState[k] = { q: '', page: 1, pageSize: 12, selected: new Set(),
+                                  historyReadAll: new Set(), loaded: false };
         });
         _modelDefaultSel = {};
         (initialGrants || []).forEach(function (g) {
             if (!g || !_resourceKinds.includes(g.resource_kind)) return;
             if (!_resourceState[g.resource_kind]) return;
             _resourceState[g.resource_kind].selected.add(g.resource_id);
+            if (g.action === 'history_read_all') {
+                _resourceState[g.resource_kind].historyReadAll.add(g.resource_id);
+            }
         });
         Object.keys(modelDefaults || {}).forEach(function (k) {
             const v = modelDefaults[k];
@@ -398,16 +402,24 @@
             const total = data.total || 0;
             const actions = data.resource_actions || _resourceActions[kind] || [];
             st.actions = actions;
+            const allRead = st.historyReadAll || new Set();
             const fn = function (selected) {
                 return function (r) {
                     const checked = selected.has(r.resource_id);
                     const rid = r.resource_id;
                     const idSuffix = rid && rid.indexOf('nav:') === 0 ? rid.slice(4) : rid;
-                    return '<label class="inline-flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300 py-1 px-1.5 rounded hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer">' +
+                    const grantRow = (kind === 'agent' && rid && rid.indexOf('agent:') === 0)
+                        ? '<label class="history-read-all-row inline-flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 pt-0.5 cursor-pointer">' +
+                          '<input type="checkbox" class="history-read-all-box" data-rid="' + escapeHtml(rid) + '"' +
+                          (allRead.has(rid) ? ' checked' : '') + '>' +
+                          '<span>' + escapeHtml(t('admin_history_read_all')) + '</span></label>'
+                        : '';
+                    return '<div class="py-1 px-1.5 rounded hover:bg-slate-50 dark:hover:bg-white/5">' +
+                        '<label class="inline-flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer">' +
                         '<input type="checkbox" value="' + escapeHtml(rid) + '"' + (checked ? ' checked' : '') + '>' +
                         '<span class="flex flex-col leading-tight"><span class="truncate">' + escapeHtml(r.name) + '</span>' +
                         (idSuffix && idSuffix !== r.name ? '<span class="text-[10px] text-slate-400 dark:text-slate-500 truncate">' + escapeHtml(idSuffix) + '</span>' : '') +
-                        '</span></label>';
+                        '</span></label>' + grantRow + '</div>';
                 };
             };
             const listHtml = items.length
@@ -452,6 +464,13 @@
             // Wire each checkbox.
             manage.querySelectorAll('.resource-kind-list input[type=checkbox]').forEach(function (cb) {
                 cb.addEventListener('change', function () {
+                    if (cb.classList.contains('history-read-all-box')) {
+                        if (!st.historyReadAll) st.historyReadAll = new Set();
+                        if (cb.checked) { st.historyReadAll.add(cb.dataset.rid); st.selected.add(cb.dataset.rid); }
+                        else st.historyReadAll.delete(cb.dataset.rid);
+                        _afterResourceSelectChanged(kind);
+                        return;
+                    }
                     if (cb.checked) st.selected.add(cb.value);
                     else st.selected.delete(cb.value);
                     _afterResourceSelectChanged(kind);
@@ -492,11 +511,21 @@
         _resourceKinds.forEach(function (k) {
             const st = _resourceState[k];
             if (!st || !st.selected.size) return;
-            const actions = st.actions || _resourceActions[k] || [];
+            // ``history_read_all`` is deliberately NOT part of the kind's
+            // default bundle: selecting an Agent must never widen the read
+            // scope silently. It is added only for the Agents the admin
+            // ticked in the dedicated "read all sessions" row.
+            const actions = (st.actions || _resourceActions[k] || [])
+                .filter(function (a) { return a !== 'history_read_all'; });
+            const allRead = st.historyReadAll || new Set();
             st.selected.forEach(function (rid) {
                 actions.forEach(function (a) {
                     grants.push({ resource_kind: k, resource_id: rid, action: a });
                 });
+                if (k === 'agent' && allRead.has(rid)) {
+                    grants.push({ resource_kind: 'agent', resource_id: rid,
+                                  action: 'history_read_all' });
+                }
             });
         });
         return grants;

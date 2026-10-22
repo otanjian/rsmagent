@@ -2570,19 +2570,24 @@
       "classification": "behavior",
       "owner": "rdai-maintainers",
       "evidence": [
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/add-enterprise-interview-management-scene/evidence/frontend-integration.md"
       ],
       "integration": {
         "source_blob": "2397ba99e26dfd5866b8f5353e5653146ca72e5f",
-        "candidate_sha256": "feef92549e1d42a6dec63f2058ec1a70de16b3f906c559621fb923b4deffd01c",
-        "reason": "Shared upstream implementation adapted at the reviewed rdai identity, resource, navigation and lifecycle seams; see capability review and conflict decisions.",
+        "candidate_sha256": "bef146d6d8f6d476061dfe001aa3ee1cdd97d34ad4d58e24098582cbe8098218",
+        "reason": "Shared upstream implementation adapted at the reviewed rdai identity/resource seams, plus the reviewed cross-owner history scope and read-only row adaptation; see evidence/frontend-integration.md.",
         "consumers": [
-          "channel/web/chat.html"
+          "channel/web/chat.html",
+          "channel/web/static/js/fork/views/sessions.js",
+          "channel/web/templates/fork/views/business.html"
         ],
         "tests": [
           "tests/test_console_parity_browser.cjs",
           "tests/test_session_history_refresh_frontend.cjs",
-          "tests/test_knowledge_console_frontend.cjs"
+          "tests/test_knowledge_console_frontend.cjs",
+          "tests/test_history_read_scope_frontend.cjs",
+          "tests/test_enterprise_interview_acceptance.py"
         ]
       }
     },

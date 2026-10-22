@@ -23,10 +23,18 @@
 - `role-resource-authorization`: 为指定共享普通 Agent 增加 `history_read_all` 动作，复用角色事务与撤权规则；管理员通用资源快捷放行不能替代目标授权。
 - `rbac-authorization`: 增加显式授权的共享 Agent 历史跨 owner 只读例外，保持其他个人资产及写动作边界。
 - `session-history-workbench`: 扩展历史页查询范围、创建人展示和他人会话只读详情，区分读取与写入授权。
+- `platform-all-authorization`: 为平台 all 增加 `history_read_all` 的显式 grant 例外，其余 all 语义不变。
+- `audit-log`: 登记租户内跨 owner 历史读取事件（`session.history.read_all`），不记录问答正文。
 
 ## Impact
 
 - 修改点集中在 `auth/policy.py`、现有角色资源配置、历史页、`channel/web/fork/handlers/sessions.py`、会话授权及 ConversationStore 的读取路径。复用现有模型客户端，不另建运行平台。
 - 角色/grants 仍由身份服务维护；访谈记录仍由原 ConversationStore 维护，owner 不变。报告仅作为本次响应和浏览器当前页面内容，下载后由用户保存；不新增数据库表、报告目录或共享知识库内容。
 - 依赖现有身份/租户、审计、CSRF、模型凭据、运行授权和硬配额的真实切片；读取和生成依次验收，使用现有配置机制中的一个新功能开关控制上线。没有新增任意代码、Shell、MCP 或外发工具能力。
-- 实施前核对并行历史/角色 change 的接口契约，不承担远端历史同步或无归属旧数据修复。本次仅修改 OpenSpec 产物，沿用原 change 标识。
+- 并行 change 的依赖与归档顺序见 Dependencies；不承担远端历史同步或无归属旧数据修复。本次仅修改 OpenSpec 产物，沿用原 change 标识。
+
+## Dependencies
+
+- 依赖 `fix-coding-session-history-management`：两者均 MODIFIED `session-history-workbench` 的“保留历史列表及其管理操作”。归档顺序 SHALL 显式确定，后归档方 MUST 以先归档方结果为基线重写该 MODIFIED 块并重跑 `scripts/check_change_deltas.py`；本 change 不预先合并对方文本。
+- `enterprise-planning-advisor` 必须已作为该租户绑定的共享普通 Agent 存在（`private_owner_user_id` 为空）；其供给不在本 change 运行时范围内，缺失时报告入口不出现。
+- change 标识沿用历史命名；本次不新增 scene capability，因此没有 `scene-*` delta。

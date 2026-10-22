@@ -208,6 +208,290 @@ const _SESSION_PAGE_SIZE = 50;
 // Kept as data rather than only as DOM because grouping by project reorders the
 // whole list, which cannot be done by appending page by page.
 let _sessionItems = [];
+
+let _historyReadScope = 'own';
+let _historyReadTarget = '';
+let _historyReadTargets = [];
+let _historyReadSeq = 0;
+let _historyReadSession = '';
+let _historyReadAgent = '';
+let _historyReadPage = 1;
+
+function _historyAgentAll() {
+    return _historyReadScope === 'agent_all' && !!_historyReadTarget;
+}
+
+function loadHistoryReadTargets() {
+    const wrap = document.getElementById('history-read-scope');
+    if (!wrap) return;
+    fetch('/api/sessions/read_targets', { headers: { Accept: 'application/json' } })
+        .then(r => (r.status === 403 ? null : r.json().catch(() => ({}))))
+        .then(data => {
+            const targets = (data && data.targets) || [];
+            _historyReadTargets = targets;
+            if (!targets.length) {
+                _historyReadScope = 'own';
+                _historyReadTarget = '';
+                wrap.classList.add('hidden');
+                return;
+            }
+            const targetSel = document.getElementById('history-read-target-select');
+            targetSel.innerHTML = targets.map(x =>
+                `<option value="${escapeHtml(x.agent_id)}">${escapeHtml(x.name || x.agent_id)}</option>`).join('');
+            if (!_historyReadTarget) _historyReadTarget = targets[0].agent_id;
+            targetSel.value = _historyReadTarget;
+            targetSel.classList.toggle('hidden', _historyReadScope !== 'agent_all');
+            wrap.classList.remove('hidden');
+        })
+        .catch(() => wrap.classList.add('hidden'));
+}
+
+function _resetHistoryReadList() {
+    _sessionItems = [];
+    _historyTotal = null;
+    _sessionPage = 1;
+    _sessionHasMore = false;
+    _sessionReqSeq++;
+}
+
+function onHistoryReadScopeChange(event) {
+    _historyReadScope = event.target.value === 'agent_all' ? 'agent_all' : 'own';
+    const targetSel = document.getElementById('history-read-target-select');
+    if (targetSel) targetSel.classList.toggle('hidden', _historyReadScope !== 'agent_all');
+    closeReadOnlyHistory();
+    _resetHistoryReadList();
+    loadSessionList();
+}
+
+function onHistoryReadTargetChange(event) {
+    _historyReadTarget = event.target.value || '';
+    closeReadOnlyHistory();
+    _resetHistoryReadList();
+    loadSessionList();
+}
+
+function _ensureReadOnlyOverlay() {
+    let overlay = document.getElementById('history-readonly');
+    if (overlay) return overlay;
+    overlay = document.createElement('div');
+    overlay.id = 'history-readonly';
+    overlay.className = 'history-readonly hidden';
+    overlay.innerHTML = `
+        <div class="history-readonly-card" role="dialog" aria-modal="true">
+            <div class="history-readonly-head">
+                <div class="min-w-0">
+                    <h3 id="history-readonly-title"></h3>
+                    <div id="history-readonly-meta" class="history-readonly-meta"></div>
+                </div>
+                <button type="button" class="history-readonly-close"
+                        aria-label="${escapeHtml(t('history_readonly_close'))}"
+                        onclick="closeReadOnlyHistory()"><i class="fas fa-xmark"></i></button>
+            </div>
+            <div id="history-readonly-body" class="history-readonly-body"></div>
+            <div id="history-readonly-footer" class="history-readonly-footer"></div>
+        </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', event => {
+        if (event.target === overlay) closeReadOnlyHistory();
+    });
+    return overlay;
+}
+
+function closeReadOnlyHistory() {
+    _historyReadSeq++;
+    const overlay = document.getElementById('history-readonly');
+    if (!overlay) return;
+    overlay.classList.add('hidden');
+    const body = document.getElementById('history-readonly-body');
+    if (body) body.innerHTML = '';
+    const footer = document.getElementById('history-readonly-footer');
+    if (footer) footer.innerHTML = '';
+}
+
+function _renderReadOnlyMessages(data, append) {
+    const body = document.getElementById('history-readonly-body');
+    if (!body) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'history-readonly-messages';
+    (data.messages || []).forEach(msg => {
+        const row = document.createElement('div');
+        row.className = 'history-readonly-msg ' + (msg.role === 'user' ? 'is-user' : 'is-agent');
+        const who = document.createElement('div');
+        who.className = 'history-readonly-role';
+        who.textContent = msg.role === 'user'
+            ? t('history_readonly_visitor') : t('history_readonly_agent');
+        const text = document.createElement('div');
+        text.className = 'history-readonly-text';
+        text.textContent = typeof msg.content === 'string' ? msg.content : '';
+        row.appendChild(who);
+        row.appendChild(text);
+        wrap.appendChild(row);
+    });
+    if (append) body.appendChild(wrap);
+    else { body.innerHTML = ''; body.appendChild(wrap); }
+}
+
+function downloadInterviewReport(data) {
+    try {
+        const report = (data && data.report) || '';
+        const source = (data && data.source) || {};
+        const blob = new Blob([report], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'interview-report-' + (source.session_id || 'session') + '.md';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) { /* a download failure must not break the page */ }
+}
+
+function generateInterviewReport(sid, agentId) {
+    const body = document.getElementById('history-readonly-body');
+    const footer = document.getElementById('history-readonly-footer');
+    if (!body || !footer) return;
+    body.innerHTML = `<div class="history-readonly-status">`
+        + `${escapeHtml(t('history_report_generating'))}</div>`;
+    footer.innerHTML = '';
+    fetch('/api/history/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sid, agent_id: agentId }),
+    }).then(r => r.json().catch(() => ({}))).then(data => {
+        if (!data || data.status !== 'success') {
+            body.innerHTML = `<div class="history-readonly-status is-error">`
+                + `${escapeHtml((data && data.message) || t('history_report_failed'))}</div>`;
+            return;
+        }
+        body.innerHTML = '';
+        const pre = document.createElement('pre');
+        pre.className = 'history-report';
+        pre.textContent = data.report || '';
+        body.appendChild(pre);
+        const note = document.createElement('div');
+        note.className = 'history-readonly-status';
+        note.textContent = t('history_report_note');
+        footer.appendChild(note);
+        const download = document.createElement('button');
+        download.type = 'button';
+        download.className = 'history-readonly-report';
+        download.textContent = t('history_report_download');
+        download.addEventListener('click', () => downloadInterviewReport(data));
+        footer.appendChild(download);
+    }).catch(() => {
+        body.innerHTML = `<div class="history-readonly-status is-error">`
+            + `${escapeHtml(t('history_report_failed'))}</div>`;
+    });
+}
+
+function openReadOnlyHistory(sid, agentId, page) {
+    page = page || 1;
+    _historyReadSession = sid;
+    _historyReadAgent = agentId || '';
+    _historyReadPage = page;
+    const seq = ++_historyReadSeq;
+    const overlay = _ensureReadOnlyOverlay();
+    overlay.classList.remove('hidden');
+    const body = document.getElementById('history-readonly-body');
+    if (page === 1) {
+        document.getElementById('history-readonly-title').textContent =
+            t('history_readonly_title');
+        document.getElementById('history-readonly-meta').textContent = '';
+        body.innerHTML = `<div class="history-readonly-status">${escapeHtml(t('history_readonly_loading'))}</div>`;
+    }
+    const url = `/api/history?session_id=${encodeURIComponent(sid)}`
+        + `&agent_id=${encodeURIComponent(_historyReadAgent)}`
+        + `&read_scope=agent_all&page=${page}&page_size=20`;
+    fetch(url, { headers: { Accept: 'application/json' } })
+        .then(r => r.json().catch(() => ({})))
+        .then(data => {
+            if (seq !== _historyReadSeq) return;
+            if (!data || data.status !== 'success') {
+                body.innerHTML = `<div class="history-readonly-status is-error">`
+                    + `${escapeHtml((data && data.message) || t('history_readonly_failed'))}</div>`;
+                return;
+            }
+            if (page === 1) {
+                const meta = document.getElementById('history-readonly-meta');
+                meta.textContent = data.creator
+                    ? t('history_readonly_creator') + '：' + data.creator
+                    : t('history_readonly_no_creator');
+            }
+            _renderReadOnlyMessages(data, page > 1);
+            if (!(data.messages || []).length && page === 1) {
+                body.innerHTML = `<div class="history-readonly-status">${escapeHtml(t('history_readonly_empty'))}</div>`;
+            }
+            const footer = document.getElementById('history-readonly-footer');
+            footer.innerHTML = '';
+            if (data.has_more) {
+                const more = document.createElement('button');
+                more.type = 'button';
+                more.className = 'history-readonly-more';
+                more.textContent = t('history_readonly_load_more');
+                more.addEventListener('click', () =>
+                    openReadOnlyHistory(sid, _historyReadAgent, page + 1));
+                footer.appendChild(more);
+            }
+            if (_historyReadAgent === 'enterprise-planning-advisor') {
+                const report = document.createElement('button');
+                report.type = 'button';
+                report.className = 'history-readonly-report';
+                report.textContent = t('history_report_generate');
+                report.addEventListener('click', () =>
+                    generateInterviewReport(sid, agentId));
+                footer.appendChild(report);
+            }
+        })
+        .catch(() => {
+            if (seq === _historyReadSeq) {
+                body.innerHTML = `<div class="history-readonly-status is-error">`
+                    + `${escapeHtml(t('history_readonly_failed'))}</div>`;
+            }
+        });
+}
+
+
+function _isMobileView() {
+    return window.innerWidth <= 768;
+}
+
+// Swap the native `title` for the CSS tooltip so hints appear instantly
+// instead of waiting for the browser's built-in delay.
+function _setBtnTooltip(el, text) {
+    if (!el) return;
+    el.setAttribute('data-tooltip', text);
+    el.removeAttribute('title');
+}
+
+function _applyInputTooltips() {
+    const set = (id, key, pos) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        _setBtnTooltip(el, t(key));
+        if (pos) el.setAttribute('data-tooltip-pos', pos);
+    };
+    set('new-chat-btn', 'tip_new_chat');
+    set('clear-context-btn', 'tip_clear_context');
+    set('attach-btn', 'tip_attach');
+    set('steer-btn', 'steer_active');
+    set('workspace-toggle-btn', 'ws_toggle', 'bottom');
+    // The history page's inline refresh button carries a translated tooltip.
+    const historyRefresh = document.querySelector('.history-refresh-btn');
+    if (historyRefresh) _setBtnTooltip(historyRefresh, t('ws_refresh'));
+    set('timeline-toggle-btn', 'timeline_nav', 'bottom');
+    // Optimize / mic buttons carry state-dependent tooltips managed in their
+    // own setup, but on language switch we reset them to the idle label so the
+    // tooltip follows the current locale.
+    set('optimize-btn', 'optimize_idle_title');
+    set('mic-btn', 'mic_idle_title');
+    // Send button only carries a tooltip while it acts as the cancel button.
+    _setBtnTooltip(sendBtn, sendBtnMode === 'cancel' ? t('tip_cancel') : '');
+    // The model chip carries translated labels and tooltips, so it is repainted
+    // here too (this runs on every language switch).
+    _renderModelChip();
+}
+
 // 'time' (今天/昨天/更早, the behavior before projects existed) or 'project'.
 // The backend decides, based on how many spaces are in use across all sessions.
 let _sessionGroupMode = 'time';
@@ -326,8 +610,13 @@ function _fetchSessionPage(page, clear, onDone, seq, opts) {
         _updateHistorySearchControls();
         _historyLoadSettled();
     };
-    const url = `/api/sessions?page=${page}&page_size=${_SESSION_PAGE_SIZE}&scope=all`
-        + (query ? `&q=${encodeURIComponent(query)}` : '');
+    const agentAll = _historyAgentAll();
+    const url = agentAll
+        ? `/api/sessions?page=${page}&page_size=${_SESSION_PAGE_SIZE}&read_scope=agent_all`
+          + `&agent_id=${encodeURIComponent(_historyReadTarget)}`
+          + (query ? `&q=${encodeURIComponent(query)}` : '')
+        : `/api/sessions?page=${page}&page_size=${_SESSION_PAGE_SIZE}&scope=all`
+          + (query ? `&q=${encodeURIComponent(query)}` : '');
 
     let timedOut = false;
     let timer;
@@ -694,19 +983,23 @@ function _sessionItemEl(s, indent) {
             <span class="session-copy">
                 <span class="session-title-line"><span class="session-title" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
                     ${isActive ? `<span class="session-current-label">${escapeHtml(t('history_current'))}</span>` : ''}</span>
-                <span class="session-meta">${escapeHtml(agentName)} · ${escapeHtml(projectName)}</span>
+                <span class="session-meta">${escapeHtml(agentName)} · ${escapeHtml(s.read_only ? (s.creator || t('history_readonly_no_creator')) : projectName)}</span>
             </span>
         </button>
         <span class="session-time" title="${escapeHtml(time.full)}">${escapeHtml(time.text)}</span>
         <button type="button" class="session-more-btn" aria-haspopup="menu" aria-expanded="false"
                 aria-label="${escapeHtml(t('history_more') + ': ' + title)}"><i class="fas fa-ellipsis" aria-hidden="true"></i></button>
     `;
-    item.querySelector('.session-row-main').addEventListener('click', () => switchSession(s.session_id, ownerId || undefined));
+    if (s.read_only) item.classList.add('session-item-readonly');
+    item.querySelector('.session-row-main').addEventListener('click', () => {
+        if (s.read_only) openReadOnlyHistory(s.session_id, ownerId);
+        else switchSession(s.session_id, ownerId || undefined);
+    });
     const more = item.querySelector('.session-more-btn');
-    more.hidden = !!s.optimistic;
+    more.hidden = !!s.optimistic || !!s.read_only;
     more.addEventListener('click', e => _openSessionActionMenu(e, s, more));
     item.querySelector('.session-row-main').addEventListener('keydown', e => {
-        if (e.key === 'F2' && !s.optimistic) { e.preventDefault(); renameSession(s.session_id, ownerId); }
+        if (e.key === 'F2' && !s.optimistic && !s.read_only) { e.preventDefault(); renameSession(s.session_id, ownerId); }
     });
     return item;
 }
