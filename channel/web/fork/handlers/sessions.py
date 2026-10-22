@@ -41,6 +41,41 @@ def _conversation_store_for(agent_id: Optional[str]):
     return get_conversation_store(get_agent_registry().get(agent_id or None).workspace)
 
 
+def _enterprise_interview_enabled() -> bool:
+    """The single switch for the cross-owner read and the report entry."""
+    try:
+        from config import conf
+
+        return bool(conf().get("enterprise_interview_management_enabled", False))
+    except Exception:  # noqa: BLE001 - a config read must not break history
+        return False
+
+
+def _audit_history_read(ctx, agent_id: str, scope: str,
+                        session_id: Optional[str]) -> None:
+    """Record one cross-owner read, redacted, without letting audit fail it.
+
+    ``audit-log`` owns the event/action vocabulary; this is the recorded action
+    named by the change (``session.history.read_all``). The payload keeps the
+    scope and ids only — never the question/answer text.
+    """
+    if ctx is None or not getattr(ctx, "tenant_id", None):
+        return
+    try:
+        from auth.service import get_identity_service
+
+        get_identity_service().record_audit(
+            action="session.history.read_all",
+            target=f"agent:{agent_id}",
+            actor_user_id=ctx.user_id,
+            actor_username=getattr(ctx, "username", "") or "",
+            tenant_id=ctx.tenant_id,
+            redacted_changes={"scope": scope, "session_id": session_id or ""},
+        )
+    except Exception as e:  # noqa: BLE001 - best-effort per the audit contract
+        logger.warning(f"[WebChannel] history read audit skipped: {e}")
+
+
 def _coding_service_for(agent_id: Optional[str]):
     """The coding service over the addressed Agent's store.
 
@@ -171,7 +206,7 @@ class SessionsHandler:
                 _require_read_permission(ctx, "history.read")
                 params = web.input(
                     page='1', page_size='50', agent_id='', agent='', scope='', q='',
-                    archived=''
+                    archived='', read_scope=''
                 )
                 from agent.memory.conversation_store import normalize_session_search_query
                 try:
@@ -183,6 +218,41 @@ class SessionsHandler:
                 page = int(params.page)
                 page_size = int(params.page_size)
                 archived = str(params.archived or '').strip().lower() in ('1', 'true', 'yes')
+                read_scope = str(params.read_scope or '').strip()
+                if read_scope == 'agent_all':
+                    if not _enterprise_interview_enabled():
+                        raise web.HTTPError(
+                            "403 Forbidden",
+                            {"Content-Type": "application/json"},
+                            json.dumps({"status": "error", "code": "feature_disabled",
+                                        "message": "feature disabled"}))
+                    from channel.web.fork.authorization import _require_history_read_all
+                    from auth.service import get_identity_service
+                    from agent.registry import get_agent_registry
+                    target = _require_history_read_all(
+                        ctx, str(params.agent_id or '').strip())
+                    store = _conversation_store_for(target)
+                    result = store.list_sessions(
+                        channel_type="web", page=page, page_size=page_size,
+                        all_owners=True, archived=archived,
+                        **({"q": q} if q else {}))
+                    result.setdefault("group_mode", "time")
+                    owners = {s.get("owner") for s in result.get("sessions") or []
+                              if s.get("owner")}
+                    names = (get_identity_service().member_display_names(
+                        ctx.tenant_id, owners) if ctx else {})
+                    badge = _agent_badge(
+                        get_agent_registry().get(target or None, require_enabled=False))
+                    for session in result.get("sessions") or []:
+                        session["creator"] = names.get(session.get("owner") or "", "")
+                        session["agent"] = badge
+                        session["read_only"] = True
+                    if q:
+                        result["query"] = q
+                    _audit_history_read(ctx, target, "list", None)
+                    return json.dumps({"status": "success", **result},
+                                      ensure_ascii=False)
+
                 if (params.scope or '').strip() == 'all':
                     if q:
                         result = _list_sessions_across_agents(page, page_size, ctx, q=q,
@@ -230,6 +300,45 @@ class SessionsHandler:
             if elapsed_ms >= 500:
                 logger.info(f"[WebChannel] Slow history list: {elapsed_ms:.1f}ms")
 
+
+
+class SessionReadTargetsHandler:
+    """The Agents a caller may read across owners, for the history selector.
+
+    Answers the same set the read gate accepts — explicit ``history_read_all``
+    grants on tenant-bound, shared, non-coding Agents — so the selector can
+    never offer a target the list/detail endpoint would refuse.
+    """
+
+    def GET(self):
+        from channel.web.web_channel import _db_scope
+        from channel.web.fork.runtime import _agent_badge
+        from channel.web.fork.authorization import _history_read_all_target_ids
+        from agent.registry import get_agent_registry
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        web.header('Cache-Control', 'private, no-store')
+        try:
+            with _db_scope() as ctx:
+                if not _enterprise_interview_enabled():
+                    raise web.HTTPError(
+                        "403 Forbidden",
+                        {"Content-Type": "application/json"},
+                        json.dumps({"status": "error", "code": "feature_disabled",
+                                    "message": "feature disabled"}))
+                registry = get_agent_registry()
+                targets = []
+                for agent_id in _history_read_all_target_ids(ctx):
+                    badge = _agent_badge(
+                        registry.get(agent_id, require_enabled=False))
+                    targets.append({"agent_id": agent_id,
+                                    "name": (badge or {}).get("name") or agent_id})
+                return json.dumps({"status": "success", "targets": targets},
+                                  ensure_ascii=False)
+        except web.HTTPError:
+            raise
+        except Exception as e:
+            logger.error(f"[WebChannel] history read targets error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
 
 class SessionDetailHandler:
     def DELETE(self, session_id: str):
@@ -660,6 +769,237 @@ class PromptOptimizeHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
 
+REPORT_AGENT_ID = "enterprise-planning-advisor"
+_REPORT_PAGE_SIZE = 200
+_REPORT_MAX_PAGES = 50
+_REPORT_MAX_CHARS = 60000
+_REPORT_TIMEOUT = 120
+
+_REPORT_SYSTEM_PROMPT = """你是企业流程调研分析师。只依据用户提供的访谈问答生成报告，不得编造事实、数据或系统能力。
+输出 Markdown，并包含以下部分：
+一、企业与岗位概览；
+二、逐项工作（输入、作业方法、系统规则、输出与验收）；
+三、频率与耗时（日/周/月、操作/等待/返工，明确未知项）；
+四、错误、风险、发现与纠正、复核；
+五、资料缺口（含未核验的附件/外部资料）；
+六、候选智能体场景与试点建议（按频率、净可节省时间、收益、数据/接口成熟度和风险排序，并说明人工边界）。
+每个结论后用 [#序号] 标注依据；区分「已确认」「未确认」「分析建议」。未知就写未知，不虚构 ROI 或项目接入能力。"""
+
+
+def _report_error(status: str, code: str, message: str) -> None:
+    raise web.HTTPError(
+        status, {"Content-Type": "application/json"},
+        json.dumps({"status": "error", "code": code, "message": message},
+                   ensure_ascii=False))
+
+
+def _load_interview_messages(store, session_id: str, all_owners: bool):
+    """Every saved turn of one session, oldest first, plus a character count.
+
+    Pages are newest-first, so each page is prepended. The loop is bounded so a
+    pathological transcript cannot hold the request open.
+    """
+    messages = []
+    page = 1
+    while page <= _REPORT_MAX_PAGES:
+        data = store.load_history_page(
+            session_id=session_id, page=page, page_size=_REPORT_PAGE_SIZE,
+            user_id=None, all_owners=all_owners)
+        batch = data.get("messages") or []
+        if not batch:
+            break
+        messages = batch + messages
+        if not data.get("has_more"):
+            break
+        page += 1
+    return messages
+
+
+def _render_transcript(messages) -> str:
+    lines = []
+    for index, message in enumerate(messages, 1):
+        content = message.get("content")
+        if not isinstance(content, str) or not content.strip():
+            continue
+        role = "受访者" if message.get("role") == "user" else "顾问"
+        lines.append(f"[#{index}] {role}：{content.strip()}")
+    return "\n\n".join(lines)
+
+
+def _messages_signature(messages) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    for message in messages:
+        digest.update(str(message.get("role") or "").encode("utf-8", "ignore"))
+        digest.update(b"\x00")
+        content = message.get("content")
+        digest.update((content if isinstance(content, str) else "").encode("utf-8", "ignore"))
+        digest.update(b"\x00")
+    return digest.hexdigest()
+
+
+def _build_report_prompt(transcript: str, count: int) -> str:
+    return (
+        f"以下是同一次企业访谈的全部已保存问答，共 {count} 条。"
+        "请只依据这些内容生成调研与智能体规划报告，并在每条结论后标注 [#序号]。\n\n"
+        f"<transcript>\n{transcript}\n</transcript>"
+    )
+
+
+def _call_report_model(prompt: str):
+    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import TimeoutError as FutureTimeout
+    from bridge.bridge import Bridge
+    from models.session_manager import Session
+
+    bot = Bridge().get_bot("chat")
+    session = Session("__interview_report__", system_prompt=_REPORT_SYSTEM_PROMPT)
+    session.messages = [{"role": "user", "content": prompt}]
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        return pool.submit(bot.reply_text, session).result(timeout=_REPORT_TIMEOUT)
+    except FutureTimeout:
+        _report_error("504 Gateway Timeout", "report_timeout",
+                      "报告生成超时，请重试")
+    finally:
+        pool.shutdown(wait=False)
+
+
+class InterviewReportHandler:
+    """One-shot report over one interview, returned to the page and never stored.
+
+    Authorization is the read gate plus the caller's existing model conditions
+    and hard quota. The model call uses the real requester's ambient identity,
+    never a service account or the interviewee. The result is returned only
+    after the source prefix is re-read and found unchanged.
+    """
+
+    def POST(self):
+        import re
+        from channel.web.web_channel import _db_scope
+        from channel.web.fork.runtime import _request_agent_id
+        from channel.web.web_channel import _require_read_permission
+        from auth.service import get_identity_service
+
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        web.header('Cache-Control', 'private, no-store')
+        try:
+            if not _enterprise_interview_enabled():
+                _report_error("403 Forbidden", "feature_disabled", "feature disabled")
+            from channel.web.auth_handlers import _csrf_ok
+            if not _csrf_ok():
+                _report_error("403 Forbidden", "csrf_failed", "invalid request origin")
+            body = json.loads(web.data() or b"{}")
+            session_id = str(body.get("session_id") or "").strip()
+            agent_id = str(body.get("agent_id") or _request_agent_id(body) or "").strip()
+            if not session_id:
+                _report_error("400 Bad Request", "session_id_required", "session_id required")
+            if agent_id != REPORT_AGENT_ID:
+                _report_error("400 Bad Request", "unsupported_agent",
+                              "report is only available for the planning advisor")
+
+            with _db_scope() as ctx:
+                if ctx is None or not ctx.tenant_id:
+                    _report_error("403 Forbidden", "forbidden", "forbidden")
+                svc = get_identity_service()
+                store = _conversation_store_for(agent_id)
+                owner = store.get_session_owner(session_id) or ""
+                if not owner:
+                    _report_error("403 Forbidden", "forbidden", "forbidden")
+                cross_owner = owner != ctx.user_id
+                if cross_owner:
+                    from channel.web.fork.authorization import _require_history_read_all
+                    _require_history_read_all(ctx, agent_id)
+                else:
+                    _require_read_permission(ctx, "history.read")
+
+                if not ctx.is_platform_admin:
+                    if "model.use" not in ctx.permissions:
+                        _report_error("403 Forbidden", "model_not_authorized",
+                                      "model use is not authorized")
+                    if not ctx.is_tenant_admin:
+                        if not svc.explicit_resource_ids(
+                                ctx.user_id, ctx.tenant_id, "model", "use"):
+                            _report_error("403 Forbidden", "model_not_authorized",
+                                          "no model grant for this member")
+
+                if not svc.quota_available(
+                        user_id=ctx.user_id, tenant_id=ctx.tenant_id,
+                        metric="tokens", amount=1):
+                    _report_error("429 Too Many Requests", "quota_exhausted",
+                                  "token quota exhausted")
+
+                messages = _load_interview_messages(store, session_id, cross_owner)
+                transcript = _render_transcript(messages)
+                if not transcript.strip():
+                    _report_error("400 Bad Request", "no_content",
+                                  "this session has no saved question/answer")
+                if len(transcript) > _REPORT_MAX_CHARS:
+                    _report_error("413 Payload Too Large", "input_too_long",
+                                  "this interview is too long for one report")
+                prefix_len = len(messages)
+                signature = _messages_signature(messages)
+
+                result = _call_report_model(
+                    _build_report_prompt(transcript, prefix_len)) or {}
+                raw = (result.get("content") or "").strip()
+                tokens = int(result.get("total_tokens")
+                             or result.get("completion_tokens") or 0)
+                if tokens > 0:
+                    try:
+                        svc.consume_quota(
+                            user_id=ctx.user_id, tenant_id=ctx.tenant_id,
+                            metric="tokens", amount=tokens)
+                    except Exception as error:  # noqa: BLE001 - meter, not content
+                        logger.warning(f"[WebChannel] report quota record skipped: {error}")
+                if not raw:
+                    _report_error("502 Bad Gateway", "model_unavailable",
+                                  "the model returned no report")
+
+                after = _load_interview_messages(store, session_id, cross_owner)
+                if (len(after) < prefix_len
+                        or _messages_signature(after[:prefix_len]) != signature):
+                    _report_error("409 Conflict", "source_changed",
+                                  "the interview changed while the report was generated")
+
+                report = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+                if not report:
+                    _report_error("502 Bad Gateway", "model_unavailable",
+                                  "the model returned no report")
+                try:
+                    svc.record_audit(
+                        action="session.interview_report.generate",
+                        target=f"agent:{agent_id}",
+                        actor_user_id=ctx.user_id,
+                        actor_username=getattr(ctx, "username", "") or "",
+                        tenant_id=ctx.tenant_id,
+                        redacted_changes={"session_id": session_id,
+                                          "message_count": prefix_len,
+                                          "tokens": tokens},
+                    )
+                except Exception as error:  # noqa: BLE001 - best-effort audit
+                    logger.warning(f"[WebChannel] report audit skipped: {error}")
+
+                return json.dumps({
+                    "status": "success",
+                    "report": report,
+                    "source": {
+                        "session_id": session_id,
+                        "agent_id": agent_id,
+                        "message_count": prefix_len,
+                        "generated_at": int(time.time()),
+                    },
+                }, ensure_ascii=False)
+        except web.HTTPError:
+            raise
+        except Exception as e:
+            logger.error(f"[WebChannel] interview report error: {e}")
+            return json.dumps({"status": "error", "message": str(e)},
+                              ensure_ascii=False)
+
+
+
 class SessionClearContextHandler:
     def POST(self, session_id: str):
         from channel.web.web_channel import _db_scope
@@ -722,15 +1062,30 @@ class HistoryHandler:
         web.header('Content-Type', 'application/json; charset=utf-8')
         web.header('Access-Control-Allow-Origin', '*')
         try:
-            params = web.input(session_id='', page='1', page_size='20', agent_id='', until_seq='')
+            params = web.input(session_id='', page='1', page_size='20', agent_id='',
+                               until_seq='', read_scope='')
             session_id = params.session_id.strip()
             if not session_id:
                 return json.dumps({"status": "error", "message": "session_id required"})
 
             with _db_scope() as ctx:
-                _require_read_permission(ctx, "history.read")
-                agent_id = _require_tenant_agent_binding(ctx, _request_agent_id(params))
-                _require_session_owner(ctx, session_id, agent_id)
+                read_scope = str(params.read_scope or '').strip()
+                cross_owner = read_scope == 'agent_all'
+                if cross_owner:
+                    if not _enterprise_interview_enabled():
+                        raise web.HTTPError(
+                            "403 Forbidden",
+                            {"Content-Type": "application/json"},
+                            json.dumps({"status": "error", "code": "feature_disabled",
+                                        "message": "feature disabled"}))
+                    from channel.web.fork.authorization import _require_history_read_all
+                    agent_id = _require_history_read_all(
+                        ctx, _request_agent_id(params))
+                else:
+                    _require_read_permission(ctx, "history.read")
+                    agent_id = _require_tenant_agent_binding(
+                        ctx, _request_agent_id(params))
+                    _require_session_owner(ctx, session_id, agent_id)
                 from agent.memory import get_conversation_store
                 from agent.registry import get_agent_registry
                 # Conversation persistence and the cross-Agent history list
@@ -744,7 +1099,7 @@ class HistoryHandler:
                 # A reply still streaming is shown as of its last stored point and
                 # followed live from there, so nothing appears twice or goes missing.
                 live = None
-                if page == 1 and not until_seq:
+                if page == 1 and not until_seq and not cross_owner:
                     try:
                         live = WebChannel().resumable_stream(session_id, agent_id)
                     except Exception as e:
@@ -754,9 +1109,24 @@ class HistoryHandler:
                     page=page,
                     page_size=int(params.page_size),
                     until_seq=int(until_seq) if until_seq.lstrip('-').isdigit() else None,
-                    user_id=ctx.user_id if ctx else None,
+                    user_id=None if cross_owner else (ctx.user_id if ctx else None),
+                    all_owners=cross_owner,
                     max_seq=live["stored_seq"] if live else None,
                 )
+                if cross_owner:
+                    from auth.service import get_identity_service
+                    result["owner"] = store.get_session_owner(session_id) or ""
+                    if not result["owner"]:
+                        raise web.HTTPError(
+                            "403 Forbidden",
+                            {"Content-Type": "application/json"},
+                            json.dumps({"status": "error", "code": "forbidden",
+                                        "message": "forbidden"}))
+                    names = (get_identity_service().member_display_names(
+                        ctx.tenant_id, {result["owner"]}) if ctx else {})
+                    result["creator"] = names.get(result["owner"], "")
+                    result["read_only"] = True
+                    _audit_history_read(ctx, agent_id, "detail", session_id)
                 if live:
                     messages = result.get("messages") or []
                     last = messages[-1] if messages else {}

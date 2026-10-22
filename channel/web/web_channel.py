@@ -295,10 +295,12 @@ from channel.web.fork.handlers.scheduler import (
 from channel.web.fork.handlers.sessions import (
     UserMessagesHandler,
     HistoryHandler,
+    InterviewReportHandler,
     MessageDeleteHandler,
     PromptOptimizeHandler,
     SessionClearContextHandler,
     SessionDetailHandler,
+    SessionReadTargetsHandler,
     SessionSettingsHandler,
     SessionTitleHandler,
     SessionsHandler,
@@ -579,10 +581,12 @@ from channel.web.fork.handlers.scheduler import (
 )
 from channel.web.fork.handlers.sessions import (
     HistoryHandler,
+    InterviewReportHandler,
     MessageDeleteHandler,
     PromptOptimizeHandler,
     SessionClearContextHandler,
     SessionDetailHandler,
+    SessionReadTargetsHandler,
     SessionSettingsHandler,
     SessionTitleHandler,
     SessionsHandler,
