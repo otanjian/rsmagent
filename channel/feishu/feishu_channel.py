@@ -1011,7 +1011,7 @@ class FeiShuChanel(ChatChannel):
             content_key = "file_key"
 
         # Check if we can reply to an existing message (need msg_id)
-        can_reply = is_group and msg and hasattr(msg, 'msg_id') and msg.msg_id
+        can_reply = bool(msg and getattr(msg, "msg_id", ""))  # reply also in 1:1: proactive send is refused (230101) for external users / outside availability
 
         # Build content JSON
         content_json = prepared_content_json or (
@@ -1230,7 +1230,7 @@ class FeiShuChanel(ChatChannel):
                 content_payload = json.dumps(
                     {"type": "card", "data": {"card_id": cid}}, ensure_ascii=False
                 )
-                can_reply = is_group and msg and hasattr(msg, "msg_id") and msg.msg_id
+                can_reply = bool(msg and getattr(msg, "msg_id", ""))  # reply also in 1:1: proactive send is refused (230101) for external users / outside availability
                 if can_reply:
                     send_url = (
                         f"https://open.feishu.cn/open-apis/im/v1/messages/"
@@ -1604,7 +1604,7 @@ class FeiShuChanel(ChatChannel):
                 content_payload = json.dumps(
                     {"type": "card", "data": {"card_id": cid}}, ensure_ascii=False
                 )
-                can_reply = is_group and msg and hasattr(msg, "msg_id") and msg.msg_id
+                can_reply = bool(msg and getattr(msg, "msg_id", ""))  # reply also in 1:1: proactive send is refused (230101) for external users / outside availability
                 if can_reply:
                     send_url = (
                         f"https://open.feishu.cn/open-apis/im/v1/messages/"
