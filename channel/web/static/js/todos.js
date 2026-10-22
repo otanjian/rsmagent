@@ -311,7 +311,10 @@
     // this module at a stable anchor rather than editing chat.html
     // (fork-upstream-decoupling: fork frontend ships as its own module).
     function mountTodoBell() {
-        const header = document.querySelector('.workbench-header');
+        // The split header has no fork-specific class; keep the legacy lookup
+        // for hosts that still render the original workbench shell.
+        const header = document.querySelector('#main-content > header') ||
+            document.querySelector('.workbench-header');
         if (!header) return;                              // no workbench shell here
         if (document.getElementById(BELL_BTN_ID)) return; // idempotent
         const label = t('menu_todo');
@@ -335,10 +338,10 @@
         badge.setAttribute('aria-hidden', 'true');
         btn.appendChild(badge);
         btn.addEventListener('click', openTodoFromBell);
-        // Between the page title and the tenant selector. Falling back to the
-        // last header action and then to the header itself means a different
-        // header shape never drops the entry silently.
-        const anchor = document.getElementById('tenant-selector') ||
+        // Keep the bell between language and theme controls in the shared
+        // header, with the original anchors as fallbacks for older shells.
+        const anchor = document.getElementById('theme-toggle') ||
+            document.getElementById('tenant-selector') ||
             document.getElementById('workspace-toggle-btn');
         if (anchor && anchor.parentNode === header) header.insertBefore(btn, anchor);
         else header.appendChild(btn);
