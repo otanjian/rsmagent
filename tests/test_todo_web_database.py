@@ -28,7 +28,8 @@ def api(tmp_path, monkeypatch):
     monkeypatch.setattr("agent.registry.get_agent_registry", lambda: registry)
     monkeypatch.setattr("config.get_data_root", lambda: str(tmp_path / "private"))
     monkeypatch.setattr(todo_handlers, "_get_identity_service", lambda: svc)
-    monkeypatch.setattr(todo_handlers, "default_enabled", lambda: True)
+    # Exercise the deployment default rather than forcing the feature on.
+    monkeypatch.setattr("config.conf", lambda: {})
     app = web.application((
         "/api/todos", "TodosHandler",
         "/api/todos/summary", "TodoSummaryHandler",
@@ -130,7 +131,7 @@ def test_unavailable_private_directory_returns_503(api):
 
 def test_disabled_feature_does_not_create_store(api, monkeypatch):
     request, _, _, root = api
-    monkeypatch.setattr(todo_handlers, "default_enabled", lambda: False)
+    monkeypatch.setattr("config.conf", lambda: {"todo_enabled": False})
     assert request()[0] == 404
     status, summary = request("/api/todos/summary")
     assert status == 200 and not summary["enabled"]

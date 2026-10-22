@@ -77,6 +77,19 @@
         "test_run_starts_warmup_in_legacy_mode",
         "test_run_starts_mixed_channels_without_logging_credentials"
       ]
+    },
+    {
+      "file": "tests/test_todo_web_database.py",
+      "ids": [
+        "test_database_list_and_summary_use_private_store",
+        "test_create_update_and_history_remain_owner_and_tenant_scoped",
+        "test_database_identity_errors_have_real_http_status",
+        "test_password_change_restriction_precedes_storage",
+        "test_unavailable_private_directory_returns_503",
+        "test_disabled_feature_does_not_create_store",
+        "test_internal_error_is_500_without_internal_details",
+        "test_unauthenticated_request_is_401"
+      ]
     }
   ],
   "node": [
@@ -182,7 +195,8 @@
       "sync: mixed personal layouts keep both areas and unknown items after edit and reset",
       "sync: workbench-only member has no console entry and denied deep links keep a way back",
       "sync: both navigation areas stay reachable on mobile and the collapsed sidebar",
-      "sync: main menu labels retain rdai names in three languages"
+      "sync: main menu labels retain rdai names in three languages",
+      "sync: todos work by default with persistent personal creation and completion"
     ]
   }
 }

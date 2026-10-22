@@ -305,12 +305,12 @@ available_setting = {
     # get_data_root(). MUST NOT default to "~" or "/".
     "platform_file_root": "",
     "mcp_oauth_redirect_base": "",  # Base URL for MCP OAuth callback (e.g. http://your-ip:9899); empty uses local web console
-    # Personal todo (待办事项) switch (default off). When enabled the Web
+    # Personal todo (待办事项) switch (default on). When enabled the Web
     # workbench exposes a personal todo list/detail page backed by a private
     # todo/todos.db (see agent/todo/). When disabled the todo API and the minimal
     # agent todo tool are refused (but storage is preserved). Todo access
     # requires a real user/tenant/membership plus todo.read / todo.write.
-    "todo_enabled": False,
+    "todo_enabled": True,
     # Cross-owner history read + report entry for the enterprise interview
     # scene. Off by default; both entry points refuse while off.
     "enterprise_interview_management_enabled": False,

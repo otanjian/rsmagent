@@ -157,10 +157,10 @@ class TodoUnavailable(TodoServiceError):
 # --------------------------------------------------------------------------- #
 
 def default_enabled() -> bool:
-    """Read the single ``todo_enabled`` switch (default off)."""
+    """Enable personal todos by default while honoring an explicit opt-out."""
     try:
         from config import conf
-        return bool(conf().get("todo_enabled", False))
+        return bool(conf().get("todo_enabled", True))
     except Exception:
         return False
 
