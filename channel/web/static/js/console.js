@@ -18543,7 +18543,7 @@ function tenantGuestSection(inst, editing) {
             const selected = r.id === roleId ? ' selected' : '';
             const suffix = eligible ? ''
                 : `（${t('tenant_channel_guest_role_ineligible')}）`;
-            return `<option value="${escapeHtml(r.id)}"${selected}${eligible ? '' : ' disabled'}>`
+            return `<option value="${escapeHtml(r.id)}"${selected}${eligible ? ' data-guest-eligible="1"' : ' disabled'} data-role-code="${escapeHtml(r.code || '')}">`
                 + `${escapeHtml(r.name)}${escapeHtml(suffix)}</option>`;
         })
         .join('');
@@ -18583,14 +18583,31 @@ function tenantGuestSection(inst, editing) {
 // Keep the state badge beside the section title equal to what the form would
 // save, so "默认关闭" can never sit next to an instance that is already open.
 function syncTenantGuestState(value) {
-    const badge = document.getElementById('tenant-channel-guest-state');
-    if (!badge) return;
     const on = value === 'auto_guest';
-    badge.textContent = on ? t('tenant_channel_guest_state_on')
-        : t('tenant_channel_guest_state_off');
-    badge.className = 'text-[11px] px-1.5 py-0.5 rounded ' + (on
-        ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
-        : 'bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400');
+    const badge = document.getElementById('tenant-channel-guest-state');
+    if (badge) {
+        badge.textContent = on ? t('tenant_channel_guest_state_on')
+            : t('tenant_channel_guest_state_off');
+        badge.className = 'text-[11px] px-1.5 py-0.5 rounded ' + (on
+            ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+            : 'bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400');
+    }
+    const roleSelect = document.getElementById('tenant-channel-guest-role');
+    const groups = document.getElementById('tenant-channel-guest-groups');
+    for (const field of [roleSelect, groups]) {
+        if (!field) continue;
+        field.disabled = !on;
+        field.classList.toggle('opacity-60', !on);
+    }
+    if (!on || !roleSelect || !roleSelect.options.length) return;
+    const options = Array.from(roleSelect.options);
+    const selected = options[roleSelect.selectedIndex];
+    if (selected && selected.dataset.guestEligible === '1') return;
+    // Opening guest access must not leave an unusable role selected: prefer the
+    // tenant's IM guest role, else the first role the server would accept.
+    const usable = options.filter(o => o.dataset.guestEligible === '1');
+    const preferred = usable.find(o => o.dataset.roleCode === 'im_guest') || usable[0];
+    if (preferred) roleSelect.value = preferred.value;
 }
 
 function buildTenantChannelForm(inst) {
@@ -18889,6 +18906,11 @@ function renderTenantChannels() {
     container.innerHTML = `
         ${tenantChannelRuntimeNoticeHtml()}
         <div class="grid gap-4">${draftCard}${rows}</div>`;
+    // Apply the guest form's linked state once the markup exists: a stored
+    // ineligible role must be shown replaced (not silently saved) and the
+    // fields disabled while guest access is off.
+    const guestPolicy = document.getElementById('tenant-channel-guest-policy');
+    if (guestPolicy) syncTenantGuestState(guestPolicy.value);
 }
 
 // Inline create/edit. The form lives inside the card now, so this records the
