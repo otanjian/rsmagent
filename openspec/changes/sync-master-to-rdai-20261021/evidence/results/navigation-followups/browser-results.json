@@ -3,107 +3,107 @@
     {
       "name": "parity: SAP iframe navigation preserves deep shell and identity teardown",
       "passed": true,
-      "durationMs": 2305
+      "durationMs": 2271
     },
     {
       "name": "parity: deep route survives login and explicit tenant selection",
       "passed": true,
-      "durationMs": 1902
+      "durationMs": 1971
     },
     {
       "name": "parity: hidden source update entry retains confirmation and identity guards",
       "passed": true,
-      "durationMs": 1151
+      "durationMs": 1639
     },
     {
       "name": "parity: denied deep route preserves address (classic)",
       "passed": true,
-      "durationMs": 928
+      "durationMs": 941
     },
     {
       "name": "parity: denied deep route preserves address (split)",
       "passed": true,
-      "durationMs": 925
+      "durationMs": 972
     },
     {
       "name": "parity: denied admin entry keeps registered deep routes (classic)",
       "passed": true,
-      "durationMs": 1732
+      "durationMs": 1811
     },
     {
       "name": "parity: denied admin landing returns to the conversation (classic)",
       "passed": true,
-      "durationMs": 1163
+      "durationMs": 1204
     },
     {
       "name": "parity: denied admin entry keeps registered deep routes (split)",
       "passed": true,
-      "durationMs": 1750
+      "durationMs": 1810
     },
     {
       "name": "parity: denied admin landing returns to the conversation (split)",
       "passed": true,
-      "durationMs": 1171
+      "durationMs": 1214
     },
     {
       "name": "parity: scheduler observer honors identity preferences and authorized clicks",
       "passed": true,
-      "durationMs": 986
+      "durationMs": 1012
     },
     {
       "name": "parity: two browser windows atomically claim one terminal run",
       "passed": true,
-      "durationMs": 1809
+      "durationMs": 1878
     },
     {
       "name": "parity: member model route renders the granted catalog",
       "passed": true,
-      "durationMs": 908
+      "durationMs": 946
     },
     {
       "name": "parity: revoked model management restores only the member catalog",
       "passed": true,
-      "durationMs": 1700
+      "durationMs": 1737
     },
     {
       "name": "parity: deep paths survive refresh and back",
       "passed": true,
-      "durationMs": 1796
+      "durationMs": 1885
     },
     {
       "name": "parity: legacy links and cancelled leave preserve the target",
       "passed": true,
-      "durationMs": 951
+      "durationMs": 962
     },
     {
       "name": "parity: empty docs/graph and independent sources",
       "passed": true,
-      "durationMs": 1081
+      "durationMs": 1138
     },
     {
       "name": "parity: delayed lists preserve graph and sources selection",
       "passed": true,
-      "durationMs": 1057
+      "durationMs": 1075
     },
     {
       "name": "parity: knowledge failures offer a working retry",
       "passed": true,
-      "durationMs": 1046
+      "durationMs": 1047
     },
     {
       "name": "parity: slight upward scroll pauses streaming and explicit bottom resumes",
       "passed": true,
-      "durationMs": 1093
+      "durationMs": 1119
     },
     {
       "name": "parity: message wrapping and local overflow (light)",
       "passed": true,
-      "durationMs": 929
+      "durationMs": 976
     },
     {
       "name": "parity: message wrapping and local overflow (dark)",
       "passed": true,
-      "durationMs": 924
+      "durationMs": 959
     },
     {
       "name": "http: console-created tasks dispatch into two owned sessions",
@@ -193,17 +193,17 @@
     {
       "name": "desktop, dark: a CJK query with no match says so instead of an empty menu",
       "passed": true,
-      "durationMs": 994
+      "durationMs": 1006
     },
     {
       "name": "desktop: the sources tab is a closed loop of list, detail and upload",
       "passed": true,
-      "durationMs": 1136
+      "durationMs": 1153
     },
     {
       "name": "narrow: the sources loop still works on a phone-width viewport",
       "passed": true,
-      "durationMs": 1095
+      "durationMs": 1093
     }
   ],
   "pageErrors": [],

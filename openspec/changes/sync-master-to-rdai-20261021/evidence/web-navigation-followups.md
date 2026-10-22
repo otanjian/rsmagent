@@ -12,7 +12,7 @@
 ## 验证
 
 - 修复前新增实际点击场景在图标居中断言失败，截图与用户问题一致；保存 `results/navigation-followups/before-results.json` 及 `agent-conversation-before.png`。修复后专项 17 场景通过。
-- 基线为 rdai `67d87e31662423a4479dd96700342776d319d498`。`NODE_PATH=tests/browser/node_modules UPSTREAM_SYNC_BASE_SHA=67d87e31662423a4479dd96700342776d319d498 .venv/bin/python scripts/check-upstream-sync.py --output .sync-test/sidebar-agent-picker-final-required` 通过，运行前后摘要均为 `9e42c8b61812f3d74be56353fd9810bf147bdfd01cd6f2f138649f3e2e3bc512`。
+- 基线为 rdai `5d0b3c096dcddd514478ba94c8c5919e6f6c0208`。`NODE_PATH=tests/browser/node_modules UPSTREAM_SYNC_BASE_SHA=5d0b3c096dcddd514478ba94c8c5919e6f6c0208 .venv/bin/python scripts/check-upstream-sync.py --output .sync-test/sidebar-final-merged-required` 通过，运行前后摘要均为 `bdc4518beddfa3c393bf126a6c4911f994bd060bc7e7e2596b1dbefea4b03df0`。
 - 必需 Python 42 例、Node 24 例和浏览器 40 场景全部执行；实际浏览器 45 场景全部通过，页面错误及意外路由为空。报告、专项结果及截图保存于 `results/navigation-followups/`。
 - 实际点击智能体卡片、侧栏按钮、历史新建及输入框加号，检查会话 ID 更新、输入框焦点、历史面板开关、刷新、1024×768 与 390×844 视口；欢迎图标、标题、卡片保持居中，输入框位于视口内。卡片命令和提示文本也经实际点击检查。
 - 原位按钮位于品牌区与导航之间，收起时加号能用 Enter 建立新会话，手机点击后抽屉关闭；管理员和成员的账号菜单均未显示检查更新，既有更新确认和身份失效保护通过。
@@ -22,3 +22,5 @@
 - OpenSpec strict、delta 基线与活动导航 change 重叠核对通过。沿用 PR #8，在最终提交通过实际 required Web CI 后正常合入；最终 CI 与交付提交记录于 PR。
 
 Desktop 测试继续停止，本次 Web 证据不替代延期的桌面验收。
+
+合入前交付目标前移至 `5d0b3c096dcddd514478ba94c8c5919e6f6c0208`（历史会话跨用户读取与报告功能），已通过正常 merge 保留其提交，并重跑上述完整 Web 门禁；额外执行 `node --test tests/test_history_read_scope_frontend.cjs`，7 例全部通过。此前 CI run 769 的通过只对应前一个候选，最终合入使用更新后提交的 required CI。
