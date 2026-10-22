@@ -16,6 +16,9 @@ let schedulerNotifySince = Math.floor(Date.now() / 1000);  // ignore pre-load hi
 let schedulerNotifyStarted = false;
 
 function startSchedulerNotifyPolling() {
+    // Database identities use the tenant-scoped terminal cursor and atomic
+    // cross-window claims in SchedulerNotifications, including reconnects.
+    if (typeof _identityMode === 'function' && _identityMode() === 'database') return;
     if (schedulerNotifyStarted) return;  // one loop process-wide
     schedulerNotifyStarted = true;
 

@@ -1809,10 +1809,15 @@ class FeishuRegisterHandler:
                     "register_status": "downloading",
                 })
             if not session.get("url"):
+                # The SDK's first import can take tens of seconds (10k+ source
+                # files) and the QR only exists after it. Answering "timeout"
+                # here used to abandon the handle while the worker kept running,
+                # so the QR was produced for nobody. Hand it to the poller, which
+                # already renders the QR as soon as it appears.
                 return json.dumps({
-                    "status": "error",
+                    "status": "success",
                     "handle": handle,
-                    "message": "等待飞书二维码超时，请重试",
+                    "register_status": "pending",
                 })
             return json.dumps({
                 "status": "success",

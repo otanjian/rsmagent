@@ -311,6 +311,13 @@ class LocalToolWorker:
             config: Dict[str, Any] = {"cwd": home.root}
             if name == "bash":
                 config["timeout"] = self._timeout
+            if name == "read":
+                # This worker reads inside the project the user opened, where a
+                # personal-memory path cannot resolve, so the probe inside `Read`
+                # can only answer "no" -- and the import it needs deadlocked
+                # against this worker's own threads, hanging every local `read`
+                # with no reply and no stderr. See the note in read.py.
+                config["personal_memory"] = False
             tool = cls(config)
             # The process-launch seam (task 4.2): the tool reports the group id of
             # every command it starts, and this worker owns the policy of when a

@@ -227,7 +227,7 @@ SAFETY:
             if os.path.exists(env_file):
                 try:
                     from dotenv import dotenv_values
-                    dotenv_vars = dotenv_values(env_file)
+                    dotenv_vars = {key: value for key, value in dotenv_values(env_file).items() if value is not None}
                     env.update(dotenv_vars)
                     logger.debug(f"[Bash] Loaded {len(dotenv_vars)} variables from {env_file}")
                 except ImportError:
@@ -246,21 +246,32 @@ SAFETY:
             temp_script_path = None
 
             # On Windows, convert $VAR references to %VAR% for cmd.exe
+            user_command = command
             if self._IS_WIN:
                 env["PYTHONIOENCODING"] = "utf-8"
                 command = self._convert_env_vars_for_windows(command, dotenv_vars)
-                # cmd.exe has an ~8191 char command line limit. Long
-                # `python -c "..."` commands silently fail, so spill the inline
-                # code into a temp .py file and run that instead.
-                if len(command) > self._WIN_CMD_SAFE_LEN:
-                    command, temp_script_path = self._rewrite_long_python_c(command)
+                user_command = command
+                # cmd.exe stops at the first line feed and at ~8191 chars, so
+                # multi-line or long `python -c "..."` code is silently cut off.
+                # Spill the inline code into a temp .py file instead.
+                if len(command) > self._WIN_CMD_SAFE_LEN or "\n" in command or "\r" in command:
+                    command, temp_script_path = self._rewrite_python_c(command)
                 if command and not command.strip().lower().startswith("chcp"):
-                    command = f"chcp 65001 >nul 2>&1 && {command}"
+                    command = f"chcp 65001 >nul 2>&1 & {command}"
 
             if run_in_background:
                 # Ownership of temp_script_path passes to the registry - the
                 # process is still reading it, so it can only go once the job does.
-                job_id = background.start(command, self.cwd, env, temp_script_path)
+                try:
+                    job_id = background.start(command, self.cwd, env, temp_script_path)
+                except Exception:
+                    # The registry owns the spill only after a successful start.
+                    if temp_script_path:
+                        try:
+                            os.remove(temp_script_path)
+                        except OSError:
+                            pass
+                    raise
                 return ToolResult.success({
                     "output": (
                         f"Started in background (bash_id: {job_id}). "
@@ -270,6 +281,7 @@ SAFETY:
                     "bash_id": job_id,
                 })
 
+            files_before = self._snapshot_files(user_command)
             try:
                 result = self._run_streaming(
                     command,
@@ -330,9 +342,9 @@ SAFETY:
 
             # Check if we need to save full output to temp file
             temp_file_path = None
-            total_bytes = len(output.encode('utf-8'))
+            truncation = truncate_tail(output)
 
-            if total_bytes > DEFAULT_MAX_BYTES:
+            if truncation.truncated:
                 # Save full output to temp file. encoding='utf-8' is required:
                 # the default text-mode encoding is the platform locale (e.g.
                 # cp936/GBK on Chinese Windows), which raises UnicodeEncodeError
@@ -342,8 +354,6 @@ SAFETY:
                     f.write(output)
                     temp_file_path = f.name
 
-            # Apply tail truncation
-            truncation = truncate_tail(output)
             output_text = truncation.content or "(no output)"
 
             # Build result
@@ -369,10 +379,10 @@ SAFETY:
                     output_text += f"\n\n[Showing lines {start_line}-{end_line} of {truncation.total_lines} ({format_size(DEFAULT_MAX_BYTES)} limit). Full output: {temp_file_path}]"
 
             # Check exit code
-            is_error, note = exit_codes.interpret(command, result.returncode)
+            is_error, note = exit_codes.interpret(user_command, result.returncode)
             if is_error:
                 output_text += f"\n\nCommand exited with code {result.returncode}"
-                hint = self._windows_failure_hint(command)
+                hint = self._windows_failure_hint(user_command)
                 if hint:
                     output_text += f"\n\n{hint}"
                 return ToolResult.fail({
@@ -383,11 +393,16 @@ SAFETY:
             if note:
                 output_text += f"\n\n[Exit code {result.returncode}: {note}]"
 
-            return ToolResult.success({
+            payload = {}
+            files = self._files_written(user_command, files_before)
+            if files:
+                payload["files_written"] = files
+            payload.update({
                 "output": output_text,
                 "exit_code": result.returncode,
                 "details": details if details else None
             })
+            return ToolResult.success(payload)
 
         except _Cancelled:
             return ToolResult.fail("Command was stopped because the user cancelled the run.")
@@ -395,6 +410,27 @@ SAFETY:
             return ToolResult.fail(f"Error: Command timed out after {timeout} seconds")
         except Exception as e:
             return ToolResult.fail(f"Error executing command: {str(e)}")
+
+    def _snapshot_files(self, command: str) -> dict:
+        if not self.cwd:
+            return {}
+        try:
+            from agent.protocol.artifact import snapshot_command_files
+            return snapshot_command_files(command, self.cwd)
+        except Exception as e:
+            logger.debug(f"[Bash] file snapshot skipped: {e}")
+            return {}
+
+    def _files_written(self, command: str, before: dict) -> list:
+        """User-facing files the command created or changed, so they surface as outputs."""
+        if not self.cwd:
+            return []
+        try:
+            from agent.protocol.artifact import files_changed_by_command
+            return files_changed_by_command(command, self.cwd, before)
+        except Exception as e:
+            logger.debug(f"[Bash] changed-file scan skipped: {e}")
+            return []
 
     def _background_followup(self, bash_id: str, want_kill: bool) -> ToolResult:
         """Read from, or kill, an already-running background command."""
@@ -570,15 +606,23 @@ SAFETY:
         for i, tok in enumerate(tokens):
             if tok != "rm":
                 continue
-            has_rf = False
+            has_r = False
+            has_f = False
             for j in range(i + 1, len(tokens)):
                 t = tokens[j]
-                if t.startswith("-") and "r" in t and "f" in t:
-                    has_rf = True
-                elif t in ("--recursive", "--force"):
+                if t in ("--recursive",):
+                    has_r = True
+                elif t in ("--force",):
+                    has_f = True
+                elif t.startswith("--"):
                     continue
+                elif t.startswith("-"):
+                    if "r" in t:
+                        has_r = True
+                    if "f" in t:
+                        has_f = True
                 elif t in ("/", "/*"):
-                    if has_rf:
+                    if has_r and has_f:
                         return "This command will delete the entire filesystem"
                     break
                 else:
@@ -647,42 +691,83 @@ SAFETY:
 
         return re.sub(r'\$\{(\w+)\}|\$(\w+)', replace_match, command)
 
-    @staticmethod
-    def _rewrite_long_python_c(command: str):
+    # [path\]<python|python3|py>[.exe] [interpreter flags] -c, followed by a
+    # quote, at the start of the command or right after an operator, so
+    # `tool.py -c "..."` and `echo python -c "..."` are left alone.
+    _PY_C_RE = re.compile(
+        r'(?:^|[&|(])\s*(?:"[^"\r\n]*[\\/]|"|[^\s"&|<>()]*[\\/])?'
+        r'(?:python3?|py)(?:\.exe)?"?'
+        r'(?:\s+(?:-[XW]\s*\S+|-(?!c\b)\S+))*\s+-c\s+(?=["\'])',
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def _rewrite_python_c(cls, command: str):
         """
-        Rewrite `python -c "<code>"` into `python <tempfile>` to bypass the
-        cmd.exe command line length limit on Windows.
+        Move the code of `python -c "<code>"` into a temp .py file.
+
+        The file is loaded back through exec() under -c rather than run as a
+        script, so sys.path[0], sys.argv[0], the missing __file__ and the
+        `<string>` traceback filename all stay as with the original -c.
 
         Returns (new_command, temp_file_path). On any parse failure the original
         command and None are returned, so behavior is unchanged when unmatched.
         """
-        # Match: <python|python3|py> [flags] -c "<code>" (single or double quoted)
-        m = re.search(
-            r'^(?P<prefix>.*?\b(?:python3?|py)\b[^\n]*?\s-c\s+)'
-            r'(?P<quote>["\'])(?P<code>.*)(?P=quote)\s*(?P<suffix>.*)$',
-            command,
-            re.DOTALL,
-        )
+        m = cls._PY_C_RE.search(command)
         if not m:
             return command, None
 
-        quote = m.group("quote")
-        code = m.group("code")
-        # Reverse common shell-level escaping of the quote char inside the code.
-        code = code.replace("\\" + quote, quote)
+        quote = command[m.end()]
+        body_start = m.end() + 1
+        end = cls._closing_quote(command, body_start, quote)
+        if end < 0:
+            return command, None
+        code = command[body_start:end]
+        if quote == '"':
+            # Windows CRT argument parsing: a run of backslashes before a quote
+            # or the closing delimiter contributes half as many literal ones.
+            code = re.sub(r'(\\+)(?="|\Z)', lambda r: "\\" * (len(r.group(1)) // 2), code)
+        else:
+            code = code.replace("\\'", "'")
+        suffix = command[end + 1:].strip()
 
         try:
             fd, path = tempfile.mkstemp(suffix=".py", prefix="bash-pyc-")
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
                 f.write(code)
         except OSError:
             return command, None
 
-        prefix = m.group("prefix")
-        # Drop the trailing "-c " from the prefix, keep the interpreter + flags.
-        interp = re.sub(r'\s-c\s+$', ' ', prefix).rstrip()
-        suffix = m.group("suffix").strip()
-        new_command = f'{interp} "{path}"'
+        # Hex keeps quote- and shell-sensitive path characters out of the loader.
+        path_hex = path.encode("utf-8").hex()
+        loader = (
+            "exec(compile((lambda f:(f.read(),f.close())[0])"
+            f"(open(bytes.fromhex('{path_hex}').decode('utf-8'),"
+            "encoding='utf-8')),'<string>','exec'))"
+        )
+        new_command = f'{command[:m.end()]}"{loader}"'
         if suffix:
             new_command += f' {suffix}'
         return new_command, path
+
+    @staticmethod
+    def _closing_quote(command: str, start: int, quote: str) -> int:
+        """Index of the quote that closes the -c code, or -1.
+
+        Take the first unescaped quote followed by whitespace, an operator or
+        the end of the command, so script arguments and a trailing
+        `&& echo "done"` stay outside the code. Fall back to the last unescaped
+        quote, which tolerates unescaped quotes inside the code.
+        """
+        last = -1
+        index = command.find(quote, start)
+        while index >= 0:
+            backslashes = 0
+            while index - backslashes - 1 >= start and command[index - backslashes - 1] == "\\":
+                backslashes += 1
+            if backslashes % 2 == 0:
+                if re.match(r'(?:\s|$|[&|<>])', command[index + 1:]):
+                    return index
+                last = index
+            index = command.find(quote, index + 1)
+        return last

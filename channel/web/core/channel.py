@@ -28,7 +28,7 @@ from bridge.reply import Reply, ReplyType
 from channel.chat_channel import ChatChannel, check_prefix
 from channel.web.core import providers
 from channel.web.core._common import (
-    _addressed_agent_id, _build_artifact_payload, _cancel_reply_text,
+    _addressed_agent_id, _build_artifact_payload, _build_preview_url, _cancel_reply_text,
     _desktop_token_matches, _first_value, _get_upload_dir, _get_workspace_root,
     IMAGE_EXTENSIONS, _is_loopback_request, _is_password_enabled,
     _is_within_directory, _log_bind_failure, MAX_LOCAL_IMPORT_BYTES,
@@ -221,6 +221,7 @@ class WebChannel(ChatChannel):
                             "timestamp": time.time(),
                             "user_seq": seqs.get("user_seq"),
                             "bot_seq": seqs.get("bot_seq"),
+                            "usage": seqs.get("usage"),
                         })
                         if published:
                             self._publish_sse_event(
@@ -257,6 +258,7 @@ class WebChannel(ChatChannel):
                     "timestamp": time.time(),
                     "user_seq": seqs.get("user_seq"),
                     "bot_seq": seqs.get("bot_seq"),
+                    "usage": seqs.get("usage"),
                 })
                 logger.debug(f"SSE done sent for request {request_id}")
                 # Auto-trigger TTS once the bot finishes its text reply. The
@@ -556,6 +558,15 @@ class WebChannel(ChatChannel):
                 # the file directly (Finder / default app) instead of the browser.
                 if not is_remote and file_path:
                     payload["abs_path"] = file_path
+                    # Lets the web console show the file as a regular file card.
+                    if data.get("kind"):
+                        payload.update({
+                            "rel_path": data.get("rel_path") or file_name,
+                            "kind": data["kind"],
+                            "previewable": bool(data.get("previewable")),
+                            "size": data.get("size", 0),
+                            "preview_url": _build_preview_url(file_path),
+                        })
                 publish(payload)
 
             elif event_type == "artifact":
@@ -1166,6 +1177,11 @@ class WebChannel(ChatChannel):
                 # _maybe_dispatch_auto_tts; don't set desire_rtype here or
                 # chat_channel would synthesize a duplicate VOICE reply.
                 context["is_voice_input"] = True
+            # What the client shows for this turn in place of the message, which
+            # the agent still receives in full (e.g. a prompt filled in from a form).
+            display = json_data.get("display")
+            if isinstance(display, str) and display.strip():
+                context["display"] = display.strip()
 
             if use_sse:
                 context["on_event"] = self._make_sse_callback(request_id)
@@ -1415,7 +1431,12 @@ class WebChannel(ChatChannel):
             cancelled = 0
 
             if request_id:
-                if registry.cancel_request(request_id):
+                scoped_request_id = agent_bridge._cancel_key(
+                    agent_id,
+                    request_id,
+                    agent_bridge.agent_registry.default_agent_id,
+                )
+                if registry.cancel_request(scoped_request_id):
                     cancelled = 1
 
             if cancelled == 0 and session_id:
@@ -1519,7 +1540,7 @@ class WebChannel(ChatChannel):
 
         self._cleanup_stale_voice_recordings()
 
-        def _log_startup_banner():
+        def _log_startup_banner(scheme: str):
             """Announce the console. Only called once the socket is actually
             bound — printing it up front made a failed bind look like a
             successful startup in the logs."""
@@ -1562,9 +1583,9 @@ class WebChannel(ChatChannel):
             for idx, (name, label) in enumerate(channels, 1):
                 logger.info(f"[WebChannel]  {idx:>2}. {name:<{name_width}} - {label}")
             logger.info("[WebChannel] ✅ Web console is running")
-            logger.info(f"[WebChannel] 🌐 Local access: http://localhost:{port}")
+            logger.info(f"[WebChannel] 🌐 Local access: {scheme}://localhost:{port}")
             if is_public_bind:
-                logger.info(f"[WebChannel] 🌍 Server access: http://YOUR_IP:{port} (replace YOUR_IP with your server IP)")
+                logger.info(f"[WebChannel] 🌍 Server access: {scheme}://YOUR_IP:{port} (replace YOUR_IP with your server IP)")
                 if not _is_password_enabled():
                     logger.info("[WebChannel] ⚠️  Listening on 0.0.0.0 without web_password set; set an access password in config.json for public deployment")
             else:
@@ -1575,8 +1596,8 @@ class WebChannel(ChatChannel):
             if os.environ.get("COW_DESKTOP") != "1":
                 try:
                     import webbrowser
-                    webbrowser.open(f"http://localhost:{port}")
-                    logger.debug(f"[WebChannel] Opened browser at http://localhost:{port}")
+                    webbrowser.open(f"{scheme}://localhost:{port}")
+                    logger.debug(f"[WebChannel] Opened browser at {scheme}://localhost:{port}")
                 except Exception as e:
                     logger.debug(f"[WebChannel] Could not open browser: {e}")
 
@@ -1606,10 +1627,30 @@ class WebChannel(ChatChannel):
         logging.getLogger("web").setLevel(logging.ERROR)
         logging.getLogger("web.httpserver").setLevel(logging.ERROR)
 
+        from channel.web.core.tls import resolve_tls_config
+
         # Build WSGI app with middleware (same as runsimple but without print)
         func = web.httpserver.StaticMiddleware(app.wsgifunc())
         func = web.httpserver.LogMiddleware(func)
+
+        # The desktop shell probes and loads the console over plain http.
+        https_enabled = bool(conf().get("web_https_enabled", False)) and os.environ.get("COW_DESKTOP") != "1"
+        try:
+            certfile, keyfile = resolve_tls_config(
+                https_enabled,
+                conf().get("web_ssl_certfile", ""),
+                conf().get("web_ssl_keyfile", ""),
+            )
+        except ValueError as e:
+            logger.error(f"[WebChannel] HTTPS misconfigured: {e}")
+            raise
         server = web.httpserver.WSGIServer((host, port), func)
+        scheme = "http"
+        if certfile:
+            from cheroot.ssl.builtin import BuiltinSSLAdapter
+            server.ssl_adapter = BuiltinSSLAdapter(certfile, keyfile)
+            scheme = "https"
+            logger.info("[WebChannel] 🔒 Serving the web console over HTTPS")
         server.daemon_threads = True
         # Default request_queue_size(5) / timeout(10s) / numthreads(10) are
         # too small: when SSE streams occupy many threads, the backlog fills
@@ -1639,7 +1680,7 @@ class WebChannel(ChatChannel):
             _log_bind_failure(host, port, e)
             raise
         SERVING.set()
-        _log_startup_banner()
+        _log_startup_banner(scheme)
         try:
             server.serve()
         except (KeyboardInterrupt, SystemExit):

@@ -50,3 +50,20 @@ python %TEMP%\cow-pack\ui-memory-page-check.py     http://127.0.0.1:9232   # 控
 ```
 
 （说明：容器页的会话在**独立分区**里，CDP 取不到 cookie，且宿主 shell 无法解析该域名 DNS，故所有请求都在**页面内同源 fetch**完成。）
+
+---
+
+## 【更新·2026-10-14 同日】本故障已在生产上修复 ✅
+
+用户部署本 change（提交 `f3703e6b`）后，**同一会话、同一接口、同一租户**下复核：
+
+| 请求 | 部署前（本文件 §1） | 部署后（实测） |
+|---|---|---|
+| 本人 `GET /api/memory?scope=personal&category=memory&page=1&page_size=20` | **403 `unsafe_path`** | **200**，`total: 1`，条目 `memory/2026-09-26.md` |
+| 跨租户（`X-Tenant-ID: tnt_N8gC2oB4jo5flatC`） | 403 `forbidden` | **403 `forbidden`**（隔离未削弱） |
+| `/memory` 页面 | 显示"个人记忆目录被替换" | **正常列出记忆**（截图 `production-memory-page-after-deploy.png`） |
+
+会话身份：`/auth/me` → `RC004` / `tanjian`（`usr_hcWvTEbXtYDWq1ho`），租户 `tnt_EA3qM-lHPLD8ZPwW`。
+完整记录见 `production-deployment-verified-2026-10-14.md`（含部署指纹核对：四个前端资源与提交逐字节一致）。
+
+**本文件正文（§1–§5）为部署前的复现记录，保留作"改动前"的证据。**

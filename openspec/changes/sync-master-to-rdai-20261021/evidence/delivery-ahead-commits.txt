@@ -1,0 +1,12 @@
+c9bd4942261156f56c02ffd65e4d81c6153e1594 docs(openspec): record the live Feishu guest round-trip
+5e68cecd616eb5504dd795b37885cb92f8b2a1de ﻿fix(app): stop logging channel credentials at startup
+545e4c119101c56881be460d78744e9c63c5695c fix(feishu): hand a slow scan to the poller instead of timing out
+5f3c1a02122c97a5cd22c4efb2dd65c5124760d0 fix(console): keep the active agent out of Feishu scan registration
+0d0ca5607224a886b6cca75a82fb60b8137fce5c Merge remote-tracking branch 'origin/rdai' into rdai
+0ef18dbbb594fd321b9a0d709444b1710c46b516 feat(identity): IM guest accounts for shared channel bots
+e16fa7506bd7a80da830187ec13b1da973b38bb8 fix(desktop): accept a loopback HTTP server instead of forcing HTTPS
+dd9944d431669eb461eb3b5ad93b3d132b72c8b2 Merge branch 'rdai' of https://rd.rsmxm.com.cn/Gitea/rsmai/rsmagent into rdai
+fbab7df1f4d06c1de3d3df262a283721b5a01ea5 fix(native): let the caller decide whether its working directory is granted
+1d4a3a845f913a480c5e01e81620054dd12c98cb feat(native): grant a run's extra directories, not just its working directory
+fdd0a3a7b153e3163cecf985fcab2fe15b0107ff feat(native): carry the AppContainer boundary through wrap mode
+364713d67abb4ff7d9bdb79cf3ba0e919981213e feat(native): give the AppContainer an ACL grant so it can reach its project

@@ -60,8 +60,14 @@ export function materializeBaseUrl(origin: string, allowHttpOrigin?: string): st
   }
   let allowed = parsed.protocol === 'https:'
   if (parsed.protocol === 'http:') {
-    const allowedHost = allowHttpOrigin ? safeHost(allowHttpOrigin) : ''
-    allowed = !!allowedHost && allowedHost === parsed.host && isLoopbackHost(parsed.hostname)
+    // Loopback only. Requiring the origin to equal ``allowHttpOrigin`` was too
+    // narrow: that value names this app's own bundled backend, so a server the
+    // user runs locally on a different port was refused -- after authorization
+    // had already succeeded. The container then failed to attach and the
+    // workbench never loaded, leaving the connect page up with no content.
+    // http to a loopback host cannot leave the machine, which is the property
+    // that matters; every other host still has to be https.
+    allowed = isLoopbackHost(parsed.hostname)
   }
   if (!allowed) {
     throw new TransferError('invalid_request', 'the configured origin must be https')

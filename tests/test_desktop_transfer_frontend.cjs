@@ -28,7 +28,7 @@ before(() => {
     execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], {
       cwd: desktop,
       stdio: 'pipe',
-    });
+            shell: process.platform === 'win32',});
   }
   transfer = require(path.join(compiledDir, 'transfer.js'));
 });

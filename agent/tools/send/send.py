@@ -7,6 +7,7 @@ from typing import Dict, Any
 from pathlib import Path
 
 from agent.tools.base_tool import BaseTool, ToolResult
+from agent.tools.utils.credentials import DENIED_MESSAGE, is_credential_path
 from common.utils import expand_path
 
 
@@ -85,11 +86,18 @@ class Send(BaseTool):
         
         # Resolve path
         absolute_path = self._resolve_path(path)
-        
+
+        # Same credential guard as the other file tools, checked before exists().
+        if is_credential_path(absolute_path):
+            return ToolResult.fail(DENIED_MESSAGE)
+
         # Check if file exists
         if not os.path.exists(absolute_path):
             return ToolResult.fail(f"Error: File not found: {path}")
         
+        if not os.path.isfile(absolute_path):
+            return ToolResult.fail(f"Error: Not a regular file: {path}")
+
         # Check if readable
         if not os.access(absolute_path, os.R_OK):
             return ToolResult.fail(f"Error: File is not readable: {path}")

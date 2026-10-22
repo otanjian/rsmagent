@@ -195,6 +195,65 @@ CREATE INDEX IF NOT EXISTS idx_runs_task
     ON runs (task_source, task_id);
 """
 
+# Artifacts are auxiliary too: an index of the user-facing files conversations
+# produced, so they can be browsed in one place instead of session by session.
+# One logical row per (agent_id, path), kept unique by record_artifacts inside
+# its write transaction rather than by a constraint. Columns carry defaults
+# but no NOT NULL / UNIQUE either: SQLite can only lift those by rebuilding
+# the table, while adding a column or an index is cheap. Readers coalesce.
+_ARTIFACTS_DDL = """
+CREATE TABLE IF NOT EXISTS artifacts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id    TEXT    DEFAULT '',
+    session_id  TEXT    DEFAULT '',
+    owner       TEXT    DEFAULT '',
+    tenant_id   TEXT    DEFAULT '',
+    file_source TEXT    DEFAULT 'server',
+    -- seq of the visible user message that opened the turn which last
+    -- produced the file: what the history view scrolls to.
+    turn_seq    INTEGER,
+    path        TEXT    DEFAULT '',
+    kind        TEXT    DEFAULT 'file',
+    size        INTEGER DEFAULT 0,
+    -- What produced it (write / edit / bash / send / subagent / embed / manual).
+    source      TEXT    DEFAULT '',
+    created_at  INTEGER DEFAULT 0,
+    updated_at  INTEGER DEFAULT 0,
+    -- JSON object for metadata that doesn't warrant a column of its own.
+    extras      TEXT    DEFAULT '',
+    -- When the user pinned it to the top of the timeline; 0 = not pinned.
+    pinned_at   INTEGER DEFAULT 0,
+    -- Name the user gave it in the view; '' = the file name. The file on disk
+    -- keeps its name, since conversations and other files refer to the path.
+    title       TEXT    DEFAULT ''
+);
+"""
+
+# Columns added after the table first shipped. Append new columns here too:
+# CREATE TABLE IF NOT EXISTS never adds them to an existing table.
+_ARTIFACTS_ADDED_COLUMNS = (
+    ("owner", "TEXT DEFAULT ''"),
+    ("tenant_id", "TEXT DEFAULT ''"),
+    ("file_source", "TEXT DEFAULT 'server'"),
+    ("extras", "TEXT DEFAULT ''"),
+    ("pinned_at", "INTEGER DEFAULT 0"),
+    ("title", "TEXT DEFAULT ''"),
+)
+
+_ARTIFACTS_INDEX_DDL = """
+CREATE INDEX IF NOT EXISTS idx_artifacts_recent
+    ON artifacts (agent_id, updated_at);
+
+CREATE INDEX IF NOT EXISTS idx_artifacts_updated
+    ON artifacts (updated_at);
+
+CREATE INDEX IF NOT EXISTS idx_artifacts_path
+    ON artifacts (agent_id, path);
+
+CREATE INDEX IF NOT EXISTS idx_artifacts_identity_path
+    ON artifacts (tenant_id, owner, agent_id, file_source, path);
+"""
+
 # Bookkeeping for the one-time, idempotent global migration. Lives in the
 # global file itself so "have we already absorbed source X?" survives restarts
 # without a side-car file. Mirrors the scheduler's ``_migrate_legacy_task_stores``
@@ -375,6 +434,20 @@ def _ends_with_answer(rest: List[tuple]) -> bool:
     ))
 
 
+def _usage_from_extras(raw_extras: Any) -> Optional[Dict[str, Any]]:
+    """Read a normalized per-message usage snapshot from stored extras."""
+    if not raw_extras:
+        return None
+    try:
+        extras = json.loads(raw_extras) if isinstance(raw_extras, str) else raw_extras
+    except Exception:
+        return None
+    if not isinstance(extras, dict):
+        return None
+    usage = extras.get("usage")
+    return usage if isinstance(usage, dict) and usage else None
+
+
 def _group_into_display_turns(
     rows: List[tuple],
     include_thinking: bool = True,
@@ -455,13 +528,16 @@ def _group_into_display_turns(
     for user_row, rest in groups:
         # User turn
         if user_row:
-            content, created_at, _u_extras, user_seq, _u_run = user_row
+            content, created_at, u_extras, user_seq, _u_run = user_row
             text = _extract_display_text(content)
             # Hide internal injection markers (scheduler / self-evolution) so the
             # user never sees a synthetic "[SCHEDULED] self-evolution" bubble;
             # the assistant reply that follows is still rendered.
             if text and not _is_internal_user_marker(text):
                 turn = {"role": "user", "content": text, "created_at": created_at}
+                display = u_extras.get("display")
+                if isinstance(display, str) and display:
+                    turn["display"] = display
                 if user_seq is not None:
                     turn["_seq"] = user_seq
                 turns.append(turn)
@@ -553,11 +629,46 @@ def _group_into_display_turns(
                 turn["kind"] = "evolution"
             if merged_extras:
                 turn["extras"] = merged_extras
+                usage = merged_extras.get("usage")
+                if isinstance(usage, dict) and usage:
+                    turn["usage"] = usage
             if final_seq is not None:
                 turn["_seq"] = final_seq
             turns.append(turn)
 
     return turns
+
+
+# Ceiling for a page requested from outside (HTTP or a remote caller).
+MAX_PAGE_SIZE = 200
+
+
+def page_window(page: Any, page_size: Any, default_page_size: int,
+                 cap: Optional[int] = MAX_PAGE_SIZE) -> tuple:
+    """Clamp an untrusted (page, page_size) pair into a usable window.
+
+    A negative page_size would reach SQLite as LIMIT -1 ("no limit") and 0
+    would divide by zero; ``cap=None`` keeps only those lower bounds.
+    """
+    try:
+        page = int(page)
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = int(page_size)
+    except (TypeError, ValueError):
+        page_size = default_page_size
+    page_size = max(1, page_size)
+    return max(1, page), min(page_size, cap) if cap else page_size
+
+
+def _artifact_extras(raw):
+    try:
+        value = json.loads(raw) if raw else {}
+    except (TypeError, ValueError):
+        return {}
+    origin = value.get("origin") if isinstance(value, dict) else None
+    return {"origin": origin} if isinstance(origin, dict) else {}
 
 
 class ConversationStore:
@@ -592,6 +703,7 @@ class ConversationStore:
         # bookkeeping degrades to a no-op so it can never break a turn or a
         # history query -- runs are auxiliary to conversation storage.
         self._runs_ready = False
+        self._artifacts_ready = False
         self._init_db()
 
     def _dimensions(self) -> Dict[str, str]:
@@ -895,7 +1007,7 @@ class ConversationStore:
                         for msg in messages:
                             if msg.get("role") == "user":
                                 content = msg.get("content", "")
-                                text = _extract_display_text(content)
+                                text = (msg.get("extras") or {}).get("display") or _extract_display_text(content)
                                 if text:
                                     title = text[:50].split("\n")[0]
                                     conn.execute(
@@ -926,7 +1038,7 @@ class ConversationStore:
                     ).fetchone()
                     new_start = row[0] + 1
                     conn.execute(
-                        "UPDATE sessions SET context_start_seq = ? WHERE session_id = ?" + scope_sql,
+                        "UPDATE sessions SET context_start_seq = ?, context_usage = '' WHERE session_id = ?" + scope_sql,
                         (new_start, session_id) + scope_params,
                     )
                     return new_start
@@ -947,41 +1059,42 @@ class ConversationStore:
             finally:
                 conn.close()
 
-    def get_latest_pair_seqs(self, session_id: str) -> Dict[str, Optional[int]]:
-        """Return the seq numbers of the latest visible user message and the
-        latest assistant message in a session.
+    def get_latest_pair_seqs(self, session_id: str) -> Dict[str, Any]:
+        """Return the latest visible user/assistant seqs and assistant usage.
 
         A "visible" user message is one whose content is real user text
         (not just a tool_result block), so tool-execution turns do not
         shadow the actual user query.
 
         Returns:
-            Dict with keys ``user_seq`` and ``bot_seq``; either may be None
-            when no matching message exists.
+            Dict with keys ``user_seq``, ``bot_seq`` and ``usage``; seqs may be
+            None when no matching message exists, and usage is None when the
+            latest assistant message has no provider snapshot.
         """
-        result: Dict[str, Optional[int]] = {"user_seq": None, "bot_seq": None}
+        result: Dict[str, Any] = {"user_seq": None, "bot_seq": None, "usage": None}
         with self._lock:
             conn = self._connect()
             try:
                 aid = self._agent_id
                 # Latest assistant message (cheap: single row by seq DESC).
                 row = conn.execute(
-                    "SELECT seq FROM messages "
+                    "SELECT seq, extras FROM messages "
                     "WHERE agent_id = ? AND session_id = ? AND role = 'assistant' "
                     "ORDER BY seq DESC LIMIT 1",
                     (aid, session_id),
                 ).fetchone()
                 if row:
                     result["bot_seq"] = int(row[0])
+                    result["usage"] = _usage_from_extras(row[1])
 
                 # Latest visible user message: scan recent user rows and
                 # skip pure tool_result entries.
                 rows = conn.execute(
                     "SELECT seq, content FROM messages "
                     "WHERE agent_id = ? AND session_id = ? AND role = 'user' "
-                    "ORDER BY seq DESC LIMIT 20",
+                    "ORDER BY seq DESC",
                     (aid, session_id),
-                ).fetchall()
+                )
                 for seq, content_raw in rows:
                     try:
                         content = json.loads(content_raw)
@@ -1719,6 +1832,7 @@ class ConversationStore:
         user_id: Optional[str] = None,
         until_seq: Optional[int] = None,
         max_seq: Optional[int] = None,
+        all_owners: bool = False,
     ) -> Dict[str, Any]:
         """
         Load a page of conversation history for UI display, grouped into turns.
@@ -1746,6 +1860,8 @@ class ConversationStore:
         Pages are numbered from 1 (most recent).  Messages within a page are
         returned in chronological order.
 
+        ``page`` and ``page_size`` are clamped to ``[1, MAX_PAGE_SIZE]``.
+
         Returns:
             {
                 "messages": [
@@ -1753,6 +1869,7 @@ class ConversationStore:
                         "role": "user" | "assistant",
                         "content": str,
                         "tool_calls": [...],   # assistant only, may be []
+                        "usage": {...},        # assistant only, provider-reported totals
                         "created_at": int,
                     },
                     ...
@@ -1763,7 +1880,7 @@ class ConversationStore:
                 "has_more": bool,
             }
         """
-        page = max(1, page)
+        page, page_size = page_window(page, page_size, 20)
         with self._lock:
             conn = self._connect()
             try:
@@ -1783,7 +1900,7 @@ class ConversationStore:
                 # narrowed to the empty owner.
                 scope_sql, scope_params = dimension_clause(
                     values=self._dimensions(), keys=("agent_id", "tenant_id"))
-                if user_id:
+                if user_id and not all_owners:
                     msg_where = f"WHERE session_id = ? AND owner = ?{scope_sql}"
                     msg_args = (session_id, user_id) + scope_params
                 else:
@@ -1912,7 +2029,7 @@ class ConversationStore:
                 scope_sql, scope_params = dimension_clause(values=self._dimensions())
                 rows = conn.execute(
                     f"""
-                    SELECT seq, content, created_at
+                    SELECT seq, content, created_at, extras
                     FROM messages
                     WHERE session_id = ? AND role = 'user'{scope_sql}
                     ORDER BY seq ASC
@@ -1923,7 +2040,7 @@ class ConversationStore:
                 conn.close()
 
         items: List[Dict[str, Any]] = []
-        for seq, raw_content, created_at in rows:
+        for seq, raw_content, created_at, raw_extras in rows:
             try:
                 content = json.loads(raw_content)
             except Exception:
@@ -1935,7 +2052,12 @@ class ConversationStore:
             text = _extract_display_text(content)
             if not text or _is_internal_user_marker(text):
                 continue
-            preview = _first_line_preview(text, preview_chars)
+            try:
+                extras = json.loads(raw_extras) if raw_extras else {}
+            except Exception:
+                extras = {}
+            display = extras.get("display") if isinstance(extras, dict) else None
+            preview = _first_line_preview(display if isinstance(display, str) and display else text, preview_chars)
             if not preview:
                 continue
             items.append({
@@ -1955,6 +2077,7 @@ class ConversationStore:
         user_id: Optional[str] = None,
         q: str = "",
         archived: bool = False,
+        all_owners: bool = False,
     ) -> Dict[str, Any]:
         """
         List sessions with pinned ones first, then last_active DESC, with an
@@ -1972,6 +2095,9 @@ class ConversationStore:
         the rows on the same page, so a pin still reaches the top of the list
         when the conversation is old enough to sit several pages down.
 
+        ``page`` and ``page_size`` are only bounded below: the cross-Agent
+        listing asks each store for ``page * page_size`` rows at once.
+
         Returns:
             {
                 "sessions": [{session_id, title, created_at, last_active,
@@ -1982,10 +2108,17 @@ class ConversationStore:
                 "has_more": bool,
             }
         """
-        page = max(1, page)
+        page, page_size = page_window(page, page_size, 50, cap=None)
         q = normalize_session_search_query(q)
-        clauses = ["owner = ?"]
-        params: List[Any] = [user_id or ""]
+        clauses: List[str] = []
+        params: List[Any] = []
+        if not all_owners:
+            clauses.append("owner = ?")
+            params.append(user_id or "")
+        else:
+            # Owner-less (legacy) rows are not another user's conversation;
+            # the cross-owner view must not guess an owner for them.
+            clauses.append("owner != ''")
         scope_sql, scope_params = dimension_clause(
             values=self._dimensions(), keys=("agent_id", "tenant_id"))
         if scope_sql:
@@ -2009,7 +2142,7 @@ class ConversationStore:
                 ).fetchone()[0]
                 rows = conn.execute(
                     f"""
-                    SELECT session_id, title, created_at, last_active, msg_count, pinned
+                    SELECT session_id, title, created_at, last_active, msg_count, pinned, owner
                     FROM sessions
                     WHERE {where}
                     ORDER BY pinned DESC, last_active DESC
@@ -2028,6 +2161,7 @@ class ConversationStore:
                 "last_active": r[3],
                 "msg_count": r[4],
                 "pinned": bool(r[5]),
+                "owner": r[6] or "",
             }
             for r in rows
         ]
@@ -2130,15 +2264,50 @@ class ConversationStore:
 
     def rename_session(self, session_id: str, title: str) -> bool:
         """Update the title of a session. Returns True if the session existed."""
+        scope_sql, scope_params = dimension_clause(values=self._dimensions())
         with self._lock:
             conn = self._connect()
             try:
                 with conn:
                     cur = conn.execute(
-                        "UPDATE sessions SET title = ? WHERE agent_id = ? AND session_id = ?",
-                        (title, self._agent_id, session_id),
+                        "UPDATE sessions SET title = ? WHERE session_id = ?" + scope_sql,
+                        (title, session_id) + scope_params,
                     )
                     return cur.rowcount > 0
+            finally:
+                conn.close()
+
+    def upsert_title(self, session_id: str, title: str, channel_type: str = "") -> bool:
+        """Set a session's title, creating its record first when missing.
+
+        A client may title a brand-new chat before the agent has persisted its
+        first turn; a plain rename would hit no row and lose the title. The
+        record created here is the same one ``append_messages`` would create,
+        so the later write just fills it in. Returns True if the row existed.
+        """
+        now = int(time.time())
+        dims = self._dimensions()
+        scope_sql, scope_params = dimension_clause(values=dims)
+        with self._lock:
+            conn = self._connect()
+            try:
+                with conn:
+                    aid = self._agent_id
+                    inserted = conn.execute(
+                        """
+                        INSERT OR IGNORE INTO sessions
+                            (agent_id, session_id, channel_type, title, created_at, last_active, msg_count, owner, tenant_id)
+                        VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+                        """,
+                        (aid, session_id, channel_type, title, now, now, dims.get("owner", ""), dims.get("tenant_id", "")),
+                    ).rowcount
+                    if inserted:
+                        return False
+                    conn.execute(
+                        "UPDATE sessions SET title = ? WHERE session_id = ?" + scope_sql,
+                        (title, session_id) + scope_params,
+                    )
+                    return True
             finally:
                 conn.close()
 
@@ -2240,6 +2409,55 @@ class ConversationStore:
                     return cur.rowcount > 0
             finally:
                 conn.close()
+
+    def set_context_usage(self, session_id: str, usage: Optional[dict]) -> bool:
+        """Store a session's context-usage snapshot (None clears it). Best-effort;
+        returns True if the session existed."""
+        scope_sql, scope_params = dimension_clause(values=self._dimensions())
+        try:
+            payload = "" if usage is None else json.dumps(usage, ensure_ascii=False)
+        except (TypeError, ValueError) as e:
+            logger.debug(f"[ConversationStore] Context usage not serialisable: {e}")
+            return False
+        try:
+            with self._lock:
+                conn = self._connect()
+                try:
+                    with conn:
+                        cur = conn.execute(
+                            "UPDATE sessions SET context_usage = ? WHERE session_id = ?" + scope_sql,
+                            (payload, session_id) + scope_params,
+                        )
+                        return cur.rowcount > 0
+                finally:
+                    conn.close()
+        except Exception as e:
+            logger.debug(f"[ConversationStore] Context usage write skipped: {e}")
+            return False
+
+    def get_context_usage(self, session_id: str) -> Optional[dict]:
+        """The snapshot written by :meth:`set_context_usage`; None if missing or unreadable."""
+        scope_sql, scope_params = dimension_clause(values=self._dimensions())
+        try:
+            with self._lock:
+                conn = self._connect()
+                try:
+                    row = conn.execute(
+                        "SELECT context_usage FROM sessions WHERE session_id = ?" + scope_sql,
+                        (session_id,) + scope_params,
+                    ).fetchone()
+                finally:
+                    conn.close()
+        except Exception as e:
+            logger.debug(f"[ConversationStore] Context usage read skipped: {e}")
+            return None
+        if not row or not row[0]:
+            return None
+        try:
+            data = json.loads(row[0])
+        except (TypeError, ValueError):
+            return None
+        return data if isinstance(data, dict) else None
 
     def set_archived(self, session_id: str, archived: bool) -> bool:
         """Soft-hide or restore a session. Returns True if it existed.
@@ -2707,6 +2925,319 @@ class ConversationStore:
                 conn.close()
 
     # ------------------------------------------------------------------
+    # Artifacts
+    # ------------------------------------------------------------------
+
+    def retry_artifact_index(self, session_id: Optional[str] = None, limit: int = 50) -> int:
+        """Rebuild derived entries from committed messages without replaying chat.
+
+        The watermark advances only after indexing succeeds. Include the start
+        of a partially persisted turn so its tool calls and results stay paired.
+        All selection and progress writes use the same trusted dimensions.
+        """
+        from agent.protocol.artifact import artifact_root_for, collect_message_artifacts
+        scope_sql, scope_params = dimension_clause(values=self._dimensions())
+        sid_sql = " AND session_id = ?" if session_id else ""
+        sid_params = (session_id,) if session_id else ()
+        with self._lock:
+            conn = self._connect()
+            try:
+                sessions = conn.execute(
+                    "SELECT session_id, artifact_index_seq FROM sessions WHERE "
+                    "artifact_index_seq < COALESCE((SELECT MAX(m.seq) FROM messages m "
+                    "WHERE m.session_id = sessions.session_id AND m.agent_id = sessions.agent_id "
+                    "AND m.owner = sessions.owner AND m.tenant_id = sessions.tenant_id), -1)"
+                    + scope_sql + sid_sql + " ORDER BY last_active ASC LIMIT ?",
+                    scope_params + sid_params + (max(1, min(200, limit)),),
+                ).fetchall()
+                indexed = 0
+                for sid, watermark in sessions:
+                    latest = conn.execute(
+                        "SELECT MAX(seq) FROM messages WHERE session_id = ?" + scope_sql,
+                        (sid,) + scope_params,
+                    ).fetchone()[0]
+                    if latest is None or latest <= watermark:
+                        continue
+                    first = self._latest_visible_user_seq(conn, sid, before_seq=watermark + 1)
+                    rows = conn.execute(
+                        "SELECT role, content, extras FROM messages WHERE session_id = ? AND seq >= ? AND seq <= ?"
+                        + scope_sql + " ORDER BY seq", (sid, first if first is not None else 0, latest) + scope_params,
+                    ).fetchall()
+                    messages = [{'role': role, 'content': json.loads(content),
+                                 'extras': json.loads(extras) if extras else {}}
+                                for role, content, extras in rows]
+                    root = artifact_root_for(sid, self._agent_id or None, getattr(self, "_workspace_root", None))
+                    items = collect_message_artifacts(messages, root)
+                    if items and self.record_artifacts(sid, items) != len(items):
+                        continue
+                    conn.execute("UPDATE sessions SET artifact_index_seq = ? WHERE session_id = ?" + scope_sql,
+                                 (latest, sid) + scope_params)
+                    conn.commit()
+                    indexed += 1
+                return indexed
+            finally:
+                conn.close()
+
+    def record_artifacts(
+        self,
+        session_id: str,
+        items: List[Dict[str, Any]],
+        turn_seq: Optional[int] = None,
+    ) -> int:
+        """Index the files one stretch of a turn produced.
+
+        Each item needs ``path`` (absolute) and may carry ``kind``, ``size`` and
+        ``source``. A path already indexed for this Agent is moved to the top
+        and re-pointed at the turn, so the index always leads to the turn that
+        last produced the file. ``turn_seq`` defaults to the session's latest
+        turn. Returns the number of items written.
+        """
+        if not items or not session_id or not self._artifacts_ready:
+            return 0
+        now = int(time.time())
+        dims = self._dimensions()
+        owner, tenant = dims.get("owner", ""), dims.get("tenant_id", "")
+        with self._lock:
+            conn = self._connect()
+            try:
+                with conn:
+                    aid = self._agent_id
+                    # A signed-in write must belong to a previously committed
+                    # session. Never infer ownership from a client path.
+                    if owner or tenant:
+                        session = conn.execute(
+                            "SELECT 1 FROM sessions WHERE agent_id = ? AND session_id = ? "
+                            "AND owner = ? AND tenant_id = ?",
+                            (aid, session_id, owner, tenant),
+                        ).fetchone()
+                        if not session:
+                            return 0
+                    if turn_seq is None:
+                        turn_seq = self._latest_visible_user_seq(conn, session_id)
+                    written = 0
+                    for item in items:
+                        path = str(item.get("path") or "")
+                        if not path:
+                            continue
+                        kind = str(item.get("kind") or "file")
+                        size = int(item.get("size") or 0)
+                        source = str(item.get("source") or "")
+                        origin = item.get("origin")
+                        if origin is not None and not isinstance(origin, dict):
+                            continue
+                        if origin and origin.get("source") != "server":
+                            if (origin.get("source") != "desktop"
+                                    or not origin.get("device_id") or not origin.get("workspace_id")
+                                    or origin.get("owner", "") != owner
+                                    or origin.get("tenant_id", "") != tenant):
+                                continue
+                            file_source = json.dumps(
+                                ["desktop", origin["device_id"], origin["workspace_id"], origin.get("binding_id", "")],
+                                separators=(",", ":"), ensure_ascii=False)
+                        else:
+                            file_source = "server"
+                        extras = json.dumps({"origin": origin}, ensure_ascii=False) if origin else ""
+                        row = conn.execute(
+                            "SELECT id FROM artifacts WHERE agent_id = ? AND path = ? "
+                            "AND owner = ? AND tenant_id = ? AND file_source = ? "
+                            "ORDER BY id DESC LIMIT 1",
+                            (aid, path, owner, tenant, file_source),
+                        ).fetchone()
+                        if row:
+                            conn.execute(
+                                """
+                                UPDATE artifacts
+                                SET session_id = ?, turn_seq = ?, kind = ?, size = ?,
+                                    source = ?, updated_at = ?, extras = ?
+                                WHERE id = ?
+                                """,
+                                (session_id, turn_seq, kind, size, source, now, extras, row[0]),
+                            )
+                        else:
+                            conn.execute(
+                                """
+                                INSERT INTO artifacts
+                                    (agent_id, session_id, turn_seq, path, kind, size,
+                                     source, created_at, updated_at, owner, tenant_id, file_source, extras)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """,
+                                (aid, session_id, turn_seq, path, kind, size, source, now, now, owner, tenant, file_source, extras),
+                            )
+                        written += 1
+                    return written
+            finally:
+                conn.close()
+
+    def list_artifacts(
+        self,
+        agent_ids: Optional[List[str]] = None,
+        kinds: Optional[List[str]] = None,
+        query: str = "",
+        path: str = "",
+        file_source: Optional[str] = None,
+        offset: int = 0,
+        limit: int = 60,
+    ) -> Dict[str, Any]:
+        """Newest-first page of indexed artifacts, with their session's title.
+
+        Pinned rows come first, most recently pinned on top. ``agent_ids``
+        widens the scope from this handle's Agent to the stored ids given
+        (``""`` is the default Agent): every Agent shares the file, so one
+        handle can read them all. ``path`` narrows to one exact file, and
+        ``query`` matches the path or the given title.
+        """
+        if not self._artifacts_ready:
+            return {"items": [], "has_more": False}
+        scope = list(agent_ids) if agent_ids is not None else [self._agent_id]
+        if not scope:
+            return {"items": [], "has_more": False}
+        where: List[str] = ["a.agent_id IN (%s)" % ",".join("?" * len(scope))]
+        args: List[Any] = list(scope)
+        dims = self._dimensions()
+        where.extend(["a.owner = ?", "a.tenant_id = ?"])
+        args.extend([dims.get("owner", ""), dims.get("tenant_id", "")])
+        if file_source is not None:
+            where.append("a.file_source = ?")
+            args.append(file_source)
+        if kinds:
+            where.append("a.kind IN (%s)" % ",".join("?" * len(kinds)))
+            args.extend(kinds)
+        if path:
+            where.append("a.path = ?")
+            args.append(path)
+        if query:
+            escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            where.append("(a.path LIKE ? ESCAPE '\\' OR a.title LIKE ? ESCAPE '\\')")
+            args.extend([f"%{escaped}%"] * 2)
+        clause = "WHERE " + " AND ".join(where)
+        limit = max(1, min(int(limit), 200))
+        offset = max(0, int(offset))
+        with self._lock:
+            conn = self._connect()
+            try:
+                rows = conn.execute(
+                    f"""
+                    SELECT a.id, COALESCE(a.agent_id, ''), COALESCE(a.session_id, ''),
+                           a.turn_seq, a.path, COALESCE(a.kind, 'file'),
+                           COALESCE(a.size, 0), COALESCE(a.source, ''),
+                           COALESCE(a.created_at, 0), COALESCE(a.updated_at, 0),
+                           s.title, s.channel_type, COALESCE(a.pinned_at, 0) AS pin,
+                           COALESCE(a.title, ''), COALESCE(a.extras, ''), COALESCE(a.file_source, 'server')
+                    FROM artifacts a
+                    LEFT JOIN sessions s
+                        ON s.agent_id = a.agent_id AND s.session_id = a.session_id
+                        AND s.owner = a.owner AND s.tenant_id = a.tenant_id
+                    {clause}
+                    ORDER BY pin DESC, a.updated_at DESC, a.id DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (*args, limit + 1, offset),
+                ).fetchall()
+            finally:
+                conn.close()
+        items = [
+            {
+                "id": row[0],
+                "agent_id": row[1],
+                "session_id": row[2],
+                "turn_seq": row[3],
+                "path": row[4],
+                "kind": row[5],
+                "size": row[6],
+                "source": row[7],
+                "created_at": row[8],
+                "updated_at": row[9],
+                "session_title": row[10],
+                "session_channel": row[11],
+                "session_exists": row[11] is not None,
+                "pinned_at": row[12],
+                "title": row[13],
+                "file_source": row[15],
+                **_artifact_extras(row[14]),
+            }
+            for row in rows[:limit]
+        ]
+        return {"items": items, "has_more": len(rows) > limit}
+
+    def set_artifact_title(self, artifact_id: int, title: str) -> bool:
+        """Name one row for the view; an empty title falls back to the file name."""
+        if not self._artifacts_ready:
+            return False
+        dims = self._dimensions()
+        owner, tenant = dims.get("owner", ""), dims.get("tenant_id", "")
+        with self._lock:
+            conn = self._connect()
+            try:
+                with conn:
+                    cur = conn.execute(
+                        "UPDATE artifacts SET title = ? WHERE agent_id = ? AND id = ? AND owner = ? AND tenant_id = ?",
+                        ((title or "").strip(), self._agent_id, int(artifact_id), owner, tenant),
+                    )
+                    return cur.rowcount > 0
+            finally:
+                conn.close()
+
+    def set_artifact_pinned(self, artifact_id: int, pinned: bool) -> Optional[int]:
+        """Pin one row to the top of the timeline, or unpin it.
+
+        Returns the stored ``pinned_at`` (0 when unpinned), or None when the row
+        is not this Agent's.
+        """
+        if not self._artifacts_ready:
+            return None
+        pinned_at = int(time.time()) if pinned else 0
+        dims = self._dimensions()
+        owner, tenant = dims.get("owner", ""), dims.get("tenant_id", "")
+        with self._lock:
+            conn = self._connect()
+            try:
+                with conn:
+                    cur = conn.execute(
+                        "UPDATE artifacts SET pinned_at = ? WHERE agent_id = ? AND id = ? AND owner = ? AND tenant_id = ?",
+                        (pinned_at, self._agent_id, int(artifact_id), owner, tenant),
+                    )
+                    return pinned_at if cur.rowcount > 0 else None
+            finally:
+                conn.close()
+
+    def delete_artifact(self, artifact_id: int) -> bool:
+        """Drop one row from the index. The file itself is left alone."""
+        if not self._artifacts_ready:
+            return False
+        dims = self._dimensions()
+        owner, tenant = dims.get("owner", ""), dims.get("tenant_id", "")
+        with self._lock:
+            conn = self._connect()
+            try:
+                with conn:
+                    cur = conn.execute(
+                        "DELETE FROM artifacts WHERE agent_id = ? AND id = ? AND owner = ? AND tenant_id = ?",
+                        (self._agent_id, int(artifact_id), owner, tenant),
+                    )
+                    return cur.rowcount > 0
+            finally:
+                conn.close()
+
+    def _latest_visible_user_seq(self, conn: sqlite3.Connection, session_id: str,
+                                 before_seq: Optional[int] = None) -> Optional[int]:
+        """Newest real user message in the trusted session, before an optional cursor."""
+        scope_sql, scope_params = dimension_clause(values=self._dimensions())
+        cutoff = " AND seq <= ?" if before_seq is not None else ""
+        rows = conn.execute(
+            "SELECT seq, content FROM messages WHERE session_id = ? AND role = 'user'"
+            + scope_sql + cutoff + " ORDER BY seq DESC",
+            (session_id,) + scope_params + ((before_seq,) if before_seq is not None else ()),
+        )
+        for seq, raw in rows:
+            try:
+                content = json.loads(raw)
+            except Exception:
+                content = raw
+            if _is_visible_user_message(content):
+                return int(seq)
+        return None
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
@@ -2728,9 +3259,32 @@ class ConversationStore:
             # half-applied upgrade or any other surprise degrades run tracking
             # instead of taking conversation history offline.
             self._init_runs(conn)
+            self._init_artifacts(conn)
         finally:
             conn.close()
         self._schema_identity = self._db_identity()
+
+    def _init_artifacts(self, conn: sqlite3.Connection) -> None:
+        """Create the artifacts index without ever risking the core schema."""
+        try:
+            conn.executescript(_ARTIFACTS_DDL)
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(artifacts)")}
+            for name, decl in _ARTIFACTS_ADDED_COLUMNS:
+                if name not in cols:
+                    conn.execute(f"ALTER TABLE artifacts ADD COLUMN {name} {decl}")
+            conn.executescript(_ARTIFACTS_INDEX_DDL)
+            conn.commit()
+            self._artifacts_ready = True
+        except Exception as e:
+            self._artifacts_ready = False
+            logger.warning(
+                f"[ConversationStore] Artifact index unavailable ({e}); "
+                "conversation history is unaffected"
+            )
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
     def _init_runs(self, conn: sqlite3.Connection) -> None:
         """Create the runs table without ever risking the core schema."""
@@ -2962,13 +3516,14 @@ class ConversationStore:
                     last_active       INTEGER NOT NULL,
                     msg_count         INTEGER NOT NULL DEFAULT 0,
                     pinned            INTEGER NOT NULL DEFAULT 0,
+                    context_usage     TEXT    NOT NULL DEFAULT '',
                     PRIMARY KEY (agent_id, session_id)
                 );
                 INSERT INTO sessions_new
                     (agent_id, session_id, channel_type, title, context_start_seq,
-                     created_at, last_active, msg_count, pinned)
+                     created_at, last_active, msg_count, pinned, context_usage)
                 SELECT agent_id, session_id, channel_type, title, context_start_seq,
-                       created_at, last_active, msg_count, pinned
+                       created_at, last_active, msg_count, pinned, context_usage
                 FROM sessions;
                 DROP TABLE sessions;
                 ALTER TABLE sessions_new RENAME TO sessions;
@@ -3388,14 +3943,17 @@ def _merge_one_agent(conn: sqlite3.Connection, src_path: str, agent_id: str) -> 
                     )
                 )
                 pinned = "pinned" if "pinned" in session_cols else "0"
+                context_usage = (
+                    "context_usage" if "context_usage" in session_cols else "''"
+                )
                 conn.execute(
                     f"""
                     INSERT OR IGNORE INTO sessions
                         (agent_id, session_id, channel_type, title, context_start_seq,
-                         created_at, last_active, msg_count, pinned, owner, tenant_id)
+                         created_at, last_active, msg_count, pinned, owner, tenant_id, context_usage)
                     SELECT ?, session_id, {optional_session_cols},
                            created_at, last_active, msg_count, {pinned},
-                           {session_owner}, {session_tenant}
+                           {session_owner}, {session_tenant}, {context_usage}
                     FROM src.sessions
                     """,
                     (agent_id,),

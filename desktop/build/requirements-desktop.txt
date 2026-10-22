@@ -19,6 +19,12 @@
 
 # ---- core ----
 numpy>=1.21
+# `pandas` was in NEITHER this list nor requirements-script-runtime.txt until the
+# script-runtime guard read the skills' imports and found fin-report-analysis and
+# finance-ledger-generator both depend on it. It is also a transitive dependency of
+# openpyxl, which PyInstaller pulls in automatically -- so the gap was invisible
+# here while still being a real failure on a runtime that ships only what is listed.
+pandas>=2.0
 # Retain the legacy interpreter line; supported modern builds take the fixes.
 aiohttp>=3.8.6,<3.10; python_version < "3.10"
 aiohttp>=3.14.3; python_version >= "3.10"

@@ -17,7 +17,7 @@ let mod;
 before(() => {
   const src = path.join(desktop, 'src', 'main', 'remote', 'local-files-bridge.ts');
   if (!fs.existsSync(compiled) || fs.statSync(compiled).mtimeMs < fs.statSync(src).mtimeMs) {
-    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe' });
+    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe', shell: process.platform === 'win32',});
   }
   // Fresh module so the in-memory grant registry starts empty.
   delete require.cache[require.resolve(compiled)];

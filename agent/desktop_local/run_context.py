@@ -305,6 +305,54 @@ def revoke_local_scope(
     return {"roots": roots, "runs": runs}
 
 
+def _declare_expected_version(clone: Any, name: str) -> None:
+    """Add ``expected_version`` to a cloned file tool's schema (task 4.2/4.3).
+
+    **Only the clone is touched.** ``tool_view_for_run`` hands out ``copy.copy``
+    clones, and each clone gets its own ``params`` here, so the master tool class
+    the model sees elsewhere is unchanged -- which is what the v3 contract requires
+    when it says the tool schemas "stay the master's; only the execution end
+    changes". This *is* the execution end: the view built for a run in a user's
+    project.
+
+    Without it the tool that takes a version is the one tool that cannot be told
+    one: the write helper refuses an overwrite whose ``expected_version`` is absent
+    or stale (``expected.ok_or(Code::FileChanged)``, and the v3 precondition:
+    "any other write is an overwrite and requires expected_version"), so a model
+    editing an existing file would have had no way to state what it read -- and no
+    way to discover that it needed to.
+
+    The read side tells it what to pass. This function intentionally does not:
+    a schema can only describe the *argument*, and inventing a version server-side
+    would be authorizing on the model's behalf.
+    """
+    if name not in ("write", "edit"):
+        return
+    params = getattr(clone, "params", None)
+    if not isinstance(params, dict):
+        return
+    properties = params.get("properties")
+    if not isinstance(properties, dict) or "expected_version" in properties:
+        return
+    params = dict(params)
+    params["properties"] = dict(properties)
+    params["properties"]["expected_version"] = {
+        "type": "string",
+        # Written for a reader who has to decide whether to send one, because the
+        # consequence of omitting it differs by operation and the model cannot
+        # discover that by trying.
+        "description": (
+            "The version of the file this write was built from, exactly as the "
+            "read that produced the content returned it. Required to overwrite an "
+            "existing file and ignored when creating a new one: without it, or if "
+            "the file has changed since that read, the write is refused with "
+            "file_changed and nothing is written. Pass the version from the read "
+            "you built these bytes from; do not retry with a guess."
+        ),
+    }
+    clone.params = params
+
+
 def tool_view_for_run(tools: Dict[str, Any], cwd: str,
                       identity: Any = None, target: Any = None,
                       skill_roots: Sequence[str] = ()) -> Dict[str, Any]:
@@ -348,6 +396,7 @@ def tool_view_for_run(tools: Dict[str, Any], cwd: str,
             # directory: drop it from this run's view instead.
             continue
         view[name] = clone
+        _declare_expected_version(clone, name)
     if _is_desktop_target(target):
         from agent.desktop_local.script_tool import isolate_script_tools
 

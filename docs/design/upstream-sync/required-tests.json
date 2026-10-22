@@ -36,6 +36,60 @@
         "test_skip_xfail_missing_and_zero_collection_are_not_passes",
         "test_actual_assembly_detects_removed_route_script_and_style"
       ]
+    },
+    {
+      "file": "tests/test_sync_master_web_contract.py",
+      "ids": [
+        "test_menu_is_personal_preserves_unknown_and_rejects_cross_origin",
+        "test_menu_atomic_failure_keeps_saved_value_and_reset_is_private",
+        "test_artifact_index_scopes_before_pagination_and_mutations",
+        "test_artifact_failure_retries_committed_messages_once",
+        "test_device_history_never_indexes_server_same_named_file",
+        "test_api_key_management_uses_existing_iam_and_one_shot_secret",
+        "test_menu_keeps_existing_business_entries_and_denies_management",
+        "test_artifact_all_scope_skips_foreign_agents_without_http_error",
+        "test_artifact_recovery_keeps_tool_use_before_persisted_result",
+        "test_real_service_key_directory_rotation_and_identity_outage",
+        "test_api_default_model_respects_pins_roles_and_live_grants",
+        "test_runtime_model_authorization_service_failure_does_not_allow_provider",
+        "test_fallback_cannot_reuse_a_same_named_model_grant_from_another_provider",
+        "test_model_save_failure_keeps_live_config_and_file[payload0]",
+        "test_model_save_failure_keeps_live_config_and_file[payload1]",
+        "test_model_save_failure_keeps_live_config_and_file[payload2]",
+        "test_model_save_failure_keeps_live_config_and_file[payload3]",
+        "test_model_save_failure_keeps_live_config_and_file[payload4]",
+        "test_relative_artifacts_resolve_each_owners_actual_tool_directory",
+        "test_actual_chat_api_accepts_service_key_without_browser_tenant_header"
+      ]
+    },
+    {
+      "file": "tests/test_sync_master_tls.py",
+      "ids": [
+        "test_fork_startup_serves_tls_with_the_configured_certificate",
+        "test_fork_tls_errors_do_not_start_plain_http[missing]",
+        "test_fork_tls_errors_do_not_start_plain_http[malformed]"
+      ]
+    },
+    {
+      "file": "tests/test_channel_startup_open.py",
+      "ids": [
+        "test_run_starts_warmup_in_database_mode",
+        "test_run_starts_warmup_in_legacy_mode",
+        "test_run_starts_mixed_channels_without_logging_credentials"
+      ]
+    },
+    {
+      "file": "tests/test_todo_web_database.py",
+      "ids": [
+        "test_database_list_and_summary_use_private_store",
+        "test_create_update_and_history_remain_owner_and_tenant_scoped",
+        "test_database_identity_errors_have_real_http_status",
+        "test_password_change_restriction_precedes_storage",
+        "test_unavailable_private_directory_returns_503",
+        "test_disabled_feature_does_not_create_store",
+        "test_internal_error_is_500_without_internal_details",
+        "test_unauthenticated_request_is_401"
+      ]
     }
   ],
   "node": [
@@ -73,6 +127,30 @@
         "a qualified member reaches /admin and its granted page without a new denial marker",
         "without the route module a registered deep path falls back to the workbench"
       ]
+    },
+    {
+      "file": "tests/test_sync_master_context_frontend.cjs",
+      "names": [
+        "master context card refuses compaction without the authoritative capability",
+        "late compaction completion cannot repaint or unlock a different session",
+        "reset invalidates a pending operation even when returning to the same session",
+        "restored context renders its snapshot while live-only compaction stays disabled"
+      ]
+    },
+    {
+      "file": "tests/test_console_i18n_coverage.cjs",
+      "names": [
+        "every i18n key the page asks for from the markup resolves",
+        "every i18n key the loaded scripts ask for by name resolves",
+        "the coding Agent surface is translated, not shown as keys",
+        "the actual master table merges every loaded fork namespace before lookup"
+      ]
+    },
+    {
+      "file": "tests/test_desktop_host_frontend.cjs",
+      "names": [
+        "the native adapters load before their assembled consumers"
+      ]
     }
   ],
   "browser": {
@@ -91,7 +169,7 @@
       "parity: denied deep route preserves address (classic)",
       "parity: denied deep route preserves address (split)",
       "parity: deep route survives login and explicit tenant selection",
-      "parity: source update binds confirmation and clears it across identities",
+      "parity: hidden source update entry retains confirmation and identity guards",
       "parity: revoked model management restores only the member catalog",
       "parity: denied admin entry keeps registered deep routes (classic)",
       "parity: denied admin entry keeps registered deep routes (split)",
@@ -100,7 +178,25 @@
       "parity: SAP iframe navigation preserves deep shell and identity teardown",
       "http: console-created tasks dispatch into two owned sessions",
       "http: long completion, 205 rows, reconnect and two windows",
-      "http: preference off consumes event and revoked grant rejects notification click"
+      "http: preference off consumes event and revoked grant rejects notification click",
+      "sync: personal menu saves, reloads and isolates two browser identities",
+      "sync: actual menu write failure retains the committed layout and reports error",
+      "sync: artifacts read real files, rename without rewriting and isolate owners",
+      "sync: HTML preview cannot escape its sandbox and missing files stay unavailable",
+      "sync: skill creation uses the rendered form and persists an authorized resource",
+      "sync: knowledge category and document create, edit and reload through the master UI",
+      "sync: Web service keys are one-shot, authorized and revoked on rotation",
+      "sync: tenant switches, logout and re-login restore only the selected personal layout",
+      "sync: workspace upload, search, edit and download persist real file bytes",
+      "sync: master history launcher creates a scoped team before switching conversation",
+      "sync: header language reflects the personal choice without changing instance configuration",
+      "sync: agent conversation entry preserves centered welcome and visible composer",
+      "sync: workbench and console keep separate menus through links, reload and history",
+      "sync: mixed personal layouts keep both areas and unknown items after edit and reset",
+      "sync: workbench-only member has no console entry and denied deep links keep a way back",
+      "sync: both navigation areas stay reachable on mobile and the collapsed sidebar",
+      "sync: main menu labels retain rdai names in three languages",
+      "sync: todos work by default with persistent personal creation and completion"
     ]
   }
 }

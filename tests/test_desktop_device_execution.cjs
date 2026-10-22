@@ -38,7 +38,15 @@ function needsBuild() {
 
 before(() => {
     if (needsBuild()) {
-        execFileSync('npm', ['run', 'build:main'], { cwd: desktop, stdio: 'inherit' });
+        execFileSync('npm', ['run', 'build:main'], {
+            cwd: desktop,
+            stdio: 'inherit',
+            // ``npm`` is ``npm.cmd`` on Windows, and ``execFileSync`` without a
+            // shell fails with ``spawnSync npm ENOENT`` before the build starts --
+            // which made every test in this file fail for a reason unrelated to
+            // what it tests. Same flag as the sibling suites.
+            shell: process.platform === 'win32',
+        });
     }
     api = {
         execution: require(path.join(distDir, 'device-execution.js')),
@@ -145,6 +153,7 @@ function harness(log) {
 function build({
     log, project, journalFile, roots, now = NOW, onReconcile, connected,
     identity = IDENTITY, platform, newJournalId, skillCache, fetchSkills,
+    executionMajor,
 }) {
     const h = harness(log);
     // ``undefined`` means "the ordinary device: it holds the version the frame
@@ -164,6 +173,7 @@ function build({
         newJournalId: newJournalId ?? (() => { let n = 0; return () => `journal_${++n}`; })(),
         ...(resolvedCache !== undefined ? { skillCache: resolvedCache } : {}),
         ...(fetchSkills !== undefined ? { fetchSkills } : {}),
+        ...(executionMajor !== undefined ? { executionMajor } : {}),
     });
     return { execution, ...h, project };
 }
@@ -758,4 +768,51 @@ test('the retention sweep leaves the unknown outcomes it still owes answers for'
     assert.equal(removed.length, 2);
     assert.equal(journal.entries.length, 2);
     assert.ok(journal.pruned.length >= 2, 'each reclaimed receipt leaves a tombstone');
+});
+
+// ---------------------------------------------------------------------------
+// Task 3.5: the *negotiated* major decides which rules a frame is judged by.
+//
+// This is the end of the chain the earlier rounds found broken: every execute
+// frame was validated against v2, so a v3 frame came back `invalid_request`
+// ("protocol_major must be 2") before the runner was ever consulted -- which is
+// why the device side could not run a v3 command at all.
+// ---------------------------------------------------------------------------
+
+/** The contract's own v3 execute_tool sample. */
+function v3Frame(overrides = {}) {
+    const base = JSON.parse(fs.readFileSync(
+        path.join(root, 'contracts', 'desktop', 'samples', 'v3', 'execute_tool.valid.json'),
+        'utf8'));
+    return { ...base, device_id: IDENTITY.device_id, workspace_id: 'ws_example',
+        ...overrides };
+}
+
+test('a v3 frame is admitted when v3 was the negotiated major', async () => {
+    const s = scratch();
+    const h = build({
+        ...s, roots: { ws_example: '/proj/a' }, executionMajor: 3,
+    });
+    const result = await h.execution.execute(v3Frame());
+
+    // Asserting the *code* rather than "no error" keeps this from passing for an
+    // unrelated reason (a skill refusal, say). The field is ``error_code``: this is
+    // an ``ExecutionResultFrame``, not a ``CommandResult``.
+    //
+    // The runner validates the frame a second time (``admit``), which is where this
+    // used to fail: the caller's check accepted the frame and the runner's refused
+    // it, because only the caller had been told the negotiated major.
+    assert.notEqual(result.error_code, 'invalid_request',
+        `the contract must accept a v3 frame when v3 was negotiated: ${result.error_message}`);
+});
+
+test('the same v3 frame is refused when v2 was what got negotiated', async () => {
+    const s = scratch();
+    // No ``executionMajor``: the default every existing caller has.
+    const h = build({ ...s, roots: { ws_example: '/proj/a' } });
+    const result = await h.execution.execute(v3Frame());
+
+    assert.equal(result.error_code, 'invalid_request');
+    assert.match(result.error_message, /protocol_major must be 2/,
+        'judged by the negotiated major, not by what the frame claims');
 });

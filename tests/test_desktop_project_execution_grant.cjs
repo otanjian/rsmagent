@@ -21,6 +21,9 @@ let grants;
 let bridge;
 let hostBridge;
 let candidates;
+// The contract supplies the tool-to-operation mapping; importing it rather than
+// restating the table is the point of the test that uses it.
+let contract;
 
 function needsBuild() {
   const outputs = [
@@ -44,12 +47,13 @@ function needsBuild() {
 
 before(() => {
   if (needsBuild()) {
-    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe' });
+    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe', shell: process.platform === 'win32',});
   }
   grants = require(path.join(compiledMain, 'local-files', 'grants.js'));
   candidates = require(path.join(compiledMain, 'local-files', 'candidates.js'));
   bridge = require(path.join(compiledMain, 'remote', 'local-files-bridge.js'));
   hostBridge = require(path.join(compiledMain, 'remote', 'host-bridge.js'));
+  contract = require(path.join(compiledMain, 'project-execution', 'contract.js'));
 });
 
 const SCOPE = { serverId: 'srv_1', userId: 'usr_1', tenantId: 'tnt_1', deviceId: 'dev_1' };
@@ -159,4 +163,89 @@ test('the bridge boundary refuses an unknown purpose and accepts the two known',
   }
   // No purpose at all is still the historical, read-only call.
   assert.equal(hostBridge.checkBridgeCall({ method: 'chooseWorkspace', params: { scope: SCOPE } }).ok, true);
+});
+
+// ---------------------------------------------------------------------------
+// Task 4.1: the operations a grant authorizes, as the v3 contract names them.
+//
+// v2 had one permission ("bound ⇒ any allow-listed tool may run"), so
+// "open for editing" and "open for running code in" were the same thing. v3
+// splits them into ``files`` and ``scripts``, and the split only means anything if
+// the grant carries a *set* rather than a boolean.
+// ---------------------------------------------------------------------------
+
+test('a read-only grant authorizes no v3 operation at all', () => {
+  const registry = new grants.GrantRegistry();
+  const grant = registry.activate(SCOPE, '/tmp/read', 'read');
+  // An empty set, not "unrestricted": the contract reads absent/empty as "no new
+  // operation authorized", and the directory is a read reference rather than a
+  // project.
+  assert.deepEqual(grants.operationsFor(grant.purpose), []);
+  assert.equal(grants.authorizesOperation(grant, 'files'), false);
+  assert.equal(grants.authorizesOperation(grant, 'scripts'), false);
+});
+
+test('a project-execution grant authorizes files, and NOT scripts', () => {
+  const registry = new grants.GrantRegistry();
+  const grant = registry.activate(SCOPE, '/tmp/proj', 'proj', 'project-execution');
+  assert.deepEqual(grants.operationsFor(grant.purpose), ['files']);
+  assert.equal(grants.authorizesOperation(grant, 'files'), true);
+  // The one capability whose entire design exists to keep it separate: running
+  // code in the user's directory needs its own confirmation, so opening a project
+  // for the file tools must never imply it.
+  assert.equal(grants.authorizesOperation(grant, 'scripts'), false,
+    'opening a project for editing must not authorize running code in it');
+});
+
+test('an absent operations field derives from the purpose', () => {
+  // Every record written before this change has no ``operations``: deriving is
+  // what keeps them working, and it must derive the *narrow* answer.
+  assert.equal(grants.authorizesOperation({ purpose: 'readonly-input' }, 'files'), false);
+  assert.equal(grants.authorizesOperation({ purpose: 'project-execution' }, 'files'), true);
+  assert.equal(grants.authorizesOperation(null, 'files'), false);
+});
+
+test('a recorded operations set is the authority, not the purpose', () => {
+  // A grant confirmed with a narrower set than its purpose implies must not be
+  // widened by re-deriving from the purpose -- that is the silent upgrade v3
+  // exists to prevent.
+  const narrowed = { purpose: 'project-execution', operations: [] };
+  assert.equal(grants.authorizesOperation(narrowed, 'files'), false,
+    'the recorded set wins even when it is narrower than the purpose');
+  const scripted = { purpose: 'project-execution', operations: ['files', 'scripts'] };
+  assert.equal(grants.authorizesOperation(scripted, 'scripts'), true);
+});
+
+test('the tool-to-operation mapping comes from the contract, not from a copy', () => {
+  // Generated from the contract's ``required_for`` table, so it cannot drift from
+  // the document both ends check against.
+  assert.equal(contract.requiredOperationForTool('read'), 'files');
+  assert.equal(contract.requiredOperationForTool('write'), 'files');
+  assert.equal(contract.requiredOperationForTool('edit'), 'files');
+  assert.equal(contract.requiredOperationForTool('ls'), 'files');
+  assert.equal(contract.requiredOperationForTool('search_files'), 'files');
+  assert.equal(contract.requiredOperationForTool('run_script'), 'scripts');
+  assert.equal(contract.requiredOperationForTool('bash'), 'scripts');
+  // A tool no contract knows needs nothing -- so it is covered by nothing.
+  assert.equal(contract.requiredOperationForTool('rm_rf'), undefined);
+  assert.equal(contract.coversTool(['files', 'scripts'], 'rm_rf'), false);
+});
+
+test('a files-only grant covers the file tools and refuses the script tools', () => {
+  // This is the separation task 4.1 is about, stated as the check the execution
+  // path now makes: one grant answers differently per tool.
+  const held = grants.operationsFor('project-execution');
+  assert.equal(contract.coversTool(held, 'read'), true);
+  assert.equal(contract.coversTool(held, 'write'), true);
+  assert.equal(contract.coversTool(held, 'run_script'), false,
+    'opening a project for editing must not authorize running code in it');
+  assert.equal(contract.coversTool(held, 'bash'), false);
+
+  // A read-only grant covers nothing at all, which is why no operation name
+  // appears for it.
+  const none = grants.operationsFor('readonly-input');
+  assert.equal(contract.coversTool(none, 'read'), false);
+  assert.equal(contract.coversTool(none, 'bash'), false);
+  // An absent set is not "unrestricted".
+  assert.equal(contract.coversTool(undefined, 'read'), false);
 });

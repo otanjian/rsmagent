@@ -1,0 +1,16 @@
+{
+  "checked_at_utc": "2026-10-21T12:15:22.880780+00:00",
+  "provider": "deepseek",
+  "configured_model": "deepseek-v4-flash",
+  "models_http_status": 200,
+  "web_model_tool_file_passed": true,
+  "artifact_workspace_download_passed": true,
+  "two_service_account_api_passed": true,
+  "secrets_recorded": false,
+  "fixture": "fresh synthetic IAM/conversation stores; isolated initializer env; provider credential read in memory from operator config",
+  "evidence": [
+    "real-chat-result.json",
+    "real-file-browser-result.json",
+    "real-api-result.json"
+  ]
+}

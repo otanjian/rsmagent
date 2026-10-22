@@ -1,0 +1,676 @@
+<div id="view-history" class="view history-view">
+                    <div class="history-content">
+                        <div class="history-head">
+                            <div class="history-heading">
+                                <h2 data-i18n="session_history">历史会话</h2>
+                                <p data-i18n="history_desc">查看和恢复所有智能体的历史会话</p>
+                            </div>
+                            <div class="history-search">
+                                <label for="history-search-input" class="history-search-label" data-i18n="history_search_placeholder">搜索会话标题</label>
+                                <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                                <input id="history-search-input" type="search" autocomplete="off" spellcheck="false"
+                                       enterkeyhint="search" data-i18n-placeholder="history_search_placeholder" placeholder="搜索会话标题"
+                                       oninput="onHistorySearchInput(event)" oncompositionstart="onHistorySearchCompositionStart(event)"
+                                       oncompositionend="onHistorySearchCompositionEnd(event)" onkeydown="onHistorySearchKeydown(event)"
+                                       onchange="onHistorySearchChange(event)" onsearch="onHistorySearchChange(event)">
+                                <button id="history-search-clear" type="button" class="history-search-clear hidden" onclick="clearHistorySearch()"
+                                        data-i18n-title="history_search_clear" title="清除搜索" aria-label="清除搜索">
+                                    <i class="fas fa-xmark" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div id="history-read-scope" class="history-read-scope hidden">
+                                <select id="history-read-scope-select" class="history-read-select"
+                                        onchange="onHistoryReadScopeChange(event)"
+                                        data-i18n-aria-label="history_scope_label" aria-label="会话范围">
+                                    <option value="own" data-i18n="history_scope_own">我的会话</option>
+                                    <option value="agent_all" data-i18n="history_scope_agent_all">获授权智能体的全部会话</option>
+                                </select>
+                                <select id="history-read-target-select" class="history-read-select hidden"
+                                        onchange="onHistoryReadTargetChange(event)"
+                                        data-i18n-aria-label="history_target_label" aria-label="选择智能体"></select>
+                            </div>
+                            <div id="history-page-new-mount" class="history-actions">
+                                <button id="history-refresh-btn" type="button" onclick="loadSessionList()" class="history-refresh-btn"
+                                        data-i18n-title="history_refresh" title="刷新历史会话" aria-label="刷新历史会话">
+                                    <i class="fas fa-rotate" aria-hidden="true"></i>
+                                </button>
+
+                            </div>
+                        </div>
+                        <div id="history-search-summary" class="history-search-summary" role="status" aria-live="polite" aria-atomic="true"></div>
+                        <div id="history-page-list-mount" class="history-list-mount">
+                        </div>
+                    </div>
+                </div>
+
+<div id="view-agent-workbench" class="view agent-workbench-view">
+                    <div class="agent-workbench-head">
+                        <div class="min-w-0">
+                            <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="agent_workbench_title">智能体</h2>
+                            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1" data-i18n="agent_workbench_desc">选择已配置的智能体开始对话</p>
+                        </div>
+                        <button onclick="loadAgentWorkbench(true)"
+                                class="px-4 py-2 rounded-lg border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200 text-sm font-medium whitespace-nowrap shrink-0">
+                            <i class="fas fa-rotate mr-1.5"></i><span data-i18n="agent_workbench_refresh">刷新</span>
+                        </button>
+                    </div>
+                    <div id="agent-workbench-filters" class="agent-workbench-filters" hidden>
+                        <div class="agent-wb-search">
+                            <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                            <input id="agent-workbench-search" type="search" autocomplete="off" enterkeyhint="search"
+                                   data-i18n-placeholder="agent_workbench_search_placeholder" placeholder="搜索智能体名称、职责、标签…"
+                                   aria-label="搜索智能体" oninput="onAgentWorkbenchSearch(event)"
+                                   onchange="onAgentWorkbenchSearch(event)" onsearch="onAgentWorkbenchSearch(event)"
+                                   oncompositionstart="_wbSearchComposing = true"
+                                   oncompositionend="_wbSearchComposing = false; onAgentWorkbenchSearch(event)"
+                                   onkeydown="onAgentWorkbenchSearchKeydown(event)">
+                            <button id="agent-workbench-search-clear" type="button" hidden aria-label="清除搜索"
+                                    onclick="clearAgentWorkbenchSearch()"><i class="fas fa-times" aria-hidden="true"></i></button>
+                        </div>
+                        <div class="agent-wb-filter-row">
+                            <div id="agent-workbench-tags" class="agent-wb-filter-tags" role="group" aria-label="按标签筛选"></div>
+                            <button id="agent-workbench-tags-toggle" type="button" class="agent-wb-filter-link" hidden
+                                    aria-expanded="false" aria-controls="agent-workbench-tags" onclick="toggleAgentWorkbenchTags()"
+                                    data-i18n="agent_workbench_tags_more">展开全部</button>
+                        </div>
+                    </div>
+                    <div id="agent-workbench-results" class="agent-workbench-results" hidden>
+                        <span id="agent-workbench-result-count" role="status" aria-live="polite"></span>
+                        <button id="agent-workbench-filter-reset" type="button" class="agent-wb-filter-link" hidden
+                                onclick="clearAgentWorkbenchSearch(true)" data-i18n="agent_workbench_clear_filters">清除条件</button>
+                    </div>
+                    <div id="agent-workbench-status" class="agent-workbench-status agent-workbench-status-hidden" role="status" aria-live="polite"></div>
+                    <div id="agent-workbench-grid" class="agent-workbench-grid"></div>
+                </div>
+
+<div id="view-scenes" class="view">
+                    <!-- 场景分类中心（浏览分类/场景卡片，进入工作台后隐藏） -->
+                    <div class="flex-1 min-h-0 overflow-y-auto p-4 md:p-8 lg:p-10" id="scene-catalog">
+                        <div class="w-full max-w-[1600px] mx-auto">
+                            <!-- Header -->
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 md:mb-6">
+                                <div>
+                                    <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="scenes_title">场景应用</h2>
+                                    <p class="text-sm text-slate-500 dark:text-slate-400 mt-1" data-i18n="scenes_subtitle">选择一个业务场景，进入专用工作台或对话上下文。</p>
+                                </div>
+                            </div>
+
+                            <!-- Loading / empty / error state -->
+                            <div id="scenes-empty" class="flex flex-col items-center justify-center py-20">
+                                <div class="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center mb-4">
+                                    <i class="fas fa-shapes text-indigo-400 text-xl"></i>
+                                </div>
+                                <p id="scenes-empty-title" class="text-slate-500 dark:text-slate-400 font-medium" data-i18n="scenes_loading">加载场景中...</p>
+                                <div id="scenes-empty-guide" class="hidden mt-6 max-w-sm text-center">
+                                    <button onclick="navigateTo('chat')"
+                                            class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600
+                                                   text-white text-sm font-medium cursor-pointer transition-colors duration-150">
+                                        <i class="fas fa-message text-xs"></i>
+                                        <span data-i18n="scenes_go_chat">开始对话</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Category tabs -->
+                            <div id="scenes-tabs" class="hidden flex flex-wrap gap-2 mb-4"></div>
+
+                            <!-- Scene card grid -->
+                            <div id="scenes-grid" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+                        </div>
+                    </div>
+                    <!-- 场景工作台（通用 base / 专业渲染器注入；进入即替换场景中心） -->
+                    <div id="scene-workbench" class="hidden flex-1 min-h-0"></div>
+                </div>
+
+<div id="view-external_connections" class="view">
+                    <div class="flex-1 overflow-y-auto p-6">
+                        <div class="max-w-6xl mx-auto">
+                            <div class="ec-root" id="ec-root">
+                                <p class="text-sm text-slate-500 dark:text-slate-400" data-i18n="ec_loading">正在加载连接…</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+<div id="view-todo" class="view">
+                    <div class="flex-1 overflow-y-auto p-6">
+                        <div class="max-w-4xl mx-auto">
+                            <div class="flex items-center justify-between mb-6">
+                                <div>
+                                    <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="todo_title">待办事项</h2>
+                                    <p class="text-sm text-slate-500 dark:text-slate-400 mt-1" data-i18n="todo_subtitle">处理需要你跟进的事项</p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button id="todo-refresh-btn" onclick="refreshTodosView()"
+                                            class="px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10
+                                                   text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5
+                                                   text-sm font-medium cursor-pointer transition-colors duration-150">
+                                        <i class="fas fa-refresh text-xs"></i>
+                                    </button>
+                                    <button id="todo-create-btn" onclick="openTodoCreate()"
+                                            class="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium cursor-pointer transition-colors duration-150">
+                                        <i class="fas fa-plus mr-1"></i><span data-i18n="todo_add_btn">新建待办</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Scope switch: my own work vs what I handed out.
+                                 A separate section rather than a filter, because
+                                 the two lists are disjoint and the second one
+                                 never counts toward the bell badge. -->
+                            <div class="flex items-center bg-slate-100 dark:bg-white/10 rounded-lg p-0.5 w-max mb-3" id="todo-scope-switch">
+                                <button type="button" class="todo-scope-tab px-3 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors duration-150" data-scope="mine" data-i18n="todo_scope_mine">我的待办</button>
+                                <button type="button" class="todo-scope-tab px-3 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors duration-150" data-scope="delegated" data-i18n="todo_scope_delegated">我委派的</button>
+                            </div>
+
+                            <!-- Filter bar -->
+                            <div id="todo-filters" class="flex flex-wrap items-center gap-2 mb-5">
+                                <div class="flex items-center bg-slate-100 dark:bg-white/10 rounded-lg p-0.5 w-max">
+                                    <button type="button" class="todo-status-tab px-3 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors duration-150" data-status="all" data-i18n="todo_filter_all">全部</button>
+                                    <button type="button" class="todo-status-tab px-3 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors duration-150" data-status="open" data-i18n="todo_filter_open">未完成</button>
+                                    <button type="button" class="todo-status-tab px-3 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors duration-150" data-status="pending" data-i18n="todo_filter_pending">待处理</button>
+                                    <button type="button" class="todo-status-tab px-3 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors duration-150" data-status="in_progress" data-i18n="todo_filter_progress">处理中</button>
+                                    <button type="button" class="todo-status-tab px-3 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors duration-150" data-status="completed" data-i18n="todo_filter_done">已完成</button>
+                                    <button type="button" class="todo-status-tab px-3 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors duration-150" data-status="cancelled" data-i18n="todo_filter_cancel">已取消</button>
+                                </div>
+                                <div class="flex items-center gap-2 flex-1 justify-end">
+                                    <button id="todo-overdue-toggle" class="px-3 py-1.5 rounded-lg border border-amber-200 dark:border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-medium hover:bg-amber-50 dark:hover:bg-amber-900/10 cursor-pointer transition-colors duration-150" data-i18n="todo_only_overdue">只看逾期</button>
+                                    <div class="relative">
+                                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                                        <input type="search" id="todo-search-input" placeholder="" data-i18n-placeholder="todo_search_placeholder"
+                                               class="pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- State banner -->
+                            <div id="todo-banner" class="hidden mb-4 rounded-xl border px-4 py-3 text-sm"></div>
+
+                            <!-- Empty state -->
+                            <div id="todo-empty" class="flex flex-col items-center justify-center py-20">
+                                <div class="w-16 h-16 rounded-2xl bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center mb-4">
+                                    <i class="fas fa-list-check text-primary-400 text-xl"></i>
+                                </div>
+                                <p id="todo-empty-text" class="text-slate-500 dark:text-slate-400 font-medium">Loading...</p>
+                            </div>
+                            <div id="todo-list" class="grid gap-3 hidden"></div>
+                            <div id="todo-pagination" class="flex items-center justify-center gap-2 mt-6 hidden"></div>
+                        </div>
+                    </div>
+                </div>
+
+<div id="view-branding" class="view">
+                    <div class="flex-1 overflow-y-auto p-6">
+                        <div class="max-w-5xl mx-auto">
+                            <div class="flex items-center justify-between mb-6">
+                                <div>
+                                    <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="branding_title">品牌设置</h2>
+                                    <p class="text-sm text-slate-500 dark:text-slate-400 mt-1" data-i18n="branding_subtitle">设置控制台的品牌标识与说明</p>
+                                </div>
+                                <div class="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+                                    <span class="inline-flex items-center gap-1.5">
+                                        <span class="w-2 h-2 rounded-full bg-primary-500"></span>
+                                        <span data-i18n="branding_instance">当前实例</span>
+                                    </span>
+                                    <span id="branding-state-badge" class="hidden inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300"></span>
+                                </div>
+                            </div>
+
+                            <!-- State banner (readonly / conflict / load-failed / save-pending) -->
+                            <div id="branding-banner" class="hidden mb-4 rounded-xl border px-4 py-3 text-sm"></div>
+
+                            <div class="grid lg:grid-cols-2 gap-6">
+                                <!-- Brand Info -->
+                                <div class="bg-white dark:bg-[#1A1A1A] rounded-xl border border-slate-200 dark:border-white/10 p-6">
+                                    <div class="flex items-center gap-3 mb-5">
+                                        <div class="w-9 h-9 rounded-lg bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center">
+                                            <i class="fas fa-palette text-primary-500"></i>
+                                        </div>
+                                        <h3 class="font-semibold text-slate-800 dark:text-slate-100" data-i18n="branding_brand_info">品牌信息</h3>
+                                    </div>
+
+                                    <!-- Logo -->
+                                    <div class="mb-5">
+                                        <label class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-2" data-i18n="branding_logo">Logo</label>
+                                        <div class="flex items-center gap-4">
+                                            <div class="branding-logo-preview w-20 h-20 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 flex items-center justify-center overflow-hidden" id="branding-logo-thumb">
+                                                <img src="/assets/rongda-ai-mark.svg" alt="" class="brand-mark w-12 h-12 object-contain">
+                                            </div>
+                                            <div class="flex flex-col gap-2">
+                                                <div class="flex gap-2">
+                                                    <button type="button" id="branding-upload-btn" class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5" data-i18n="branding_upload_logo">上传 Logo</button>
+                                                    <button type="button" id="branding-default-logo-btn" class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5" data-i18n="branding_use_default_logo">使用默认 Logo</button>
+                                                </div>
+                                                <p class="text-xs text-slate-400 dark:text-slate-500" data-i18n="branding_logo_hint">PNG / JPG / WebP，最大 2MB</p>
+                                            </div>
+                                        </div>
+                                        <input type="file" id="branding-logo-file" accept=".png,.jpg,.jpeg,.webp" class="hidden">
+                                        <p id="branding-flow-error" class="hidden mt-2 text-xs text-red-500"></p>
+                                    </div>
+
+                                    <!-- Brand name -->
+                                    <div class="mb-5">
+                                        <label for="branding-brand-name" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5" data-i18n="branding_brand_name">品牌名称</label>
+                                        <input type="text" id="branding-brand-name" maxlength="32"
+                                               class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500"
+                                               placeholder="品牌名称，1～32 字" data-i18n-placeholder="branding_name_placeholder">
+                                        <p class="mt-1 text-xs text-slate-400 dark:text-slate-500">1-32</p>
+                                    </div>
+
+                                    <!-- Logo description -->
+                                    <div class="mb-4">
+                                        <label for="branding-logo-desc" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5" data-i18n="branding_logo_desc">Logo 描述</label>
+                                        <input type="text" id="branding-logo-desc" maxlength="100"
+                                               class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500"
+                                               placeholder="品牌标识旁或下方展示的短说明，可留空" data-i18n-placeholder="branding_logo_desc_placeholder">
+                                        <p class="mt-1 text-xs text-slate-400 dark:text-slate-500" data-i18n="branding_logo_desc_hint">可留空，最多 100 字</p>
+                                    </div>
+                                </div>
+
+                                <!-- Live Preview -->
+                                <div class="bg-white dark:bg-[#1A1A1A] rounded-xl border border-slate-200 dark:border-white/10 p-6">
+                                    <div class="flex items-center justify-between mb-5">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-9 h-9 rounded-lg bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center">
+                                                <i class="fas fa-eye text-primary-500"></i>
+                                            </div>
+                                            <h3 class="font-semibold text-slate-800 dark:text-slate-100" data-i18n="branding_preview">实时预览</h3>
+                                        </div>
+                                        <div class="flex items-center bg-slate-100 dark:bg-white/10 rounded-lg p-0.5 w-max">
+                                            <button type="button" id="branding-theme-dark" class="branding-theme-btn px-3 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors duration-150 active dark:!bg-primary-500 dark:!text-white">深色</button>
+                                            <button type="button" id="branding-theme-light" class="branding-theme-btn px-3 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors duration-150">浅色</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Preview canvas -->
+                                    <div id="branding-preview-canvas" class="rounded-xl overflow-hidden border border-slate-200 dark:border-white/10">
+                                        <!-- Sidebar preview -->
+                                        <div id="branding-preview-sidebar" class="px-4 py-3 border-b border-slate-200 dark:border-white/10 bg-[#0A0A0A] flex items-center gap-3">
+                                            <img data-brand-slot="logo" class="brand-mark w-8 h-8 object-contain" alt="" src="/assets/rongda-ai-mark.svg">
+                                            <div class="min-w-0">
+                                                <div data-brand-slot="name" class="brand-wordmark !text-base !text-[#f3f8fc] truncate">容大<span class="brand-ai">AI</span></div>
+                                                <div data-brand-slot="caption" class="text-[10px] text-slate-400 truncate text-left">工作台</div>
+                                            </div>
+                                        </div>
+                                        <!-- Login preview -->
+                                        <div data-preview="login" class="px-4 py-6 border-b border-slate-200 dark:border-white/10 flex flex-col items-center bg-white dark:bg-[#1A1A1A]">
+                                            <img data-brand-slot="logo" class="brand-mark w-12 h-12 object-contain" alt="" src="/assets/rongda-ai-mark.svg">
+                                            <div data-brand-slot="name" class="brand-wordmark brand-wordmark-hero !text-lg mt-2">容大<span class="brand-ai">AI</span></div>
+                                            <div data-brand-slot="desc" class="text-xs text-slate-500 dark:text-slate-400 text-center mt-1 hidden">控制台</div>
+                                            <p class="text-xs text-slate-400 dark:text-slate-500 mt-3">请输入密码以访问控制台</p>
+                                        </div>
+                                        <!-- Welcome preview -->
+                                        <div data-preview="welcome" class="px-4 py-6 flex flex-col items-center bg-white dark:bg-[#1A1A1A]">
+                                            <img data-brand-slot="logo" class="brand-mark brand-mark-hero w-12 h-12 !w-14 !h-14 object-contain" alt="" src="/assets/rongda-ai-mark.svg">
+                                            <div data-brand-slot="name" class="brand-wordmark brand-wordmark-hero !text-lg mt-2">容大<span class="brand-ai">AI</span></div>
+                                            <div data-brand-slot="desc" class="text-xs text-slate-500 dark:text-slate-400 text-center mt-1 hidden">控制台</div>
+                                            <p class="text-sm text-slate-500 dark:text-slate-400 text-center max-w-sm mt-3 leading-relaxed">我可以帮你解答问题、管理计算机、创造和执行技能，并通过长期记忆和知识库不断成长</p>
+                                        </div>
+                                    </div>
+
+                                    <p class="mt-4 text-xs text-slate-400 dark:text-slate-500" data-i18n="branding_preview_hint">预览效果，保存后生效</p>
+                                </div>
+                            </div>
+
+                            <!-- Actions -->
+                            <div class="mt-6 flex flex-wrap items-center justify-between gap-3">
+                                <button type="button" id="branding-reset-all" class="px-4 py-2 rounded-lg border border-slate-200 dark:border-white/10 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 disabled:opacity-50" data-i18n="branding_reset_all">恢复全部默认</button>
+                                <div class="flex gap-3">
+                                    <button type="button" id="branding-cancel" class="px-4 py-2 rounded-lg border border-slate-200 dark:border-white/10 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 disabled:opacity-50" data-i18n="branding_cancel">取消更改</button>
+                                    <button type="button" id="branding-save" class="px-5 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium disabled:opacity-50" data-i18n="branding_save">保存设置</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+<div id="view-platform" class="view">
+        <div class="p-6 h-full overflow-y-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="platform_title">平台用户管理</h2>
+                <span class="text-xs text-slate-400 dark:text-slate-500" data-i18n="platform_admin_only">仅平台管理员可见</span>
+            </div>
+            <div class="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input id="platform-user-search" type="text" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500" placeholder="搜索平台用户" data-i18n-placeholder="platform_search_placeholder">
+                <select id="platform-user-status" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100">
+                    <option value="" data-i18n="filter_all">全部</option>
+                    <option value="active" data-i18n="active">启用</option>
+                    <option value="inactive" data-i18n="inactive">停用</option>
+                    <option value="restricted" data-i18n="filter_restricted">待改密</option>
+                </select>
+            </div>
+            <div id="platform-user-list" class="space-y-2">
+                <div class="text-sm text-slate-400 dark:text-slate-500" data-i18n="tenant_loading">加载中…</div>
+            </div>
+            <div id="platform-user-pagination" class="mt-4 flex items-center justify-between"></div>
+            <div id="platform-user-status-msg" class="mt-4 text-sm text-primary-500 opacity-0 transition-opacity duration-300 text-left"></div>
+        </div>
+    </div>
+
+<div id="view-tenant" class="view">
+        <div class="p-6 h-full overflow-y-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="tenant_title">租户管理</h2>
+                <button id="tenant-create-btn" class="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium hidden" data-i18n="tenant_create">创建租户</button>
+            </div>
+            <div class="mb-4 flex items-center gap-3">
+                <input id="tenant-search" type="text" class="flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500" placeholder="搜索租户名称 / 编码" data-i18n-placeholder="tenant_search_placeholder">
+                <select id="tenant-status-filter" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500">
+                    <option value="" data-i18n="tenant_filter_default">未归档</option>
+                    <option value="active" data-i18n="tenant_filter_active">启用</option>
+                    <option value="inactive" data-i18n="tenant_filter_inactive">停用</option>
+                    <option value="archived" data-i18n="tenant_filter_archived">已归档</option>
+                </select>
+            </div>
+            <div id="tenant-list" class="space-y-2">
+                <div class="text-sm text-slate-400 dark:text-slate-500" data-i18n="tenant_loading">加载中…</div>
+            </div>
+            <div id="tenant-empty" class="hidden text-center text-slate-400 dark:text-slate-500 py-10" data-i18n="tenant_empty">暂无租户</div>
+            <div id="tenant-status" class="mt-4 text-sm text-primary-500 opacity-0 transition-opacity duration-300 text-left"></div>
+        </div>
+    </div>
+
+<div id="view-system_user" class="view">
+        <div class="p-6 h-full overflow-y-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="users_title">用户管理</h2>
+                <button id="member-create-btn" class="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium hidden" data-i18n="member_create">新建成员</button>
+            </div>
+            <div class="mb-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                <input id="member-search" type="text" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-primary-500" placeholder="搜索账号 / 姓名" data-i18n-placeholder="member_search_placeholder">
+                <select id="member-status-filter" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100">
+                    <option value="" data-i18n="filter_all">全部</option>
+                    <option value="active" data-i18n="active">启用</option>
+                    <option value="inactive" data-i18n="inactive">停用</option>
+                </select>
+                <select id="member-role-filter" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100"></select>
+                <select id="member-dept-filter" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-white/5 text-sm text-slate-800 dark:text-slate-100"></select>
+            </div>
+            <div id="member-list" class="space-y-2">
+                <div class="text-sm text-slate-400 dark:text-slate-500" data-i18n="tenant_loading">加载中…</div>
+            </div>
+            <div id="member-pagination" class="mt-4 flex items-center justify-between"></div>
+            <div id="member-status" class="mt-4 text-sm text-primary-500 opacity-0 transition-opacity duration-300 text-left"></div>
+        </div>
+    </div>
+
+<div id="view-roles" class="view">
+        <div class="p-6 h-full overflow-y-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="roles_title">角色权限</h2>
+                <button id="role-create-btn" class="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium hidden" data-i18n="role_create">新建角色</button>
+            </div>
+            <div id="role-list" class="space-y-2">
+                <div class="text-sm text-slate-400 dark:text-slate-500" data-i18n="tenant_loading">加载中…</div>
+            </div>
+            <div id="role-status" class="mt-4 text-sm text-primary-500 opacity-0 transition-opacity duration-300 text-left"></div>
+        </div>
+    </div>
+
+<div id="view-org" class="view">
+        <div class="p-6 h-full overflow-y-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="org_title">组织架构</h2>
+                <button id="dept-create-btn" class="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium hidden" data-i18n="dept_create">新建部门</button>
+            </div>
+            <div id="org-tree" class="space-y-1">
+                <div class="text-sm text-slate-400 dark:text-slate-500" data-i18n="tenant_loading">加载中…</div>
+            </div>
+            <div id="org-status" class="mt-4 text-sm text-primary-500 opacity-0 transition-opacity duration-300 text-left"></div>
+        </div>
+    </div>
+
+<div id="view-audit" class="view">
+        <div class="p-6 h-full overflow-y-auto">
+            <div class="max-w-6xl mx-auto">
+                <div class="flex items-center gap-3.5 mb-6">
+                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500/15 to-indigo-500/5 dark:from-indigo-500/20 dark:to-indigo-500/5 border border-indigo-500/10 dark:border-indigo-500/20 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-scroll text-indigo-500 text-lg"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-semibold tracking-[-0.01em] text-slate-800 dark:text-slate-100" data-i18n="audit_title">审计日志</h2>
+                        <p class="text-sm text-slate-500 dark:text-slate-400 mt-0.5" data-i18n="audit_scope_hint">平台管理员查看全部，租户管理员仅当前租户</p>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 p-4 mb-4">
+                    <div class="flex flex-wrap items-end gap-3">
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="audit_filter_actor">用户</label>
+                            <input id="audit-filter-actor" type="text"
+                                   class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors"
+                                   placeholder="all" data-i18n-placeholder="audit_actor_placeholder">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="audit_filter_action">动作</label>
+                            <input id="audit-filter-action" type="text"
+                                   class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors"
+                                   placeholder="auth.login" data-i18n-placeholder="audit_action_placeholder">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="audit_filter_status">状态</label>
+                            <select id="audit-filter-status"
+                                    class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors">
+                                <option value="" data-i18n="audit_all">全部</option>
+                                <option value="success" data-i18n="audit_success">成功</option>
+                                <option value="failure" data-i18n="audit_failure">失败</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="audit_filter_start">开始日期</label>
+                            <input id="audit-filter-start" type="date"
+                                   class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="audit_filter_end">结束日期</label>
+                            <input id="audit-filter-end" type="date"
+                                   class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors">
+                        </div>
+                        <div class="flex-1"></div>
+                        <button id="audit-refresh" type="button"
+                                class="inline-flex items-center gap-1.5 px-4 h-10 rounded-xl bg-primary-500 hover:bg-primary-600 active:scale-[0.98] text-white text-sm font-medium transition-all shadow-sm shadow-primary-500/25 cursor-pointer">
+                            <i class="fas fa-rotate-right text-xs"></i>
+                            <span data-i18n="audit_refresh">刷新</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-slate-50/50 dark:bg-white/5 text-slate-600 dark:text-slate-300">
+                                <tr>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="audit_col_time">时间</th>
+                                    <th id="audit-col-tenant" class="px-4 py-3 text-xs font-semibold" data-i18n="audit_col_tenant">租户</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="audit_col_actor">用户</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="audit_col_action">动作</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="audit_col_resource">资源</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="audit_col_status">状态</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="audit_col_detail">详情</th>
+                                </tr>
+                            </thead>
+                            <tbody id="audit-table-body" class="divide-y divide-slate-100 dark:divide-white/5">
+                                <tr><td colspan="7" class="px-4 py-8 text-center text-slate-500" data-i18n="audit_empty">暂无审计记录</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="audit-pagination" class="mt-4 flex items-center justify-between"></div>
+                <div id="audit-status" class="mt-2 text-sm text-primary-500 opacity-0 transition-opacity duration-300 text-left"></div>
+            </div>
+        </div>
+    </div>
+
+<div id="view-token_usage" class="view">
+        <div class="p-6 h-full overflow-y-auto">
+            <div class="max-w-6xl mx-auto">
+                <div class="flex items-center gap-3.5 mb-6">
+                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-teal-500/15 to-teal-500/5 dark:from-teal-500/20 dark:to-teal-500/5 border border-teal-500/10 dark:border-teal-500/20 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-coins text-teal-500 text-lg"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-semibold tracking-[-0.01em] text-slate-800 dark:text-slate-100" data-i18n="token_usage_title">Token 消耗</h2>
+                        <p class="text-sm text-slate-500 dark:text-slate-400 mt-0.5" data-i18n="token_usage_desc">按模型与用户统计 LLM Token 使用情况</p>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 p-4 mb-4">
+                    <div class="flex flex-wrap items-end gap-3">
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="token_usage_start">开始日期</label>
+                            <input id="token-usage-start" type="date"
+                                   class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="token_usage_end">结束日期</label>
+                            <input id="token-usage-end" type="date"
+                                   class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="token_usage_model">模型</label>
+                            <input id="token-usage-model" type="text"
+                                   class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors"
+                                   placeholder="gpt-4o">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="token_usage_actor">用户</label>
+                            <select id="token-usage-actor"
+                                    class="px-3 py-2 rounded-lg bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors min-w-[140px]">
+                                <option value="" data-i18n="token_usage_all_users">全部用户</option>
+                            </select>
+                        </div>
+                        <div class="flex-1"></div>
+                        <button id="token-usage-refresh" type="button"
+                                class="inline-flex items-center gap-1.5 px-4 h-10 rounded-xl bg-primary-500 hover:bg-primary-600 active:scale-[0.98] text-white text-sm font-medium transition-all shadow-sm shadow-primary-500/25 cursor-pointer">
+                            <i class="fas fa-rotate-right text-xs"></i>
+                            <span data-i18n="token_usage_refresh">刷新</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="token-usage-tabs" class="inline-flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 gap-1 mb-4">
+                    <button type="button" data-token-usage-tab="details" onclick="switchTokenUsageTab('details')" class="token-usage-tab-btn flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm cursor-pointer transition-all">
+                        <i class="fas fa-list text-xs"></i><span data-i18n="token_usage_details">明细</span>
+                    </button>
+                    <button type="button" data-token-usage-tab="by-user" onclick="switchTokenUsageTab('by-user')" class="token-usage-tab-btn flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer transition-all">
+                        <i class="fas fa-users text-xs"></i><span data-i18n="token_usage_user_summary">按用户汇总</span>
+                    </button>
+                    <button type="button" data-token-usage-tab="call-logs" onclick="switchTokenUsageTab('call-logs')" class="token-usage-tab-btn flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer transition-all">
+                        <i class="fas fa-clock-rotate-left text-xs"></i><span data-i18n="token_usage_call_logs">调用日志</span>
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div class="bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 p-4">
+                        <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                            <span class="w-6 h-6 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center flex-shrink-0"><i class="fas fa-arrow-up text-[10px]"></i></span>
+                            <span data-i18n="token_usage_prompt">Prompt Tokens</span>
+                        </div>
+                        <div id="token-usage-prompt" class="text-2xl font-bold text-slate-800 dark:text-slate-100 mt-2 tabular-nums">0</div>
+                    </div>
+                    <div class="bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 p-4">
+                        <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                            <span class="w-6 h-6 rounded-lg bg-purple-500/10 text-purple-500 flex items-center justify-center flex-shrink-0"><i class="fas fa-arrow-down text-[10px]"></i></span>
+                            <span data-i18n="token_usage_completion">Completion Tokens</span>
+                        </div>
+                        <div id="token-usage-completion" class="text-2xl font-bold text-slate-800 dark:text-slate-100 mt-2 tabular-nums">0</div>
+                    </div>
+                    <div class="bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 p-4">
+                        <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                            <span class="w-6 h-6 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center flex-shrink-0"><i class="fas fa-bolt text-[10px]"></i></span>
+                            <span data-i18n="token_usage_calls">调用次数</span>
+                        </div>
+                        <div id="token-usage-calls" class="text-2xl font-bold text-slate-800 dark:text-slate-100 mt-2 tabular-nums">0</div>
+                    </div>
+                </div>
+
+                <div id="token-usage-details-panel" class="bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-slate-50/50 dark:bg-white/5 text-slate-600 dark:text-slate-300">
+                                <tr>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_date">日期</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_tenant">租户</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_model">模型</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_provider">提供商</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_prompt">Prompt</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_completion">Completion</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_calls">调用</th>
+                                </tr>
+                            </thead>
+                            <tbody id="token-usage-table-body" class="divide-y divide-slate-100 dark:divide-white/5">
+                                <tr><td colspan="7" class="px-4 py-8 text-center text-slate-500" data-i18n="token_usage_empty">暂无 Token 消耗记录</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="token-usage-by-user-panel" class="hidden bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-slate-50/50 dark:bg-white/5 text-slate-600 dark:text-slate-300">
+                                <tr>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_actor">用户</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_prompt">Prompt</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_completion">Completion</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_calls">调用</th>
+                                </tr>
+                            </thead>
+                            <tbody id="token-usage-by-user-body" class="divide-y divide-slate-100 dark:divide-white/5">
+                                <tr><td colspan="4" class="px-4 py-8 text-center text-slate-500" data-i18n="token_usage_empty">暂无 Token 消耗记录</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="token-usage-call-logs-panel" class="hidden bg-white dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-slate-50/50 dark:bg-white/5 text-slate-600 dark:text-slate-300">
+                                <tr>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_date">时间</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_tenant">租户</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_actor">用户</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_model">模型</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_input_summary">输入摘要</th>
+                                    <th class="px-4 py-3 text-xs font-semibold" data-i18n="token_usage_col_output_summary">输出摘要</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_prompt">Prompt</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_completion">Completion</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-center" data-i18n="token_usage_col_status">状态</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_duration">耗时(ms)</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-right" data-i18n="token_usage_col_times">次数</th>
+                                </tr>
+                            </thead>
+                            <tbody id="token-usage-call-logs-body" class="divide-y divide-slate-100 dark:divide-white/5">
+                                <tr><td colspan="11" class="px-4 py-8 text-center text-slate-500" data-i18n="token_usage_empty">暂无调用记录</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="token-usage-status" class="mt-2 text-sm text-primary-500 opacity-0 transition-opacity duration-300 text-left"></div>
+            </div>
+        </div>
+    </div>
+
+<div id="view-admin-home" class="view">
+        <div class="p-6 h-full overflow-y-auto">
+            <div class="admin-home">
+                <div id="admin-home-kpis" class="admin-home-kpis" aria-live="polite"></div>
+                <div id="admin-home-shortcuts" class="admin-home-shortcuts"></div>
+            </div>
+        </div>
+    </div>
+
+<div id="view-unavailable" class="view">
+        <div class="p-6 h-full overflow-y-auto flex items-center justify-center">
+            <div class="max-w-md w-full text-center">
+                <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500/10 text-amber-500">
+                    <i class="fas fa-hourglass-half" aria-hidden="true"></i>
+                </div>
+                <h2 id="nav-unavailable-title" class="text-xl font-bold text-slate-800 dark:text-slate-100" data-i18n="nav_unavailable">功能尚未开放</h2>
+                <p id="nav-unavailable-hint" class="mt-3 text-sm text-slate-500 dark:text-slate-400" data-i18n="nav_unavailable_hint">该功能正在筹备或尚未在当前配置开放，请返回其他可用页面。</p>
+                <button id="nav-unavailable-back" type="button" class="mt-6 px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium cursor-pointer" data-i18n="nav_go_back">返回可用页面</button>
+            </div>
+        </div>
+    </div>

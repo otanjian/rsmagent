@@ -82,7 +82,7 @@ class BrowserTool(BaseTool):
             },
             "selector": {
                 "type": "string",
-                "description": "CSS selector as fallback when ref is unavailable (for click/fill/select/wait/get_text)"
+                "description": "CSS selector as fallback when ref is unavailable (for click/fill/select/wait/get_text), or to scope a snapshot to one region"
             },
             "text": {
                 "type": "string",
@@ -99,6 +99,10 @@ class BrowserTool(BaseTool):
             "direction": {
                 "type": "string",
                 "description": "Scroll direction: up, down, left, right (for 'scroll' action, default: down)"
+            },
+            "amount": {
+                "type": "integer",
+                "description": "Scroll distance in pixels (for 'scroll' action, default: 500)"
             },
             "script": {
                 "type": "string",
@@ -358,26 +362,26 @@ class BrowserTool(BaseTool):
         result = self._get_service().click(ref=ref, selector=selector, timeout=timeout)
         if "error" in result:
             return ToolResult.fail(result["error"])
-        return ToolResult.success(f"Clicked successfully. Use 'snapshot' to see updated page.")
+        return ToolResult.success("Clicked successfully. Use 'snapshot' to see updated page.")
 
     def _do_fill(self, args: Dict[str, Any]) -> ToolResult:
-        text = args.get("text", "")
+        text = args.get("text")
         ref = args.get("ref")
         selector = args.get("selector")
         timeout = args.get("timeout", 5000)
-        if not text and text != "":
+        if not isinstance(text, str):
             return ToolResult.fail("Error: 'text' is required for fill action")
         result = self._get_service().fill(text, ref=ref, selector=selector, timeout=timeout)
         if "error" in result:
             return ToolResult.fail(result["error"])
-        return ToolResult.success(f"Filled text into element. Use 'snapshot' to verify.")
+        return ToolResult.success("Filled text into element. Use 'snapshot' to verify.")
 
     def _do_select(self, args: Dict[str, Any]) -> ToolResult:
-        value = args.get("value", "")
+        value = args.get("value")
         ref = args.get("ref")
         selector = args.get("selector")
         timeout = args.get("timeout", 5000)
-        if not value:
+        if not isinstance(value, str):
             return ToolResult.fail("Error: 'value' is required for select action")
         result = self._get_service().select(value, ref=ref, selector=selector, timeout=timeout)
         if "error" in result:
@@ -386,9 +390,7 @@ class BrowserTool(BaseTool):
 
     def _do_scroll(self, args: Dict[str, Any]) -> ToolResult:
         direction = args.get("direction", "down")
-        amount = args.get("timeout", 500)  # reuse timeout field or default
-        if "amount" in args:
-            amount = args["amount"]
+        amount = args.get("amount", 500)
         result = self._get_service().scroll(direction=direction, amount=amount)
         if "error" in result:
             return ToolResult.fail(result["error"])
@@ -406,7 +408,7 @@ class BrowserTool(BaseTool):
         result = self._get_service().wait(selector=selector, timeout=timeout)
         if "error" in result:
             return ToolResult.fail(result["error"])
-        return ToolResult.success(f"Wait completed.")
+        return ToolResult.success("Wait completed.")
 
     def _do_back(self, args: Dict[str, Any]) -> ToolResult:
         result = self._get_service().go_back()

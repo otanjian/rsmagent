@@ -29,12 +29,34 @@ from typing import Any, Dict, Optional
 from common.log import logger
 
 from auth import desktop_contracts_v2 as v2
+from auth import desktop_contracts_v3 as v3
 
-from agent.desktop_remote import CAPABILITY_KEY, ORIGIN_RUNTIME
+from agent.desktop_remote import CAPABILITY_KEY, CONTRACT_PLATFORMS, ORIGIN_RUNTIME
 
-#: The script tools the contract names; a device's declared tools must include
-#: one of these before a script may be proxied to it.
-SCRIPT_TOOLS = ("bash",)
+#: The script tools a contract may name; a device's declared tools must include
+#: one of these before a script may be proxied to it. Derived from both majors
+#: rather than listed, so adding a script tool to a contract cannot leave this
+#: set (and therefore the proxy gate) behind.
+SCRIPT_TOOLS = tuple(sorted(set(v2.TOOLS["script_tools"]) | set(v3.TOOLS["script_tools"])))
+
+#: The protocol majors this build can serve for project execution, newest first.
+#: A block declaring anything else is dropped rather than half-read.
+EXECUTION_MAJORS = (v3.PROTOCOL_MAJOR, v2.PROTOCOL_MAJOR)
+
+
+def contract_for_major(major: Any):
+    """The contract module that validates a peer declaring ``major``.
+
+    Selecting by the *declared* major is what keeps a v2 device on v2's rules:
+    v2 refuses every Windows tool, and a v3 device's block (which may name the
+    Windows file tools) would otherwise be rejected by v2's validator and the
+    device silently degraded to "no execution".
+    """
+    if major == v3.PROTOCOL_MAJOR:
+        return v3
+    if major == v2.PROTOCOL_MAJOR:
+        return v2
+    return None
 
 #: How often the offline wait looks for a device that is connecting right now.
 ONLINE_POLL_SECONDS = 0.25
@@ -119,6 +141,10 @@ def _execution_block(lease_row: Dict[str, Any]) -> Dict[str, Any]:
     Anything that fails the contract is dropped (and logged) rather than
     half-read: a device that names a tool the contract does not know must not end
     up with this server proxying it.
+
+    The *declared major* picks the validator. A v2 device is still checked
+    against v2 -- including its refusal of every Windows tool -- and a v3 device
+    against v3, so a block is never judged by rules it does not claim to follow.
     """
     # ``live_lease_for_device`` returns the raw row, so the capabilities travel
     # as the JSON column they were written to.
@@ -135,10 +161,31 @@ def _execution_block(lease_row: Dict[str, Any]) -> Dict[str, Any]:
     block = raw.get(CAPABILITY_KEY)
     if not isinstance(block, dict):
         return {}
-    from auth import desktop_contracts_v2 as v2
+    major = block.get("protocol_major")
+    if major is None:
+        major = lease_row.get("protocol_major")
+    contract = contract_for_major(major)
+    if contract is None:
+        logger.warning("[DesktopRemote] device %s declared %s major %r, which "
+                       "this build cannot serve",
+                       lease_row.get("device_id"), CAPABILITY_KEY, major)
+        return {}
 
-    problems = v2.validate_hello_execution(
-        block, platform=str(block.get("platform") or "posix"))
+    # The platform is the one the *envelope* recorded for this device, which the
+    # gateway derived from the device's own OS. A block that names a platform the
+    # device does not have would otherwise be validated against the wrong one.
+    platform = str(block.get("platform") or "")
+    recorded = lease_row.get("platform")
+    if recorded:
+        expected = CONTRACT_PLATFORMS.get(str(recorded).lower())
+        if expected and platform and platform != expected:
+            logger.warning("[DesktopRemote] device %s declared platform %r but "
+                           "connected as %r; using %r",
+                           lease_row.get("device_id"), platform, recorded, expected)
+        platform = expected or platform or "posix"
+
+    problems = contract.validate_hello_execution(
+        block, platform=platform or "posix")
     if problems:
         logger.warning("[DesktopRemote] device %s declared an invalid %s block: %s",
                        lease_row.get("device_id"), CAPABILITY_KEY,
@@ -210,29 +257,95 @@ def wait_for_device(identity: Any = None, target: Any = None, *,
     return state
 
 
-def refusal_for(state: DeviceState, tool_name: str) -> Optional[str]:
-    """Why this device may not run ``tool_name``, or ``None`` when it may."""
+def contract_module_for(state: "DeviceState"):
+    """The contract module that judges *this* device's declared block.
+
+    ``_execution_block`` validated the device's ``project_execution`` capability
+    against the contract of the major the device *declared* (v2 against v2, v3
+    against v3). The tool and platform questions below have to be asked against
+    that same module, or the two disagree about one device:
+
+    * v2 declares ``win32.supported = false``, so a v2 table refuses every Windows
+      tool;
+    * v3 declares Windows file tools supported (``launcher_kinds.files``), so the
+      same device is legitimate.
+
+    Hard-coding v2 here -- which this module did -- therefore reported a valid v3
+    Windows device as unsupported. One resolution point, used by both the refusal
+    *reason* and its machine *code*, is what keeps those two from drifting apart
+    again.
+    """
+    major = state.protocol_major
+    explicit = state.execution.get("protocol_major")
+    if explicit is not None:
+        try:
+            major = int(explicit)
+        except (TypeError, ValueError):
+            # An unreadable declared major must not silently keep whatever the
+            # row happened to carry: fall back to the row's own major, which is
+            # the same source ``_execution_block`` used when the block was
+            # accepted. Guessing here is how a block would be judged by rules it
+            # never claimed.
+            major = state.protocol_major
+    if major == v3.PROTOCOL_MAJOR:
+        return v3
+    return v2
+
+
+#: The refusal categories a device/tool pair can fall into.
+#:
+#: ``refusal_for`` turns one of these into the message a user reads and
+#: ``unavailability_code`` into the machine code a caller branches on. They are
+#: separate renderings of *one* decision, which is the property the pair is
+#: documented to hold and previously did not.
+_TOOL_BLOCKED_ON_PLATFORM = "tool_blocked_on_platform"
+_TOOL_NOT_DECLARED = "tool_not_declared"
+_SCRIPTS_NOT_OPEN = "scripts_not_open"
+
+
+def _classify(state: DeviceState, tool_name: str):
+    """``None`` when the device may run the tool, else a refusal category.
+
+    Returns ``(category, contract)``; the contract is passed back so a renderer
+    does not resolve it a second time and cannot pick a different one.
+    """
     if not state.online:
         if state.reason == "other_user":
-            return REFUSAL_DEVICE_OTHER_USER
+            return REFUSAL_DEVICE_OTHER_USER, None
         if state.reason == "unavailable":
-            return REFUSAL_DEVICE_UNAVAILABLE
-        return REFUSAL_DEVICE_OFFLINE
+            return REFUSAL_DEVICE_UNAVAILABLE, None
+        return REFUSAL_DEVICE_OFFLINE, None
     if state.protocol_major < 2 or not state.execution:
-        return REFUSAL_PROTOCOL_V1
-    if not v2.tool_supported_on(tool_name, state.platform):
+        return REFUSAL_PROTOCOL_V1, None
+    contract = contract_module_for(state)
+    platform = state.platform
+    if not contract.tool_supported_on(tool_name, platform):
         # The build's own launcher does not run this tool on the device's
         # platform (a POSIX script on win32, say). Asked first, because the tool
         # set of such a device is empty anyway and blaming "not declared" would
         # send the user looking for a client setting that does not exist.
-        return REFUSAL_TOOL_UNSUPPORTED.format(tool=tool_name,
-                                               platform=state.platform)
+        return (_TOOL_BLOCKED_ON_PLATFORM, contract)
     if not state.supports(tool_name):
+        return (_TOOL_NOT_DECLARED, contract)
+    if tool_name in SCRIPT_TOOLS and not state.supports_scripts():
+        return (_SCRIPTS_NOT_OPEN, contract)
+    return None, contract
+
+
+def refusal_for(state: DeviceState, tool_name: str) -> Optional[str]:
+    """Why this device may not run ``tool_name``, or ``None`` when it may."""
+    category, contract = _classify(state, tool_name)
+    if category is None:
+        return None
+    if category == _TOOL_BLOCKED_ON_PLATFORM:
         return REFUSAL_TOOL_UNSUPPORTED.format(tool=tool_name,
                                                platform=state.platform)
-    if tool_name in SCRIPT_TOOLS and not state.supports_scripts():
+    if category == _TOOL_NOT_DECLARED:
+        return REFUSAL_TOOL_UNSUPPORTED.format(tool=tool_name,
+                                               platform=state.platform)
+    if category == _SCRIPTS_NOT_OPEN:
         return REFUSAL_SCRIPTS_UNSUPPORTED
-    return None
+    return category
 
 
 def unavailability_code(state: DeviceState, tool_name: str) -> str:
@@ -241,16 +354,31 @@ def unavailability_code(state: DeviceState, tool_name: str) -> str:
     One mapping, read by both the gate-time plan and the pre-send re-check, so a
     refusal cannot be reported under one code when it is decided and another when
     it is delivered.
+
+    Derived from the *same* :func:`_classify` decision as :func:`refusal_for`, and
+    through the same contract module, which is what makes that sentence true. A
+    second, independently written check is how the two came to disagree: this
+    function asked the v2 table about a device whose block had been validated
+    against v3, and answered ``feature_unavailable`` for a Windows platform the v3
+    contract admits.
+
+    The codes themselves are unchanged for every state that could already occur.
     """
-    if not state.online:
+    category, _contract = _classify(state, tool_name)
+    if category is None:
+        # Only reached if a caller asks for a code with nothing to report. Keeping
+        # the historical answer rather than inventing a new one.
+        return "feature_unavailable"
+    if category in (REFUSAL_DEVICE_OFFLINE, REFUSAL_DEVICE_OTHER_USER,
+                    REFUSAL_DEVICE_UNAVAILABLE):
         return "device_offline"
-    if state.protocol_major < 2 or not state.execution:
+    if category == REFUSAL_PROTOCOL_V1:
         return "protocol_incompatible"
-    if not v2.tool_supported_on(tool_name, state.platform):
+    if category == _TOOL_BLOCKED_ON_PLATFORM:
         return "platform_unsupported"
-    if not state.supports(tool_name):
+    if category == _TOOL_NOT_DECLARED:
         return "runtime_unavailable"
-    if tool_name in SCRIPT_TOOLS and not state.supports_scripts():
+    if category == _SCRIPTS_NOT_OPEN:
         return "runtime_unavailable"
     return "feature_unavailable"
 

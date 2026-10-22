@@ -1,3 +1,4 @@
+import copy
 import os
 import re
 import threading
@@ -222,8 +223,48 @@ class ChatChannel(Channel):
             if reply and reply.content:
                 reply = self._decorate_reply(context, reply)
 
+                # A guest's authorization is re-read at the delivery boundary
+                # (change add-im-guest-accounts, task 3.2): a channel closed, a
+                # mapping stopped or a role revoked while this turn ran must stop
+                # the reply instead of shipping it on the strength of the token
+                # that let the turn start.
+                if not self._guest_scope_still_valid(identity):
+                    from channel import external_identity as _ex
+
+                    self._send_reply(
+                        context,
+                        Reply(ReplyType.TEXT, _ex.deny_notice(_ex.IM_GUEST_STOPPED)),
+                    )
+                    return
                 # reply的发送步骤
                 self._send_reply(context, reply)
+
+    @staticmethod
+    def _guest_scope_still_valid(identity) -> bool:
+        """Whether this run's IM guest scope is still live right now.
+
+        ``load_guest_scope`` re-reads the instance policy, the mapping's active
+        flag, the account/member state and the role's current contents, so this
+        is the same decision a tool call would get -- asked once more at the
+        point where the answer is about to leave the process. It answers True for
+        every non-guest run, which includes the normal Web and member paths.
+        """
+        instance_id = str(getattr(identity, "im_instance_id", "") or "")
+        if not instance_id:
+            return True
+        try:
+            from auth.service import get_identity_service
+
+            get_identity_service().load_guest_scope(
+                user_id=str(getattr(identity, "user_id", "") or ""),
+                tenant_id=str(getattr(identity, "tenant_id", "") or ""),
+                instance_id=instance_id,
+                external_identity_id=str(
+                    getattr(identity, "external_identity_id", "") or ""),
+            )
+            return True
+        except Exception:  # noqa: BLE001 - a failed re-check is a refusal
+            return False
 
     def _needs_external_db_mapping(self, context: Context) -> bool:
         """True when this inbound message must be mapped to a tenant member.
@@ -555,7 +596,8 @@ class ChatChannel(Channel):
             if route is not None:
                 return self._serve_personal_route(context, route)
 
-        ctx, reason = ex.resolve_actor_for_context(context, agent_id, instance_tenant)
+        ctx, reason = ex.resolve_actor_for_context(
+            context, agent_id, instance_tenant, instance=instance)
         if reason is not None:
             # The notice tells the author to ask an administrator, so the log
             # has to tell the administrator what to bind. Without the triple the
@@ -607,6 +649,10 @@ class ChatChannel(Channel):
             "tenant_id": ctx.tenant_id,
             "agent_id": agent_id,
             "session_id": context.get("session_id") or "",
+            # A guest run carries its trusted IM source so the authorization
+            # layer can re-read the current ceiling on every tool/model call.
+            "im_instance_id": getattr(ctx, "im_instance_id", None),
+            "external_identity_id": getattr(ctx, "external_identity_id", None),
         }
         logger.info(
             f"[chat_channel] db external inbound mapped user={ctx.user_id} "
@@ -635,6 +681,8 @@ class ChatChannel(Channel):
                 tenant_id=rt.get("tenant_id"),
                 session_id=rt.get("session_id") or context.get("session_id"),
                 web_auth_session_id=rt.get("web_auth_session_id"),
+                im_instance_id=rt.get("im_instance_id"),
+                external_identity_id=rt.get("external_identity_id"),
             )
         return RuntimeIdentity(
             agent_id=context.get("agent_id"),
@@ -665,7 +713,9 @@ class ChatChannel(Channel):
                     logger.warning("[chat_channel]any to wav error, use raw path. " + str(e))
                     wav_path = file_path
                 # 语音识别
-                reply = super().build_voice_to_text(wav_path)
+                reply = self._safe_voice_to_text(wav_path)
+                if reply is None:
+                    reply = Reply(ReplyType.ERROR, "语音识别失败，请重试或发送文字消息")
                 # 删除临时文件
                 try:
                     os.remove(file_path)
@@ -695,6 +745,49 @@ class ChatChannel(Channel):
                 return
         return reply
 
+    def _safe_text_to_voice(self, text):
+        """Synthesise ``text`` into a voice Reply, or ``None`` when TTS is unusable.
+
+        ``build_text_to_voice`` is not failure-safe: an unknown vendor raises
+        from the voice factory and custom vendors answer ERROR when their
+        endpoint/model is misconfigured. Unprotected, the exception reaches
+        ``_fail_callback`` (log only) and the user loses the turn, and the
+        ERROR Reply replaces the answer with a generic error.
+        ``_safe_voice_to_text`` guards the STT side of the same turn; TTS
+        should too.
+        """
+        try:
+            voice_reply = super().build_text_to_voice(text)
+        except Exception as e:
+            logger.warning("[chat_channel] build_text_to_voice error, fallback to text: " + str(e))
+            return None
+        if voice_reply is None or voice_reply.type != ReplyType.VOICE:
+            bad_type = getattr(voice_reply, "type", None)
+            logger.warning("[chat_channel] build_text_to_voice returned {}, fallback to text".format(bad_type))
+            return None
+        return voice_reply
+
+    def _safe_voice_to_text(self, wav_path):
+        """Transcribe ``wav_path`` into a Reply, or ``None`` when STT is unusable.
+
+        ``build_voice_to_text`` is not failure-safe either: an unknown vendor
+        raises from the voice factory, several vendors (edge, elevenlabs)
+        answer ``None`` because their ``voiceToText`` is an unimplemented
+        no-op, and a vendor network error escapes. Unprotected, the exception
+        reached ``_fail_callback`` (log only) and the user lost the turn, and a
+        ``None`` answer crashed on ``reply.type``. ``_safe_text_to_voice``
+        guards the TTS side of the same turn; this guards its sibling.
+        """
+        try:
+            reply = super().build_voice_to_text(wav_path)
+        except Exception as e:
+            logger.warning("[chat_channel] build_voice_to_text error: " + str(e))
+            return None
+        if reply is None:
+            logger.warning("[chat_channel] build_voice_to_text returned None")
+            return None
+        return reply
+
     def _decorate_reply(self, context: Context, reply: Reply) -> Reply:
         if reply and reply.type:
             e_context = PluginManager().emit_event(
@@ -715,10 +808,13 @@ class ChatChannel(Channel):
                 if reply.type == ReplyType.TEXT:
                     reply_text = reply.content
                     if desire_rtype == ReplyType.VOICE and ReplyType.VOICE not in self.NOT_SUPPORT_REPLYTYPE:
-                        # Preserve original text for the "text-then-voice" pattern in _send_reply.
-                        context["voice_reply_text"] = reply.content
-                        reply = super().build_text_to_voice(reply.content)
-                        return self._decorate_reply(context, reply)
+                        voice_reply = self._safe_text_to_voice(reply.content)
+                        if voice_reply is not None:
+                            # Preserve original text for the "text-then-voice" pattern in _send_reply.
+                            context["voice_reply_text"] = reply.content
+                            return self._decorate_reply(context, voice_reply)
+                        # TTS unusable: fall through so the answer is still
+                        # delivered as text instead of losing the turn.
                     if context.get("isgroup", False):
                         if not context.get("no_need_at", False):
                             reply_text = "@" + context["msg"].actual_user_nickname + "\n" + reply_text.strip()
@@ -763,7 +859,10 @@ class ChatChannel(Channel):
                     self._send(text_reply, context)
                     # 短暂延迟后发送图片
                     time.sleep(0.3)
-                    self._send(reply, context)
+                    # The caption is already out; DingTalk and QQ would send it again.
+                    image_reply = copy.copy(reply)
+                    image_reply.text_content = None
+                    self._send(image_reply, context)
                 # Send text bubble before voice, unless channel already streamed
                 # the text (feishu) or natively renders STT under the voice (wechatcom).
                 elif reply.type == ReplyType.VOICE and context.get("voice_reply_text") \
@@ -871,6 +970,18 @@ class ChatChannel(Channel):
     def _success_callback(self, session_id, **kwargs):  # 线程正常结束时的回调函数
         logger.debug("Worker return success, session_id = {}".format(session_id))
 
+    def _release_claim(self, context: Context, session_id: str) -> None:
+        """Release the "a task is in flight for this conversation" marker.
+
+        Normally cleared by the Future done-callback. Paths that answer without
+        queueing (/cancel, /steer, a disabled agent) create no Future, and on a
+        passive-reply channel a stale marker would ignore the user from then on.
+        No-op for channels without such a marker.
+        """
+        release = getattr(self, "_release_passive_claim", None)
+        if callable(release):
+            release(context, session_id)
+
     def _fail_callback(self, session_id, exception, **kwargs):  # 线程异常结束时的回调函数
         logger.exception("Worker return exception: {}".format(exception))
 
@@ -915,6 +1026,7 @@ class ChatChannel(Channel):
                 _t("该助手当前已停用，请联系管理员。",
                    "This assistant is currently disabled. Please contact an administrator."),
             ))
+            self._release_claim(context, session_id)
             return
         except Exception as e:
             logger.warning(f"[chat_channel] Agent route failed, using default: {e}")
@@ -926,10 +1038,12 @@ class ChatChannel(Channel):
             stripped = context.content.strip().lower()
             if stripped in self._BYPASS_QUEUE_COMMANDS:
                 self._handle_cancel_command(context, session_id)
+                self._release_claim(context, session_id)
                 return
             if re.match(r"^/steer(?:\s|$)", stripped):
                 instruction = context.content.strip()[len("/steer"):].strip()
                 self._handle_steer_command(context, session_id, instruction)
+                self._release_claim(context, session_id)
                 return
 
         with self.lock:

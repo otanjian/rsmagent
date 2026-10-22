@@ -1,0 +1,50 @@
+{
+  "scenarios": [
+    {
+      "name": "sync: header language reflects the personal choice without changing instance configuration",
+      "passed": true
+    },
+    {
+      "name": "sync: personal menu saves, reloads and isolates two browser identities",
+      "passed": true
+    },
+    {
+      "name": "sync: actual menu write failure retains the committed layout and reports error",
+      "passed": true
+    },
+    {
+      "name": "sync: artifacts read real files, rename without rewriting and isolate owners",
+      "passed": true
+    },
+    {
+      "name": "sync: HTML preview cannot escape its sandbox and missing files stay unavailable",
+      "passed": true
+    },
+    {
+      "name": "sync: skill creation uses the rendered form and persists an authorized resource",
+      "passed": true
+    },
+    {
+      "name": "sync: knowledge category and document create, edit and reload through the master UI",
+      "passed": true
+    },
+    {
+      "name": "sync: Web service keys are one-shot, authorized and revoked on rotation",
+      "passed": true
+    },
+    {
+      "name": "sync: master history launcher creates a scoped team before switching conversation",
+      "passed": true
+    },
+    {
+      "name": "sync: workspace upload, search, edit and download persist real file bytes",
+      "passed": true
+    },
+    {
+      "name": "sync: tenant switches, logout and re-login restore only the selected personal layout",
+      "passed": true
+    }
+  ],
+  "pageErrors": [],
+  "scope": "actual Web browser, IAM, files and persistence; no model substitute"
+}

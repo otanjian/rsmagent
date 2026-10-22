@@ -2,8 +2,21 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 import sys
-import io
 import stat
+
+
+class _Utf8ConsoleStream:
+    """Write UTF-8 to a borrowed buffer without owning or closing it."""
+
+    def __init__(self, buffer):
+        self.buffer = buffer
+
+    def write(self, text):
+        self.buffer.write(text.encode("utf-8", errors="replace"))
+        return len(text)
+
+    def flush(self):
+        self.buffer.flush()
 
 
 def _positive_env(name, default):
@@ -71,7 +84,7 @@ def _reset_logger(log):
     log.propagate = False
     stdout = sys.stdout
     if hasattr(stdout, "buffer"):
-        stdout = io.TextIOWrapper(stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
+        stdout = _Utf8ConsoleStream(stdout.buffer)
     console_handle = logging.StreamHandler(stdout)
     console_handle.setFormatter(
         logging.Formatter(

@@ -1,0 +1,15 @@
+25 / 348 tests/test_browser_env_browsers_dir.py 0
+32 / 348 tests/test_capability_matrix.py 1
+50 / 348 tests/test_cli_daemon_stdin.py 0
+75 / 348 tests/test_custom_provider_headers.py 0
+100 / 348 tests/test_feishu_post_attachments.py 0
+125 / 348 tests/test_linkai_admin_exact_match.py 0
+150 / 348 tests/test_member_model_catalog.py 0
+175 / 348 tests/test_openai_chat_api.py 0
+200 / 348 tests/test_rdai_simplification.py 0
+225 / 348 tests/test_search_files_long_line_preview.py 0
+250 / 348 tests/test_skill_github_fallback_layout.py 0
+275 / 348 tests/test_subscription_empty_prefix.py 0
+300 / 348 tests/test_voice_identical_text_files.py 0
+325 / 348 tests/test_wechatcom_file_tmp_cleanup.py 0
+Done 348 files in 85 seconds; failures 1

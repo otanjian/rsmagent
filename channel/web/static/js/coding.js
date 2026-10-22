@@ -63,7 +63,7 @@
     // this Agent cannot serve. The composer itself is hidden as a whole.
     var HIDDEN_SELECTORS = [
         '#chat-messages',
-        '#chat-input-area',
+        '#chat-composer',
         '#scroll-to-bottom-btn',
         '[data-coding-hide]',
     ];
@@ -301,7 +301,7 @@
         return {
             host: document.getElementById('chat-main'),
             messages: document.getElementById('chat-messages'),
-            composer: document.getElementById('chat-input-area'),
+            composer: document.getElementById('chat-composer'),
         };
     }
 

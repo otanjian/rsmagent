@@ -302,7 +302,9 @@ def _require_agent_action(ctx: "Optional[RequestContext]", agent_id: str, action
         raise web.HTTPError("403 Forbidden", {"Content-Type": "application/json"},
                             json.dumps({"status": "error", "message": "forbidden",
                                         "code": "forbidden"}))
-    if _tenant_admin_owns_agent(ctx, agent_id):
+    # ``history_read_all`` is the one action a tenant admin does not get
+    # from managing the Agent: the spec requires the explicit target grant.
+    if action != "history_read_all" and _tenant_admin_owns_agent(ctx, agent_id):
         return
     # The tenant's shared default Agent is the Agent-less entry point, so read and
     # use follow the functional permission instead of a per-resource grant. ``edit``
@@ -820,6 +822,79 @@ def _require_tenant_agent_binding(ctx: "Optional[RequestContext]", agent_id: Opt
         return resolved
     raise web.HTTPError("403 Forbidden", {"Content-Type": "application/json"},
                         json.dumps({"status": "error", "message": "default agent ambiguous"}))
+
+
+
+def _require_history_read_all(ctx: "Optional[RequestContext]", agent_id: str) -> str:
+    """Authorize reading every owner's history of one explicitly granted Agent.
+
+    Four conditions, all required (``session-history-workbench`` and
+    ``platform-all-authorization``): a real tenant membership, the
+    functional ``history.read`` and ``history.read_all`` permissions, and
+    an explicit ``history_read_all`` grant on the target Agent. Platform
+    ``all`` covers the two functional actions only — it MUST NOT stand in
+    for the resource grant, which is why the grant check below is the
+    strict one. The target must be a tenant-bound, shared, non-coding
+    Agent; a private Agent and another tenant's Agent are refused.
+    """
+    if ctx is None:
+        return agent_id or ""
+    if not agent_id:
+        raise web.HTTPError("400 Bad Request", {"Content-Type": "application/json"},
+                            json.dumps({"status": "error", "code": "agent_id_required",
+                                        "message": "agent_id required"}))
+    if not ctx.tenant_id:
+        _raise_forbidden()
+    if not ctx.is_platform_admin:
+        if ("history.read" not in ctx.permissions
+                or "history.read_all" not in ctx.permissions):
+            _raise_forbidden()
+    agent_id = _require_tenant_agent_binding(ctx, agent_id)
+    from auth.service import get_identity_service
+    svc = get_identity_service()
+    binding = svc.get_agent_binding(agent_id) or {}
+    if binding.get("private_owner_user_id"):
+        _raise_forbidden()
+    from channel.web.fork.handlers.sessions import _agent_is_coding
+    if _agent_is_coding(agent_id):
+        _raise_forbidden()
+    if not svc.has_explicit_resource_grant(
+            ctx.user_id, ctx.tenant_id, "agent", f"agent:{agent_id}",
+            "history_read_all"):
+        _raise_forbidden()
+    return agent_id
+
+
+def _history_read_all_target_ids(ctx: "Optional[RequestContext]") -> list:
+    """Tenant-bound, shared, non-coding Agents with an explicit read-all grant.
+
+    Used by the target selector, so it answers the same question the read
+    gate asks (never a wider one): explicit grants only, narrowed to the
+    tenant's visible Agents. Platform ``all`` adds none by itself.
+    """
+    if ctx is None or not ctx.tenant_id:
+        return []
+    from auth.service import get_identity_service
+    from channel.web.fork.common import _tenant_ids_for_context
+    from channel.web.fork.handlers.sessions import _agent_is_coding
+    svc = get_identity_service()
+    granted = svc.explicit_resource_ids(
+        ctx.user_id, ctx.tenant_id, "agent", "history_read_all")
+    visible = set(_tenant_ids_for_context(ctx) or [])
+    found = []
+    for resource_id in sorted(granted):
+        if not resource_id.startswith("agent:"):
+            continue
+        aid = resource_id.split(":", 1)[1]
+        if aid not in visible:
+            continue
+        binding = svc.get_agent_binding(aid) or {}
+        if binding.get("private_owner_user_id"):
+            continue
+        if _agent_is_coding(aid):
+            continue
+        found.append(aid)
+    return found
 
 
 def _require_private_owner(ctx: "Optional[RequestContext]", agent_id: str) -> None:

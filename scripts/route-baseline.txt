@@ -416,3 +416,8 @@
 /api/workspace/trash/restore	POST	tenant	
 /api/workspace/upload	POST	tenant	
 
+
+# sync-master-to-rdai-20261021: SAK resolves its tenant in the API handler.
+# The browser-session gateway cannot authenticate service-account keys.
+# Handler still enforces identity, tenant, Agent and model authorization.
+/v1/chat/completions	POST	public	-

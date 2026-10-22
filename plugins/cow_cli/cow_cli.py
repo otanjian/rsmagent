@@ -589,11 +589,38 @@ class CowCliPlugin(Plugin):
                     if v.get("enabled", True)
                 )
                 lines.append(_t(f"  已加载技能: {enabled}/{total}", f"  Loaded skills: {enabled}/{total}"))
+
+            lines.append(self._mcp_status_line(agent))
         else:
             lines.append("")
             lines.append(_t("  Agent: 未初始化 (首次对话后自动创建)", "  Agent: not initialized (created on first chat)"))
 
         return "\n".join(lines)
+
+    def _mcp_status_line(self, agent) -> str:
+        """One line of MCP servers, shown "ready/total" like the skills line.
+
+        Same source the web console uses (mcp.json, config.json fallback,
+        ToolManager runtime state), and reading it never boots a server.
+        The numerator counts only servers whose live status is "ready"; the
+        denominator counts every configured server (failed, disabled, and
+        not-yet-loaded included). No per-status breakdown ("就绪 2, 失败 1"
+        in parentheses) is shown here by design — the console's MCP page
+        carries that detail.
+        """
+        try:
+            from agent.tools.mcp.service import list_servers_with_status
+
+            servers = list_servers_with_status(agent.workspace_dir).get("servers") or []
+        except Exception as e:
+            logger.warning(f"[CowCli] status: failed to read MCP servers: {e}")
+            servers = []
+
+        ready = sum(1 for item in servers if item.get("status") == "ready")
+        return _t(
+            f"  已加载 MCP: {ready}/{len(servers)}",
+            f"  Loaded MCP: {ready}/{len(servers)}",
+        )
 
     # ------------------------------------------------------------------
     # logs
@@ -855,6 +882,15 @@ class CowCliPlugin(Plugin):
         except Exception as e:
             logger.warning(f"[CowCli] config reload warning: {e}")
 
+        if key in ("agent_max_context_tokens", "agent_max_steps"):
+            try:
+                from bridge.bridge import Bridge
+                agent_bridge = Bridge().get_agent_bridge()
+                if agent_bridge is not None:
+                    agent_bridge.apply_runtime_limits()
+            except Exception as e:
+                logger.warning(f"[CowCli] apply runtime limits failed: {e}")
+
         result = _t(f"✅ 配置已更新\n\n  {key}: {old_val} → {new_val}", f"✅ Config updated\n\n  {key}: {old_val} → {new_val}")
         if "bot_type" in updates and updates["bot_type"] != old_bot_type:
             result += f"\n  bot_type: {old_bot_type} → {updates['bot_type']}"
@@ -957,21 +993,24 @@ class CowCliPlugin(Plugin):
         parts = args.strip().split(None, 1)
         sub = parts[0].lower() if parts else ""
         sub_args = parts[1].strip() if len(parts) > 1 else ""
+        # An Agent with its own skill set must not have commands typed in its
+        # chat land on the shared library instead.
+        agent_id = self._current_agent_id(e_context)
 
         if sub == "list":
-            return self._skill_list(sub_args, e_context)
+            return self._skill_list(sub_args, agent_id=agent_id)
         elif sub == "search":
-            return self._skill_search(sub_args)
+            return self._skill_search(sub_args, agent_id=agent_id)
         elif sub == "install":
-            return self._skill_install(sub_args, e_context)
+            return self._skill_install(sub_args, agent_id=agent_id)
         elif sub == "uninstall":
-            return self._skill_uninstall(sub_args)
+            return self._skill_uninstall(sub_args, agent_id=agent_id)
         elif sub == "info":
-            return self._skill_info(sub_args)
+            return self._skill_info(sub_args, agent_id=agent_id)
         elif sub == "enable":
-            return self._skill_set_enabled(sub_args, True)
+            return self._skill_set_enabled(sub_args, True, agent_id=agent_id)
         elif sub == "disable":
-            return self._skill_set_enabled(sub_args, False)
+            return self._skill_set_enabled(sub_args, False, agent_id=agent_id)
         else:
             return _t(
                 "用法: /skill <子命令>\n\n"
@@ -994,23 +1033,31 @@ class CowCliPlugin(Plugin):
                 "disable <name>: Disable a skill",
             )
 
-    def _refresh_skill_manager(self):
+    def _refresh_skill_manager(self, agent_id=None):
         """Re-scan skill directories so skills_config.json reflects disk state."""
         try:
             from bridge.bridge import Bridge
             bridge = Bridge()
             agent_bridge = bridge.get_agent_bridge()
-            for _agent_id, _session_id, agent in agent_bridge.iter_agent_instances():
-                if agent and hasattr(agent, 'skill_manager') and agent.skill_manager:
+            for live_id, _session_id, agent in agent_bridge.iter_agent_instances():
+                if not (agent and getattr(agent, 'skill_manager', None)):
+                    continue
+                if not agent_id or live_id == agent_id:
                     agent.skill_manager.refresh_skills()
-                    break
+                    return
+            if agent_id:
+                # No live instance for this Agent yet: scanning its directory
+                # brings the config file in line just the same.
+                from agent.skills.manager import SkillManager
+                from cli.utils import get_skills_dir
+                SkillManager(custom_dir=get_skills_dir(agent_id))
         except Exception as e:
             logger.debug(f"[CowCli] skill refresh skipped: {e}")
 
     def _skill_list_local(self, agent_id=None) -> str:
         from cli.utils import load_skills_config, get_skills_dir, get_builtin_skills_dir
-        self._refresh_skill_manager()
-        config = load_skills_config()
+        self._refresh_skill_manager(agent_id)
+        config = load_skills_config(agent_id)
 
         # Scope to this Agent's selection: a subset picked in team.json means
         # /skill list here shows only what this Agent actually draws on, not the
@@ -1027,7 +1074,7 @@ class CowCliPlugin(Plugin):
                 )
 
         if not config:
-            skills_dir = get_skills_dir()
+            skills_dir = get_skills_dir(agent_id)
             builtin_dir = get_builtin_skills_dir()
             entries = []
             for d, source in [(builtin_dir, "builtin"), (skills_dir, "custom")]:
@@ -1055,7 +1102,7 @@ class CowCliPlugin(Plugin):
             source = entry.get("source", "")
             icon = "✅" if enabled else "⏸️"
             display = entry.get("display_name", "") or name
-            desc = entry.get("description", "")
+            desc = entry.get("display_description", "") or entry.get("description", "")
             if len(desc) > 50:
                 desc = desc[:47] + "…"
             line = f"{icon} {display}"
@@ -1073,15 +1120,15 @@ class CowCliPlugin(Plugin):
         lines.append(_t("💡 /skill info <名称>: 查看详情", "💡 /skill info <name>: Show details"))
         return "\n".join(lines)
 
-    def _skill_list(self, args: str, e_context=None) -> str:
+    def _skill_list(self, args: str, agent_id=None) -> str:
         parts = args.strip().split()
         if "--remote" in parts or "-r" in parts:
             page = 1
             for i, p in enumerate(parts):
                 if p == "--page" and i + 1 < len(parts) and parts[i + 1].isdigit():
                     page = max(1, int(parts[i + 1]))
-            return self._skill_list_remote(page=page)
-        return self._skill_list_local(self._current_agent_id(e_context))
+            return self._skill_list_remote(page=page, agent_id=agent_id)
+        return self._skill_list_local(agent_id)
 
     def _agent_skill_selection(self, agent_id):
         """The set of skill names this Agent draws on, or ``None`` for "all".
@@ -1111,14 +1158,16 @@ class CowCliPlugin(Plugin):
 
     _REMOTE_PAGE_SIZE = 10
 
-    def _skill_list_remote(self, page: int = 1) -> str:
+    def _skill_list_remote(self, page: int = 1, agent_id=None) -> str:
         import requests
-        from cli.utils import SKILL_HUB_API, load_skills_config
+        from cli.utils import custom_skill_hub, load_skills_config, skill_hub
         page_size = self._REMOTE_PAGE_SIZE
+        hub_api, hub_headers = skill_hub()
         try:
             resp = requests.get(
-                f"{SKILL_HUB_API}/skills",
+                f"{hub_api}/skills",
                 params={"page": page, "limit": page_size},
+                headers=hub_headers,
                 timeout=10,
             )
             resp.raise_for_status()
@@ -1133,7 +1182,7 @@ class CowCliPlugin(Plugin):
 
         total_pages = max(1, (total + page_size - 1) // page_size)
         page = min(page, total_pages)
-        installed = set(load_skills_config().keys())
+        installed = set(load_skills_config(agent_id).keys())
 
         lines = [_t("🌐 技能广场", "🌐 Skill Hub"), ""]
         for s in skills:
@@ -1157,17 +1206,19 @@ class CowCliPlugin(Plugin):
             lines.append(_t(f"💡 /skill list --remote --page {page - 1}: 上一页", f"💡 /skill list --remote --page {page - 1}: Previous page"))
         lines.append(_t("💡 /skill install <名称>: 安装技能", "💡 /skill install <name>: Install a skill"))
         lines.append(_t("💡 /skill search <关键词>: 搜索技能", "💡 /skill search <keyword>: Search skills"))
-        lines.append(_t("🌐 https://www.rsm.global/china/zh-hans  在线浏览全部技能", "🌐 https://www.rsm.global/china/zh-hans  Browse all skills online"))
+        if not custom_skill_hub():
+            lines.append(_t("🌐 https://www.rsm.global/china/zh-hans  在线浏览全部技能", "🌐 https://www.rsm.global/china/zh-hans  Browse all skills online"))
         return "\n".join(lines)
 
-    def _skill_search(self, query: str) -> str:
+    def _skill_search(self, query: str, agent_id=None) -> str:
         if not query:
             return _t("请指定搜索关键词: /skill search <关键词>", "Please specify a search keyword: /skill search <keyword>")
 
         import requests
-        from cli.utils import SKILL_HUB_API, load_skills_config
+        from cli.utils import load_skills_config, skill_hub
+        hub_api, hub_headers = skill_hub()
         try:
-            resp = requests.get(f"{SKILL_HUB_API}/skills/search", params={"q": query}, timeout=10)
+            resp = requests.get(f"{hub_api}/skills/search", params={"q": query}, headers=hub_headers, timeout=10)
             resp.raise_for_status()
             skills = resp.json().get("skills", [])
         except Exception as e:
@@ -1176,7 +1227,7 @@ class CowCliPlugin(Plugin):
         if not skills:
             return _t(f"未找到与「{query}」相关的技能", f"No skills found for \"{query}\"")
 
-        installed = set(load_skills_config().keys())
+        installed = set(load_skills_config(agent_id).keys())
         lines = [_t(f"🔍 搜索「{query}」({len(skills)} 个结果)", f"🔍 Search \"{query}\" ({len(skills)} results)"), ""]
         for s in skills:
             name = s.get("name", "")
@@ -1197,7 +1248,7 @@ class CowCliPlugin(Plugin):
 
     _INSTALL_TIMEOUT = 60
 
-    def _skill_install(self, name: str, e_context: EventContext) -> str:
+    def _skill_install(self, name: str, agent_id=None) -> str:
         if not name:
             return _t("请指定要安装的技能: /skill install <名称>", "Please specify a skill to install: /skill install <name>")
 
@@ -1206,7 +1257,7 @@ class CowCliPlugin(Plugin):
 
         try:
             with ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(install_skill, name)
+                future = pool.submit(install_skill, name, agent_id)
                 result = future.result(timeout=self._INSTALL_TIMEOUT)
 
             if result.error:
@@ -1215,19 +1266,19 @@ class CowCliPlugin(Plugin):
             if not result.installed:
                 return "\n".join(result.messages) if result.messages else _t("未找到可安装的技能", "No installable skill found")
 
-            return self._format_install_result(result)
+            return self._format_install_result(result, agent_id)
         except FuturesTimeout:
             return _t("安装超时，请稍后重试或检查网络连接", "Install timed out. Please retry later or check your network connection.")
         except Exception as e:
             return _t(f"安装失败: {e}", f"Install failed: {e}")
 
     @staticmethod
-    def _format_install_result(result) -> str:
+    def _format_install_result(result, agent_id=None) -> str:
         """Format InstallResult into a chat-friendly message."""
         from cli.commands.skill import _read_skill_description
         from cli.utils import get_skills_dir, load_skills_config
-        skills_dir = get_skills_dir()
-        config = load_skills_config()
+        skills_dir = get_skills_dir(agent_id)
+        config = load_skills_config(agent_id)
 
         lines = []
         for skill_name in result.installed:
@@ -1244,15 +1295,23 @@ class CowCliPlugin(Plugin):
 
         return "\n".join(lines)
 
-    def _skill_uninstall(self, name: str) -> str:
+    def _skill_uninstall(self, name: str, agent_id=None) -> str:
         if not name:
             return _t("请指定要卸载的技能: /skill uninstall <名称>", "Please specify a skill to uninstall: /skill uninstall <name>")
 
         import shutil
         import json
+        from cli.commands.skill import SkillInstallError, _check_skill_name
         from cli.utils import get_skills_dir
 
-        skills_dir = get_skills_dir()
+        # The name comes from chat and is passed to rmtree below. Use the raising
+        # check: the CLI variant calls sys.exit.
+        try:
+            _check_skill_name(name)
+        except SkillInstallError as e:
+            return _t(f"无法卸载: {e}", f"Cannot uninstall: {e}")
+
+        skills_dir = get_skills_dir(agent_id)
         skill_dir = os.path.join(skills_dir, name)
 
         if not os.path.exists(skill_dir):
@@ -1260,6 +1319,8 @@ class CowCliPlugin(Plugin):
 
         if not skill_dir:
             return _t(f"技能 '{name}' 未安装", f"Skill '{name}' is not installed")
+
+        shared = os.path.realpath(skills_dir) == os.path.realpath(get_skills_dir())
 
         shutil.rmtree(skill_dir)
 
@@ -1275,11 +1336,13 @@ class CowCliPlugin(Plugin):
 
         # The skill is gone from the shared library, so scrub its name from any
         # Agent's selection list in team.json instead of leaving dead entries.
-        try:
-            from agent.admin import get_agent_admin_service
-            get_agent_admin_service().prune_skill(name)
-        except Exception as e:
-            logger.debug(f"[CowCli] skill prune skipped: {e}")
+        # Removing an Agent's own copy leaves the shared one other Agents pick.
+        if shared:
+            try:
+                from agent.admin import get_agent_admin_service
+                get_agent_admin_service().prune_skill(name)
+            except Exception as e:
+                logger.debug(f"[CowCli] skill prune skipped: {e}")
 
         return _t(f"✅ 技能 '{name}' 已卸载", f"✅ Skill '{name}' uninstalled")
 
@@ -1315,13 +1378,13 @@ class CowCliPlugin(Plugin):
                 meta[key.strip()] = val.strip().strip('"').strip("'")
         return meta, body
 
-    def _skill_info(self, name: str) -> str:
+    def _skill_info(self, name: str, agent_id=None) -> str:
         if not name:
             return _t("请指定技能名称: /skill info <名称>", "Please specify a skill name: /skill info <name>")
 
         from cli.utils import get_skills_dir, get_builtin_skills_dir
 
-        skills_dir = get_skills_dir()
+        skills_dir = get_skills_dir(agent_id)
         builtin_dir = get_builtin_skills_dir()
 
         skill_dir = None
@@ -1364,7 +1427,7 @@ class CowCliPlugin(Plugin):
             result += f"\n\n... ({len(lines) - 30} more lines)"
         return result
 
-    def _skill_set_enabled(self, name: str, enabled: bool) -> str:
+    def _skill_set_enabled(self, name: str, enabled: bool, agent_id=None) -> str:
         if not name:
             return _t(
                 f"请指定技能名称: /skill {'enable' if enabled else 'disable'} <名称>",
@@ -1374,7 +1437,7 @@ class CowCliPlugin(Plugin):
         import json
         from cli.utils import get_skills_dir
 
-        skills_dir = get_skills_dir()
+        skills_dir = get_skills_dir(agent_id)
         config_path = os.path.join(skills_dir, "skills_config.json")
 
         if not os.path.exists(config_path):
@@ -1593,8 +1656,8 @@ class CowCliPlugin(Plugin):
             from agent.memory.chunker import TextChunker
             if detect_chunker_version(memory_manager.storage) != TextChunker.CHUNKER_VERSION:
                 warnings.append(_t(
-                    "  ⚠️ 索引由旧版切分算法生成；建议运行 /memory rebuild-index 以按标题更精准地切分记忆（重建成本较高，由你决定）",
-                    "  ⚠️ Index was built by an older chunking strategy; consider running /memory rebuild-index for heading-aware chunking (a rebuild re-embeds everything, so it's your call)",
+                    "  ⚠️ 索引由旧版切分算法生成；建议运行 /memory rebuild-index 重建以与当前算法保持一致（重建成本较高，由你决定）",
+                    "  ⚠️ Index was built by an older chunking strategy; consider running /memory rebuild-index to bring it in line with the current one (a rebuild re-embeds everything, so it's your call)",
                 ))
 
         if warnings:

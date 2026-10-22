@@ -1,0 +1,24 @@
+{
+  "status": "merged-web-delivered",
+  "pull_request": "https://rd.rsmxm.com.cn/Gitea/rsmai/rsmagent/pulls/2",
+  "source_sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+  "target_before": "c9bd4942261156f56c02ffd65e4d81c6153e1594",
+  "runtime_digest": "391d9c49ac4f6489f8607b6f87c9349f66ac125f90dc420840cd50471132de18",
+  "web_accepted": true,
+  "desktop_verified": false,
+  "remote_ci_enforcement_verified": false,
+  "production_deployed": false,
+  "accepted_fix_commit": "d60d06808afb760d33dd8c70a94725260bae36c6",
+  "commit_hook_changed_tree": false,
+  "source_and_target_ancestors": true,
+  "delivery_commit": "c7b981b0068e817cd0cef4fab28f19f0385e2bf1",
+  "pr_head": "f584e89eb504373386afc3efc7e9e6515eb07c57",
+  "merged_at": "2026-10-21T20:19:05+08:00",
+  "delivered_at_utc": "2026-10-21T12:19:37.528654+00:00",
+  "merged_tree_equals_accepted_head": true,
+  "postmerge_web_smoke_passed": true,
+  "postmerge_smoke": [
+    "postmerge-chat-result.json",
+    "postmerge-file-result.json"
+  ]
+}

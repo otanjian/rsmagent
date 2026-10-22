@@ -1,0 +1,55 @@
+# Python dependencies for the Windows script runtime (task 7.1).
+#
+# A **subset** of ``requirements-desktop.txt``, not a second opinion about
+# versions: every line must also appear there with the same pin, except for the
+# two declared transitive additions explained at the bottom. Task 7.1 chose a
+# minimal bundled CPython over reusing the 399.5 MB frozen backend, and the point
+# of that choice was to make "what a script can import" a short list someone can
+# read -- a list with its own independently-chosen versions would only be a second
+# thing to drift.
+#
+# ``desktop/build/check-script-runtime-deps.py`` enforces the subset rule, the
+# scope, and that the first-batch skills' imports are all satisfiable. Growing this
+# file is a deliberate act: every addition widens what untrusted project code can
+# reach.
+
+# --- Excel / Word / PowerPoint writing and reading -------------------------
+openpyxl                     # .xlsx read/write; the skills' primary output
+xlsxwriter                   # write-only .xlsx; rfq-quote's delivery path
+python-docx                  # .docx
+python-pptx                  # .pptx
+
+# --- Shared data handling --------------------------------------------------
+numpy                        # numeric work the ledger/report skills rely on
+pandas                       # required by fin-report-analysis and
+                             # finance-ledger-generator. Not an optional extra:
+                             # it was in NEITHER this list nor the desktop one, so
+                             # those skills would fail with ModuleNotFoundError on
+                             # the backend path too. Found by the guard, which is
+                             # why the guard reads the skills' imports.
+Pillow                       # image handling inside documents
+
+# --- Transitive additions, listed because embeddable Python ships only what is listed
+lxml                         # python-docx / python-pptx parser
+et_xmlfile                   # openpyxl's XML writer
+#
+# Neither appears in requirements-desktop.txt: PyInstaller pulls transitive
+# dependencies into the backend automatically, so they are in the 399.5 MB bundle
+# without being named there. An embeddable CPython does not, so leaving them
+# implicit would be a ModuleNotFoundError inside the sandbox -- after the model had
+# been told the work succeeded. That is the failure this pairing exists to prevent.
+#
+# --- Deliberately absent, and why -----------------------------------------
+#
+#   requests, tenacity     Only quality-trace / sap-integration use them. A script
+#                          with network access is what the boundary exists to deny.
+#   pdfminer, pdfplumber,  PDF tooling, used by bid-analysis / procurement-
+#   pypdf                  comparison. Not document *skills of the first batch*,
+#                          and pdfminer in particular is a large parser.
+#   plotly, reportlab      Charting and PDF rendering for specific skills.
+#   playwright,            The backend carries them. A script that can reach a
+#   googleapiclient, grpc  browser driver or a cloud client is precisely what
+#                          isolation is for.
+#
+# The rule is the skill's *declared* need, not convenience: see
+# agent/skills/dependencies.py.

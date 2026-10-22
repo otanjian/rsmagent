@@ -17,10 +17,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const source = fs.readFileSync(path.join(__dirname, '../channel/web/static/js/console.js'), 'utf8');
+const source = require('./support/console_sources.cjs').script('js/fork/extensions.js');
 // The shipped address module. Loaded into the sandbox when a scenario needs the
 // real routing seam, so a stub cannot claim a path is a registered page.
-const ROUTER_SOURCE = fs.readFileSync(path.join(__dirname, '../channel/web/static/js/fork/router.js'), 'utf8');
+const ROUTER_SOURCE = require('./support/console_sources.cjs').script('js/core/router.js');
 
 // The authoritative address table the server injects into #console-page-routes
 // (channel/web/route_registry.py -> console_page_metadata). Read the production

@@ -3,22 +3,90 @@ name = "fs-guard"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.74"
-description = "Root-anchored read-only file helper for the 容大AI desktop client"
+description = "Root-anchored file helper for the 容大AI desktop client"
 publish = false
+# Both entry points below deliberately name the same `src/main.rs`, so Cargo's
+# auto-discovery would otherwise report the file as belonging to two targets.
+# The two `[[bin]]` sections are the whole list.
+autobins = false
+# Test targets are spelled out for the same reason the binaries are, plus one
+# more: `tests/write.rs` drives `project-fs-guard`, whose path Cargo only makes
+# available under `write-ops`. Auto-discovery would try to build that file for
+# the read-only configuration, where the binary it names does not exist.
+autotests = false
+
+# Two entry points, one source tree (design D1).
+#
+#   fs-guard(.exe)         -- read-only: list/stat/read/search. The `write-ops`
+#                             feature is off, so `src/write.rs` is not compiled
+#                             at all and that binary physically cannot write.
+#   project-fs-guard(.exe) -- the same frames, plus create/replace/edit/mkdir.
+#
+# Sharing one `main.rs` is deliberate: the frame handling, the cancel flag, the
+# root handling and the per-component path checks are the same code in both, so
+# the two entries cannot drift. "The read-only helper cannot write" is then true
+# because the operations are absent from that build, not because a runtime check
+# says no.
+[[bin]]
+name = "fs-guard"
+path = "src/main.rs"
+
+[[bin]]
+name = "project-fs-guard"
+path = "src/main.rs"
+required-features = ["write-ops"]
+
+[features]
+default = []
+# Turns on the limited write operations. Only the second binary requires it.
+write-ops = []
+
+# Test targets are spelled out for the same reason the binaries are, plus one
+# more: `tests/write.rs` drives `project-fs-guard`, whose path Cargo only makes
+# available under `write-ops`. Auto-discovery would try to build that file for the
+# read-only configuration, where the binary it names does not exist.
+#
+#   stdio    -- process-level probes for the read-only helper.
+#   write    -- the same probes for the write helper, including the W02 sentinel.
+[[test]]
+name = "stdio"
+path = "tests/stdio.rs"
+
+[[test]]
+name = "write"
+path = "tests/write.rs"
+required-features = ["write-ops"]
 
 # Locked, minimal dependency set. The helper is a security boundary that ships
 # as a signed binary inside the app, so every dependency is a liability: only
 # what the protocol and the per-component path checks need is listed.
 #
-# `serde`/`serde_json` carry the private stdio protocol; `libc` is required
-# because the whole point of the helper is `openat`-style *relative* opening
-# (decision D6: "不以 realpath + open 充当竞态保护"), which `std::fs` does not
-# expose. Nothing here does networking, so the helper cannot talk to anything
-# even if it wanted to.
+# `serde`/`serde_json` carry the private stdio protocol. The per-platform
+# *relative* opening -- `openat` on unix, `NtCreateFile` with a root handle
+# directory on Windows (decision D6: "不以 realpath + open 充当竞态保护") -- is
+# what needs a target-specific library, because `std::fs` exposes neither on the
+# platform the other one uses. Nothing here does networking, so the helper
+# cannot talk to anything even if it wanted to.
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+# Platform backends. Each one is declared only for the target that uses it, so a
+# Windows build does not link a unix C library and a macOS build does not carry
+# the Windows bindings. `libc` was unconditional before the Windows backend
+# existed; the crate was unix-only by its imports rather than by this table,
+# which meant a Windows build failed with 51 errors instead of saying so.
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Cryptography",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+] }
 
 [profile.release]
 # A small, fast, reproducible artifact: no LTO surprises across toolchains, and

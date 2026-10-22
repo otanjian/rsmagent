@@ -4,7 +4,7 @@ Scheduler tool for creating and managing scheduled tasks
 
 import uuid
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from croniter import croniter
 from agent.tools.scheduler.time_utils import (
@@ -23,6 +23,10 @@ from agent.tools.scheduler.authorization import TaskAuthorizationError
 from bridge.context import Context, ContextType
 from bridge.reply import Reply, ReplyType
 from common.log import logger
+
+
+class _SchedulerError(str):
+    """A refused operation, retaining the helpers' existing text interface."""
 
 
 class SchedulerTool(BaseTool):
@@ -228,27 +232,23 @@ class SchedulerTool(BaseTool):
         try:
             if action == "create":
                 result = self._create_task(**kwargs)
-                return ToolResult.success(result)
             elif action == "list":
                 result = self._list_tasks(**kwargs)
-                return ToolResult.success(result)
             elif action == "list_recipients":
                 result = self._list_recipients(**kwargs)
-                return ToolResult.success(result)
             elif action == "get":
                 result = self._get_task(**kwargs)
-                return ToolResult.success(result)
             elif action == "delete":
                 result = self._delete_task(**kwargs)
-                return ToolResult.success(result)
             elif action == "enable":
                 result = self._enable_task(**kwargs)
-                return ToolResult.success(result)
             elif action == "disable":
                 result = self._disable_task(**kwargs)
-                return ToolResult.success(result)
             else:
                 return ToolResult.fail(f"未知操作: {action}")
+            if isinstance(result, _SchedulerError):
+                return ToolResult.fail(str(result))
+            return ToolResult.success(result)
         except TaskAuthorizationError as error:
             # The refusal is the answer, not an internal fault: surface the
             # stable code so the model can explain it instead of retrying.
@@ -269,27 +269,27 @@ class SchedulerTool(BaseTool):
         
         # Validate required fields
         if not name:
-            return "错误: 缺少任务名称 (name)"
+            return _SchedulerError("错误: 缺少任务名称 (name)")
         
         # Check that exactly one of message/ai_task is provided
         if not message and not ai_task:
-            return "错误: 必须提供 message（固定消息）或 ai_task（AI任务）之一"
+            return _SchedulerError("错误: 必须提供 message（固定消息）或 ai_task（AI任务）之一")
         if message and ai_task:
-            return "错误: message 和 ai_task 只能提供其中一个"
+            return _SchedulerError("错误: message 和 ai_task 只能提供其中一个")
         
         if not schedule_type:
-            return "错误: 缺少调度类型 (schedule_type)"
+            return _SchedulerError("错误: 缺少调度类型 (schedule_type)")
         if not schedule_value:
-            return "错误: 缺少调度值 (schedule_value)"
+            return _SchedulerError("错误: 缺少调度值 (schedule_value)")
         
         # Validate schedule
         schedule = self._parse_schedule(schedule_type, schedule_value, timezone_name)
         if not schedule:
-            return f"错误: 无效的调度配置 - type: {schedule_type}, value: {schedule_value}"
+            return _SchedulerError(f"错误: 无效的调度配置 - type: {schedule_type}, value: {schedule_value}")
         
         # Get context info for receiver
         if not self.current_context:
-            return "错误: 无法获取当前对话上下文"
+            return _SchedulerError("错误: 无法获取当前对话上下文")
         
         context = self.current_context
 
@@ -318,17 +318,17 @@ class SchedulerTool(BaseTool):
         target = None
         if deliver_to == "recipient":
             if context.get("channel_type") != "web":
-                return ("错误: 推送给别人只能在 Web 会话里选择目标；当前对话请用默认 "
+                return _SchedulerError("错误: 推送给别人只能在 Web 会话里选择目标；当前对话请用默认 "
                         "deliver_to='current_session'（结果推回这里，无需渠道或接收人）。")
             if not target_channel or not target_receiver:
-                return ("错误: 缺少投递目标。默认 deliver_to='current_session' 会把结果推回当前对话，"
+                return _SchedulerError("错误: 缺少投递目标。默认 deliver_to='current_session' 会把结果推回当前对话，"
                         "不需要渠道或接收人；若要推送给别人，请先 action='list_recipients'，"
                         "再用它返回的 channel_type/instance_id/receiver 创建。")
             if not self.recipient_store:
-                return "错误: 可信接收人目录暂不可用，请稍后重试"
+                return _SchedulerError("错误: 可信接收人目录暂不可用，请稍后重试")
             target = self.recipient_store.get(target_instance, target_receiver)
             if not target:
-                return ("错误: 该接收人不在可信目录中。请先用 action='list_recipients' 查看可选对象"
+                return _SchedulerError("错误: 该接收人不在可信目录中。请先用 action='list_recipients' 查看可选对象"
                         "（对方需要先给智能体发过消息才会出现）；或改用默认 deliver_to='current_session' "
                         "把结果推回当前对话。")
         
@@ -401,6 +401,24 @@ class SchedulerTool(BaseTool):
         # Calculate initial next_run_at
         next_run = self._calculate_next_run(task_data)
         if next_run:
+            # A one-time task whose run time has already passed would be
+            # stored all the same, then deleted on the service's first
+            # tick once the catch-up window has passed
+            # (SchedulerService._is_task_due): the reminder never fires
+            # and only a server-side log says why. Refuse it here, where
+            # the caller can still pick another time - the service's own
+            # _calculate_next_run answers a past run_at with no next run.
+            # Compared in the task's own mode (aware UTC for a declared
+            # zone, naive local otherwise) so a zoned task cannot raise
+            # a naive/aware TypeError.
+            if schedule.get("type") == "once" and next_run <= scheduled_reference_time(
+                task_data, datetime.now()
+            ):
+                return _SchedulerError(
+                    f"错误: 定时时间已过去 - {schedule.get('run_at')}。"
+                    "一次性任务只能安排在将来的时间，请改用一个将来的时间"
+                    "或 +10m 这类相对时间。"
+                )
             task_data["next_run_at"] = next_run.isoformat()
 
         # Persist through the shared authorization service: it stamps the owner
@@ -485,11 +503,11 @@ class SchedulerTool(BaseTool):
         from this directory.
         """
         if not self.current_context or self.current_context.get("channel_type") != "web":
-            return ("Error: trusted recipients can only be listed from the Web console. "
+            return _SchedulerError("Error: trusted recipients can only be listed from the Web console. "
                     "To deliver to this conversation, create with the default "
                     "deliver_to='current_session' -- no recipient lookup needed.")
         if not self.recipient_store:
-            return "Error: trusted recipient directory is unavailable"
+            return _SchedulerError("Error: trusted recipient directory is unavailable")
         recipients = self.recipient_store.list()
         if not recipients:
             return ("No external recipients yet: someone must talk to the Agent first. "
@@ -509,7 +527,7 @@ class SchedulerTool(BaseTool):
         """Get task details"""
         task_id = kwargs.get("task_id")
         if not task_id:
-            return "错误: 缺少任务ID (task_id)"
+            return _SchedulerError("错误: 缺少任务ID (task_id)")
 
         actor = self._actor()
         task = self._access().get_task(actor, self._agent_id(), task_id)
@@ -547,7 +565,7 @@ class SchedulerTool(BaseTool):
         """Delete a task"""
         task_id = kwargs.get("task_id")
         if not task_id:
-            return "错误: 缺少任务ID (task_id)"
+            return _SchedulerError("错误: 缺少任务ID (task_id)")
 
         actor = self._actor()
         task = self._access().delete_task(actor, self._agent_id(), task_id)
@@ -557,7 +575,7 @@ class SchedulerTool(BaseTool):
         """Enable a task"""
         task_id = kwargs.get("task_id")
         if not task_id:
-            return "错误: 缺少任务ID (task_id)"
+            return _SchedulerError("错误: 缺少任务ID (task_id)")
 
         actor = self._actor()
         task = self._access().set_enabled(actor, self._agent_id(), task_id, True)
@@ -567,7 +585,7 @@ class SchedulerTool(BaseTool):
         """Disable a task"""
         task_id = kwargs.get("task_id")
         if not task_id:
-            return "错误: 缺少任务ID (task_id)"
+            return _SchedulerError("错误: 缺少任务ID (task_id)")
 
         actor = self._actor()
         task = self._access().set_enabled(actor, self._agent_id(), task_id, False)

@@ -13,7 +13,7 @@ import {
   isOurBackend,
 } from './backend-port'
 import { missingModuleFrom } from './dependency-error'
-import { COW_DATA_DIR, resolveDataDir } from './data-dir'
+import { resolveDataDir } from './data-dir'
 import { getHostLog } from './host-log'
 import { pythonCandidates, selectInterpreter, summariseAttempts } from './python-probe'
 
@@ -129,6 +129,25 @@ export class PythonBackend extends EventEmitter {
   // (and a missing executable is detected almost instantly) used to be emitted
   // into the void, leaving the user with a bare "initialization failed".
   private lastError: BackendError | null = null
+
+  /**
+   * Extra environment for the backend process, set before `start()`.
+   *
+   * A callback rather than a value because the caller may not have the values yet
+   * when it constructs this object, and because the shell's own start order (start
+   * the local executor, then the backend that is told where it is) is a decision
+   * for the caller, not for this class.
+   *
+   * The values are read once, at spawn: the backend caches the executor endpoint on
+   * first use, so a later change here would be a silent no-op rather than a
+   * reconfiguration.
+   */
+  private extraEnv: () => Record<string, string> = () => ({})
+
+  /** Set the extra environment the next `start()` will use. */
+  setExtraEnv(provider: () => Record<string, string>): void {
+    this.extraEnv = provider
+  }
 
   constructor(backendPath: string, packaged = false) {
     super()
@@ -781,11 +800,11 @@ export class PythonBackend extends EventEmitter {
       // bundle reads its read-only resources via sys._MEIPASS, so cwd is free
       // to point elsewhere.
       try {
-        fs.mkdirSync(COW_DATA_DIR, { recursive: true })
+        fs.mkdirSync(dataDir, { recursive: true })
       } catch {
         // ignore — get_data_root() also ensures the dir on the Python side
       }
-      cwd = COW_DATA_DIR
+      cwd = dataDir
       this.emit('log', `Starting bundled backend: ${bundled} (cwd=${cwd})`)
     } else {
       const appPath = path.join(this.backendPath, 'app.py')
@@ -819,8 +838,12 @@ export class PythonBackend extends EventEmitter {
         // The shell owns the port: tell the backend to bind exactly here so the
         // two sides can never disagree (and we avoid the 9899 web-console clash).
         COW_WEB_PORT: String(this.port),
-        ...(bundled ? { COW_DATA_DIR } : {}),
+        ...(bundled ? { COW_DATA_DIR: dataDir } : {}),
         ...this.appConfigEnv(),
+        // The local executor endpoint, when this build started one. Absent means
+        // the backend has no script surface at all, which is the honest answer
+        // rather than a surface it cannot reach.
+        ...this.extraEnv(),
         COW_CLIENT_VERSION: app.getVersion(),
       },
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -959,23 +982,26 @@ export class PythonBackend extends EventEmitter {
     })
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     // Set before the kill so the exit handler reads this as a deliberate
     // teardown and doesn't try to "recover" a process we just asked to die.
     this.shuttingDown = true
     this.stopHealthMonitor()
     const proc = this.process
-    if (proc) {
-      proc.kill('SIGTERM')
-      // Keep a local ref so the SIGKILL fallback can still reach the process
-      // even after we clear `this.process`; otherwise a stuck backend would
-      // never be force-killed and leak as a zombie.
-      setTimeout(() => {
-        if (!proc.killed) {
-          proc.kill('SIGKILL')
+    this.process = null
+    if (proc && proc.exitCode === null && proc.signalCode === null) {
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          clearTimeout(timer)
+          proc.removeListener('exit', done)
+          resolve()
         }
-      }, 5000)
-      this.process = null
+        // `killed` only means a signal was sent. Wait for the actual exit so a
+        // restart cannot race the old process's port and instance lock.
+        const timer = setTimeout(() => proc.kill('SIGKILL'), 5000)
+        proc.once('exit', done)
+        proc.kill('SIGTERM')
+      })
     }
     this.status = 'stopped'
   }
@@ -1044,8 +1070,7 @@ export class PythonBackend extends EventEmitter {
       this.recoveryAttempts = 0
       this.recoveryWindowStart = Date.now()
     }
-    this.stop()
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    await this.stop()
     await this.start()
   }
 }

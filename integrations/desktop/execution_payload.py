@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from auth import desktop_contracts_v2 as v2
 
@@ -111,14 +111,22 @@ def canonical_skill_resources(resources: Any) -> List[Dict[str, str]]:
                   key=lambda entry: str(entry.get("skill_id")))
 
 
-def canonical_envelope(envelope: Dict[str, Any]) -> Dict[str, Any]:
+def canonical_envelope(envelope: Dict[str, Any],
+                       fields: Optional[Sequence[str]] = None) -> Dict[str, Any]:
     """The digest input: only the covered fields, with stable defaults.
 
     Absent optional fields are normalised to ``None``/``[]`` rather than dropped,
     so "no skills" and "skills forgotten" cannot produce the same digest.
+
+    ``fields`` is the covered-field list of the *peer's* protocol major. It
+    defaults to :data:`DIGEST_FIELDS` (v2), so every existing caller and every
+    stored v2 digest is untouched; a v3 peer's list adds ``operations`` and
+    ``runtime``, which is exactly why v3 is a new major rather than a new field on
+    the old one.
     """
+    covered = tuple(fields) if fields is not None else DIGEST_FIELDS
     out: Dict[str, Any] = {}
-    for key in DIGEST_FIELDS:
+    for key in covered:
         value = envelope.get(key)
         if key == "skill_resources":
             value = canonical_skill_resources(value)
@@ -127,9 +135,49 @@ def canonical_envelope(envelope: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def params_digest(envelope: Dict[str, Any]) -> str:
-    """``sha256:<hex>`` over the canonical envelope."""
-    return "sha256:" + hashlib.sha256(_canonical_bytes(canonical_envelope(envelope))).hexdigest()
+def params_digest(envelope: Dict[str, Any],
+                  fields: Optional[Sequence[str]] = None) -> str:
+    """``sha256:<hex>`` over the canonical envelope.
+
+    ``fields`` selects the protocol major's covered set; omitting it is v2, so
+    the value a v2 server and a v2 device compute cannot change.
+    """
+    return "sha256:" + hashlib.sha256(
+        _canonical_bytes(canonical_envelope(envelope, fields))).hexdigest()
+
+
+def contract_for_major(major: Any):
+    """The contract module whose digest rules a peer declaring ``major`` uses.
+
+    Returns ``None`` for a major this build cannot serve, so a caller refuses
+    rather than guessing which field list applies -- guessing is how a digest
+    check would silently pass over an uncovered ``operations`` field.
+    """
+    from auth import desktop_contracts_v2 as _v2
+    from auth import desktop_contracts_v3 as _v3
+
+    if major == _v3.PROTOCOL_MAJOR:
+        return _v3
+    if major == _v2.PROTOCOL_MAJOR:
+        return _v2
+    return None
+
+
+def digest_fields_for(major: Any) -> Optional[Tuple[str, ...]]:
+    """The covered fields for ``major``, or ``None`` when it cannot be served.
+
+    v2's list lives in this module (it predates the contract carrying it); v3's
+    lives in the contract document, so a v3 build cannot add a covered field
+    without a contract change.
+    """
+    contract = contract_for_major(major)
+    if contract is None:
+        return None
+    if contract is not None and hasattr(contract, "DIGEST"):
+        declared = contract.DIGEST.get("fields")
+        if declared:
+            return tuple(declared)
+    return tuple(DIGEST_FIELDS)
 
 
 def skill_digests(resources: Any) -> List[Dict[str, str]]:
@@ -156,11 +204,18 @@ def envelope_for_command(*, tool: str, tool_schema_version: int,
                          agent_id: Optional[str], origin: Optional[str],
                          binding_id: str, workspace_id: str, device_id: str,
                          grant_version: int, selection_generation: int,
-                         resources: Any = None) -> Dict[str, Any]:
-    """Build the digest envelope for a v2 command.
+                         resources: Any = None,
+                         operations: Optional[Sequence[str]] = None,
+                         runtime: Optional[str] = None) -> Dict[str, Any]:
+    """Build the digest envelope for a command.
 
     One constructor so the digest a command is stored with is the digest the
     frame, the permit and the journal carry -- three readers, one input.
+
+    ``operations`` and ``runtime`` are the two fields v3 adds to the covered set.
+    They are always present in the *envelope* and only *covered* when the peer's
+    major names them (see :func:`canonical_envelope`), which is what lets one
+    constructor serve both majors without changing a single stored v2 digest.
     """
     return {
         "tool": tool,
@@ -177,22 +232,42 @@ def envelope_for_command(*, tool: str, tool_schema_version: int,
         "grant_version": int(grant_version),
         "selection_generation": int(selection_generation),
         "skill_resources": skill_digests(resources),
+        "operations": list(operations) if operations else None,
+        "runtime": runtime or None,
     }
 
 
 def device_execution_frame(command: Dict[str, Any],
                            *, platform: str = "posix") -> Dict[str, Any]:
-    """The ``execute_tool`` frame for one durable v2 command row.
+    """The ``execute_tool`` frame for one durable command row.
 
     ``command`` is the public projection from :meth:`CommandService._public_command`
     (which is itself built from the row). The frame is checked with the contract
     validator first: a server that could emit an invalid frame would be handing
     the device something it must refuse, and the failure would surface as an
     unexplained device-side rejection instead of a server bug.
+
+    The **row's own major** picks the contract, for the same reason
+    ``_execution_block`` and ``CommandService.create_execution_for_context`` do: a
+    v3 row must be emitted as a v3 frame -- ``operations`` required, ``runtime``
+    carried, ``run_script`` admitted -- while a v2 row keeps exactly the frame it
+    has always had. Emitting a v3 row as a v2 frame would hand the device a
+    digest computed over a different field list than the one it verifies, which is
+    the failure this function exists to catch before it leaves the server.
     """
+    major = command.get("protocol_major")
+    try:
+        major = int(major)
+    except (TypeError, ValueError):
+        major = v2.PROTOCOL_MAJOR
+    contract = contract_for_major(major)
+    if contract is None:
+        raise ValueError(
+            "refusing to emit a frame for a protocol this build cannot serve: %r"
+            % (command.get("protocol_major"),))
     frame = {
         "type": "execute_tool",
-        "protocol_major": v2.PROTOCOL_MAJOR,
+        "protocol_major": contract.PROTOCOL_MAJOR,
         "command_id": command["id"],
         "run_id": command.get("run_id") or "",
         "tool_call_id": command.get("tool_call_id") or "",
@@ -204,7 +279,7 @@ def device_execution_frame(command: Dict[str, Any],
         "connection_epoch": command.get("connection_epoch") or "",
         "tool": command.get("tool_name") or "",
         "tool_schema_version": command.get("tool_schema_version")
-        or v2.TOOL_SCHEMA_VERSION,
+        or contract.TOOL_SCHEMA_VERSION,
         "arguments": command.get("params") or {},
         "params_digest": command.get("params_digest") or "",
         "expires_at": command.get("deadline_at") or 0,
@@ -219,12 +294,29 @@ def device_execution_frame(command: Dict[str, Any],
         frame["permission_mode"] = command["permission_mode"]
     if command.get("approval_id"):
         frame["approval_id"] = command["approval_id"]
+    if major >= 3:
+        # The authorization the frame is spending. A v3 frame that cannot name it
+        # is refused by the validator below rather than sent, so a row with no
+        # recorded set surfaces as a server-side error here instead of as an
+        # unexplained device-side rejection.
+        #
+        # Read through the broker's own reader rather than parsed here: that
+        # function is where "absent", "empty" and "unparseable" are distinguished,
+        # and a second decoder here could disagree with the one that *authorizes*
+        # the very frame being built.
+        from integrations.desktop.execution_broker import _operations_from_column
+
+        stored = _operations_from_column(command.get("operations_json"))
+        if stored:
+            frame["operations"] = list(stored)
+        if command.get("runtime"):
+            frame["runtime"] = command["runtime"]
     # The digest covers ``origin``, so the frame has to carry it or the device
     # could not recompute the value it is asked to verify. It is the server's own
     # recorded source -- never a caller's field -- and a runtime-initiated
     # command uses the constant that says so.
     frame["origin"] = command.get("origin") or ORIGIN_RUNTIME
-    problems = v2.validate_execute_frame(frame, platform=platform)
+    problems = contract.validate_execute_frame(frame, platform=platform)
     if problems:
         raise ValueError("refusing to emit an invalid execute_tool frame: %s"
                          % "; ".join(problems))

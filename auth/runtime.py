@@ -39,6 +39,9 @@ class RequestContext:
     membership: Optional[Dict[str, Any]]
     permissions: set
     is_tenant_admin: bool
+    #: Trusted IM source of an IM-guest run; None for every other context.
+    im_instance_id: Optional[str] = None
+    external_identity_id: Optional[str] = None
 
     @property
     def has_tenant(self) -> bool:

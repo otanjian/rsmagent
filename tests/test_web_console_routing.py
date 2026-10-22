@@ -83,24 +83,25 @@ def test_tabs_match_the_rendered_page_and_report_changes():
 
 
 def test_page_inventory_matches_live_navigation():
-    source = (STATIC / "console.js").read_text()
+    source = (STATIC / "core/nav.js").read_text()
     block = source.split("const VIEW_META = {", 1)[1].split("\n};", 1)[0]
-    views = set(re.findall(r"^\s*'?([\w-]+)'?:\s*\{", block, re.M))
-    views = {v for v in views if not v.startswith("personal-")}
+    views = set(re.findall(r'''^\s*["']?([\w-]+)["']?:\s*\{''', block, re.M))
+    views = {v for v in views if not v.startswith("personal-") and v != "custom"}
     assert {p["view"] for p in console_page_metadata()} == views
     assert next(p for p in console_page_metadata() if p["view"] == "agents")["area"] == "admin"
 
 
 def test_only_one_router_is_loaded_and_boot_is_auth_gated():
     page = template.render("chat.html")
-    assert page.count('src="/assets/js/fork/router.js') == 1
-    assert 'src="/assets/js/core/router.js' not in page
-    assert page.index('src="/assets/js/fork/router.js') < page.index('src="/assets/js/console.js')
-    source = (STATIC / "console.js").read_text()
-    assert "window.ConsoleRoutes.apply()" in source
-    router = (STATIC / "fork/router.js").read_text()
+    assert page.count('src="/assets/js/core/router.js') == 1
+    assert 'src="/assets/js/fork/router.js' not in page
+    assert 'src="/assets/js/console.js' not in page
+    assert page.index('src="/assets/js/core/router.js') < page.index('src="/assets/js/fork/bootstrap.js')
+    source = (STATIC / "fork/extensions.js").read_text()
+    assert "function _bootAreaDefaultView() { routeApply(); }" in source
+    router = (STATIC / "core/router.js").read_text()
     assert "!_accountAppVisible" in router
-    assert "if (ready) apply()" in router
+    assert "window.ConsoleRoutes" in router
 
 
 def test_root_and_legacy_chat_are_safe_anonymous_shells(responses):

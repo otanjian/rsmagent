@@ -37,7 +37,16 @@
 import path from 'node:path';
 
 /** How scripts are confined on this platform. */
-export type SandboxKind = 'seatbelt' | 'none';
+/**
+ * What confines a run.
+ *
+ * `seatbelt` is macOS's kernel sandbox, which bounds both process tree *and*
+ * file system. `job` is the Windows Job Object, which bounds only the process
+ * tree and its resources -- there is no file-system boundary on Windows in this
+ * build, and `ScriptCapabilities.readsConfined` is the flag that says so.
+ * `none` is not a sandbox and is never returned for a supported run.
+ */
+export type SandboxKind = 'seatbelt' | 'job' | 'none';
 
 export interface ScriptCapabilities {
   platform: string;
@@ -171,13 +180,53 @@ export function resolveScriptSupport(options: ResolveSupportOptions): ScriptSupp
     };
   }
   if (platform === 'win32') {
+    if (!options.pythonPath) {
+      return {
+        supported: false,
+        code: 'python_not_found',
+        reason:
+          'the bundled Python interpreter was not found, so local script ' +
+          'execution is disabled.',
+      };
+    }
+    // Supported, because the boundary this platform *does* have is real: a Job
+    // Object owns the process tree, so a cancelled, timed-out or crashed run
+    // leaves nothing behind, and the run is bounded by process count, memory and
+    // a deadline. What Windows does **not** have in this build is a file-system
+    // boundary -- there is no AppContainer grant and no working equivalent of
+    // seatbelt's deny-by-default -- so the script runs with this application's
+    // own user account and can reach whatever that account can reach.
+    //
+    // That gap is stated in three of the fields below rather than left to be
+    // inferred (`readsConfined: false`, `network: true`, and the wording of
+    // `isolation`), because the contract's rule is to never claim a confinement
+    // this build does not enforce -- and because the model repeats these words to
+    // the user, who must not be told their files are safe when they are not.
     return {
-      supported: false,
-      code: 'unsupported_platform',
-      reason:
-        'Windows has no probed execution boundary in this build, so local ' +
-        'script execution is disabled. It is not a permissions problem: the ' +
-        'isolation this app relies on has not been verified on Windows yet.',
+      supported: true,
+      kind: 'job',
+      launcher: 'windows-job',
+      capabilities: {
+        platform: 'Windows',
+        shell: 'cmd.exe (the Windows command interpreter; not Bash, WSL or PowerShell)',
+        python: 'the interpreter bundled with this application',
+        isolation:
+          'process-level only: the run starts inside a Windows Job Object, so the ' +
+          'whole process tree is ended when the run ends, is cancelled or times ' +
+          'out, and the run is bounded by process count, memory and a deadline. ' +
+          'This is NOT a file-system boundary: the script runs as this ' +
+          'application\'s own user account and can read or write any file that ' +
+          'account can reach, including outside the project. Do not tell the user ' +
+          'their files are confined. Network access is also unrestricted.',
+        network: true,
+        readsConfined: false,
+        writable: [paths.projectRoot, paths.tempRoot],
+        readable: [
+          paths.projectRoot,
+          ...(paths.skillRoots ?? []),
+          ...(paths.runtimeReadPaths ?? []),
+        ],
+      },
     };
   }
   return {
@@ -349,6 +398,30 @@ export function buildLaunchPlan(
   const moduleName = options.moduleName ?? 'agent.desktop_local.worker';
   const pythonPath = options.pythonPath as string;
   const workerArgs = options.workerArgs ?? ['-m', moduleName];
+  // A Job Object is applied by the *caller* around the child it spawns, so this
+  // plan names the interpreter directly. Building a seatbelt argv here regardless
+  // of platform -- which it used to do -- meant that on Windows the worker was
+  // started as `/usr/bin/sandbox-exec -p <profile> ...`: a program that does not
+  // exist, so no worker ever answered the handshake and every script run hung
+  // until its timeout. The plan has to describe the platform it was asked about.
+  if (support.kind === 'job') {
+    return {
+      ok: true,
+      command: pythonPath,
+      args: [...workerArgs],
+      cwd: options.workingDirectory,
+      env: options.env,
+      sandbox: {
+        kind: 'job',
+        // No textual policy: the confinement is a kernel object the caller holds,
+        // not a document. Empty rather than a description, so a reader cannot
+        // mistake it for something that was applied by these argv.
+        profile: '',
+        description: support.capabilities.isolation,
+      },
+      capabilities: support.capabilities,
+    };
+  }
   const profile = buildSeatbeltProfile(options.paths);
   return {
     ok: true,

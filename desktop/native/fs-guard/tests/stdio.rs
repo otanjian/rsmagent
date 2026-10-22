@@ -169,12 +169,48 @@ impl Sandbox {
         path
     }
 
+    /// Create a link at `relative` pointing at `target`.
+    ///
+    /// On unix that is a symlink. On Windows an ordinary user cannot create a
+    /// symlink without a privilege they do not hold, but *can* create a directory
+    /// junction -- and a junction is a reparse point, which is the property every
+    /// test below is actually about. Using a junction keeps the reparse-refusal
+    /// tests real on Windows instead of skipping them, which design D2 and the
+    /// acceptance matrix both refuse to accept as a pass.
+    #[cfg(unix)]
     fn symlink(&self, relative: &str, target: impl AsRef<Path>) {
         let path = self.path(relative);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).expect("parent dir");
         }
         std::os::unix::fs::symlink(target, &path).expect("symlink");
+    }
+
+    #[cfg(windows)]
+    fn symlink(&self, relative: &str, target: impl AsRef<Path>) {
+        use std::os::windows::process::CommandExt;
+
+        let path = self.path(relative);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("parent dir");
+        }
+        // A file symlink first, because some tests link to a *file* and the
+        // helper must refuse it just the same. It needs Developer Mode or admin,
+        // so the junction below is the fallback that keeps the test running.
+        if std::os::windows::fs::symlink_file(target.as_ref(), &path).is_ok() {
+            return;
+        }
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let status = std::process::Command::new("cmd")
+            .arg("/C")
+            .arg("mklink")
+            .arg("/J")
+            .arg(&path)
+            .arg(target.as_ref())
+            .creation_flags(CREATE_NO_WINDOW)
+            .status()
+            .expect("run mklink");
+        assert!(status.success(), "neither a symlink nor a junction could be made");
     }
 }
 
@@ -347,24 +383,163 @@ fn a_swapped_root_requires_the_user_to_choose_again() {
 }
 
 // ---------------------------------------------------------------------------
+// F09: the path shapes a real user has (task 2.2).
+//
+// These are the cases the platform support note claims, and they are checked by
+// *round-tripping real bytes through a real directory* rather than by asserting
+// that a validator returns `Ok`: a listing that reported a name the helper then
+// could not open would be the bug this catches.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn non_ascii_and_spaced_names_round_trip() {
+    let sandbox = Sandbox::new("cjk");
+    sandbox.file("资料/明细 2024.csv", b"a,b\n1,2\n");
+    sandbox.dir("我的 项目 空格");
+    let mut helper = Helper::start();
+    let grant = helper.open_root(&sandbox.root);
+
+    let listed = helper.ok(&json!({
+        "id": "l", "op": "list", "grant": grant, "params": { "path": "." },
+    }));
+    let names: Vec<String> = listed["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["name"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(names, vec!["我的 项目 空格", "资料"]);
+
+    // The listed name must be openable exactly as it was reported, including the
+    // space and the non-ASCII characters.
+    let stat = helper.ok(&json!({
+        "id": "s", "op": "stat", "grant": grant,
+        "params": { "path": "资料/明细 2024.csv" },
+    }));
+    assert_eq!(stat["kind"], "file");
+    assert_eq!(stat["size"], 8);
+
+    let read = helper.ok(&json!({
+        "id": "r", "op": "read", "grant": grant,
+        "params": { "path": "资料/明细 2024.csv" },
+    }));
+    assert_eq!(read["bytes"], 8);
+}
+
+#[test]
+fn a_name_that_differs_only_in_case_is_handled_consistently() {
+    let sandbox = Sandbox::new("case");
+    sandbox.file("Reports/Summary.TXT", b"upper");
+    let mut helper = Helper::start();
+    let grant = helper.open_root(&sandbox.root);
+
+    // The exact spelling always works.
+    let exact = helper.ok(&json!({
+        "id": "s", "op": "stat", "grant": grant,
+        "params": { "path": "Reports/Summary.TXT" },
+    }));
+    assert_eq!(exact["kind"], "file");
+
+    // A different case either resolves to the same object or is refused, and
+    // which one it is depends on the volume. What must NOT happen is a success
+    // that reports the wrong object, or a crash: the answer has to be one of the
+    // two, on a case-sensitive and on a case-insensitive filesystem alike.
+    let other = helper.call(&json!({
+        "id": "s2", "op": "stat", "grant": grant,
+        "params": { "path": "reports/summary.txt" },
+    }));
+    if other["ok"].as_bool().unwrap() {
+        assert_eq!(other["result"]["kind"], "file");
+        assert_eq!(other["result"]["size"], 5);
+    } else {
+        let code = other["error"]["code"].as_str().unwrap();
+        assert!(
+            matches!(code, "invalid_params" | "rejected_entry" | "path_outside_root"),
+            "unexpected refusal code {code}"
+        );
+    }
+}
+
+#[test]
+fn a_deep_and_long_path_still_resolves() {
+    let sandbox = Sandbox::new("longpath");
+    // Deep enough to exercise the per-component walk, with a long component so
+    // the total length approaches what a Windows build has to handle.
+    let long_component = "d".repeat(120);
+    let mut relative = String::new();
+    for index in 0..12 {
+        relative.push_str(&format!("level{index}/"));
+    }
+    relative.push_str(&long_component);
+    relative.push_str("/payload.txt");
+    sandbox.file(&relative, b"deep");
+
+    let mut helper = Helper::start();
+    let grant = helper.open_root(&sandbox.root);
+
+    let stat = helper.ok(&json!({
+        "id": "s", "op": "stat", "grant": grant, "params": { "path": relative },
+    }));
+    assert_eq!(stat["kind"], "file");
+    assert_eq!(stat["size"], 4);
+
+    let read = helper.ok(&json!({
+        "id": "r", "op": "read", "grant": grant, "params": { "path": relative },
+    }));
+    assert_eq!(read["bytes"], 4);
+}
+
+#[test]
+fn a_path_beyond_the_protocol_bound_is_refused_not_truncated() {
+    let sandbox = Sandbox::new("toopath");
+    let mut helper = Helper::start();
+    let grant = helper.open_root(&sandbox.root);
+
+    // `MAX_PATH_BYTES` is a protocol bound; a path over it must be a named
+    // refusal so the caller learns why, never a silently shortened path that
+    // could name a different file.
+    let oversized = "a".repeat(4097);
+    assert_eq!(
+        helper.err(&json!({
+            "id": "s", "op": "stat", "grant": grant,
+            "params": { "path": oversized },
+        })),
+        "invalid_params"
+    );
+
+    // The validator's exact boundary is tested in paths::tests. An absent
+    // entry and an OS component-length refusal also return invalid_params,
+    // so that error alone cannot distinguish them from the protocol limit.
+}
+
+// ---------------------------------------------------------------------------
 // F05: files V1 refuses by kind.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn a_device_file_is_refused() {
-    let sandbox = Sandbox::new("device");
+fn a_missing_entry_is_a_parameter_error_not_an_io_error() {
+    let sandbox = Sandbox::new("missing-entry");
     let mut helper = Helper::start();
     let grant = helper.open_root(&sandbox.root);
-    // /dev/null is a character device. The grant refuses it before any read, so
-    // a device can never be presented as an ordinary file.
-    let code = helper.err(&json!({
-        "id": "s", "op": "stat", "grant": grant, "params": { "path": "nothing" },
-    }));
     assert_eq!(
-        code, "invalid_params",
+        helper.err(&json!({
+            "id": "s", "op": "stat", "grant": grant, "params": { "path": "nothing" },
+        })),
+        "invalid_params",
         "a missing entry is not an I/O error"
     );
+}
 
+/// A character device reached through a link is refused rather than opened.
+///
+/// Unix-only because the fixture needs a character device and `/dev/null` is the
+/// one every unix has. The Windows equivalent is covered by the backend's own
+/// tests in `src/paths/windows.rs`, which build a real reparse point and assert
+/// the refusal -- so this is a platform-specific *fixture*, not a skipped
+/// guarantee, and it is not counted as a Windows pass.
+#[cfg(unix)]
+#[test]
+fn a_device_file_is_refused() {
     let device_sandbox = Sandbox::new("device-link");
     device_sandbox.symlink("null", "/dev/null");
     let mut helper2 = Helper::start();
@@ -590,13 +765,35 @@ fn unknown_operations_and_extra_fields_are_refused() {
     let mut helper = Helper::start();
     let grant = helper.open_root(&sandbox.root);
 
-    for op in [
-        "exec", "write", "unlink", "rename", "shell", "spawn", "chmod",
-    ] {
+    // These must not exist in *either* build: no delete, no rename, no
+    // permission change, no process start, and no request field adds one.
+    for op in ["exec", "unlink", "remove", "rename", "shell", "spawn", "chmod"] {
         assert_eq!(
             helper.err(&json!({ "id": "x", "op": op, "grant": grant, "params": {} })),
             "unknown_op",
             "{op} must not exist",
+        );
+    }
+    // The three write operations exist only in the build that has them. This is
+    // the integration-level assertion that the *read-only* helper cannot write:
+    // it is refused because the operation is absent from that binary, not because
+    // a check says no.
+    #[cfg(not(feature = "write-ops"))]
+    for op in ["write", "edit", "mkdir"] {
+        assert_eq!(
+            helper.err(&json!({ "id": "x", "op": op, "grant": grant, "params": {} })),
+            "unknown_op",
+            "the read-only build must not have {op}",
+        );
+    }
+    // In the write build they exist and are refused for the *parameters*, which
+    // is a different answer and the one that proves they were reached.
+    #[cfg(feature = "write-ops")]
+    for op in ["write", "edit", "mkdir"] {
+        assert_eq!(
+            helper.err(&json!({ "id": "x", "op": op, "grant": grant, "params": {} })),
+            "invalid_params",
+            "{op} must exist and reject the empty parameters",
         );
     }
     // A read with an undeclared extra field is refused rather than ignored.

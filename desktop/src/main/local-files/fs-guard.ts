@@ -76,6 +76,16 @@ export interface ReadResult {
   /** Always ``base64``: the helper never guesses at an encoding. */
   encoding: string
   data: string
+  /**
+   * The opaque version of the object these bytes came from (task 4.2).
+   *
+   * Present on **every** chunk, not just the first, and it describes the *object*
+   * rather than the chunk -- so a caller that read a large file in pieces can start
+   * an edit from whatever it last saw. This is the only way to obtain a value the
+   * write helper will accept: the contract forbids a client from computing one, so
+   * dropping this field here would make v3's precondition unsatisfiable.
+   */
+  version: string
 }
 
 export interface SearchHit {
@@ -335,6 +345,7 @@ export class FsGuard {
       truncated: !!raw.truncated,
       encoding: String(raw.encoding || 'base64'),
       data: String(raw.data || ''),
+      version: String(raw.version || ''),
     }
   }
 

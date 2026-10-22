@@ -57,22 +57,33 @@ export const LoginGate: React.FC<GateProps> = ({ onAuthenticated }) => {
   const [error, setError] = useState('')
   const attempt = useRef(0)
   const inFlight = useRef(false)
+  const serverEdited = useRef(false)
   const busy = phase !== 'idle'
 
   useEffect(() => {
     let mounted = true
+    let loadVersion = 0
     const api = window.electronAPI
-    void api?.desktopModeGet?.().then(reply => {
-      if (!mounted) return
-      setServerOrigin(reply.serverOrigin
-        || reply.profiles?.find(profile => profile.id === reply.activeProfileId)?.origin || '')
-    }).catch(() => {
-      if (mounted) setError(t('login_server_load_failed'))
-    }).finally(() => {
-      if (mounted) setLoadingServer(false)
+    const loadServer = () => {
+      const version = ++loadVersion
+      void api?.desktopModeGet?.().then(reply => {
+        if (!mounted || version !== loadVersion || serverEdited.current) return
+        setServerOrigin(reply.serverOrigin
+          || reply.profiles?.find(profile => profile.id === reply.activeProfileId)?.origin || '')
+      }).catch(() => {
+        if (mounted) setError(t('login_server_load_failed'))
+      }).finally(() => {
+        if (mounted) setLoadingServer(false)
+      })
+    }
+    // The renderer's HTTP probe can finish before the native broker announces
+    // its selected port. Refresh that default when the host becomes ready.
+    const off = api?.onBackendStatus?.(notice => {
+      if (notice.status === 'ready') loadServer()
     })
+    loadServer()
     if (!api?.desktopModeGet) setLoadingServer(false)
-    return () => { mounted = false; attempt.current++ }
+    return () => { mounted = false; off?.(); attempt.current++ }
   }, [])
 
   const start = useCallback(async () => {
@@ -144,7 +155,7 @@ export const LoginGate: React.FC<GateProps> = ({ onAuthenticated }) => {
             {t('login_server_label')}
           </label>
           <input id="login-server-origin" type="url" required maxLength={2048}
-            value={serverOrigin} onChange={event => { setServerOrigin(event.target.value); setError('') }}
+            value={serverOrigin} onChange={event => { serverEdited.current = true; setServerOrigin(event.target.value); setError('') }}
             disabled={busy || loadingServer} placeholder="https://ai.example.com" spellCheck={false}
             autoComplete="url" aria-describedby="login-server-hint" className={inputClass} />
           <p id="login-server-hint" className="text-xs text-slate-500 dark:text-slate-400">{t('login_server_hint')}</p>

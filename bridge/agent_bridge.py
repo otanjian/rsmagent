@@ -150,8 +150,11 @@ class AgentLLMModel(LLMModel):
         A non-dict or disabled entry yields an empty chain so callers can treat
         "not usable" as a single check. Links missing a provider or a model are
         dropped — half a link could route the turn nowhere — as are duplicates
-        of the primary model or of an earlier link, which would only re-probe a
-        model the run has already proven is down.
+        of an earlier link, which would only re-probe a model the run has
+        already proven is down. So is a link naming the primary's own route,
+        matched on provider *and* model: the same model name behind another
+        provider — a second account or endpoint of it — is a legitimate
+        backup, not a duplicate.
 
         The chain is unbounded: however many links the user configured is how
         many switches a turn gets. There is no separate cap.
@@ -169,14 +172,12 @@ class AgentLLMModel(LLMModel):
             raw_chain = [raw]
         primary = (self._session_model or self._agent_model
                    or conf().get("model") or const.DEFAULT_MODEL)
-        primary_provider = (self._session_provider or self._agent_provider or "")
         chain = []
-        seen = {(primary_provider, (primary or "").strip())}
-        # The global model carries no provider (session/agent overrides do), so
-        # a provider+model comparison alone would miss the most common
-        # misconfiguration: listing the primary model as its own backup. Match
-        # on the model name too when no provider was pinned.
-        primary_model_only = (primary or "").strip() if not primary_provider else None
+        # Seed the dedup with the primary's own route: its provider is
+        # resolved first (the global model config carries none), so a link
+        # is matched on the (provider, model) pair — not the model name
+        # alone, which would drop same-model links behind other providers.
+        seen = {(self._primary_provider_id(primary), (primary or "").strip())}
         for item in raw_chain:
             if not isinstance(item, dict):
                 continue
@@ -185,11 +186,30 @@ class AgentLLMModel(LLMModel):
             if not provider or not model:
                 continue
             key = (provider, model)
-            if key in seen or (primary_model_only and model == primary_model_only):
+            if key in seen:
                 continue
             seen.add(key)
             chain.append({"provider": provider, "model": model})
         return {"chain": chain}
+
+    def _primary_provider_id(self, primary_model: str) -> str:
+        """The provider the primary model routes through, as a provider id.
+
+        Resolved in the id space the fallback chain's links are written in
+        ("openai", "custom:<id>", ...), so the chain's dedup seed compares a
+        link against the route the primary actually takes rather than against
+        a provider-less model name. Follows the routing precedence — a session
+        or Agent pin, then use_linkai, the configured bot_type, and finally
+        the model-name inference _primary_bot_type applies when nothing is
+        configured ("chatGPT", the persisted spelling of "openai", maps back
+        onto it).
+        """
+        if self._session_provider:
+            return self._session_provider
+        if self._agent_provider:
+            return self._agent_provider
+        bot_type = self._primary_bot_type(primary_model)
+        return "openai" if bot_type == const.CHATGPT else bot_type
 
     # How many times one turn may walk the whole chain before the failure is
     # reported. Two passes rather than one because a pass takes real time: by
@@ -326,14 +346,22 @@ class AgentLLMModel(LLMModel):
 
     def _resolve_bot_type(self, model_name: str) -> str:
         """Resolve bot type from model name, matching Bridge.__init__ logic."""
-        # A session override wins over every global routing switch, including
-        # use_linkai: the user picked this provider for this conversation.
-        #
-        # An engaged fallback outranks even that: the whole point of the
-        # fallback is to leave whichever provider just failed, and the model
-        # being requested (`self.model`) is already the fallback's own.
+        # An engaged fallback outranks every normal choice: the whole point of
+        # the fallback is to leave whichever provider just failed, and the
+        # model being requested (`self.model`) is already the fallback's own.
         if self._fallback_provider:
             return self.provider_to_bot_type(self._fallback_provider)
+        return self._primary_bot_type(model_name)
+
+    def _primary_bot_type(self, model_name: str) -> str:
+        """Bot type the primary model routes through, ignoring any engaged fallback.
+
+        The tail _resolve_bot_type delegates to; split out so the fallback
+        chain can seed its dedup with the primary's route without an engaged
+        fallback's provider leaking in.
+        """
+        # A session override wins over every global routing switch, including
+        # use_linkai: the user picked this provider for this conversation.
         if self._session_provider:
             return self.provider_to_bot_type(self._session_provider)
         if self._agent_provider:
@@ -345,7 +373,7 @@ class AgentLLMModel(LLMModel):
         configured_bot_type = conf().get("bot_type")
         if configured_bot_type:
             return configured_bot_type
-       
+
         if not model_name or not isinstance(model_name, str):
             return const.OPENAI
         if model_name in self._MODEL_BOT_TYPE_MAP:
@@ -405,8 +433,8 @@ class AgentLLMModel(LLMModel):
             svc = get_identity_service()
             ids = svc.resource_ids_for(ident.user_id, ident.tenant_id, "model", "use",
                                        permission="model.use")
-        except Exception:
-            return None
+        except Exception as error:
+            raise RuntimeError("Model authorization service is unavailable.") from error
         # A platform admin (dynamic all) / legacy derivation returns None for
         # "unrestricted". A normal member returns an explicit set (possibly empty).
         return ids
@@ -414,11 +442,11 @@ class AgentLLMModel(LLMModel):
     def _model_use_denial(self, model_code: str) -> Optional[str]:
         """Return a reason the resolved model may not be used, else None.
 
-        Mirrors the ``skill.use`` gate: unrestricted (no identity / platform all
-        / service unavailable) returns None. When a grant set exists, the model
-        must be explicitly allowed — matched on the exact model code and on the
-        trailing ``:{code}`` segment of a catalog resource_id
-        (``provider:{pid}:{code}``). An empty grant set denies every model, which
+        Unrestricted legacy or platform identities return None; identity service
+        failures raise instead of allowing a provider call. Catalog grants match
+        both the resolved provider and model, including an engaged fallback.
+        Legacy bare model-code grants retain their original meaning.
+        An empty grant set denies every model, which
         is the "no authorized candidate" case and must not degrade to
         "unrestricted".
         """
@@ -427,9 +455,12 @@ class AgentLLMModel(LLMModel):
             return None
         if model_code in allowed:
             return None
+        route = self._resolve_bot_type(model_code)
+        suffix = ":" + model_code
         for rid in allowed:
-            parts = str(rid).split(":")
-            if parts and parts[-1] == model_code:
+            rid = str(rid)
+            if (rid.startswith("provider:") and rid.endswith(suffix)
+                    and self.provider_to_bot_type(rid[len("provider:"):-len(suffix)]) == route):
                 return None
         if not allowed:
             return "No model is currently authorized for you; select one to continue."
@@ -744,7 +775,7 @@ class AgentBridge:
             description=kwargs.get("description", "AI Super Agent"),
             model=model,
             tools=tools,
-            max_steps=kwargs.get("max_steps", 15),
+            max_steps=kwargs.get("max_steps", 100),
             output_mode=kwargs.get("output_mode", "logger"),
             workspace_dir=kwargs.get("workspace_dir"),
             skill_manager=kwargs.get("skill_manager"),
@@ -1062,16 +1093,9 @@ class AgentBridge:
     @staticmethod
     def _strip_peer_address(query: str, peer) -> str:
         """Drop the leading "@name" aimed at *peer*; see ``_strip_address``."""
-        if not query:
-            return query
-        labels = [label for label in (peer.name, peer.id) if label]
-        pattern = (
-            r"^\s*@(?:"
-            + "|".join(re.escape(label) for label in sorted(labels, key=len, reverse=True))
-            + r")[\s,，:：、]*"
-        )
-        stripped = re.sub(pattern, "", query, count=1, flags=re.IGNORECASE)
-        return stripped if stripped.strip() else query
+        from agent.team_addressing import strip_address
+
+        return strip_address(query, [peer.name, peer.id])
 
     @staticmethod
     def _delegation_timeout() -> float:
@@ -1085,7 +1109,7 @@ class AgentBridge:
         try:
             if not conf().get("conversation_persistence", True):
                 return []
-            max_turns = conf().get("agent_max_context_turns", 20)
+            max_turns = conf().get("agent_max_context_turns", 30)
             saved = self.get_conversation_store(owner_agent_id).load_messages(
                 session_id, max_turns=max(3, max_turns // 2), with_authors=True
             )
@@ -1121,17 +1145,9 @@ class AgentBridge:
             profile = self.agent_registry.get(speaker_agent_id, require_enabled=False)
         except Exception:
             return query
-        labels = [label for label in (profile.name, profile.id) if label]
-        pattern = (
-            r"^\s*@(?:"
-            + "|".join(re.escape(label) for label in sorted(labels, key=len, reverse=True))
-            + r")[\s,，:：、]*"
-        )
-        stripped = re.sub(pattern, "", query, count=1, flags=re.IGNORECASE)
-        # An address with nothing after it is still a question — "@Ops" alone
-        # means "you, speak" — so it keeps the mention rather than reaching the
-        # Agent as an empty turn.
-        return stripped if stripped.strip() else query
+        from agent.team_addressing import strip_address
+
+        return strip_address(query, [profile.name, profile.id])
 
     @staticmethod
     def _attribute_to_speaker(messages: list, speaker_agent_id: str) -> list:
@@ -1365,6 +1381,7 @@ class AgentBridge:
         session_id: str = None,
         agent_id: str = None,
         host_agent_id: str = None,
+        permission_mode: str = None,
     ) -> Optional[Agent]:
         """
         Get agent instance for the given session
@@ -1424,6 +1441,7 @@ class AgentBridge:
                 session_id,
                 host_id,
                 owns_conversation=resolved_agent_id == host_id,
+                permission_mode=permission_mode,
             )
             self._apply_scene_context(agent, session_id)
             self._apply_employee_context(agent)
@@ -1774,7 +1792,12 @@ class AgentBridge:
         agent.extra_system_suffix = f"{existing}\n\n{suffix}".strip() if existing else suffix
 
     def apply_session_prefs(
-        self, agent, session_id: str, agent_id: str = None, owns_conversation: bool = True
+        self,
+        agent,
+        session_id: str,
+        agent_id: str = None,
+        owns_conversation: bool = True,
+        permission_mode: str = None,
     ) -> None:
         """Apply a session's model / permission overrides to its agent.
 
@@ -1809,7 +1832,9 @@ class AgentBridge:
                 else:
                     model.set_session_override(None, None)
             if hasattr(agent, "apply_permission_mode"):
-                agent.apply_permission_mode(prefs.get("permission"))
+                # A delegated turn's session has no prefs; it carries the
+                # delegating conversation's mode instead.
+                agent.apply_permission_mode(permission_mode or prefs.get("permission"))
         except Exception as e:
             logger.debug(f"[AgentBridge] apply_session_prefs failed: {e}")
 
@@ -1861,6 +1886,31 @@ class AgentBridge:
         if cleared:
             logger.info(f"[AgentBridge] cleared engaged fallback on {cleared} model(s)")
         return cleared
+
+    def apply_runtime_limits(self) -> int:
+        """Push the configured step cap and context budget onto live agents.
+
+        Both are read once when an agent is built. Updating them in place keeps
+        each session's working context and prompt cache; a smaller budget is
+        enforced by the regular trim (with summary) at the start of the next
+        run. Evicting the agents instead would rebuild them from the store's
+        short, clipped restore window.
+
+        Returns the number of agents updated.
+        """
+        from bridge.agent_initializer import configured_runtime_limits
+
+        max_steps, max_context_tokens = configured_runtime_limits()
+        updated = 0
+        for _agent_id, _session_id, agent in self.iter_agent_instances():
+            agent.max_steps = max_steps
+            agent.max_context_tokens = max_context_tokens
+            updated += 1
+        logger.info(
+            f"[AgentBridge] Applied runtime limits to {updated} agent(s): "
+            f"max_steps={max_steps}, max_context_tokens={max_context_tokens}"
+        )
+        return updated
 
     def sync_session_messages_from_store(
         self, session_id: str, agent_id: str = None
@@ -1938,6 +1988,9 @@ class AgentBridge:
         request_id = None
         cancel_event = None
         token_key = None
+        # Bound before the try so the error paths below can read it even when
+        # the failure happened before it was computed.
+        scoped_session_id = None
         steer_inbox = None
         run_id = None
         run_token = None
@@ -2065,6 +2118,19 @@ class AgentBridge:
             # fall back to session_id (IM channels). The Event is polled by
             # AgentStreamExecutor at safe checkpoints.
             registry = get_cancel_registry()
+            # Both the cancel token and the session grouping are namespaced:
+            # session ids are only unique within one Agent, so two Agents
+            # serving the same id must not cancel or steer each other. The
+            # steer registry is keyed by the same scoped id.
+            scoped_session_id = (
+                self._cancel_key(
+                    resolved_agent_id,
+                    session_id,
+                    self.agent_registry.default_agent_id,
+                )
+                if session_id
+                else None
+            )
             token_key = request_id or session_id
             if token_key:
                 token_key = self._cancel_key(
@@ -2100,6 +2166,7 @@ class AgentBridge:
                 session_id=session_id,
                 agent_id=speaker_agent_id,
                 host_agent_id=resolved_agent_id,
+                permission_mode=context.get("delegated_permission_mode"),
             )
             if not agent:
                 return Reply(ReplyType.ERROR, "Failed to initialize super agent")
@@ -2165,7 +2232,7 @@ class AgentBridge:
             if session_id and session_id.startswith("scheduler_"):
                 from config import conf
                 scheduler_keep_turns = max(
-                    1, int(conf().get("agent_max_context_turns", 20)) // 5
+                    1, int(conf().get("agent_max_context_turns", 30)) // 5
                 )
                 self._trim_in_memory_to_turns(agent, scheduler_keep_turns)
 
@@ -2196,13 +2263,15 @@ class AgentBridge:
                 messages = self._attribute_to_speaker(messages, speaker_agent_id)
                 messages = self._strip_speaker_prefix_from_messages(messages)
                 if messages:
-                    self._persist_messages(
+                    persisted = self._persist_messages(
                         session_id,
                         list(messages),
                         channel_type,
                         resolved_agent_id,
                         create_if_missing=not pre_persisted,
                     )
+                    if persisted is False:
+                        raise RuntimeError("conversation write failed; step remains pending")
 
             writer = StepWriter(write_reply, skip_query=pre_persisted) if session_id else None
 
@@ -2223,8 +2292,8 @@ class AgentBridge:
                 pass
 
             try:
-                if session_id:
-                    steer_inbox = get_steer_registry().register(session_id)
+                if scoped_session_id:
+                    steer_inbox = get_steer_registry().register(scoped_session_id)
                 # Use agent's run_stream method with event handler
                 from agent.attachments import attachments_from_context
 
@@ -2274,8 +2343,8 @@ class AgentBridge:
                         registry.unregister(token_key)
                     except Exception:
                         pass
-                if session_id and steer_inbox is not None:
-                    get_steer_registry().unregister(session_id, steer_inbox)
+                if scoped_session_id and steer_inbox is not None:
+                    get_steer_registry().unregister(scoped_session_id, steer_inbox)
 
             # A cancelled turn is not a failure, but it is not a completed run
             # either: the distinction is what tells a reader whether the result
@@ -2291,6 +2360,8 @@ class AgentBridge:
                 if pre_persisted and new_messages and new_messages[0].get("role") == "user":
                     new_messages = new_messages[1:]
                 writer.finish(new_messages)
+
+            self.remember_context_usage(agent, session_id, resolved_agent_id)
             
             # Record this user turn for the self-evolution idle trigger. Skip
             # scheduler-injected / scheduled-task sessions so internal runs do
@@ -2362,9 +2433,9 @@ class AgentBridge:
                     get_cancel_registry().unregister(token_key)
                 except Exception:
                     pass
-            if session_id and steer_inbox is not None:
+            if scoped_session_id and steer_inbox is not None:
                 try:
-                    get_steer_registry().unregister(session_id, steer_inbox)
+                    get_steer_registry().unregister(scoped_session_id, steer_inbox)
                 except Exception:
                     pass
             return Reply(ReplyType.ERROR, f"Agent error: {str(e)}")
@@ -2576,6 +2647,9 @@ class AgentBridge:
                 "role": "user",
                 "content": [{"type": "text", "text": query}],
             }
+            display = context.get("display") if context else None
+            if display:
+                user_msg["extras"] = {"display": display}
             store.append_messages(session_id, [user_msg], channel_type=channel_type)
             return True
         except Exception as e:
@@ -2591,7 +2665,7 @@ class AgentBridge:
         channel_type: str = "",
         agent_id: str = None,
         create_if_missing: bool = True,
-    ) -> None:
+    ) -> bool:
         """
         Persist new messages to the conversation store after each agent run.
 
@@ -2603,11 +2677,11 @@ class AgentBridge:
         instead of resurrecting the session without its question.
         """
         if not new_messages:
-            return
+            return True
         try:
             from config import conf
             if not conf().get("conversation_persistence", True):
-                return
+                return True
             # When deep-thinking display is disabled, strip "thinking" content
             # blocks before persisting so they don't resurface on history reload.
             # The in-memory message list keeps them intact for this run's
@@ -2630,20 +2704,42 @@ class AgentBridge:
         if not thinking_enabled:
             messages_to_store = self._strip_thinking_blocks(new_messages)
 
+        stored = False
         try:
-            stored = self.get_conversation_store(agent_id).append_messages(
+            store = self.get_conversation_store(agent_id)
+            stored = store.append_messages(
                 session_id, messages_to_store, channel_type=channel_type,
                 create_if_missing=create_if_missing
             )
-            if not stored and not create_if_missing:
+            if stored:
+                from agent.protocol.artifact import index_message_artifacts
+                index_message_artifacts(store, session_id, messages_to_store, agent_id=agent_id)
+            elif not create_if_missing:
                 logger.info(
                     f"[AgentBridge] Session {session_id} was deleted mid-run, "
                     f"dropped {len(messages_to_store)} reply message(s)"
                 )
+            # A deleted session is an intentional discard, not a retryable failure.
+            return bool(stored) or not create_if_missing
         except Exception as e:
             logger.warning(
                 f"[AgentBridge] Failed to persist messages for session={session_id}: {e}"
             )
+            # Artifact indexing happens after the append committed; do not replay it.
+            return bool(stored)
+
+    def remember_context_usage(
+        self, agent, session_id: str, agent_id: str = None
+    ) -> None:
+        """Store the context usage a run ended on, so the chart survives a restart.
+        Best-effort: never fails the turn."""
+        if not session_id:
+            return
+        try:
+            store = self.get_conversation_store(agent_id)
+            store.set_context_usage(session_id, agent.get_context_usage())
+        except Exception as e:
+            logger.debug(f"[AgentBridge] Context usage snapshot skipped: {e}")
 
     # Marker used to identify scheduler-injected user messages so we can apply
     # a sliding window without touching real user turns. The legacy prefix

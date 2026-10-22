@@ -27,7 +27,7 @@ let mod;
 before(() => {
   const src = path.join(desktop, 'src', 'main', 'remote', 'shell-covering.ts');
   if (!fs.existsSync(compiled) || fs.statSync(compiled).mtimeMs < fs.statSync(src).mtimeMs) {
-    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe' });
+    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe', shell: process.platform === 'win32',});
   }
   mod = require(compiled);
 });
@@ -55,7 +55,8 @@ test('web workbench header keeps interactive chips no-drag', () => {
 });
 
 test('attach and detach wire shell covering', () => {
-  assert.match(ipcSrc, /setShellCovered\(options\.window, true\)/);
+  assert.match(ipcSrc, /setRemoteContainerVisible\(options\.window, route !== '\/settings' && route !== '\/logs'\)/);
+  assert.match(ipcSrc, /setShellCovered\(window, visible\)/);
   assert.match(ipcSrc, /setShellCovered\(coveredWindow, false\)/);
   assert.match(ipcSrc, /from '\.\/shell-covering'/);
 });

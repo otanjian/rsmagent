@@ -99,6 +99,75 @@ _MEMORY_ADD_TOOL = "memory_add"
 _MEMORY_SCOPE_ARG = "scope"
 _SHARED_MEMORY_SCOPE = "shared"
 
+#: Account types (change add-im-guest-accounts). ``normal`` is every account a
+#: human logs in with; ``im_guest`` is the account a tenant's shared bot creates
+#: for an unbound IM sender. The type is an *identity* fact, not a status flag:
+#: an inactive guest stays a guest, and the login gate reads the type, never the
+#: password, so a guessed password cannot open the platform for one.
+ACCOUNT_TYPE_NORMAL = "normal"
+ACCOUNT_TYPE_IM_GUEST = "im_guest"
+_ACCOUNT_TYPES = (ACCOUNT_TYPE_NORMAL, ACCOUNT_TYPE_IM_GUEST)
+
+#: What an IM guest's ``users.password_hash`` holds. It is deliberately not a
+#: PBKDF2 string, so ``verify_password`` can never accept it; the account-type
+#: gate in ``IdentityService.login`` is still the authority (a hash that merely
+#: looks unguessable is not an authorization decision).
+IM_GUEST_PASSWORD_HASH = "!im_guest"
+
+#: Resolution states of an inbound external identity. ``unknown`` is the only
+#: state that may provision a new account: a stopped mapping or a stopped
+#: account must stay refused however many messages arrive.
+EXTERNAL_IDENTITY_UNKNOWN = "unknown"
+EXTERNAL_IDENTITY_BOUND = "bound"
+EXTERNAL_IDENTITY_MAPPING_INACTIVE = "mapping_inactive"
+EXTERNAL_IDENTITY_ACCOUNT_INACTIVE = "account_inactive"
+
+
+def _resolution_from_row(row):
+    """Shape one joined identity row into the resolver's answer.
+
+    Shared by the connection-scoped and transaction-scoped reads so the two can
+    never disagree about what the same row means.
+    """
+    if row is None:
+        return {"status": EXTERNAL_IDENTITY_UNKNOWN, "binding": None,
+                "user": None, "binding_id": ""}
+    user = {
+        "id": row["user_id"],
+        "username": row["username"],
+        "display_name": row["display_name"],
+        "active": bool(row["account_active"]),
+        "account_type": row["account_type"],
+    }
+    binding = {
+        "id": row["binding_id"],
+        "user_id": row["user_id"],
+        "provider": row["provider"],
+        "issuer": row["issuer"],
+        "subject": row["subject"],
+        "active": bool(row["mapping_active"]),
+    }
+    if not row["mapping_active"]:
+        status = EXTERNAL_IDENTITY_MAPPING_INACTIVE
+    elif not row["account_active"]:
+        status = EXTERNAL_IDENTITY_ACCOUNT_INACTIVE
+    else:
+        status = EXTERNAL_IDENTITY_BOUND
+    return {"status": status, "binding": binding, "user": user,
+            "binding_id": row["binding_id"]}
+
+#: Role permissions an auto-provisioned guest role MUST NOT contain: the
+#: identity/config management capabilities that would let a guest change who it
+#: is or widen its own access. ``tenant_admin`` is refused by role code as well.
+_GUEST_FORBIDDEN_PERMISSIONS = frozenset({
+    "agent.edit",
+    "agent.enable",
+    "tool.configure",
+    "skill.edit",
+    "external.connections.manage",
+    "external.connections.test",
+})
+
 #: The channel-instance scopes. ``tenant`` is the tenant's own instance (the
 #: original and only kind before personal consoles); ``user`` is one member's
 #: personal instance. Kept as the single accepted set so an unknown scope is
@@ -2522,6 +2591,41 @@ class IdentityService:
         )
         return self._grant_rows_to_list(rows)
 
+    @staticmethod
+    def account_type(user) -> str:
+        """The stored account type, with the pre-migration default applied.
+
+        A missing key (a projection that did not select the column) reads as
+        ``normal``; every *decision* goes through :meth:`account_can_login`, and
+        those paths read whole rows. An unknown value is returned verbatim so it
+        fails that check instead of silently inheriting ordinary-account access.
+        """
+        if user is None:
+            return ""
+        try:
+            value = user["account_type"]
+        except (KeyError, IndexError, TypeError):
+            value = None
+        value = str(value or "").strip().lower()
+        return value or ACCOUNT_TYPE_NORMAL
+
+    @classmethod
+    def account_can_login(cls, user) -> bool:
+        """Whether this account may hold or consume a platform credential.
+
+        Only an ordinary account may. An IM guest may exist, own history and use
+        a bot, but it has no platform identity to log in with; a future type is
+        refused the same way rather than inheriting ordinary access.
+        """
+        return cls.account_type(user) == ACCOUNT_TYPE_NORMAL
+
+    @classmethod
+    def _account_type_of(cls, con, user_id: str) -> str:
+        """The account type read inside a caller's transaction (defaulted)."""
+        row = con.execute(
+            "SELECT account_type FROM users WHERE id=?", (user_id,)).fetchone()
+        return cls.account_type(dict(row) if row else None)
+
     def is_platform_admin_user(self, user_id: str) -> bool:
         """True when the user is an active platform admin (the ``all`` source)."""
         return self._has_platform_admin_binding(user_id)
@@ -2630,15 +2734,31 @@ class IdentityService:
         """
         if kind not in RESOURCE_ACTIONS or action not in RESOURCE_ACTIONS[kind]:
             return False
+        # The IM guest's ceiling is part of every answer below, including the
+        # private-owner short-circuit and the platform-admin ``all`` bypass: an
+        # ambient guest call is never widened by who the account happens to be.
+        is_guest_call, guest = self._guest_call_scope(user_id, tenant_id)
+
+        def gate(allowed: bool) -> bool:
+            if not allowed:
+                return False
+            if not is_guest_call:
+                return True
+            if guest is None:
+                return False
+            if permission is not None and permission not in guest["permissions"]:
+                return False
+            return resource_granted(guest["grants"], kind, resource_id, action)
+
         agent_id = None
         if kind == "agent":
             agent_id = self._agent_id_from_resource(resource_id)
             owner = self._private_agent_owner_user_id(tenant_id, agent_id)
             if owner is not None:
-                return self._private_agent_action_allowed(
-                    user_id, tenant_id, owner, action, permission=permission)
+                return gate(self._private_agent_action_allowed(
+                    user_id, tenant_id, owner, action, permission=permission))
         if self.authorization_mode(user_id, tenant_id) == "all":
-            return True
+            return gate(True)
         membership = self._membership(user_id, tenant_id)
         if not membership:
             return False
@@ -2651,9 +2771,9 @@ class IdentityService:
                 return False
         if (kind == "agent" and action in PRIVATE_AGENT_OWNER_ACTIONS
                 and self.is_private_agent_owner(tenant_id, user_id, agent_id)):
-            return True
+            return gate(True)
         grants = self._role_grants_for_membership(membership["id"])
-        return resource_granted(grants, kind, resource_id, action)
+        return gate(resource_granted(grants, kind, resource_id, action))
 
     def _private_agent_action_allowed(
         self,
@@ -2857,6 +2977,59 @@ class IdentityService:
         if kind == "model":
             allowed = self._within_tenant_model_limit(tenant_id, action, allowed)
         return allowed | owned
+
+    def has_explicit_resource_grant(
+        self, user_id: str, tenant_id: str, kind: str, resource_id: str,
+        action: str,
+    ) -> bool:
+        """True only when a role of this membership explicitly grants the triple.
+
+        Unlike :meth:`check_resource_action` there is no platform ``all``
+        bypass and no private-owner exemption: this is the strict form a
+        few actions need (``platform-all-authorization`` names
+        ``history_read_all`` as that exception). A platform admin who is
+        not a member of ``tenant_id`` holds no membership grants and
+        therefore answers False.
+        """
+        membership = self._membership(user_id, tenant_id)
+        if not membership:
+            return False
+        return any(
+            g["resource_kind"] == kind and g["resource_id"] == resource_id
+            and g["action"] == action
+            for g in self._role_grants_for_membership(membership["id"])
+        )
+
+    def explicit_resource_ids(
+        self, user_id: str, tenant_id: str, kind: str, action: str,
+    ) -> set:
+        """The ids explicitly granted for ``kind``+``action`` — no ``all`` bypass."""
+        membership = self._membership(user_id, tenant_id)
+        if not membership:
+            return set()
+        return resource_ids_for(
+            self._role_grants_for_membership(membership["id"]), kind, action)
+
+    def member_display_names(self, tenant_id: str, user_ids) -> Dict[str, str]:
+        """Minimal identity projection: user id -> display name.
+
+        Only members of ``tenant_id`` are resolved, and only the display
+        name (falling back to the username) is returned — no avatar,
+        email, status or other account field. This lets the cross-owner
+        history view show a creator without needing (or granting) the
+        member-directory permission.
+        """
+        ids = sorted({str(u) for u in user_ids if u})
+        if not ids or not tenant_id:
+            return {}
+        placeholders = ",".join("?" for _ in ids)
+        rows = self._store.execute(
+            "SELECT u.id, u.display_name, u.username FROM users u"
+            " JOIN memberships m ON m.user_id = u.id"
+            " WHERE m.tenant_id = ? AND u.id IN (" + placeholders + ")",
+            (tenant_id, *ids),
+        )
+        return {r["id"]: (r["display_name"] or r["username"] or "") for r in rows}
 
     def _within_tenant_model_limit(self, tenant_id: str, action: str, allowed: set) -> set:
         """Narrow a member's ``model`` grants to the tenant's allocatable limit.
@@ -3322,6 +3495,12 @@ class IdentityService:
         user = self._find_user_by_username(username)
         if not user:
             raise IdentityServiceError("invalid login", code="invalid_login", status=401)
+        if not self.account_can_login(user):
+            # An IM guest has no usable credential, and the type gate is what
+            # says so -- the unusable hash is a second line of defence, not the
+            # decision. Answered as a plain authentication failure so the
+            # response does not tell an attacker that the account is a guest.
+            raise IdentityServiceError("invalid login", code="invalid_login", status=401)
         if not verify_password(password, user["password_hash"]):
             raise IdentityServiceError("invalid login", code="invalid_login", status=401)
 
@@ -3338,6 +3517,11 @@ class IdentityService:
                 raise IdentityServiceError("invalid login", code="invalid_login", status=401)
             current = dict(row)
             if not verify_password(password, current["password_hash"]):
+                raise IdentityServiceError("invalid login", code="invalid_login", status=401)
+            if not self.account_can_login(current):
+                # Re-decided under the write lock: a concurrent write cannot
+                # turn an ordinary account into a guest between the read above
+                # and the session insert and still leave a live session behind.
                 raise IdentityServiceError("invalid login", code="invalid_login", status=401)
             if not current["active"]:
                 raise IdentityServiceError("account disabled", code="account_disabled", status=403)
@@ -3428,6 +3612,11 @@ class IdentityService:
         row = self._sessions.get_by_token(token)
         user = self._find_user_by_id(row["user_id"])
         if not user or not user["active"]:
+            return None
+        if not self.account_can_login(user):
+            # A session row is not an authorization. A hand-built or historical
+            # session pointing at an IM guest is refused at consumption, so no
+            # role edit or manual insert can hand a guest the console.
             return None
         # A restricted session must not outlive its temporary-credential deadline,
         # even if the session's own TTL has not yet elapsed.
@@ -3571,6 +3760,10 @@ class IdentityService:
         if not session:
             raise IdentityServiceError("unauthorized", code="unauthorized", status=401)
         user = session["user"]
+        if not self.account_can_login(user):
+            raise IdentityServiceError(
+                "password change is not available for this account",
+                code="forbidden", status=403)
         if new_password.lower() in _COMMON_PASSWORDS or len(new_password) < MIN_PASSWORD_LENGTH:
             raise IdentityServiceError("weak password", code="weak_password", status=400)
         # Compute the expensive new-hash OUTSIDE the write lock (task 2.6).
@@ -3617,6 +3810,13 @@ class IdentityService:
             pass
 
     def _set_password_for_user(self, user_id: str, new_password: str, must_change: bool) -> None:
+        target = self._find_user_by_id(user_id)
+        if target and not self.account_can_login(target):
+            # Reset is not a conversion path: refusing before hashing means no
+            # temporary credential is ever produced for an IM guest.
+            raise IdentityServiceError(
+                "password reset is not available for this account",
+                code="forbidden", status=403)
         if new_password.lower() in _COMMON_PASSWORDS or len(new_password) < MIN_PASSWORD_LENGTH:
             raise IdentityServiceError("weak password", code="weak_password", status=400)
         new_hash = hash_password(new_password)  # expensive, outside the lock
@@ -4370,6 +4570,10 @@ class IdentityService:
         left alone. An empty value means "no change", so a client that never
         collected a name cannot blank an existing one.
         """
+        if self._account_type_of(con, user_id) != ACCOUNT_TYPE_NORMAL:
+            raise IdentityServiceError(
+                "an IM guest cannot become a tenant administrator",
+                code="invalid_account_type", status=400)
         admin_role = con.execute(
             "SELECT * FROM roles WHERE tenant_id=? AND code=?",
             (tenant_id, TENANT_ADMIN_CODE),
@@ -4776,7 +4980,12 @@ class IdentityService:
         user = con.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
         if not user:
             return
-        if user["active"] and not self._user_has_active_tenant(con, user_id):
+        # An IM guest has no platform login, so "an enabled account must keep a
+        # tenant" does not apply: disabling its only membership is exactly how an
+        # administrator stops it, and refusing that would make a single-tenant
+        # guest impossible to disable.
+        if (user["active"] and self.account_can_login(dict(user))
+                and not self._user_has_active_tenant(con, user_id)):
             raise IdentityServiceError(
                 "an enabled account must keep at least one active tenant",
                 code="last_active_tenant_required", status=409)
@@ -4838,6 +5047,13 @@ class IdentityService:
         tenant_id: Optional[str] = None,
     ) -> int:
         """Commit neither credentials nor revocations without their audit."""
+        if self._account_type_of(con, user_id) != ACCOUNT_TYPE_NORMAL:
+            # Every reset path funnels through here, so this is the single place
+            # that guarantees an IM guest never receives a temporary credential
+            # -- and therefore never a login, even via the reset flow.
+            raise IdentityServiceError(
+                "password reset is not available for this account",
+                code="forbidden", status=403)
         now = int(time.time())
         expires_at = now + TEMPORARY_PASSWORD_TTL_SECONDS
         con.execute(
@@ -5158,6 +5374,12 @@ class IdentityService:
         observably inconsistent. ``actor_user_id`` is reserved for a future
         binding-level audit event (the caller currently writes the audit).
         """
+        if granted and self._account_type_of(con, user_id) != ACCOUNT_TYPE_NORMAL:
+            # The platform qualification is a login identity: an IM guest must
+            # never acquire it, whichever surface grants it.
+            raise IdentityServiceError(
+                "an IM guest cannot become a platform administrator",
+                code="invalid_account_type", status=400)
         if granted:
             con.execute(
                 "INSERT OR IGNORE INTO user_platform_roles(user_id, platform_role_id)"
@@ -5201,7 +5423,7 @@ class IdentityService:
         page_params = params + [page_size, (page - 1) * page_size]
         rows = self._store.execute(
             "SELECT e.id, e.user_id, e.provider, e.issuer, e.subject,"
-            "       e.created_at, e.last_used_at,"
+            "       e.active, e.created_at, e.last_used_at,"
             "       u.username, u.display_name, u.active"
             " FROM external_identities e JOIN users u ON u.id = e.user_id"
             f"{where_sql}"
@@ -5212,7 +5434,12 @@ class IdentityService:
             "SELECT COUNT(*) AS c FROM external_identities e" + where_sql,
             count_params,
         )[0]["c"]
-        return {"items": [dict(r) for r in rows], "total": total, "page": page}
+        items = []
+        for r in rows:
+            item = dict(r)
+            item["active"] = bool(item.get("active", 1))
+            items.append(item)
+        return {"items": items, "total": total, "page": page}
 
     def bind_external_identity(
         self,
@@ -5275,7 +5502,7 @@ class IdentityService:
         provider, issuer, subject = self._validated_identity_triple(
             provider, issuer, subject)
         existing = self._store.execute(
-            "SELECT id, user_id FROM external_identities"
+            "SELECT id, user_id, active FROM external_identities"
             " WHERE provider=? AND issuer=? AND subject=?",
             (provider, issuer, subject),
         )
@@ -5283,6 +5510,13 @@ class IdentityService:
             if existing[0]["user_id"] != user_id:
                 raise IdentityServiceError(
                     "external identity is already bound",
+                    code="conflict", status=409)
+            if not existing[0]["active"]:
+                # A stopped binding is not a usable proof for a personal route:
+                # the admin withdrew the sender's identity, and re-pointing a
+                # route at it would restore access without an explicit restore.
+                raise IdentityServiceError(
+                    "external identity binding is disabled",
                     code="conflict", status=409)
             return existing[0]["id"]
         return self._bind_external_identity_row(
@@ -5334,12 +5568,50 @@ class IdentityService:
         if not target["active"]:
             raise IdentityServiceError("user is inactive", code="bad_request", status=400)
         actor = self._find_user_by_id(actor_user_id) or {}
+        existing = con.execute(
+            "SELECT id, user_id, active FROM external_identities"
+            " WHERE provider=? AND issuer=? AND subject=?",
+            (provider, issuer, subject)).fetchone()
+        if existing:
+            # A live binding belongs to its account. A stopped one is *reserved*
+            # for the account it was stopped on: binding it elsewhere would let
+            # an administrator move an identity whose history belongs to the
+            # old account, so only the same account may restore it -- and the
+            # restore touches the binding alone, never the account, membership
+            # or roles that were separately stopped.
+            if existing["user_id"] != user_id or existing["active"]:
+                raise IdentityServiceError(
+                    "external identity is already bound",
+                    code="conflict", status=409)
+            binding_id = existing["id"]
+            con.execute(
+                "UPDATE external_identities SET active=1 WHERE id=?",
+                (binding_id,))
+            con.execute(
+                "DELETE FROM external_identity_attempts"
+                " WHERE provider=? AND issuer=? AND subject=?",
+                (provider, issuer, subject))
+            self._audit_in_tx(
+                con,
+                actor_user_id=actor_user_id,
+                actor_username=actor.get("username"),
+                action="external_identity.restore",
+                target=f"user:{user_id}",
+                redacted_changes={
+                    "provider": provider, "issuer": issuer,
+                    "subject": subject, "binding_id": binding_id,
+                },
+            )
+            return {
+                "id": binding_id, "user_id": user_id, "provider": provider,
+                "issuer": issuer, "subject": subject, "restored": True,
+            }
         binding_id = self._new_id("ext")
         try:
             con.execute(
                 "INSERT INTO external_identities"
-                " (id, user_id, provider, issuer, subject)"
-                " VALUES (?,?,?,?,?)",
+                " (id, user_id, provider, issuer, subject, active)"
+                " VALUES (?,?,?,?,?,1)",
                 (binding_id, user_id, provider, issuer, subject),
             )
         except sqlite3.IntegrityError:
@@ -5388,8 +5660,10 @@ class IdentityService:
         actor = self._find_user_by_id(actor_user_id) or {}
         with self._tx() as con:
             row = con.execute(
-                "SELECT user_id, provider, issuer, subject"
-                " FROM external_identities WHERE id=?",
+                "SELECT e.user_id, e.provider, e.issuer, e.subject, e.active,"
+                " u.account_type"
+                " FROM external_identities e JOIN users u ON u.id=e.user_id"
+                " WHERE e.id=?",
                 (binding_id,),
             ).fetchone()
             if not row:
@@ -5399,8 +5673,18 @@ class IdentityService:
             removed = con.execute(
                 "DELETE FROM personal_channel_links WHERE external_identity_id=?",
                 (binding_id,)).rowcount
-            con.execute(
-                "DELETE FROM external_identities WHERE id=?", (binding_id,))
+            stopped = self.account_type(dict(row)) == ACCOUNT_TYPE_IM_GUEST
+            if stopped:
+                # A guest is identified by this triple and nothing else: deleting
+                # the row would let the very next message provision a fresh guest
+                # for the sender the administrator just removed. Stopping keeps
+                # the triple reserved and the history where it is.
+                con.execute(
+                    "UPDATE external_identities SET active=0 WHERE id=?",
+                    (binding_id,))
+            else:
+                con.execute(
+                    "DELETE FROM external_identities WHERE id=?", (binding_id,))
             self._audit_in_tx(
                 con,
                 actor_user_id=actor_user_id,
@@ -5411,6 +5695,7 @@ class IdentityService:
                     "provider": row["provider"], "issuer": row["issuer"],
                     "subject": row["subject"], "binding_id": binding_id,
                     "personal_routes_removed": int(removed or 0),
+                    "stopped": stopped,
                 },
             )
 
@@ -5635,18 +5920,393 @@ class IdentityService:
         Read-only helper used by IM inbound paths: returns ``None`` when there
         is no binding or the bound user is inactive. The caller must still
         validate membership and permissions for the target tenant.
+
+        Kept as the narrow "who is this" question. Callers that decide whether
+        to *create* something must use :meth:`resolve_external_identity`, which
+        tells "nobody" apart from "stopped" -- the difference between "may
+        provision" and "must never provision again".
+        """
+        resolution = self.resolve_external_identity(provider, issuer, subject)
+        return resolution["user"] if resolution["status"] == EXTERNAL_IDENTITY_BOUND else None
+
+    def resolve_external_identity(
+        self, provider: str, issuer: str, subject: str
+    ) -> Dict[str, Any]:
+        """Resolve a triple, reporting *why* it did not resolve.
+
+        ``find_user_for_external_identity`` answers ``None`` for both "no such
+        binding" and "the binding or its account is stopped". That ambiguity was
+        harmless while nothing created accounts automatically; an auto-guest
+        provisioner would read "stopped" as "new" and re-open an account an
+        administrator deliberately closed. A storage failure raises: an
+        unreadable store must never be reported as "unknown", because that is
+        the one answer that causes a write.
         """
         rows = self._store.execute(
-            "SELECT u.id, u.username, u.display_name, u.active"
+            "SELECT e.id AS binding_id, e.active AS mapping_active, e.user_id,"
+            " e.provider, e.issuer, e.subject,"
+            " u.username, u.display_name, u.display_name AS member_display_name,"
+            " u.active AS account_active, u.account_type"
             " FROM external_identities e JOIN users u ON u.id = e.user_id"
             " WHERE e.provider=? AND e.issuer=? AND e.subject=?",
             ((provider or "").strip().lower(), (issuer or "").strip(),
              (subject or "").strip()),
         )
+        return _resolution_from_row(dict(rows[0]) if rows else None)
+
+    def _resolve_external_identity_in_tx(self, con, provider: str, issuer: str,
+                                         subject: str) -> Dict[str, Any]:
+        """:meth:`resolve_external_identity` inside a caller's transaction."""
+        row = con.execute(
+            "SELECT e.id AS binding_id, e.active AS mapping_active, e.user_id,"
+            " e.provider, e.issuer, e.subject,"
+            " u.username, u.display_name, u.display_name AS member_display_name,"
+            " u.active AS account_active, u.account_type"
+            " FROM external_identities e JOIN users u ON u.id = e.user_id"
+            " WHERE e.provider=? AND e.issuer=? AND e.subject=?",
+            ((provider or "").strip().lower(), (issuer or "").strip(),
+             (subject or "").strip()),
+        ).fetchone()
+        return _resolution_from_row(dict(row) if row else None)
+
+    # --- IM guest provisioning --------------------------------------------
+
+    @staticmethod
+    def _guest_display_name(raw: str) -> str:
+        """The nickname shown for a provisioned guest, bounded and safe.
+
+        It is a display value only: identity is the triple, so length/whitespace
+        normalisation here can never merge or split two senders.
+        """
+        text = " ".join(str(raw or "").split())
+        return (text or "IM 访客")[:64]
+
+    @staticmethod
+    def _guest_username(provider: str) -> str:
+        """A system-generated login name no human chose and nothing matches on."""
+        safe = "".join(ch for ch in str(provider or "im").lower()
+                       if ch.isalnum() or ch == "_") or "im"
+        return f"im_guest_{safe[:16]}_{secrets.token_hex(6)}"
+
+    def _validate_guest_role(self, role: Dict[str, Any]) -> None:
+        """Refuse a role that could manage identity or widen the guest's access.
+
+        The guest role is the channel's *ceiling*: it is intersected with the
+        member's own authorization on every call. A role carrying management
+        capabilities would still not be effective by itself, but accepting it
+        would let an administrator believe they granted something harmless that
+        the intersection happened to grind down -- and a later change to the
+        member's roles could make it live.
+        """
+        code = str(role.get("code") or "").strip().lower()
+        if code == TENANT_ADMIN_CODE:
+            raise IdentityServiceError(
+                "a guest role cannot be the tenant administrator role",
+                code="invalid_role", status=400)
+        try:
+            permissions = set(json.loads(role.get("permissions_json") or "[]"))
+        except (TypeError, ValueError):
+            permissions = set()
+        forbidden = permissions & _GUEST_FORBIDDEN_PERMISSIONS
+        if forbidden:
+            raise IdentityServiceError(
+                "a guest role cannot include management permissions: "
+                + ", ".join(sorted(forbidden)),
+                code="invalid_role", status=400)
+        if "chat.use" not in permissions:
+            raise IdentityServiceError(
+                "a guest role must include chat.use", code="invalid_role",
+                status=400)
+
+    def provision_im_guest(
+        self,
+        *,
+        provider: str,
+        issuer: str,
+        subject: str,
+        tenant_id: str,
+        instance_id: str,
+        display_name: str = "",
+    ) -> Dict[str, Any]:
+        """Create (or reuse) the IM guest for a verified inbound sender.
+
+        One transaction creates the account, the missing membership, the
+        instance role binding and the external mapping, and commits the audit
+        event with them: an identity without access or access without an
+        identity would both be a half-provisioned state nothing can repair.
+
+        Reuse is the normal case. Only an *unknown* triple creates anything; a
+        stopped mapping, a stopped account and a stopped membership all refuse,
+        and an existing active membership is never given the role again.
+        """
+        provider, issuer, subject = self._validated_identity_triple(
+            provider, issuer, subject)
+        tenant_id = (tenant_id or "").strip()
+        instance_id = (instance_id or "").strip()
+        if not tenant_id or not instance_id:
+            raise IdentityServiceError(
+                "guest provisioning requires a tenant channel instance",
+                code="guest_closed", status=403)
+        display = self._guest_display_name(display_name)
+        # A concurrent first message can win the insert race. The unique triple
+        # index is the serialisation point; the loser re-reads and reuses the
+        # winner's identity instead of failing the message outright.
+        last_error = None
+        for _attempt in range(2):
+            try:
+                return self._provision_im_guest_in_tx(
+                    provider=provider, issuer=issuer, subject=subject,
+                    tenant_id=tenant_id, instance_id=instance_id,
+                    display=display)
+            except sqlite3.IntegrityError as error:  # pragma: no cover - race
+                last_error = error
+        raise IdentityServiceError(
+            "could not provision the IM guest (concurrent write)",
+            code="conflict", status=409) from last_error
+
+    def _provision_im_guest_in_tx(self, *, provider: str, issuer: str,
+                                  subject: str, tenant_id: str,
+                                  instance_id: str, display: str) -> Dict[str, Any]:
+        with self._tx() as con:
+            instance = con.execute(
+                "SELECT * FROM tenant_channel_instances WHERE id=?",
+                (instance_id,)).fetchone()
+            if (not instance or instance["tenant_id"] != tenant_id
+                    or instance["scope"] != "tenant" or not instance["active"]):
+                raise IdentityServiceError(
+                    "guest access is not open on this channel",
+                    code="guest_closed", status=403)
+            policy = str(instance["unbound_user_policy"] or "require_binding")
+            if policy != "auto_guest":
+                raise IdentityServiceError(
+                    "guest access is not open on this channel",
+                    code="guest_closed", status=403)
+            role = con.execute(
+                "SELECT * FROM roles WHERE id=? AND tenant_id=?",
+                (str(instance["guest_role_id"] or ""), tenant_id)).fetchone()
+            if not role:
+                raise IdentityServiceError(
+                    "the channel's guest role is no longer available",
+                    code="guest_role_invalid", status=403)
+            role = dict(role)
+            self._validate_guest_role(role)
+
+            resolution = self._resolve_external_identity_in_tx(
+                con, provider, issuer, subject)
+            status = resolution["status"]
+            if status == EXTERNAL_IDENTITY_MAPPING_INACTIVE:
+                raise IdentityServiceError(
+                    "guest access was withdrawn by an administrator",
+                    code="guest_stopped", status=403)
+            if status == EXTERNAL_IDENTITY_ACCOUNT_INACTIVE:
+                raise IdentityServiceError(
+                    "this guest account is disabled", code="guest_stopped",
+                    status=403)
+
+            created = False
+            if status == EXTERNAL_IDENTITY_BOUND:
+                user = resolution["user"]
+                if self.account_type(user) != ACCOUNT_TYPE_IM_GUEST:
+                    # A formal account keeps its own membership and roles; the
+                    # guest policy never downgrades or re-provisions it.
+                    raise IdentityServiceError(
+                        "a formal account uses its own memberships",
+                        code="guest_conflict", status=409)
+                user_id = user["id"]
+                binding_id = resolution["binding_id"]
+            else:
+                created = True
+                user_id = self._new_id("usr")
+                binding_id = self._new_id("ext")
+                con.execute(
+                    "INSERT INTO users(id, username, display_name, password_hash,"
+                    " active, is_platform_admin, must_change_password,"
+                    " temp_password_expires_at, version, account_type)"
+                    " VALUES (?,?,?,?,1,0,0,NULL,1,?)",
+                    (user_id, self._guest_username(provider), display,
+                     IM_GUEST_PASSWORD_HASH, ACCOUNT_TYPE_IM_GUEST),
+                )
+                con.execute(
+                    "INSERT INTO external_identities"
+                    " (id, user_id, provider, issuer, subject, active)"
+                    " VALUES (?,?,?,?,?,1)",
+                    (binding_id, user_id, provider, issuer, subject),
+                )
+
+            membership = con.execute(
+                "SELECT * FROM memberships WHERE tenant_id=? AND user_id=?",
+                (tenant_id, user_id)).fetchone()
+            membership_created = False
+            if membership:
+                if not membership["active"]:
+                    raise IdentityServiceError(
+                        "this guest's membership is disabled in this tenant",
+                        code="guest_stopped", status=403)
+                membership_id = membership["id"]
+                # Deliberately no role write: an existing member keeps exactly
+                # the roles an administrator left it with (a second message must
+                # never add grants).
+            else:
+                membership_created = True
+                membership_id = self._new_id("mem")
+                con.execute(
+                    "INSERT INTO memberships(id, tenant_id, user_id, display_name,"
+                    " active, version) VALUES (?,?,?,?,1,1)",
+                    (membership_id, tenant_id, user_id, display),
+                )
+                con.execute(
+                    "INSERT INTO membership_roles(tenant_id, membership_id, role_id)"
+                    " VALUES (?,?,?)",
+                    (tenant_id, membership_id, role["id"]),
+                )
+
+            if created or membership_created:
+                # The actor is the provisioned guest itself: no human acted, and
+                # recording an administrator would be a fiction. The admin's
+                # authorization lives in the channel-policy audit event this
+                # record names by instance/version.
+                con.execute(
+                    "DELETE FROM external_identity_attempts"
+                    " WHERE provider=? AND issuer=? AND subject=?",
+                    (provider, issuer, subject),
+                )
+                self._audit_in_tx(
+                    con,
+                    actor_user_id=user_id,
+                    actor_username=None,
+                    tenant_id=tenant_id,
+                    target_tenant_id=tenant_id,
+                    action="im_guest.provision",
+                    target=f"user:{user_id}",
+                    redacted_changes={
+                        "provider": provider,
+                        "issuer": issuer,
+                        "subject": subject,
+                        "instance_id": instance_id,
+                        "instance_version": instance["version"],
+                        "role": role["code"],
+                        "account_created": created,
+                        "membership_created": membership_created,
+                    },
+                    result="success",
+                )
+            con.commit()
+            user_row = dict(con.execute(
+                "SELECT * FROM users WHERE id=?", (user_id,)).fetchone())
+        return {
+            "user": user_row,
+            "user_id": user_id,
+            "binding_id": binding_id,
+            "membership_id": membership_id,
+            "role_code": role["code"],
+            "created": created,
+            "membership_created": membership_created,
+        }
+
+    # --- live guest scope (the per-call ceiling) ---------------------------
+
+    def load_guest_scope(
+        self,
+        *,
+        user_id: str,
+        tenant_id: str,
+        instance_id: str,
+        external_identity_id: str = "",
+    ) -> Dict[str, Any]:
+        """The live guest scope for a running IM interaction, or raise.
+
+        Re-read on every call rather than snapshotted at entry: the instance's
+        current guest role, the mapping's active flag, the account/member state
+        and the role's *current* permissions are the authority. That is what
+        makes "role revoked, mapping stopped, channel closed" stop the next tool
+        call instead of only the next conversation.
+        """
+        if not instance_id:
+            raise IdentityServiceError(
+                "guest execution requires a trusted channel instance",
+                code="guest_closed", status=403)
+        instance = self.get_tenant_channel_instance_row(instance_id)
+        if (not instance or instance["tenant_id"] != tenant_id
+                or instance["scope"] != "tenant" or not instance["active"]):
+            raise IdentityServiceError(
+                "guest access is not open on this channel",
+                code="guest_closed", status=403)
+        if str(instance.get("unbound_user_policy") or "require_binding") != "auto_guest":
+            raise IdentityServiceError(
+                "guest access is not open on this channel",
+                code="guest_closed", status=403)
+        role_id = str(instance.get("guest_role_id") or "")
+        rows = self._store.execute(
+            "SELECT * FROM roles WHERE id=? AND tenant_id=?",
+            (role_id, tenant_id))
         if not rows:
-            return None
-        user = dict(rows[0])
-        return user if user["active"] else None
+            raise IdentityServiceError(
+                "the channel's guest role is no longer available",
+                code="guest_role_invalid", status=403)
+        role = dict(rows[0])
+        self._validate_guest_role(role)
+        if external_identity_id:
+            mapped = self._store.execute(
+                "SELECT id, user_id, active FROM external_identities WHERE id=?",
+                (external_identity_id,))
+            if (not mapped or mapped[0]["user_id"] != user_id
+                    or not mapped[0]["active"]):
+                raise IdentityServiceError(
+                    "guest access was withdrawn by an administrator",
+                    code="guest_stopped", status=403)
+        user = self._find_user_by_id(user_id)
+        if (not user or not user["active"]
+                or self.account_type(user) != ACCOUNT_TYPE_IM_GUEST):
+            raise IdentityServiceError(
+                "guest account is disabled", code="guest_stopped", status=403)
+        membership = self._membership(user_id, tenant_id)
+        if not membership or not membership["active"]:
+            raise IdentityServiceError(
+                "guest membership is disabled", code="guest_stopped", status=403)
+        grants = self._store.execute(
+            "SELECT resource_kind, resource_id, action FROM role_resource_grants"
+            " WHERE role_id=? ORDER BY resource_kind, resource_id, action",
+            (role_id,))
+        return {
+            "instance_id": instance_id,
+            "external_identity_id": external_identity_id,
+            "role_id": role_id,
+            "role_code": role["code"],
+            "permissions": set(json.loads(role["permissions_json"] or "[]")),
+            "grants": self._grant_rows_to_list(grants),
+        }
+
+    def _guest_call_scope(self, user_id: str, tenant_id: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """``(is_guest_call, scope)`` for the ambient runtime identity.
+
+        ``is_guest_call`` is true whenever the ambient identity names an IM
+        instance, and it deliberately does not require the user/tenant to match
+        the arguments: a guest call that has been redirected at another subject
+        is still a guest call and must be refused by the intersection, not
+        treated as an ordinary one.
+        """
+        try:
+            from common.runtime_identity import current_identity
+
+            ident = current_identity()
+        except Exception:  # pragma: no cover - import guard only
+            return False, None
+        instance_id = str(getattr(ident, "im_instance_id", "") or "")
+        if not instance_id:
+            return False, None
+        if (getattr(ident, "user_id", None) != user_id
+                or getattr(ident, "tenant_id", None) != tenant_id):
+            return True, None
+        try:
+            scope = self.load_guest_scope(
+                user_id=user_id,
+                tenant_id=tenant_id,
+                instance_id=instance_id,
+                external_identity_id=str(getattr(ident, "external_identity_id", "") or ""),
+            )
+        except IdentityServiceError:
+            return True, None
+        return True, scope
 
     # --- personal channel binding (task 2.3) ------------------------------
 
@@ -6406,7 +7066,8 @@ class IdentityService:
         reset_rule = "1" if platform_reset else self._tenant_password_reset_eligible_sql()
         rows = self._store.execute(
             f"SELECT m.id, m.display_name, m.active, m.department_id, m.position_text,"
-            f" m.version, u.username, u.id AS user_id, u.avatar, u.version AS user_version,"
+            f" m.version, u.username, u.id AS user_id, u.avatar, u.account_type,"
+            f" u.version AS user_version,"
             f" (? AND u.id<>? AND ({reset_rule})) AS can_reset_password"
             f" FROM memberships m JOIN users u ON u.id=m.user_id"
             f" WHERE {count_where} ORDER BY u.username LIMIT ? OFFSET ?",
@@ -6784,6 +7445,10 @@ class IdentityService:
                     if not role:
                         raise IdentityServiceError(f"unknown role: {code}", code="invalid_role", status=404)
                     if code == TENANT_ADMIN_CODE:
+                        if self._account_type_of(con, membership["user_id"]) != ACCOUNT_TYPE_NORMAL:
+                            raise IdentityServiceError(
+                                "an IM guest cannot hold the tenant administrator role",
+                                code="invalid_account_type", status=400)
                         admin_role_count += 1
                     con.execute(
                         "INSERT OR REPLACE INTO membership_roles(tenant_id, membership_id, role_id)"
@@ -8212,6 +8877,98 @@ class IdentityService:
             return dict(provided)
         return {**{str(key): value for key, value in stored.items()}, **provided}
 
+    def _validated_guest_groups(self, group_ids) -> List[str]:
+        """Normalise an instance's guest group allow-list.
+
+        Provider group ids only, compared exactly by the inbound path. Names,
+        wildcards and the global ``ALL_GROUP`` marker are refused rather than
+        ignored: accepting them would silently widen "the groups listed here" to
+        "every group the instance can see".
+        """
+        if group_ids is None:
+            return []
+        if isinstance(group_ids, str):
+            group_ids = [group_ids]
+        if not isinstance(group_ids, (list, tuple, set)):
+            raise IdentityServiceError(
+                "guest group ids must be a list", code="bad_request", status=400)
+        normalized: List[str] = []
+        for raw in group_ids:
+            gid = str(raw or "").strip()
+            if not gid:
+                continue
+            if len(gid) > 128:
+                raise IdentityServiceError(
+                    "guest group id is too long", code="bad_request", status=400)
+            if gid.upper() == "ALL_GROUP" or "*" in gid:
+                raise IdentityServiceError(
+                    "guest groups must be named explicitly; wildcards are not"
+                    " supported", code="bad_request", status=400)
+            if gid not in normalized:
+                normalized.append(gid)
+        return normalized
+
+    def _validated_guest_policy(self, con, *, tenant_id: str, scope: str,
+                                policy, role_id, group_ids,
+                                target_agent_id: str = ""):
+        """``(policy, guest_role_id, guest_group_ids_json)`` after validation.
+
+        The three fields are the whole new surface: a mode, one ordinary role
+        and an explicit group list. ``con`` may be the store (create path) or a
+        transaction connection (update path), so the same rules judge both.
+        """
+        # An omitted value is the pre-change behaviour, not an error: every
+        # existing caller (and every old client) creates an instance without
+        # these fields and must keep getting "require binding".
+        normalized = str(policy or "require_binding").strip().lower()
+        if normalized not in ("require_binding", "auto_guest"):
+            raise IdentityServiceError(
+                "invalid unbound user policy", code="bad_request", status=400)
+        role_ref = str(role_id or "").strip()
+        groups = self._validated_guest_groups(group_ids)
+        if scope != "tenant":
+            if normalized == "auto_guest":
+                raise IdentityServiceError(
+                    "guest access is only available on a shared channel"
+                    " instance", code="bad_request", status=400)
+            return normalized, "", "[]"
+        if normalized == "auto_guest":
+            if not role_ref:
+                raise IdentityServiceError(
+                    "guest access requires a guest role", code="bad_request",
+                    status=400)
+            # ``con`` is the store (a list) on the create path and a raw
+            # transaction cursor on the update path; both must reach the same
+            # validation with the same row.
+            rows = con.execute(
+                "SELECT * FROM roles WHERE id=? AND tenant_id=?",
+                (role_ref, tenant_id))
+            role_row = (rows.fetchone() if hasattr(rows, "fetchone")
+                        else (rows[0] if rows else None))
+            if not role_row:
+                raise IdentityServiceError(
+                    "guest role not found in this tenant", code="invalid_role",
+                    status=400)
+            role_row = dict(role_row)
+            self._validate_guest_role(role_row)
+            if str(target_agent_id or "").strip():
+                # "必要资源不可用" is an enable-time refusal, not a surprise on
+                # the guest's first message: the role must be able to use the
+                # instance's own target Agent. An empty target is left to the
+                # runtime (a shared instance may deliberately be unbound).
+                permissions = set(json.loads(role_row.get("permissions_json") or "[]"))
+                grants = con.execute(
+                    "SELECT 1 FROM role_resource_grants WHERE role_id=?"
+                    " AND resource_kind='agent' AND resource_id=? AND action='use'",
+                    (role_ref, f"agent:{str(target_agent_id).strip()}"))
+                granted = (grants.fetchone() if hasattr(grants, "fetchone")
+                           else (grants[0] if grants else None))
+                if "agent.use" not in permissions or not granted:
+                    raise IdentityServiceError(
+                        "the guest role cannot use this channel's Agent",
+                        code="invalid_role", status=400)
+        return normalized, role_ref, json.dumps(groups, ensure_ascii=False)
+
     def _instance_projection(self, row) -> Dict[str, Any]:
         """Masked, credential-free view of one tenant channel instance.
 
@@ -8228,6 +8985,12 @@ class IdentityService:
             "version": row["version"],
             "scope": row["scope"],
             "owner_user_id": row["owner_user_id"],
+            # Guest access: the mode, the role the current channel narrows the
+            # member with, and the explicit group list (empty = private only).
+            "unbound_user_policy": str(
+                row["unbound_user_policy"] or "require_binding"),
+            "guest_role_id": str(row["guest_role_id"] or ""),
+            "guest_group_ids": json.loads(row["guest_group_ids_json"] or "[]"),
             # Governance metadata: *who* stopped personal access and *when*, never
             # the private configuration. An administrator may see this much, which
             # is what makes the stop auditable without exposing the member's data.
@@ -8624,6 +9387,9 @@ class IdentityService:
         recent_password: str,
         agent_id: str = "",
         credentials=None,
+        unbound_user_policy: Optional[str] = None,
+        guest_role_id: Optional[str] = None,
+        guest_group_ids: Optional[Sequence[str]] = None,
         scan_ticket: str = "",
         scope: str = "tenant",
         owner_user_id: Optional[str] = None,
@@ -8709,6 +9475,12 @@ class IdentityService:
             agent_id = self._require_personal_instance_agent(
                 tenant_id=tenant_id, owner_user_id=owner_user_id,
                 agent_id=agent_id)
+        # Guest access is a property of a shared instance only; a personal one
+        # is answered by its owner and never opens to strangers.
+        policy, guest_role_ref, guest_group_ids_json = self._validated_guest_policy(
+            self._store, tenant_id=tenant_id, scope=scope,
+            policy=unbound_user_policy, role_id=guest_role_id,
+            group_ids=guest_group_ids, target_agent_id=agent_id)
         # The surface and the target are the two halves of the grant that a
         # *personal* write has to name for itself (task 4.1): the console's older
         # page sends neither, and a historical public authorization must not
@@ -8794,10 +9566,12 @@ class IdentityService:
                     con.execute(
                         "INSERT INTO tenant_channel_instances(id, tenant_id, channel_type,"
                         " display_name, agent_id, active, version, created_by, scope,"
-                        " owner_user_id, app_fingerprint)"
-                        " VALUES (?,?,?,?,?,1,1,?,?,?,?)",
+                        " owner_user_id, app_fingerprint, unbound_user_policy,"
+                        " guest_role_id, guest_group_ids_json)"
+                        " VALUES (?,?,?,?,?,1,1,?,?,?,?,?,?,?)",
                         (instance_id, tenant_id, ctype, display_name, agent_id,
-                         actor_user_id, scope, owner_user_id, app_fingerprint),
+                         actor_user_id, scope, owner_user_id, app_fingerprint,
+                         policy, guest_role_ref, guest_group_ids_json),
                     )
                 except sqlite3.IntegrityError:
                     # Belt to the check's braces: two creates can pass the SELECT
@@ -8878,8 +9652,9 @@ class IdentityService:
         rows = self._store.execute(
             "SELECT id, tenant_id, channel_type, display_name, agent_id, active,"
             " version, scope, owner_user_id, created_by, sender_binding_at,"
-            " governance_disabled_at,"
-            " governance_disabled_by FROM tenant_channel_instances"
+            " governance_disabled_at, governance_disabled_by,"
+            " unbound_user_policy, guest_role_id, guest_group_ids_json"
+            " FROM tenant_channel_instances"
             " WHERE id=?",
             (instance_id,),
         )
@@ -8984,6 +9759,9 @@ class IdentityService:
         display_name: Optional[str] = None,
         agent_id: Optional[str] = None,
         credentials=None,
+        unbound_user_policy: Optional[str] = None,
+        guest_role_id: Optional[str] = None,
+        guest_group_ids: Optional[Sequence[str]] = None,
         allow_owner: bool = False,
     ) -> Dict[str, Any]:
         """Edit a tenant channel instance, optionally rotating its bundle.
@@ -9122,6 +9900,23 @@ class IdentityService:
                     con, tenant_id=tenant_id,
                     owner_user_id=str(row["owner_user_id"] or ""),
                     agent_id=new_agent)
+            new_policy = str(row["unbound_user_policy"] or "require_binding")
+            new_guest_role = str(row["guest_role_id"] or "")
+            new_guest_groups_json = str(row["guest_group_ids_json"] or "[]")
+            if (unbound_user_policy is not None or guest_role_id is not None
+                    or guest_group_ids is not None):
+                requested_policy = (new_policy if unbound_user_policy is None
+                                    else str(unbound_user_policy).strip().lower())
+                requested_role = (new_guest_role if guest_role_id is None
+                                  else str(guest_role_id).strip())
+                requested_groups = (json.loads(new_guest_groups_json or "[]")
+                                    if guest_group_ids is None else guest_group_ids)
+                (new_policy, new_guest_role, new_guest_groups_json) = \
+                    self._validated_guest_policy(
+                        con, tenant_id=tenant_id, scope=row["scope"],
+                        policy=requested_policy, role_id=requested_role,
+                        group_ids=requested_groups,
+                        target_agent_id=str(new_agent or ""))
             if new_name != row["display_name"]:
                 dup = con.execute(
                     "SELECT 1 FROM tenant_channel_instances"
@@ -9183,15 +9978,21 @@ class IdentityService:
                 rotated_id = cred["id"]
             con.execute(
                 "UPDATE tenant_channel_instances SET display_name=?, agent_id=?,"
-                " app_fingerprint=?, version=version+1, updated_at=unixepoch()"
-                " WHERE id=?",
-                (new_name, new_agent, next_fingerprint, instance_id),
+                " app_fingerprint=?, unbound_user_policy=?, guest_role_id=?,"
+                " guest_group_ids_json=?, version=version+1,"
+                " updated_at=unixepoch() WHERE id=?",
+                (new_name, new_agent, next_fingerprint, new_policy,
+                 new_guest_role, new_guest_groups_json, instance_id),
             )
             self._audit_in_tx(
                 con, actor_user_id=actor_user_id, tenant_id=tenant_id,
                 target_tenant_id=tenant_id, action="channel.instance.update",
                 target=f"channel_instance:{instance_id}",
-                redacted_changes={"display_name": new_name, "agent_id": new_agent},
+                redacted_changes={"display_name": new_name, "agent_id": new_agent,
+                                  "unbound_user_policy": new_policy,
+                                  "guest_role_id": new_guest_role,
+                                  "guest_group_ids": json.loads(
+                                      new_guest_groups_json or "[]")},
                 result="success")
             if rotated_id:
                 self._audit_in_tx(

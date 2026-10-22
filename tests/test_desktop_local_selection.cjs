@@ -42,7 +42,7 @@ function needsBuild() {
 
 before(() => {
   if (needsBuild()) {
-    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe' });
+    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe', shell: process.platform === 'win32',});
   }
   selection = require(path.join(compiledDir, 'selection.js'));
   grants = require(path.join(compiledDir, 'grants.js'));

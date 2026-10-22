@@ -3,7 +3,10 @@ import type {
   ChannelInfo,
   ChannelAction,
   SkillInfo,
+  SkillInstallMeta,
   SkillContent,
+  SkillFileEntry,
+  SkillCreateResult,
   ToolInfo,
   McpServerConfig,
   McpServersResult,
@@ -34,6 +37,7 @@ import type {
   KnowledgeGraph,
   KnowledgeAction,
   KnowledgeImportPayload,
+  KnowledgeReadResult,
   WorkspaceEntry,
   WorkspaceReadResult,
   WorkspaceTree,
@@ -41,6 +45,8 @@ import type {
   ProjectState,
   ChannelsResponse,
   RosterSnapshot,
+  MenuDoc,
+  ArtifactListItem,
 } from '../types'
 import { getLang, t } from '../i18n'
 import desktopContext, { ContextError } from './context'
@@ -48,6 +54,14 @@ import desktopContext, { ContextError } from './context'
 export interface ApiResult {
   status: string
   message?: string
+}
+
+export interface ExternalApiState {
+  enabled: boolean
+  user_id: string
+  can_configure: boolean
+  keys: Array<{ id: string; masked: string }>
+  issued?: { api_key: string }
 }
 
 export interface UploadResult {
@@ -214,6 +228,21 @@ class ApiClient {
     throw new Error(t('upload_network_error'))
   }
 
+  /** A file's bytes in memory, for a multipart body to carry.
+   *
+   * In Electron, `fetch` streaming a File straight from disk intermittently
+   * rejects with a bare "Failed to fetch" (see `uploadFile`), and a retry of the
+   * same File hits the same backing path. Reading the bytes first sidesteps it;
+   * on failure the File itself is returned so behavior only degrades.
+   */
+  private async fileBytes(file: File): Promise<Blob | File> {
+    try {
+      return new Blob([await file.arrayBuffer()], { type: file.type })
+    } catch {
+      return file
+    }
+  }
+
   // ---------------------------------------------------------
   // Chat / messages
   // ---------------------------------------------------------
@@ -231,6 +260,8 @@ class ApiClient {
       /** A teammate addressed for this turn (group chat); the owner still owns
        *  the conversation, this only changes who answers. */
       speakerAgentId?: string
+      /** Shown for this turn instead of `message`, which the agent still gets in full. */
+      display?: string
     }
   ): Promise<{ status: string; request_id: string; stream: boolean; inline_reply?: string; speaker?: string }> {
     // Route to a specific Agent when asked, else the active one. Empty (legacy
@@ -246,6 +277,7 @@ class ApiClient {
     }
     if (agentId) body.agent_id = agentId
     if (opts?.speakerAgentId) body.speaker_agent_id = opts.speakerAgentId
+    if (opts?.display) body.display = opts.display
     return this.request('/message', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -602,6 +634,99 @@ class ApiClient {
     })
   }
 
+  /** The OpenAI-compatible chat API: whether it is on, its key, and the Agents it serves. */
+  async getExternalApi(userId = ""): Promise<ApiResult & ExternalApiState> {
+    return this.request(`/api/external_api?user_id=${encodeURIComponent(userId)}`)
+  }
+
+  async updateExternalApi(
+    action: 'enable' | 'disable' | 'create' | 'rotate' | 'revoke',
+    userId: string, credentialId?: string
+  ): Promise<ApiResult & ExternalApiState> {
+    return this.request('/api/external_api', { method: 'POST', body: JSON.stringify({ action, user_id: userId, credential_id: credentialId }) })
+  }
+
+  // ---------------------------------------------------------
+  // Menu (shared with the web console) and the artifacts it can hold
+  // ---------------------------------------------------------
+
+  /** The menu the user arranged, or null while they keep the built-in one. */
+  async getMenu(): Promise<ApiResult & { menu: MenuDoc | null; available_views: Record<string, boolean> }> {
+    return this.request('/api/menu')
+  }
+
+  /** Save the whole menu; null goes back to the built-in one. */
+  async saveMenu(menu: MenuDoc | null): Promise<ApiResult & { menu: MenuDoc | null; available_views: Record<string, boolean> }> {
+    return this.request('/api/menu', { method: 'POST', body: JSON.stringify({ menu }) })
+  }
+
+  /** Web pages and markdown documents produced across every Agent's conversations, newest first. */
+  async listPageArtifacts(query: string, limit = 40): Promise<ApiResult & { items: ArtifactListItem[] }> {
+    return this.listArtifacts({ scope: 'all', kind: 'page', q: query, limit })
+  }
+
+  // ---------------------------------------------------------
+  // Artifacts: the files the conversations produced, across Agents
+  // ---------------------------------------------------------
+
+  /**
+   * One page of the index, pinned first, then newest first. `scope` is `all`
+   * or an Agent id, and decides whose files are listed, so the active Agent is
+   * not carried.
+   */
+  async listArtifacts(params: {
+    scope: string
+    kind?: string
+    q?: string
+    path?: string
+    offset?: number
+    limit?: number
+  }): Promise<ApiResult & { items: ArtifactListItem[]; has_more: boolean }> {
+    const qs = new URLSearchParams({
+      scope: params.scope,
+      kind: params.kind || '',
+      q: params.q || '',
+      path: params.path || '',
+      offset: String(params.offset || 0),
+      limit: String(params.limit || 48),
+      agent_id: '',
+    })
+    return this.request(`/api/artifacts?${qs.toString()}`)
+  }
+
+  /** Put a file back in the index, attributed to the turn it came from. */
+  async addArtifact(body: {
+    path: string
+    session_id: string
+    agent_id: string
+    turn_seq: number | null
+  }): Promise<ApiResult & { item: ArtifactListItem | null }> {
+    return this.request('/api/artifacts/add', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async pinArtifact(id: number, agentId: string, pinned: boolean): Promise<ApiResult & { pinned_at: number }> {
+    return this.request('/api/artifacts/pin', {
+      method: 'POST',
+      body: JSON.stringify({ id, agent_id: agentId, pinned }),
+    })
+  }
+
+  /** Name an entry in the view; the file keeps its name on disk, and '' restores it. */
+  async renameArtifact(id: number, agentId: string, title: string): Promise<ApiResult & { title: string }> {
+    return this.request('/api/artifacts/rename', {
+      method: 'POST',
+      body: JSON.stringify({ id, agent_id: agentId, title }),
+    })
+  }
+
+  /** Forget an entry; the file stays where it is. */
+  async deleteArtifact(id: number, agentId: string): Promise<ApiResult & { removed: boolean }> {
+    return this.request('/api/artifacts/delete', {
+      method: 'POST',
+      body: JSON.stringify({ id, agent_id: agentId }),
+    })
+  }
+
   // ---------------------------------------------------------
   // Models console
   // ---------------------------------------------------------
@@ -769,10 +894,10 @@ class ApiClient {
     return this.request(path)
   }
 
-  async toggleSkill(name: string, action: 'open' | 'close'): Promise<ApiResult> {
+  async toggleSkill(name: string, action: 'open' | 'close', resourceId?: string): Promise<ApiResult> {
     return this.request('/api/skills', {
       method: 'POST',
-      body: JSON.stringify({ action, name }),
+      body: JSON.stringify({ action, name, resource_id: resourceId }),
     })
   }
 
@@ -809,17 +934,18 @@ class ApiClient {
   }
 
   /** Install straight from a remote spec (e.g. an https archive URL), without staging. */
-  async installSkill(spec: string): Promise<ApiResult & { installed?: string[] }> {
+  /** `meta` is recorded on the skill when the spec installs exactly one. */
+  async installSkill(spec: string, meta?: SkillInstallMeta): Promise<ApiResult & { installed?: string[] }> {
     return this.request('/api/skills', {
       method: 'POST',
-      body: JSON.stringify({ action: 'install', spec }),
+      body: JSON.stringify({ action: 'install', spec, ...(meta ? { meta } : {}) }),
     })
   }
 
-  async deleteSkill(name: string): Promise<ApiResult> {
+  async deleteSkill(name: string, resourceId?: string): Promise<ApiResult> {
     return this.request('/api/skills', {
       method: 'POST',
-      body: JSON.stringify({ action: 'delete', name }),
+      body: JSON.stringify({ action: 'delete', name, resource_id: resourceId }),
     })
   }
 
@@ -848,17 +974,57 @@ class ApiClient {
   }
 
   /**
-   * Read a skill's definition file.
+   * Create a skill from the fields a form collects (multipart: the body carries
+   * files as well as text). `name` is a title, which the server reduces to the
+   * hyphen-case name the directory uses; `files` are bundled beside SKILL.md.
    *
-   * Addressed by name rather than by path: which file a name resolves to is the
-   * loader's business, and a builtin skill's file sits outside the workspace.
+   * An attachment picked as part of a folder keeps the path it sat at, sent in a
+   * field of its own the way an uploaded folder's paths are: a skill's resources
+   * come as a `scripts/` directory as often as they come as loose files.
    */
-  async readSkill(name: string): Promise<SkillContent & ApiResult> {
-    return this.request(`/api/skills/content?name=${encodeURIComponent(name)}`)
+  async createSkill(args: {
+    name: string
+    description: string
+    body?: string
+    files?: File[]
+  }): Promise<SkillCreateResult & ApiResult> {
+    const formData = new FormData()
+    formData.append('name', args.name)
+    formData.append('description', args.description)
+    formData.append('body', args.body || '')
+    for (const file of args.files || []) {
+      formData.append('files', await this.fileBytes(file), file.name)
+      formData.append('relative_paths', file.webkitRelativePath || file.name)
+    }
+    return this.postFormData('/api/skills/create', formData)
   }
 
   /**
-   * Save a skill's definition file.
+   * The files one skill is made of: its SKILL.md, and the `scripts/`,
+   * `references/` and assets installed beside it.
+   */
+  async listSkillFiles(name: string, resourceId?: string): Promise<SkillFileEntry[]> {
+    const data = await this.request<{ status: string; files: SkillFileEntry[] }>(
+      `/api/skills/files?name=${encodeURIComponent(name)}&resource_id=${encodeURIComponent(resourceId || "")}`
+    )
+    return data.files || []
+  }
+
+  /**
+   * Read one of a skill's files, its SKILL.md by default.
+   *
+   * The skill is addressed by name rather than by path: which directory a name
+   * resolves to is the loader's business, and a builtin skill sits outside the
+   * workspace. `path` then names a file inside that directory.
+   */
+  async readSkill(name: string, path?: string, resourceId?: string): Promise<SkillContent & ApiResult> {
+    const query = `name=${encodeURIComponent(name)}&resource_id=${encodeURIComponent(resourceId || "")}`
+      + (path ? `&path=${encodeURIComponent(path)}` : '')
+    return this.request(`/api/skills/content?${query}`)
+  }
+
+  /**
+   * Save one of a skill's files.
    *
    * Refuses a skill that ships with the installation, and answers
    * `code === 'conflict'` when the file changed since `expectedMtime` - both
@@ -866,6 +1032,8 @@ class ApiClient {
    */
   async writeSkill(args: {
     name: string
+    resourceId?: string
+    path?: string
     content: string
     expectedMtime?: number | null
   }): Promise<WorkspaceWriteResult & ApiResult> {
@@ -873,6 +1041,8 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({
         name: args.name,
+        resource_id: args.resourceId,
+        path: args.path || '',
         content: args.content,
         expected_mtime: args.expectedMtime ?? null,
       }),
@@ -922,10 +1092,13 @@ class ApiClient {
     return this.request<{ status: string } & KnowledgeList>(this.scoped('/api/knowledge/list', agentId))
   }
 
+  // `mtime` and `editable` are what an editor needs to offer a safe save: the
+  // baseline a stale write is rejected against, and whether the page may be
+  // written back at all (index.md and log.md are the Agent's to maintain).
   async readKnowledge(
     path: string,
     agentId?: string
-  ): Promise<{ status: string; content: string; path: string; dir?: string }> {
+  ): Promise<KnowledgeReadResult> {
     return this.request(this.scoped(`/api/knowledge/read?path=${encodeURIComponent(path)}`, agentId))
   }
 

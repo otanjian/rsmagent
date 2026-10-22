@@ -6,6 +6,7 @@
 // with the ASR caption, then dispatches the recognised text to /message
 // through the same SSE/loading flow as a typed message.
 function sendVoiceMessage(text, audioUrl) {
+    if (typeof guardCodingMessage === 'function' && guardCodingMessage()) return;
     text = (text || '').trim();
     if (!text) return;
 
@@ -17,13 +18,18 @@ function sendVoiceMessage(text, audioUrl) {
     const isFirstMessage = !!ws;
     if (ws) ws.remove();
 
-    const titleInfo = isFirstMessage ? { sid: sessionId, userMsg: text } : null;
+    const ownerContext = { sid: sessionId, agentId: activeAgentId, authEpoch: _authEpoch,
+        tenantId: sessionStorage.getItem('cow_tenant_id') || '' };
+    const isCurrentIdentity = () => ownerContext.authEpoch === _authEpoch
+        && ownerContext.tenantId === (sessionStorage.getItem('cow_tenant_id') || '');
+    const titleInfo = isFirstMessage ? { sid: sessionId, agentId: activeAgentId, userMsg: text } : null;
     const timestamp = new Date();
     addUserVoiceMessage(audioUrl, text, timestamp);
     const loadingEl = addLoadingIndicator();
 
     const body = {
         session_id: sessionId,
+        agent_id: ownerContext.agentId,
         message: text,
         stream: true,
         timestamp: timestamp.toISOString(),
@@ -34,33 +40,43 @@ function sendVoiceMessage(text, audioUrl) {
     const MAX_RETRIES = 2;
     const RETRY_DELAY_MS = 1000;
     function postWithRetry(attempt) {
+        if (!isCurrentIdentity()) return;
         fetch('/message', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         })
-        .then(r => r.json())
+        .then(readMessageResponse)
         .then(data => {
+            if (!isCurrentIdentity()) return;
             if (data.status === 'success') {
+                if (!data.inline_reply) {
+                    _touchHistorySession(ownerContext.sid, ownerContext.agentId, {
+                        last_active: Math.floor(Date.now() / 1000),
+                        optimistic: false,
+                    });
+                }
+                const ownerVisible = ownerContext.sid === sessionId && ownerContext.agentId === activeAgentId;
                 rememberLiveSpeaker(data);
                 setLoadingSpeaker(loadingEl, data.request_id);
                 if (data.inline_reply) {
                     // Synchronous fast-path reply (e.g. /cancel); skip SSE.
                     loadingEl.remove();
-                    addBotMessage(data.inline_reply, new Date());
+                    if (ownerVisible) addBotMessage(data.inline_reply, new Date());
                 } else if (data.stream) {
-                    setSendBtnCancelMode(data.request_id);
-                    startSSE(data.request_id, loadingEl, timestamp, titleInfo);
+                    if (ownerVisible) setSendBtnCancelMode(data.request_id);
+                    startSSE(data.request_id, loadingEl, timestamp, titleInfo, null, ownerContext);
                 } else {
                     loadingContainers[data.request_id] = loadingEl;
                 }
             } else {
                 loadingEl.remove();
-                addBotMessage(t('error_send'), new Date());
+                addMessageError(data);
                 resetSendBtnSendMode();
             }
         })
         .catch(err => {
+            if (!isCurrentIdentity()) return;
             if (attempt < MAX_RETRIES) {
                 setTimeout(() => postWithRetry(attempt + 1), RETRY_DELAY_MS * (attempt + 1));
                 return;

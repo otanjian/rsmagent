@@ -6601,6 +6601,12 @@ window.fetch = function(input, init) {
     if (sameOrigin) url = requestUrl.pathname + requestUrl.search + requestUrl.hash;
     const accountMemory = sameOrigin && /^\/api\/memory(?:\/|$)/.test(requestUrl.pathname);
     const instanceUpdate = sameOrigin && /^\/api\/update\//.test(requestUrl.pathname);
+    // A scan registration is not an agent-scoped call: it either creates a new
+    // application (tenant/platform scan) or names its target explicitly. The
+    // appended active agent turned "shared scan" into "personal target" and the
+    // request was refused before any QR appeared.
+    const scanOnboarding = sameOrigin
+        && /^\/api\/feishu\/register(?:\/|$)/.test(requestUrl.pathname);
     // In database identity mode the request context is tenant-scoped. The
     // selected tenant lives in sessionStorage (cow_tenant_id) but the core
     // console requests (agents / sessions / history / knowledge) do not
@@ -6616,7 +6622,8 @@ window.fetch = function(input, init) {
         if (!headers.has('X-Tenant-ID')) headers.set('X-Tenant-ID', tenantId);
         init.headers = headers;
     }
-    if (!accountMemory && !instanceUpdate && activeAgentId && sameOrigin && url.startsWith('/')) {
+    if (!accountMemory && !instanceUpdate && !scanOnboarding && activeAgentId
+            && sameOrigin && url.startsWith('/')) {
         if (!/[?&]agent_id=/.test(url)) {
             const joiner = url.includes('?') ? '&' : '?';
             url = `${url}${joiner}agent_id=${encodeURIComponent(activeAgentId)}`;
@@ -18352,6 +18359,10 @@ function renderChannelsUnavailable(container, status, code) {
 // write is rejected, so a conflict or a policy error does not clear the form.
 let tenantChannelTypes = [];
 let tenantChannelInstances = [];
+// Ordinary roles offered as the guest ceiling; ``tenant_admin`` is excluded by
+// the server anyway and is not offered here so the refusal is not discoverable
+// only on save.
+let tenantGuestRoles = [];
 // Whether the server answered this caller with their *own* range on the shared
 // page (task 6.1). It decides what the form may offer — not which page is
 // rendered, because there is only one page.
@@ -18502,6 +18513,103 @@ function tenantChannelAppearance(channelType) {
 // platform card: a Tab strip (扫码 / 手工填写) for scan-capable types and the
 // credential form below it. Only the fields the server declared are rendered, so
 // the form cannot submit a key the server would reject.
+// Guest access on a shared instance (change add-im-guest-accounts). Only an
+// existing tenant-scoped instance shows it: a personal connection is answered by
+// its owner and can never open itself to strangers.
+// Mirrors the server's guest-role rule: chat.use is required, tenant_admin and
+// the management/configuration capabilities are refused. Kept as a predicate so
+// the picker can explain an unusable role instead of only failing on save.
+const TENANT_GUEST_FORBIDDEN_PERMISSIONS = [
+    'agent.edit', 'agent.enable', 'tool.configure', 'skill.edit',
+    'external.connections.manage', 'external.connections.test',
+];
+
+function guestRoleEligible(role) {
+    if (!role || role.code === 'tenant_admin') return false;
+    const permissions = role.permissions || [];
+    if (!permissions.includes('chat.use')) return false;
+    return !permissions.some(p => TENANT_GUEST_FORBIDDEN_PERMISSIONS.includes(p));
+}
+
+function tenantGuestSection(inst, editing) {
+    if (!editing || !inst || inst.scope !== 'tenant') return '';
+    const policy = inst.unbound_user_policy || 'require_binding';
+    const roleId = inst.guest_role_id || '';
+    const groups = (inst.guest_group_ids || []).join('\n');
+    const roleOptions = tenantGuestRoles
+        .filter(r => r && r.id)
+        .map(r => {
+            const eligible = guestRoleEligible(r);
+            const selected = r.id === roleId ? ' selected' : '';
+            const suffix = eligible ? ''
+                : `（${t('tenant_channel_guest_role_ineligible')}）`;
+            return `<option value="${escapeHtml(r.id)}"${selected}${eligible ? ' data-guest-eligible="1"' : ' disabled'} data-role-code="${escapeHtml(r.code || '')}">`
+                + `${escapeHtml(r.name)}${escapeHtml(suffix)}</option>`;
+        })
+        .join('');
+    return `
+        <div class="rounded-lg border border-slate-200 dark:border-white/10 p-3 space-y-3"
+             data-tenant-channel-guest="${escapeHtml((inst && inst.id) || '')}">
+            <div class="flex items-center gap-2">
+                <div class="text-xs font-semibold text-slate-600 dark:text-slate-300">${t('tenant_channel_guest_title')}</div>
+                <span id="tenant-channel-guest-state" class="text-[11px] px-1.5 py-0.5 rounded ${policy === 'auto_guest' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400'}">${policy === 'auto_guest' ? t('tenant_channel_guest_state_on') : t('tenant_channel_guest_state_off')}</span>
+            </div>
+            <div class="text-[11px] text-slate-400">${t('tenant_channel_guest_hint')}</div>
+            <div>
+                <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1">${t('tenant_channel_guest_policy')}</label>
+                <select id="tenant-channel-guest-policy" onchange="syncTenantGuestState(this.value)"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141414] text-sm">
+                    <option value="require_binding"${policy === 'require_binding' ? ' selected' : ''}>${t('tenant_channel_guest_policy_bind')}</option>
+                    <option value="auto_guest"${policy === 'auto_guest' ? ' selected' : ''}>${t('tenant_channel_guest_policy_auto')}</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1">${t('tenant_channel_guest_role')}</label>
+                <select id="tenant-channel-guest-role"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141414] text-sm">
+                    ${roleOptions}
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1">${t('tenant_channel_guest_groups')}</label>
+                <textarea id="tenant-channel-guest-groups" rows="2"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141414] text-sm font-mono text-xs"
+                    placeholder="oc_xxxxxxxx">${escapeHtml(groups)}</textarea>
+                <div class="text-[11px] text-slate-400 mt-1">${t('tenant_channel_guest_groups_hint')}</div>
+            </div>
+        </div>`;
+}
+
+// Keep the state badge beside the section title equal to what the form would
+// save, so "默认关闭" can never sit next to an instance that is already open.
+function syncTenantGuestState(value) {
+    const on = value === 'auto_guest';
+    const badge = document.getElementById('tenant-channel-guest-state');
+    if (badge) {
+        badge.textContent = on ? t('tenant_channel_guest_state_on')
+            : t('tenant_channel_guest_state_off');
+        badge.className = 'text-[11px] px-1.5 py-0.5 rounded ' + (on
+            ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+            : 'bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400');
+    }
+    const roleSelect = document.getElementById('tenant-channel-guest-role');
+    const groups = document.getElementById('tenant-channel-guest-groups');
+    for (const field of [roleSelect, groups]) {
+        if (!field) continue;
+        field.disabled = !on;
+        field.classList.toggle('opacity-60', !on);
+    }
+    if (!on || !roleSelect || !roleSelect.options.length) return;
+    const options = Array.from(roleSelect.options);
+    const selected = options[roleSelect.selectedIndex];
+    if (selected && selected.dataset.guestEligible === '1') return;
+    // Opening guest access must not leave an unusable role selected: prefer the
+    // tenant's IM guest role, else the first role the server would accept.
+    const usable = options.filter(o => o.dataset.guestEligible === '1');
+    const preferred = usable.find(o => o.dataset.roleCode === 'im_guest') || usable[0];
+    if (preferred) roleSelect.value = preferred.value;
+}
+
 function buildTenantChannelForm(inst) {
     const draft = tenantChannelDraft || {};
     const channelType = (inst && inst.channel_type) || draft.channel_type || '';
@@ -18578,6 +18686,7 @@ function buildTenantChannelForm(inst) {
                     }).join('')}
                 </select>
             </div>
+            ${tenantGuestSection(inst, editing)}
             ${scanPane}
             ${manualPane}
             ${wb.webhookHint({ spec, iid: editing ? iid : '', escape: escapeHtml, t })}
@@ -18669,6 +18778,7 @@ function tenantChannelWriteErrorKey(status, code) {
     // A misconfigured deployment is not something "you got wrong": the
     // operator can retry forever and never succeed, so it must say so.
     if (code_text === 'credential_crypto') return 'tenant_channel_error_crypto';
+    if (code_text === 'invalid_role') return 'tenant_channel_error_role';
     if (Number(status) === 409) return 'tenant_channel_error_conflict';
     if (code_text === 'forbidden' || Number(status) === 403) return 'tenant_channel_error_agent';
     if (Number(status) === 404) return 'tenant_channel_error_missing';
@@ -18686,7 +18796,14 @@ function loadTenantChannelsView() {
         <i class="fas fa-spinner fa-spin text-xs"></i><span>Loading...</span></div>`;
 
     const roster = agentCatalog.length ? Promise.resolve() : loadAgentCatalog();
-    return roster.then(() => fetch('/api/tenant/channels')
+    // The guest-role picker needs the tenant's roles. A failure only empties the
+    // picker -- the server still validates the saved role -- so it must not turn
+    // the whole channel list into an error page.
+    const roles = fetch('/api/tenant/roles')
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => { tenantGuestRoles = (d && d.items) || []; })
+        .catch(() => {});
+    return Promise.all([roster, roles]).then(() => fetch('/api/tenant/channels')
         .then(r => r.json().then(data => ({ status: r.status, data })))
         .then(({ status, data }) => {
             if (!data || data.status !== 'success') {
@@ -18789,6 +18906,11 @@ function renderTenantChannels() {
     container.innerHTML = `
         ${tenantChannelRuntimeNoticeHtml()}
         <div class="grid gap-4">${draftCard}${rows}</div>`;
+    // Apply the guest form's linked state once the markup exists: a stored
+    // ineligible role must be shown replaced (not silently saved) and the
+    // fields disabled while guest access is off.
+    const guestPolicy = document.getElementById('tenant-channel-guest-policy');
+    if (guestPolicy) syncTenantGuestState(guestPolicy.value);
 }
 
 // Inline create/edit. The form lives inside the card now, so this records the
@@ -18813,6 +18935,11 @@ function openTenantChannelForm(instanceId) {
         credentials: (draft && draft.credentials) || {},
         mode: (draft && draft.mode) || (tenantChannelSupportsScan(type) ? 'scan' : 'manual'),
         expected_version: inst ? inst.version : undefined,
+        // Read back by submitTenantChannel only when the guest section rendered;
+        // otherwise they stay undefined and the server keeps the stored policy.
+        unbound_user_policy: inst ? inst.unbound_user_policy : undefined,
+        guest_role_id: inst ? inst.guest_role_id : undefined,
+        guest_group_ids: inst ? inst.guest_group_ids : undefined,
     };
     renderTenantChannels();
 }
@@ -19106,6 +19233,19 @@ function submitTenantChannel() {
     // stored value" behavior, because an untouched secret input contributes
     // nothing at all.
     draft.credentials = Object.assign({}, draft.credentials, collectTenantChannelFields());
+    // Guest access: read only when the section is present, so an ordinary edit
+    // (or a member's personal connection) omits the fields entirely and keeps
+    // whatever policy is stored.
+    const guestPolicy = document.getElementById('tenant-channel-guest-policy');
+    if (guestPolicy) {
+        draft.unbound_user_policy = guestPolicy.value;
+        const guestRole = document.getElementById('tenant-channel-guest-role');
+        draft.guest_role_id = guestRole ? guestRole.value : '';
+        const guestGroups = document.getElementById('tenant-channel-guest-groups');
+        draft.guest_group_ids = guestGroups
+            ? guestGroups.value.split('\n').map(s => s.trim()).filter(Boolean)
+            : [];
+    }
 
     const editing = !!draft.instance_id;
     // The name is what the operator will see in the list and the duplicate
@@ -19155,6 +19295,9 @@ function submitTenantChannel() {
             ? {
                 display_name: draft.display_name,
                 agent_id: draft.agent_id,
+                unbound_user_policy: draft.unbound_user_policy,
+                guest_role_id: draft.guest_role_id,
+                guest_group_ids: draft.guest_group_ids,
                 expected_version: draft.expected_version,
                 credentials: Object.keys(draft.credentials).length ? draft.credentials : undefined,
                 recent_password: draft.recent_password,
@@ -19163,6 +19306,9 @@ function submitTenantChannel() {
             : {
                 display_name: draft.display_name,
                 agent_id: draft.agent_id,
+                unbound_user_policy: draft.unbound_user_policy,
+                guest_role_id: draft.guest_role_id,
+                guest_group_ids: draft.guest_group_ids,
                 expected_version: undefined,
                 credentials: draft.credentials,
                 recent_password: draft.recent_password,
@@ -20397,8 +20543,12 @@ function startFeishuRegister(targetStatusId, forInstanceId) {
             if (data.register_status === 'downloading') {
                 // Desktop first run: the SDK bundle lands before the QR exists.
                 renderFeishuSdkDownloading(statusId);
-            } else {
+            } else if (data.qr_image || data.qrcode_url) {
                 renderFeishuQr(statusId, data.qr_image, data.qrcode_url);
+            } else {
+                // The SDK is still warming up (its first import is slow); the
+                // poller renders the QR the moment the worker produces it.
+                renderFeishuPreparing(statusId);
             }
             pollFeishuRegisterStatus(statusId);
         })
@@ -20526,6 +20676,13 @@ function pollFeishuRegisterStatus(statusId) {
             pollFeishuRegisterStatus(statusId);
         });
     }, 2000);
+}
+
+function renderFeishuPreparing(statusId) {
+    const el = document.getElementById(statusId);
+    if (!el) return;
+    el.innerHTML = `<p class="text-sm text-slate-500 dark:text-slate-400 text-center">`
+        + `${t('feishu_scan_loading')}</p>`;
 }
 
 function connectFeishuAfterRegister(appId, appSecret) {

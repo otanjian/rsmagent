@@ -42,7 +42,7 @@ before(() => {
     execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], {
       cwd: desktop,
       stdio: 'pipe',
-    });
+            shell: process.platform === 'win32',});
   }
   grants = require(path.join(compiledDir, 'grants.js'));
   candidates = require(path.join(compiledDir, 'candidates.js'));

@@ -47,7 +47,9 @@ class NoResurrectionTests(unittest.TestCase):
         # Definition may remain for upstream merge, but _check_auth must not call it.
         start = src.find("def _check_auth")
         if start < 0:
-            self.skipTest("_check_auth already removed")
+            self.assertNotIn("def _verify_auth_token", src)
+            self.assertNotIn("def _get_query_token", src)
+            return
         end = src.find("\ndef ", start + 1)
         check = src[start:end]
         self.assertNotIn("_verify_auth_token", check)

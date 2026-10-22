@@ -6,6 +6,7 @@ import http from 'http'
 import { PythonBackend, BackendError } from './python-manager'
 import { resolveBackendPath } from './backend-path'
 import { resolveDataDir } from './data-dir'
+import { startExecutorEndpoint, stopExecutorEndpoint, executorEnv } from './local-execution/executor-lifecycle'
 import { initHostLog } from './host-log'
 import { buildAppMenu } from './menu'
 import { createTray, destroyTray, getTray } from './tray'
@@ -27,7 +28,7 @@ import {
   getRuntimeAppIcon,
 } from './app-icon'
 import { setupRemoteConfigIPC, startupMode, syncBrokerOrigin } from './remote/config-ipc'
-import { detachRemoteContainer, setupRemoteContainerIPC } from './remote/remote-container-ipc'
+import { detachRemoteContainer, setRemoteContainerVisible, setupRemoteContainerIPC } from './remote/remote-container-ipc'
 import { setLocalWebBindWindow, tryAutoBindLocalWeb } from './remote/local-web-bind'
 
 // The shell's own diagnostics live in <data-dir>/desktop-main.log, beside the
@@ -81,7 +82,8 @@ initDesktopLogging()
 app.setName(loadAppConfig()?.appName || 'RongAI')
 applyCachedAppName()
 const profileName = ['容大AI', 'RongAI', 'CowAgent'].includes(app.name) ? 'CowAgent' : app.name
-app.setPath('userData', path.join(app.getPath('appData'), profileName))
+const explicitProfile = app.commandLine.getSwitchValue('user-data-dir')
+app.setPath('userData', explicitProfile ? path.resolve(explicitProfile) : path.join(app.getPath('appData'), profileName))
 if (/^cowagent$/i.test(app.name.trim())) app.setName('RongAI')
 
 // Windows shows notifications only when an AppUserModelID is set; without it
@@ -366,6 +368,18 @@ function createWindow() {
     sendBackendState()
   })
 
+  // Only the trusted shell's own navigation changes which native view is on
+  // top. The guest keeps its paired identity while local settings are open.
+  mainWindow.webContents.on('did-navigate-in-page', (_event, url, isMainFrame) => {
+    if (!isMainFrame || !mainWindow) return
+    const route = new URL(url).hash.slice(1).split('?')[0]
+    if (route === '/settings' || route === '/remote' || route === '/logs') {
+      setRemoteContainerVisible(mainWindow, false)
+    } else if (route === '/' || route === '') {
+      setRemoteContainerVisible(mainWindow, true)
+    }
+  })
+
   mainWindow.once('ready-to-show', () => {
     // Skip the initial paint when autostarted hidden: the window stays in the
     // tray/Dock until the user opens it, matching the "unobtrusive" intent.
@@ -527,6 +541,13 @@ async function startBackend() {
     mainWindow?.webContents.send('backend-log', line)
   })
 
+  // The local executor must exist before the backend spawns: the backend reads
+  // COW_DESKTOP_EXECUTOR_URL/_TOKEN from its own environment, which is fixed at
+  // spawn, so a later start would leave it permanently believing there is no
+  // script launcher. A failure here is logged and non-fatal -- the file features
+  // do not depend on it, and every script run refuses with a real reason.
+  await startExecutorEndpoint({ backendPath })
+  pythonBackend.setExtraEnv(() => executorEnv())
   await pythonBackend.start()
 }
 
@@ -590,6 +611,10 @@ function setupIPC() {
     const err = await shell.openPath(targetPath)
     if (err) shell.showItemInFolder(targetPath)
     return err
+  })
+
+  ipcMain.handle('reveal-path', (_event, targetPath: string) => {
+    if (targetPath) shell.showItemInFolder(targetPath)
   })
 
   // Custom window controls (used by Windows frameless titlebar)
@@ -882,7 +907,12 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
+let quitCleanup: Promise<void> | null = null
+let quitCleanupDone = false
+app.on('before-quit', (event) => {
+  if (quitCleanupDone) return
+  event.preventDefault()
+  if (quitCleanup) return
   isQuitting = true
   saveWindowState()
   destroyTray()
@@ -898,7 +928,17 @@ app.on('before-quit', () => {
   } catch {
     /* module may be absent in older builds */
   }
-  pythonBackend?.stop()
+  // Close the executor before the backend: a script still running must be stopped
+  // while its grant is still resolvable, and its workers' Job Objects end with the
+  // endpoint rather than being orphaned. Keep Electron alive until its own
+  // backend has exited; otherwise its escalation timer dies with the app.
+  quitCleanup = (async () => {
+    await stopExecutorEndpoint().catch(() => undefined)
+    await pythonBackend?.stop()
+  })().finally(() => {
+    quitCleanupDone = true
+    app.quit()
+  })
 })
 
 // Wake revalidation (task 13.2): on resume/unlock, tell the shell to re-check

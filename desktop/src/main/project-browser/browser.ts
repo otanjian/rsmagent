@@ -265,6 +265,15 @@ export class ProjectBrowser {
       truncated: !!page.truncated,
       grant_version: Number(page.grant_version || 0),
       mtime: meta,
+      // The opaque version of the object these bytes came from (task 4.2).
+      //
+      // Surfaced here because it is the *only* way the editor can name what it
+      // started from: the contract forbids a client from computing one, so a panel
+      // that read the file and then saved it had no expected_version to send, and
+      // the write that followed could not prove it was building on what the user
+      // saw. Returning it alongside the text is what makes the save a
+      // compare-and-set rather than a blind overwrite.
+      version: asString(page.version),
     }
   }
 
@@ -302,13 +311,18 @@ export class ProjectBrowser {
     const path = asPath(params.path)
     if (!path) return refuse('invalid_request', 'an edit needs a project-relative path')
     const content = asString(params.content)
+    // The version this save was built from: the one the panel's own ``read``
+    // returned. Absent means the caller did not state a baseline -- the helper
+    // treats that as stale for an overwrite, which is the safe reading, and the
+    // refusal names the file so the editor can re-read and rebuild the intent.
+    const expectedVersion = asString(params.version)
 
     const execute = this.options.executeTool
     if (!execute) {
       return refuse('feature_unavailable', 'this build does not offer project execution')
     }
 
-    const frame = this.editFrame(binding, path, content)
+    const frame = this.editFrame(binding, path, content, expectedVersion)
     let reply: Record<string, unknown>
     try {
       reply = await execute(frame)
@@ -389,6 +403,7 @@ export class ProjectBrowser {
     binding: ProjectBinding,
     path: string,
     content: string,
+    expectedVersion?: string,
   ): Record<string, unknown> {
     const now = this.options.now?.() ?? Date.now()
     const id = this.id()
@@ -408,9 +423,29 @@ export class ProjectBrowser {
       connection_epoch: binding.connectionEpoch,
       tool: EDIT_TOOL,
       tool_schema_version: 1,
-      arguments: { path, content },
+      arguments: {
+        path,
+        content,
+        // The version the editor started from (task 4.2). Required, not optional:
+        // the helper refuses an overwrite that names no version
+        // (``expected.ok_or(Code::FileChanged)``), so a panel save without this
+        // could never succeed -- and with it, the save becomes a compare-and-set:
+        // a file that moved under the user is refused instead of silently
+        // replaced with a copy built from older text.
+        //
+        // The v2 helper reads it from the frame's *arguments* (its ``params``),
+        // not from the envelope, which is where the contract's ``expected_version``
+        // rides for this tool.
+        ...(expectedVersion ? { expected_version: expectedVersion } : {}),
+      },
       expires_at: new Date((now + EDIT_FRAME_TTL_SECONDS * 1000)).toISOString(),
     }
+    // A v3 receiver checks the precondition from the *envelope*
+    // (``admitChange`` reads ``frame.expected_version`` first, then the arguments),
+    // while the v2 helper reads its own ``params``. Carrying it in both places is
+    // what lets one frame shape serve either contract without the two checks
+    // disagreeing about whether a baseline was stated.
+    if (expectedVersion) frame.expected_version = expectedVersion
     // The digest must be the contract's own: a receiver recomputes it from the
     // canonical envelope, so any other recipe would be refused (or worse, would
     // journal one edit under two identities).

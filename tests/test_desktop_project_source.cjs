@@ -84,7 +84,7 @@ function ensureBinary() {
 
 before(() => {
   if (needsBuild()) {
-    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe' });
+    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe', shell: process.platform === 'win32',});
   }
   guardMod = require(path.join(dist, 'local-files', 'fs-guard.js'));
   opsMod = require(path.join(dist, 'remote', 'device-ops.js'));
@@ -371,6 +371,28 @@ test('an offline device refuses the edit rather than journaling one', async (t) 
 // ---------------------------------------------------------------------------
 // The browser: the edit
 // ---------------------------------------------------------------------------
+
+// Task 4.2: the save carries the version it was built from.
+//
+// Without it the helper refuses every overwrite -- ``expected.ok_or(FileChanged)``
+// -- so this is not an optional extra: a panel save that names no baseline can
+// never succeed. With it the save becomes a compare-and-set, and a file that moved
+// under the user is refused rather than silently replaced.
+test('a save names the version it was built from, in the frame and in the arguments', async (t) => {
+  const made = await withProject(t);
+  if (!made) return;
+  const version = 'fgv1:0123456789abcdef';
+  const saved = await made.browser.write({
+    workspace_id: WORKSPACE, path: 'README.md', content: '# edited\n', version,
+  });
+  assert.equal(saved.ok, true);
+  const frame = made.frames[0];
+  // The v2 helper reads its own ``params``, which is the frame's ``arguments``.
+  assert.equal(frame.arguments.expected_version, version);
+  // A v3 receiver checks the *envelope* first (`admitChange`). Carrying it in both
+  // places is what keeps one frame shape valid under either contract.
+  assert.equal(frame.expected_version, version);
+});
 
 test('an edit travels as a v2 write frame the contract accepts', async (t) => {
   const made = await withProject(t);

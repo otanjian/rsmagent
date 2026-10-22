@@ -395,6 +395,33 @@ export class JournalStore {
         `moved to ${quarantined}`
       return
     }
+    // A file this build did not write is refused, not interpreted (task 3.4's
+    // "旧 journal 兼容" cuts both ways).
+    //
+    // ``version`` was written but never read, so a *newer* build's file would be
+    // loaded as if it were this one: fields whose meaning changed would be read
+    // under the old meaning, and -- worse -- the next persist writes only the
+    // fields this build knows, silently discarding whatever it did not understand.
+    // A journal that quietly loses a start intent is precisely the state that lets
+    // a doubled effect happen, which is the one thing this file exists to prevent.
+    //
+    // Fail closed like an unreadable file, and for the same reason: the safe answer
+    // to "I cannot read this" is to keep the bytes and refuse effectful work, not
+    // to guess at a format. An *absent* version is accepted, because version 1
+    // always wrote one and a file old enough to lack it is not a future format.
+    const version = raw.version
+    if (version !== undefined && version !== FILE_VERSION) {
+      const quarantined = `${this.file}.version-${String(version)}`
+      try {
+        renameSync(this.file, quarantined)
+      } catch {
+        /* if it cannot be moved it is still reported below */
+      }
+      this.degradedReason =
+        `execution journal is version ${String(version)}, and this build writes `
+        + `version ${FILE_VERSION}; moved to ${quarantined}`
+      return
+    }
     for (const entry of raw.entries ?? []) {
       if (entry && typeof entry.command_id === 'string') {
         this.entries.set(

@@ -1,0 +1,207 @@
+{
+  "scenarios": [
+    {
+      "name": "parity: SAP iframe navigation preserves deep shell and identity teardown",
+      "passed": true,
+      "durationMs": 2199
+    },
+    {
+      "name": "parity: deep route survives login and explicit tenant selection",
+      "passed": true,
+      "durationMs": 1920
+    },
+    {
+      "name": "parity: source update binds confirmation and clears it across identities",
+      "passed": true,
+      "durationMs": 1153
+    },
+    {
+      "name": "parity: denied deep route preserves address (classic)",
+      "passed": true,
+      "durationMs": 931
+    },
+    {
+      "name": "parity: denied deep route preserves address (split)",
+      "passed": true,
+      "durationMs": 944
+    },
+    {
+      "name": "parity: denied admin entry keeps registered deep routes (classic)",
+      "passed": true,
+      "durationMs": 1779
+    },
+    {
+      "name": "parity: denied admin landing returns to the conversation (classic)",
+      "passed": true,
+      "durationMs": 1155
+    },
+    {
+      "name": "parity: denied admin entry keeps registered deep routes (split)",
+      "passed": true,
+      "durationMs": 1777
+    },
+    {
+      "name": "parity: denied admin landing returns to the conversation (split)",
+      "passed": true,
+      "durationMs": 1164
+    },
+    {
+      "name": "parity: scheduler observer honors identity preferences and authorized clicks",
+      "passed": true,
+      "durationMs": 987
+    },
+    {
+      "name": "parity: two browser windows atomically claim one terminal run",
+      "passed": true,
+      "durationMs": 1821
+    },
+    {
+      "name": "parity: member model route renders the granted catalog",
+      "passed": true,
+      "durationMs": 914
+    },
+    {
+      "name": "parity: revoked model management restores only the member catalog",
+      "passed": true,
+      "durationMs": 1698
+    },
+    {
+      "name": "parity: deep paths survive refresh and back",
+      "passed": true,
+      "durationMs": 1797
+    },
+    {
+      "name": "parity: legacy links and cancelled leave preserve the target",
+      "passed": true,
+      "durationMs": 951
+    },
+    {
+      "name": "parity: empty docs/graph and independent sources",
+      "passed": true,
+      "durationMs": 1082
+    },
+    {
+      "name": "parity: delayed lists preserve graph and sources selection",
+      "passed": true,
+      "durationMs": 1057
+    },
+    {
+      "name": "parity: knowledge failures offer a working retry",
+      "passed": true,
+      "durationMs": 1047
+    },
+    {
+      "name": "parity: slight upward scroll pauses streaming and explicit bottom resumes",
+      "passed": true,
+      "durationMs": 1071
+    },
+    {
+      "name": "parity: message wrapping and local overflow (light)",
+      "passed": true,
+      "durationMs": 901
+    },
+    {
+      "name": "parity: message wrapping and local overflow (dark)",
+      "passed": true,
+      "durationMs": 912
+    },
+    {
+      "name": "http: console-created tasks dispatch into two owned sessions",
+      "passed": true
+    },
+    {
+      "name": "http: long completion, 205 rows, reconnect and two windows",
+      "passed": true
+    },
+    {
+      "name": "http: preference off consumes event and revoked grant rejects notification click",
+      "passed": true
+    },
+    {
+      "name": "sync: header language reflects the personal choice without changing instance configuration",
+      "passed": true
+    },
+    {
+      "name": "sync: personal menu saves, reloads and isolates two browser identities",
+      "passed": true
+    },
+    {
+      "name": "sync: actual menu write failure retains the committed layout and reports error",
+      "passed": true
+    },
+    {
+      "name": "sync: artifacts read real files, rename without rewriting and isolate owners",
+      "passed": true
+    },
+    {
+      "name": "sync: HTML preview cannot escape its sandbox and missing files stay unavailable",
+      "passed": true
+    },
+    {
+      "name": "sync: workbench and console keep separate menus through links, reload and history",
+      "passed": true
+    },
+    {
+      "name": "sync: mixed personal layouts keep both areas and unknown items after edit and reset",
+      "passed": true
+    },
+    {
+      "name": "sync: main menu labels retain rdai names in three languages",
+      "passed": true
+    },
+    {
+      "name": "sync: workbench-only member has no console entry and denied deep links keep a way back",
+      "passed": true
+    },
+    {
+      "name": "sync: both navigation areas stay reachable on mobile and the collapsed sidebar",
+      "passed": true
+    },
+    {
+      "name": "sync: skill creation uses the rendered form and persists an authorized resource",
+      "passed": true
+    },
+    {
+      "name": "sync: knowledge category and document create, edit and reload through the master UI",
+      "passed": true
+    },
+    {
+      "name": "sync: Web service keys are one-shot, authorized and revoked on rotation",
+      "passed": true
+    },
+    {
+      "name": "sync: master history launcher creates a scoped team before switching conversation",
+      "passed": true
+    },
+    {
+      "name": "sync: workspace upload, search, edit and download persist real file bytes",
+      "passed": true
+    },
+    {
+      "name": "sync: tenant switches, logout and re-login restore only the selected personal layout",
+      "passed": true
+    },
+    {
+      "name": "desktop: the Agent search filters its own menu, not the document search",
+      "passed": true,
+      "durationMs": 1007
+    },
+    {
+      "name": "desktop, dark: a CJK query with no match says so instead of an empty menu",
+      "passed": true,
+      "durationMs": 990
+    },
+    {
+      "name": "desktop: the sources tab is a closed loop of list, detail and upload",
+      "passed": true,
+      "durationMs": 1152
+    },
+    {
+      "name": "narrow: the sources loop still works on a phone-width viewport",
+      "passed": true,
+      "durationMs": 1078
+    }
+  ],
+  "pageErrors": [],
+  "unexpectedRoutes": []
+}

@@ -277,6 +277,12 @@
         lossy: false,
         size: Number(data.total || 0),
         mtime: Number(data.mtime || 0),
+        // The opaque version of the object these bytes came from (task 4.2). The
+        // editor passes it back on save, so the write is a compare-and-set: the
+        // helper refuses an overwrite whose baseline is gone, instead of replacing
+        // text the user never saw. Without it a save names no baseline and the
+        // helper refuses it outright, so this is load-bearing rather than advisory.
+        version: String(data.version || ''),
         // A partial read must not be editable: saving it would truncate the tail.
         editable: classify.editable(kind) && !truncated,
         source: 'desktop',
@@ -370,7 +376,17 @@
           message: 'the file changed on disk since it was read'
         };
       }
-      return call('projectWrite', { path: path, content: String(params.content || '') })
+      return call('projectWrite', Object.assign({
+        path: path,
+        content: String(params.content || '')
+        // The version this save was built from, when the editor has one. Sent so
+        // the helper's precondition is satisfied by *our own* read rather than by
+        // the mtime comparison above, which can only see whole seconds and cannot
+        // tell a copy from the original (task 4.2). Added conditionally rather than
+        // as ``undefined``: a caller that has no version must send exactly what it
+        // sent before, so nothing downstream starts seeing a new key.
+      }, (typeof params.version === 'string' && params.version)
+        ? { version: params.version } : {}))
         .then(function (reply) {
           if (!reply) return null;
           if (reply.refusal) return refusalOrFallback(reply, 'the file could not be saved');

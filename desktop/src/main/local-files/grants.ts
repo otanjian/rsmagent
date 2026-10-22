@@ -46,6 +46,15 @@ export interface ActiveGrant extends GrantScope {
   activatedAt: number
   /** What the user authorized the directory for. */
   purpose: GrantPurpose
+  /**
+   * The v3 operations this grant carries, as the contract names them (task 4.1).
+   *
+   * Optional so every existing record keeps working; absent means "derive from
+   * ``purpose``" (see :func:`operationsFor`). Present is the authority -- a grant
+   * confirmed with a narrower set than its purpose implies must not be widened by
+   * re-deriving.
+   */
+  operations?: string[]
 }
 
 export interface GrantPublic {
@@ -87,6 +96,56 @@ function publicOf(grant: ActiveGrant): GrantPublic {
 /** Whether a grant may run project tools and scripts, not just reads. */
 export function allowsProjectExecution(grant: { purpose?: GrantPurpose } | null): boolean {
   return !!grant && grant.purpose === 'project-execution'
+}
+
+/**
+ * The v3 **operations** a grant authorizes, as the contract names them (task 4.1).
+ *
+ * v2 left this implicit: any tool in the allow-list could run once the project was
+ * bound, so "this project is open for editing" and "this project is open for
+ * running code in" were one permission. v3 makes them two names -- ``files`` and
+ * ``scripts`` -- and the whole point is that the first can never authorize the
+ * second. So a single boolean is not enough to describe what the user authorised,
+ * and this is the value that has to travel: it is what the server stores on the
+ * grant and what the broker later checks a command against.
+ *
+ * The mapping is deliberately explicit rather than derived from the tool list,
+ * because deriving it is what let the two capabilities be conflated:
+ *
+ * * ``readonly-input`` -- *no* project operation. The directory is a read
+ *   reference for the session; it is not a project, and nothing about it may be
+ *   spent on a v3 command. An empty set is the honest answer, and the contract
+ *   reads an absent/empty set as "no new operation authorized" rather than as
+ *   "unrestricted".
+ * * ``project-execution`` -- ``files``. The user opened their project for the
+ *   five file tools.
+ *
+ * ``scripts`` is deliberately **absent from both**, including
+ * ``project-execution``: running code in the user's directory is a separate
+ * confirmation (the contract's ``requires_extra_confirmation``), and inventing it
+ * here would hand out the one capability whose whole design exists to keep it
+ * separate. It is added only by the flow that actually asks the user.
+ */
+export function operationsFor(purpose: GrantPurpose | undefined): string[] {
+  if (purpose === 'project-execution') return ['files']
+  return []
+}
+
+/**
+ * Whether this grant authorizes one v3 operation by name.
+ *
+ * Used where a caller has a specific operation in mind, so a future
+ * ``scripts``-carrying grant is handled without touching every call site.
+ */
+export function authorizesOperation(
+  grant: { purpose?: GrantPurpose; operations?: readonly string[] } | null,
+  operation: string,
+): boolean {
+  if (!grant) return false
+  // ``operations`` wins when present: it is the recorded authorization, and
+  // re-deriving it from ``purpose`` would ignore a narrower real set.
+  const held = grant.operations ?? operationsFor(grant.purpose)
+  return held.includes(operation)
 }
 
 /**

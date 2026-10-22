@@ -50,7 +50,7 @@ before(() => {
     return !fs.existsSync(compiled) || fs.statSync(compiled).mtimeMs < fs.statSync(src).mtimeMs;
   });
   if (stale) {
-    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe' });
+    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe', shell: process.platform === 'win32',});
   }
   tokenMod = require(path.join(dist, 'launch-token.js'));
   endpointsMod = require(path.join(dist, 'executor-endpoint.js'));
@@ -397,14 +397,20 @@ test('a directory outside the granted root is refused', async () => {
   fs.rmSync(outside, { recursive: true, force: true });
 });
 
+// The fixture platform moved from `win32` to `linux`: Windows now *has* a
+// boundary (a Job Object), so it is no longer an example of a platform this
+// build cannot confine. The property under test is unchanged -- where there is no
+// probed boundary, the answer must name that and must not read as a permission the
+// user could grant.
 test('a platform with no probed boundary answers with its own reason', async () => {
-  await withExecutor({ grants: liveGrant('/tmp') }, async (executor) => {
+  await withExecutor({ grants: liveGrant('/tmp'), platform: 'linux' }, async (executor) => {
     const result = await post(executor, '/desktop-exec/capabilities', {});
     assert.equal(result.status, 200);
     assert.equal(result.body.supported, false);
     assert.equal(result.body.code, 'unsupported_platform');
     // The wording must not read as "a permission you could grant".
-    assert.match(result.body.reason, /not a permissions problem/);
+    assert.doesNotMatch(result.body.reason, /permission|you can grant|not allowed yet/i);
+  assert.match(result.body.reason, /not supported|disabled/);
   });
 });
 

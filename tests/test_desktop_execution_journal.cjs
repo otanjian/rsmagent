@@ -36,7 +36,16 @@ function needsBuild() {
 
 before(() => {
     if (needsBuild()) {
-        execFileSync('npm', ['run', 'build:main'], { cwd: desktop, stdio: 'inherit' });
+        // ``shell`` on Windows is not cosmetic: ``npm`` is ``npm.cmd`` there, and
+        // ``execFileSync('npm', ...)`` without a shell fails with
+        // ``spawnSync npm ENOENT`` before the build even starts -- which is how
+        // every test in this file came to fail for a reason that had nothing to do
+        // with the journal. The sibling suites use ``npx tsc`` with the same flag.
+        execFileSync('npm', ['run', 'build:main'], {
+            cwd: desktop,
+            stdio: 'inherit',
+            shell: process.platform === 'win32',
+        });
     }
     journal = require(compiled);
 });
@@ -107,7 +116,23 @@ test('a start intent reaches disk before the effect can run', () => {
 test('the journal file is private to the user', () => {
     const dir = scratch();
     open(dir).begin(record(), scopeOf(record()));
-    const mode = fs.statSync(path.join(dir, 'execution-journal.json')).mode & 0o777;
+    // Not named ``path``: that shadows the module-level ``path`` and ``path.join``
+    // below would then read the not-yet-initialised binding.
+    const journalPath = path.join(dir, 'execution-journal.json');
+    if (process.platform === 'win32') {
+        // Windows does not carry POSIX permission bits in ``st_mode``: the file is
+        // still created with ``mode: 0o600`` (journal.ts) but the value is not
+        // observable through ``stat``, so asserting it here would be asserting the
+        // platform rather than the journal. Owner-only on Windows comes from the
+        // user-data directory's own ACL, which this suite does not create.
+        //
+        // What *is* checkable on Windows is that the mode request did not stop the
+        // file existing, and that we can still read it back.
+        assert.ok(fs.existsSync(journalPath), 'the journal must exist after begin()');
+        assert.doesNotThrow(() => fs.accessSync(journalPath, fs.constants.R_OK));
+        return;
+    }
+    const mode = fs.statSync(journalPath).mode & 0o777;
     assert.equal(mode, 0o600, 'receipts carry run and tool-call ids; keep them owner-only');
 });
 
@@ -418,3 +443,60 @@ test('the dedup key is the contract\'s own field list', () => {
         origin: 'o', user_id: 'u2', tenant_id: 't', device_id: 'd', command_id: 'c',
     }));
 });
+
+// ---------------------------------------------------------------------------
+// Task 3.4: "旧 journal 兼容" -- and the other direction, which was missing.
+//
+// ``version`` was written and never read, so a file from a *newer* build would be
+// loaded as if it were this one: renamed fields read under their old meaning, and
+// the next save writing only the fields this build knows -- quietly dropping a
+// start intent it did not understand. A journal that loses a start intent is the
+// state that lets a doubled effect happen, which is the one thing it exists to
+// prevent.
+// ---------------------------------------------------------------------------
+
+test('a journal file with no version is still read, so old files keep working', () => {
+    const dir = scratch();
+    // A file old enough to predate the version field. Version 1 has always written
+    // one, so an absent version is an *older* format rather than a future one, and
+    // refusing it would strand a device that merely upgraded.
+    const entry = record();
+    fs.writeFileSync(path.join(dir, 'execution-journal.json'),
+        JSON.stringify({ entries: [entry], pruned: [] }));
+    const store = open(dir);
+    assert.equal(store.degraded, false, store.degradedReason);
+    assert.equal(
+        store.lookup(entry.command_id, entry.params_digest, scopeOf(entry)).kind,
+        'started');
+});
+
+test('the current version is read normally', () => {
+    const dir = scratch();
+    const rec = record();
+    open(dir).begin(rec, scopeOf(rec));
+    // Reopen: the file now carries version 1 and must load without complaint.
+    const reopened = open(dir);
+    assert.equal(reopened.degraded, false, reopened.degradedReason);
+    assert.equal(JSON.parse(readFileBody(dir)).version, 1);
+    assert.equal(reopened.lookup(rec.command_id, rec.params_digest,
+        scopeOf(rec)).kind, 'started');
+});
+
+test('a journal from a newer build is quarantined and fails closed', () => {
+    const dir = scratch();
+    const file = path.join(dir, 'execution-journal.json');
+    fs.writeFileSync(file, JSON.stringify({
+        version: 99, entries: [record()], pruned: [],
+    }));
+    const store = open(dir);
+
+    // Fail closed: this machine cannot rule out a doubled effect from a file it
+    // cannot interpret.
+    assert.equal(store.degraded, true);
+    assert.match(store.degradedReason, /version 99/);
+    // The bytes are kept for an operator rather than overwritten, and the
+    // quarantine name says which version it was so the reason is diagnosable.
+    assert.equal(fs.existsSync(file), false);
+    assert.equal(fs.existsSync(`${file}.version-99`), true);
+});
+

@@ -224,6 +224,14 @@ def test_openai_db_mode_accepts_sak_bearer(svc, monkeypatch):
         actor_user_id=svc.root, tenant_id=svc.tenant, user_id=svc.root,
     )
     s.bind_agent(tenant_id=svc.tenant, agent_id="bot-agent")
+    # The public endpoint also verifies that the bound Agent is enabled in the registry.
+    from types import SimpleNamespace
+    class Registry:
+        def get_addressed(self, ident):
+            if ident != 'bot-agent':
+                raise KeyError(ident)
+            return SimpleNamespace(id='bot-agent')
+    monkeypatch.setattr('agent.registry.get_agent_registry', lambda: Registry())
 
     monkeypatch.setattr(openai_api, "_is_database_mode", lambda: True)
     monkeypatch.setattr("auth.service.get_identity_service", lambda: s)

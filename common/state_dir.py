@@ -32,6 +32,8 @@ from __future__ import annotations
 
 import os
 import re
+
+import uuid
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -566,6 +568,24 @@ def models_catalog_file(base=None) -> Path:
     return system_dir(base) / "models.json"
 
 
+def personal_menu_file(tenant_id: str, user_id: str) -> Path:
+    """A trusted account's menu, outside all browsable workspace roots."""
+    if not isinstance(user_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", user_id):
+        raise StateDirError("invalid user id for personal menu")
+    root = tenant_app_data_root(tenant_id).resolve()
+    path = root / "preferences" / user_id / "menu.json"
+    if any(parent.is_symlink() for parent in (path.parent.parent, path.parent, path)):
+        raise StateDirError("personal menu path cannot be a symlink")
+    if not path.resolve().is_relative_to(root):
+        raise StateDirError("personal menu escaped tenant data")
+    return path
+
+
+def menu_file(base=None) -> Path:
+    """The console menu the user arranged, shared by the web and desktop clients."""
+    return system_dir(base) / "menu.json"
+
+
 def scheduler_recipients_file(base=None) -> Path:
     """The one directory of people/groups observed on inbound IM channels.
 
@@ -623,6 +643,11 @@ def tmp_dir(identity=None, ensure: bool = True, base=None) -> Path:
     to the user; revisit when tenancy lands rather than guessing now.
     """
     return _ensure(_agent_base(identity, base) / "tmp", ensure)
+
+
+def tmp_file(prefix: str, ext: str = "") -> str:
+    """A unique path in ``tmp_dir()`` for one transient media file."""
+    return os.path.join(str(tmp_dir()), f"{prefix}_{uuid.uuid4().hex[:8]}{ext}")
 
 
 # --- User-scoped: isolated per end user once tenancy lands -------------------

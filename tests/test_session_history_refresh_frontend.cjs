@@ -5,9 +5,21 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const source = fs.readFileSync(path.join(__dirname, '../channel/web/static/js/console.js'), 'utf8');
+const { script } = require('./support/console_sources.cjs');
 function section(from, to) {
-    const start = source.indexOf(from), end = source.indexOf(to, start);
+    const boundaries = {
+      'function _historyCacheKey(': ['js/fork/extensions.js', to],
+      'function runtimeSessionKey(': ['js/chat/state.js', to],
+      'function _findSessionItem(': ['js/fork/extensions.js', 'function sessionTypeMarker('],
+      'function sendVoiceMessage(': ['js/chat/message-actions.js', to],
+      'function sendMessage(': ['js/chat/send.js', null],
+      'function generateSessionTitle(': ['js/views/sessions.js', null],
+      'function _reattachStream(': ['js/views/sessions.js', 'function switchSession('],
+      'function newChat(': ['js/chat/new-chat.js', null],
+    };
+    const [file, endMarker] = boundaries[from];
+    const source = script(file), start = source.indexOf(from);
+    const end = endMarker ? source.indexOf(endMarker, start) : source.length;
     assert.ok(start >= 0 && end > start, from);
     return source.slice(start, end);
 }
@@ -37,6 +49,7 @@ function setup(transport = () => response({ status: 'success', stream: true, req
         activeStreams: {}, streamBuffers: {}, sessionActiveRequest: {}, loadingContainers: {},
         pollGeneration: 0, isPolling: false,
         syncTeamFromText() {}, renderComposerIdentity() {}, resetComposerHeight() {},
+        focusChatComposer() {}, closeSidebar() {},
         renderAttachmentPreview() {}, addressedAgentId: () => '',
         addUserMessage() {}, addUserVoiceMessage() {}, addLoadingIndicator: () => ({ remove() {} }),
         readMessageResponse: r => r.json(), rememberLiveSpeaker() {}, setLoadingSpeaker() {},
@@ -53,6 +66,10 @@ function setup(transport = () => response({ status: 'success', stream: true, req
             emit(item) { this.onmessage({ data: JSON.stringify(item) }); }
         },
     });
+    const fork = script('js/fork/extensions.js');
+    vm.runInContext(fork.slice(fork.indexOf('function newChatLeavesCodingPane('), fork.indexOf('let _historyVisible =')), ctx);
+    const scheduler = script('js/chat/scheduler-notify.js');
+    vm.runInContext(scheduler.slice(scheduler.indexOf('function isSchedulerRequest('), scheduler.indexOf('function maybeNotifyScheduledRun(')), ctx);
     for (const [from, to] of [
         ['function _historyCacheKey(', 'function _restoreHistoryCache('],
         ['function runtimeSessionKey(', 'function isCurrentSessionConversationActive('],
@@ -199,7 +216,7 @@ test('switch back rebuilds the real stream, retaining the first title and consum
 });
 
 test('a late send acknowledgement retains original session ownership after switching Agent', async () => {
-    const pending = deferred(), h = setup(url => url === '/message' ? pending.promise : response({ status: 'success' }));
+    const pending = deferred(), h = setup(url => new URL(url, 'http://test').pathname === '/message' ? pending.promise : response({ status: 'success' }));
     h.ctx.sendMessage(); h.ctx.sessionId = 's2'; h.ctx.activeAgentId = 'agent-b';
     h.ctx.setSendBtnCancelMode = () => assert.fail('A late acknowledgement must not change the visible composer');
     h.ctx._contextAfterSessionChange = () => assert.fail('The new unsent session must stay unpersisted');

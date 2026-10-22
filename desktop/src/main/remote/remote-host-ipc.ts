@@ -37,6 +37,7 @@ import { DirectorySelectionService } from '../local-files/selection'
 import { installationIdentityFor } from '../installation-identity'
 import { remoteGrantRegistry } from './local-files-bridge'
 import { confirmLocalContext, type BindingTransport } from './binding-setup'
+import { operationsFor } from '../local-files/grants'
 import type { GrantScope } from '../local-files/grants'
 import { isSapDesktopHost, readSapPage, type ReadContext, type ReadRequest } from './sap-page-read'
 
@@ -541,6 +542,11 @@ async function dispatch(
           installationId: identity.id,
           label: String(params.label),
           grantVersion: grant ? grant.grantVersion : 0,
+          // The operations the user's confirmation actually produced, derived from
+          // the live grant rather than re-decided here: the note the confirmation
+          // text was built from and the set recorded on the server must be the same
+          // fact (task 4.1/4.2).
+          operations: grant ? operationsFor(grant.purpose) : [],
           agentId: String(params.agentId),
           businessSessionId: String(params.businessSessionId),
           contextNonce: String(params.contextNonce),

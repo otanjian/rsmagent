@@ -506,12 +506,22 @@ class CommandService:
                          workspace_id: str, grant_version: int, tool: str,
                          arguments: Dict[str, Any], run_id: str,
                          tool_call_id: str, selection_generation: int,
+                         operations: Optional[List[str]] = None,
+                         runtime: Optional[str] = None,
+                         protocol_major: Optional[int] = None,
                          **kwargs) -> Dict[str, Any]:
-        """Enqueue a v2 execution from a raw caller, running the B-order checks.
+        """Enqueue an execution from a raw caller, running the B-order checks.
 
         The HTTP/broker path uses this; the Agent tool path (task 6.3) uses
         :meth:`create_execution_for_context` because the runtime holds a verified
         identity but no native Bearer. Both end in the same writer.
+
+        ``operations``/``runtime``/``protocol_major`` are named rather than left to
+        ``**kwargs`` on purpose: they are the v3 authorization fields, and a caller
+        that cannot see them in the signature is a caller that will forget to pass
+        them -- which is exactly how a v3 command ends up enqueued with no recorded
+        operations and is then refused at dispatch for a reason nobody can find.
+        Naming them here makes the v3 path a visible part of this entry point.
         """
         ctx = self._access.authenticate(token, require="any")
         self._access.require_tenant(ctx, tenant_id)
@@ -522,7 +532,9 @@ class CommandService:
             ctx=ctx, tenant_id=tenant_id, binding_id=binding_id,
             workspace_id=workspace_id, grant_version=grant_version, tool=tool,
             arguments=arguments, run_id=run_id, tool_call_id=tool_call_id,
-            selection_generation=selection_generation, **kwargs)
+            selection_generation=selection_generation,
+            operations=operations, runtime=runtime, protocol_major=protocol_major,
+            **kwargs)
 
     def create_execution_for_context(
             self, *, ctx, tenant_id: str, binding_id: str, workspace_id: str,
@@ -534,7 +546,10 @@ class CommandService:
             approval_id: Optional[str] = None,
             permission_mode: Optional[str] = None,
             deadline_seconds: Optional[int] = None,
-            request_id: Optional[str] = None) -> Dict[str, Any]:
+            request_id: Optional[str] = None,
+            operations: Optional[List[str]] = None,
+            runtime: Optional[str] = None,
+            protocol_major: Optional[int] = None) -> Dict[str, Any]:
         """Enqueue a v2 execution command on the *same* durable record.
 
         Deliberately not a parallel table: the queue bound, the dedup index, the
@@ -549,7 +564,19 @@ class CommandService:
         """
         from integrations.desktop import execution_payload
 
-        if tool not in v2.TOOLS["required"]:
+        # v2 is the default, so every existing caller and every stored v2 row keeps
+        # exactly the behaviour it had. A v3 caller names its major, and *that*
+        # major's contract decides the tool set, the frame shape, the schema
+        # version and the digest field list -- the same module the device side uses
+        # to validate the frame it receives, so the two ends cannot compute a
+        # digest over different field lists.
+        major = int(protocol_major or v2.PROTOCOL_MAJOR)
+        contract = execution_payload.contract_for_major(major)
+        if contract is None:
+            raise DesktopAccessError(
+                "this build cannot serve that execution protocol",
+                "protocol_incompatible", 400)
+        if tool not in contract.TOOLS["required"]:
             raise DesktopAccessError("unknown tool", "invalid_request", 400)
         if not isinstance(arguments, dict):
             raise DesktopAccessError("arguments must be an object",
@@ -561,32 +588,51 @@ class CommandService:
         # and used for both the digest and the stored value, so the set the digest
         # covers and the set the device is handed cannot be two different lists.
         resources = execution_payload.canonical_skill_resources(skill_resources)
+        # The operations set is canonicalised the same way and for the same reason:
+        # the digest covers it, so an unsorted duplicate list would make two ends
+        # disagree about a set that is really the same.
+        declared_operations = None
+        if major >= 3:
+            declared_operations = sorted(set(operations or []))
+            if not declared_operations:
+                raise DesktopAccessError(
+                    "a v3 command must name the operations it may spend",
+                    "invalid_request", 400)
         envelope = execution_payload.envelope_for_command(
-            tool=tool, tool_schema_version=v2.TOOL_SCHEMA_VERSION,
+            tool=tool, tool_schema_version=contract.TOOL_SCHEMA_VERSION,
             arguments=arguments, run_id=run_id, tool_call_id=tool_call_id,
             session_id=session_id or ctx.binding.get("business_session_id"),
             agent_id=ctx.binding.get("agent_id"), origin=origin,
             binding_id=binding_id, workspace_id=workspace_id,
             device_id=ctx.binding["device_id"], grant_version=grant_version,
-            selection_generation=selection_generation, resources=resources)
-        digest = execution_payload.params_digest(envelope)
+            selection_generation=selection_generation, resources=resources,
+            operations=declared_operations, runtime=runtime)
+        digest = execution_payload.params_digest(
+            envelope, execution_payload.digest_fields_for(major))
 
         # The frame the device will receive is validated *here*, before the row
         # exists: a frame that fails the contract must be a refusal now, not an
         # unexecutable command the user waits on.
-        problems = v2.validate_execute_frame({
-            "type": "execute_tool", "protocol_major": v2.PROTOCOL_MAJOR,
+        frame = {
+            "type": "execute_tool", "protocol_major": contract.PROTOCOL_MAJOR,
             "command_id": "pending", "run_id": run_id,
             "tool_call_id": tool_call_id, "binding_id": binding_id,
             "workspace_id": workspace_id, "device_id": ctx.binding["device_id"],
             "grant_version": grant_version,
             "selection_generation": selection_generation,
             "connection_epoch": "pending", "tool": tool,
-            "tool_schema_version": v2.TOOL_SCHEMA_VERSION,
+            "tool_schema_version": contract.TOOL_SCHEMA_VERSION,
             "arguments": arguments, "params_digest": digest,
             "expires_at": "pending",
             "skill_resources": resources,
-        })
+        }
+        if major >= 3:
+            # REQUIRED and non-empty on a v3 frame: a frame that cannot name the
+            # authorization it is spending is refused before any tool runs.
+            frame["operations"] = declared_operations
+            if runtime:
+                frame["runtime"] = runtime
+        problems = contract.validate_execute_frame(frame)
         problems = [p for p in problems if "command_id" not in p
                     and "connection_epoch" not in p and "expires_at" not in p]
         if problems:
@@ -597,12 +643,13 @@ class CommandService:
             workspace_id=workspace_id, grant_version=grant_version,
             op="execute_tool", params=arguments, request_id=request_id,
             deadline_at=_now() + int(deadline_seconds
-                                     or v2.SCRIPT_TIMEOUT_DEFAULT), 
-            protocol_major=v2.PROTOCOL_MAJOR, tool_name=tool,
-            tool_schema_version=v2.TOOL_SCHEMA_VERSION, run_id=run_id,
+                                     or v2.SCRIPT_TIMEOUT_DEFAULT),
+            protocol_major=major, tool_name=tool,
+            tool_schema_version=contract.TOOL_SCHEMA_VERSION, run_id=run_id,
             tool_call_id=tool_call_id, selection_generation=selection_generation,
             origin=origin, params_digest=digest, approval_id=approval_id,
-            permission_mode=permission_mode, skill_resources=resources)
+            permission_mode=permission_mode, skill_resources=resources,
+            operations=declared_operations, runtime=runtime)
 
     def record_start_intent(self, *, token: str, tenant_id: str,
                             command_id: str, permit_id: str,
@@ -1020,14 +1067,31 @@ class CommandService:
                          params_digest: Optional[str] = None,
                          approval_id: Optional[str] = None,
                          permission_mode: Optional[str] = None,
-                         skill_resources: Optional[List[Dict[str, str]]] = None
+                         skill_resources: Optional[List[Dict[str, str]]] = None,
+                         operations: Optional[List[str]] = None,
+                         runtime: Optional[str] = None,
                          ) -> Dict[str, Any]:
         """The one INSERT behind both v1 and v2 commands.
 
         Keeping a single writer is what makes "v2 reuses the queue" true rather
         than aspirational: the queue bound, the dedup index and the outbox row
         are created here for either protocol.
+
+        ``operations`` and ``runtime`` are the v3 columns (design D3, contract
+        ``broker.checks``: ``operations``, ``runtime_verified``). They are written
+        here and nowhere else, so the set the broker later *reads* is the set that
+        was recorded when the command was enqueued -- a command whose
+        authorization is decided at read time could be widened by whatever wrote
+        the row last.
         """
+        # The contract says a v3 frame "cannot name the authorization it is
+        # spending" and is therefore refused before any tool runs. Enforcing it at
+        # the writer means such a row cannot come into existence at all, rather
+        # than existing and being refused later at dispatch.
+        if protocol_major >= 3 and not operations:
+            raise DesktopAccessError(
+                "a v3 command must name the operations it may spend",
+                "invalid_request", 400)
         params_hash = _sha256_params(params)
         req_id = request_id or _new_id("cmd")
         dedupe = "%s:%s:%s" % (binding_id, req_id, params_hash)
@@ -1058,8 +1122,8 @@ class CommandService:
                 "  deadline_at, created_at, updated_at, protocol_major, tool_name,"
                 "  tool_schema_version, run_id, tool_call_id, selection_generation,"
                 "  origin, params_digest, approval_id, permission_mode,"
-                "  execution_phase, skill_resources)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "  execution_phase, skill_resources, operations_json, runtime)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (command_id, req_id, ctx.user["id"], tenant_id,
                  ctx.binding["device_id"], binding_id, workspace_id,
                  grant_version, ctx.binding["agent_id"],
@@ -1073,7 +1137,13 @@ class CommandService:
                  # NULL, not "[]": a run with no skill requirements and a run
                  # whose set was forgotten must stay distinguishable (8.9).
                  json.dumps(skill_resources, ensure_ascii=False)
-                 if skill_resources else None))
+                 if skill_resources else None,
+                 # Same rule for the authorization set: "no operations recorded"
+                 # must not read as "an empty set was confirmed". The broker's
+                 # reader distinguishes them, and only the first is a refusal.
+                 json.dumps(list(operations), ensure_ascii=False)
+                 if operations else None,
+                 runtime or None))
             con.execute(
                 "INSERT INTO desktop_command_outbox"
                 " (id, command_id, device_id, state, created_at, updated_at)"
@@ -1183,6 +1253,15 @@ class CommandService:
         # canonical JSON (8.9). ``None`` means "no skill requirements" -- never an
         # empty list, which would be a different claim.
         public["skill_resources"] = _skill_resources_from_row(row)
+        # The v3 authorization set (design D3), carried as the *stored* value so
+        # exactly one parser reads it: ``execution_broker._operations_from_column``.
+        # Parsing it here as well would create a second decoder, and the whole
+        # point of that function's absent/empty/unparseable distinction is that it
+        # has one answer. ``None`` on a row from before migration 50, which is what
+        # makes "no v3 authorization exists" distinguishable from "the empty set
+        # was confirmed".
+        public["operations_json"] = row.get("operations_json")
+        public["runtime"] = row.get("runtime")
         public["phase"] = v2.phase_for(
             public["state"], cancel_requested=public["cancel_requested"],
             error_code=public.get("error_code"))

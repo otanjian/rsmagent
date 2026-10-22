@@ -17,22 +17,32 @@ function isMultiInstanceType(name) {
 }
 
 function loadChannelsView() {
+    // The header follows the *relative* scope; the loader follows the surface.
+    syncChannelsHeader(channelPageScope());
+    const scope = channelScope();
+    if (scope === 'tenant') return loadTenantChannelsView();
     const container = document.getElementById('channels-content');
     if (!container) return Promise.resolve();
     container.innerHTML = `<div class="flex items-center gap-2 py-8 justify-center text-slate-400 dark:text-slate-500 text-sm">
         <i class="fas fa-spinner fa-spin text-xs"></i><span>Loading...</span></div>`;
 
     const roster = agentCatalog.length ? Promise.resolve() : loadAgentCatalog();
-    return roster.then(() => fetch('/api/channels').then(r => r.json()).then(data => {
-        if (data.status !== 'success') return;
-        channelsData = data.channels || [];
-        channelsMultiAgent = !!data.multi_agent;
-        multiInstanceTypes = data.multi_instance_types || [];
-        channelInstancesView = data.instances || [];
-        renderActiveChannels();
-    }).catch(() => {
-        container.innerHTML = '<p class="text-sm text-red-400 py-8 text-center">Failed to load channels</p>';
-    }));
+    return roster.then(() => fetch('/api/channels')
+        .then(r => r.json().then(data => ({ status: r.status, data })).catch(() => ({ status: r.status, data: null })))
+        .then(({ status, data }) => {
+            // A failed request must resolve to a final explanation, never to a
+            // page that keeps spinning because the payload had no channels.
+            if (!data || data.status !== 'success') {
+                renderChannelsUnavailable(container, status, data && data.code);
+                return;
+            }
+            channelsData = data.channels || [];
+            channelsMultiAgent = !!data.multi_agent;
+            multiInstanceTypes = data.multi_instance_types || [];
+            channelInstancesView = data.instances || [];
+            renderActiveChannels();
+        })
+        .catch(() => renderChannelsUnavailable(container, 0, 'network')));
 }
 
 // Build the list of cards to render. In multi-Agent mode the multi-instance
@@ -60,6 +70,7 @@ function channelRenderList() {
 function renderActiveChannels() {
     stopWeixinQrPoll();
     stopWeixinStatusPoll();
+    stopWeixinLoginWatch();
     const container = document.getElementById('channels-content');
     container.innerHTML = '';
     closeAddChannelPanel();
@@ -97,10 +108,8 @@ function renderActiveChannels() {
         const isInstance = isMultiInstanceType(ch.name) && !!ch.instance_id;
         let statusDot, statusText;
         if (weixinWaiting) {
-            statusDot = 'bg-amber-400 animate-pulse';
-            statusText = ch.login_status === 'scanned'
-                ? `<span class="text-xs text-primary-500">${t('weixin_scan_scanned')}</span>`
-                : `<span class="text-xs text-amber-500">${t('weixin_scan_waiting')}</span>`;
+            statusDot = WEIXIN_WAITING_DOT;
+            statusText = weixinWaitingStatusHtml(ch.login_status);
         } else {
             statusDot = 'bg-primary-400';
             statusText = `<span class="text-xs text-primary-500">${t('channels_connected')}</span>`;
@@ -118,8 +127,8 @@ function renderActiveChannels() {
                             class="text-slate-400 hover:text-primary-500 cursor-pointer transition-colors flex-shrink-0">
                             <i class="fas fa-pen text-xs"></i>
                         </button>` : ''}
-                        <span class="w-2 h-2 rounded-full ${statusDot}"></span>
-                        ${statusText}
+                        <span id="ch-login-dot-${iid}" class="w-2 h-2 rounded-full ${statusDot}"></span>
+                        <span id="ch-login-text-${iid}">${statusText}</span>
                     </div>
                     <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-mono">${escapeHtml(isInstance ? `${label} · ${iid}` : iid)}</p>
                 </div>
@@ -142,13 +151,7 @@ function renderActiveChannels() {
                     <div class="cfg-dropdown-menu"></div>
                 </div>
             </div>` : ''}
-            ${weixinWaiting ? `<div id="weixin-active-qr-${escapeHtml(iid)}" class="flex flex-col items-center py-2">
-                <button onclick="showWeixinActiveQr('${escapeHtml(iid)}')"
-                    class="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium
-                           cursor-pointer transition-colors duration-150">
-                    ${t('weixin_scan_title')}
-                </button>
-            </div>` : ''}
+            ${weixinWaiting ? weixinScanPromptHtml(iid) : ''}
             ${isFeishu ? buildFeishuPanel(ch, true) : (isWecomBot ? buildWecomBotPanel(ch, true) : (hasFields ? `<div class="space-y-4">
                 ${fieldsHtml}
                 <div class="flex items-center justify-end gap-3 pt-1">
@@ -168,6 +171,10 @@ function renderActiveChannels() {
             startWeixinActiveStatusPoll(iid);
         }
     });
+
+    startWeixinLoginWatch(activeChannels
+        .filter(ch => ch.name === 'weixin' && ch.login_status === 'logged_in')
+        .map(ch => ch.iid));
 }
 
 // One multi-select per channel card, same idea as creating a team in the chat

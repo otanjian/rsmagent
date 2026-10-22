@@ -46,7 +46,15 @@ function needsBuild() {
 
 before(() => {
     if (needsBuild()) {
-        execFileSync('npm', ['run', 'build:main'], { cwd: desktop, stdio: 'inherit' });
+        execFileSync('npm', ['run', 'build:main'], {
+            cwd: desktop,
+            stdio: 'inherit',
+            // ``npm`` is ``npm.cmd`` on Windows, and ``execFileSync`` without a
+            // shell fails with ``spawnSync npm ENOENT`` before the build starts --
+            // which made every test in this file fail for a reason unrelated to
+            // what it tests. Same flag as the sibling suites.
+            shell: process.platform === 'win32',
+        });
     }
     profiles = require(compiledProfiles);
     connection = require(compiledConnection);
@@ -198,9 +206,9 @@ test('an HTTP origin is refused before any request is issued', async () => {
     assert.equal(result.failure.kind, 'downgrade');
     assert.equal(called, 0, 'no HTTP request may ever be attempted for a public HTTP origin');
 
-    // Mismatched allowHttpOrigin still refuses before fetch.
+    // A configured exception cannot authorize a public HTTP server.
     const refusedPublicHttp = await connection.probeServer(
-        'http://localhost:9899', fakeFetch, { allowHttpOrigin: 'http://127.0.0.1:9899' });
+        'http://console.example.com', fakeFetch, { allowHttpOrigin: 'http://console.example.com' });
     assert.equal(refusedPublicHttp.ok, false);
     assert.equal(refusedPublicHttp.failure.code, 'scheme_not_https');
     assert.equal(called, 0);

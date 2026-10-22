@@ -96,10 +96,13 @@ exports.run = async function (scenario) {
     }});
 
     let updateStarts = [], updateChecks = 0;
-    await scenario('parity: source update binds confirmation and clears it across identities', async page => {
+    await scenario('parity: hidden source update entry retains confirmation and identity guards', async page => {
         assert.equal(updateChecks, 0, 'Opening the page must not contact the release source');
         await page.evaluate(() => toggleAccountMenu());
-        await page.locator('#source-update-open').click();
+        assert.equal(await page.locator('#source-update-open').isVisible(), false);
+        // The launcher is intentionally hidden; exercise the retained update
+        // controller directly so its confirmation/identity guards stay covered.
+        await page.evaluate(() => toggleUpdateMenu());
         await page.locator('#update-action-item').click();
         await page.waitForFunction(() => document.getElementById('source-update-target').textContent.includes('bbbbbbbbbbbb'));
         assert.equal(updateChecks, 1);
@@ -465,8 +468,10 @@ exports.run = async function (scenario) {
         await page.evaluate(() => scrollChatToBottom(true));
         await page.waitForFunction(() => messagesDiv.scrollTop > 500);
         await page.evaluate(() => messagesDiv.dispatchEvent(new Event('scroll')));
-        const top = await page.evaluate(() => { messagesDiv.scrollTop -= 10; return messagesDiv.scrollTop; });
+        await page.locator('#chat-messages').hover();
+        await page.mouse.wheel(0, -10);
         await page.waitForFunction(() => !_autoScrollEnabled);
+        const top = await page.evaluate(() => messagesDiv.scrollTop);
         await page.evaluate(() => {
             document.getElementById('parity-scroll-content').style.height = '2200px'; scrollChatToBottom();
         });
@@ -474,7 +479,8 @@ exports.run = async function (scenario) {
         await page.evaluate(() => scrollChatToBottom(true));
         await page.waitForFunction(() => _autoScrollEnabled && messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight < 2);
         // Writing the same position emits no event. It must not swallow the next user scroll.
-        await page.evaluate(() => { scrollChatToBottom(true); messagesDiv.scrollTop -= 10; });
+        await page.evaluate(() => scrollChatToBottom(true));
+        await page.mouse.wheel(0, -10);
         await page.waitForFunction(() => !_autoScrollEnabled);
         await page.evaluate(() => newChat(false));
         assert.equal(await page.evaluate(() => _autoScrollEnabled), true);

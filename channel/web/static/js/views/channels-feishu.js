@@ -67,6 +67,9 @@ function switchFeishuMode(iid, mode) {
     const inactiveClasses = 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200';
 
     stopFeishuRegisterPoll();
+    // Leaving the scan tab abandons the session; drop the handle so a later
+    // poll cannot address it (the server expires it on its own schedule).
+    _feishuRegisterHandle = '';
 
     if (mode === 'scan') {
         scanTab.className = `flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${activeClasses}`;
@@ -124,25 +127,41 @@ function stopFeishuRegisterPoll() {
     }
 }
 
-function startFeishuRegister(targetStatusId) {
+function startFeishuRegister(targetStatusId, forInstanceId) {
     const statusId = targetStatusId || 'feishu-scan-status';
+    // When a tenant form started this scan, the result must pre-fill that form
+    // rather than connect the platform-level channel.
+    _feishuScanTarget = forInstanceId || '';
     const statusEl = document.getElementById(statusId);
     if (statusEl) {
         statusEl.innerHTML = `<p class="text-sm text-slate-500 dark:text-slate-400 text-center">${t('feishu_scan_loading')}</p>`;
     }
     stopFeishuRegisterPoll();
+    _feishuRegisterHandle = '';
     fetch('/api/feishu/register')
-        .then(r => r.json())
-        .then(data => {
-            if (data.status !== 'success') {
-                renderFeishuRegisterError(statusId, data.message || t('feishu_scan_fail'));
+        .then(r => r.json().then(data => ({ httpStatus: r.status, data })))
+        .then(({ httpStatus, data }) => {
+            if (!data || data.status !== 'success') {
+                renderFeishuRegisterError(statusId, scanFailureText(
+                    httpStatus, data && data.code, data && data.message));
+                return;
+            }
+            _feishuRegisterHandle = data.handle || '';
+            if (!_feishuRegisterHandle) {
+                // A session we cannot address must not be polled: without the
+                // handle every poll would read as "expired" forever.
+                renderFeishuRegisterError(statusId, t('feishu_scan_fail'));
                 return;
             }
             if (data.register_status === 'downloading') {
                 // Desktop first run: the SDK bundle lands before the QR exists.
                 renderFeishuSdkDownloading(statusId);
-            } else {
+            } else if (data.qr_image || data.qrcode_url) {
                 renderFeishuQr(statusId, data.qr_image, data.qrcode_url);
+            } else {
+                // The SDK is still warming up (its first import is slow); the
+                // poller renders the QR the moment the worker produces it.
+                renderFeishuPreparing(statusId);
             }
             pollFeishuRegisterStatus(statusId);
         })
@@ -195,11 +214,16 @@ function renderFeishuRegisterError(statusId, message) {
 
 function pollFeishuRegisterStatus(statusId) {
     stopFeishuRegisterPoll();
+    if (!_feishuRegisterHandle) {
+        // No live session to poll (never started, or already terminal).
+        return;
+    }
+    const handle = _feishuRegisterHandle;
     _feishuRegisterPollTimer = setTimeout(() => {
         fetch('/api/feishu/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'poll' })
+            body: JSON.stringify({ action: 'poll', handle: handle })
         })
         .then(r => r.json())
         .then(data => {
@@ -229,14 +253,28 @@ function pollFeishuRegisterStatus(statusId) {
                                 <i class="fas fa-check text-emerald-500 text-lg"></i>
                             </div>
                             <p class="text-sm font-medium text-emerald-600 dark:text-emerald-400">${t('feishu_scan_success')}</p>
+                            ${_feishuScanTarget ? `<p class="text-xs text-slate-400 dark:text-slate-500 mt-1">${t('tenant_channel_scan_autosaved')}</p>` : ''}
                         </div>`;
                 }
-                connectFeishuAfterRegister(data.app_id, data.app_secret);
+                if (_feishuScanTarget) {
+                    // A tenant scan persists itself: the grant the server minted
+                    // for this scan authorizes the create, so there is no second
+                    // step and no password prompt to lose the channel to.
+                    applyFeishuScanToTenantForm(data.app_id, data.app_secret, data.scan_ticket);
+                    autoPersistScannedTenantChannel();
+                } else {
+                    connectFeishuAfterRegister(data.app_id, data.app_secret);
+                }
+                _feishuRegisterHandle = '';
+                _feishuScanTarget = '';
             } else if (rs === 'expired') {
+                _feishuRegisterHandle = '';
                 renderFeishuRegisterError(statusId, t('feishu_scan_expired'));
             } else if (rs === 'denied') {
+                _feishuRegisterHandle = '';
                 renderFeishuRegisterError(statusId, t('feishu_scan_denied'));
             } else if (rs === 'error') {
+                _feishuRegisterHandle = '';
                 renderFeishuRegisterError(statusId, data.message || t('feishu_scan_fail'));
             } else {
                 pollFeishuRegisterStatus(statusId);

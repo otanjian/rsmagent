@@ -1,0 +1,45 @@
+{
+  "recorded_at": "2026-10-21T09:38:12.453Z",
+  "timezone": "Asia/Shanghai",
+  "source": {
+    "remote": "origin",
+    "branch": "master",
+    "sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
+    "subject": "fix: adapt multiline python -c spill to the merged rewrite"
+  },
+  "local": {
+    "branch": "rdai",
+    "sha": "92d468157d79c2fb1869f9123ac812f0c353af10"
+  },
+  "delivery": {
+    "remote": "gitea",
+    "branch": "rdai",
+    "sha": "c9bd4942261156f56c02ffd65e4d81c6153e1594"
+  },
+  "merge_base_sha": "48c0d79c36146950667f8d1884ab823deae62305",
+  "upstream_commits": 770,
+  "upstream_non_merge_commits": 452,
+  "target_only_commits": 248,
+  "local_behind_delivery": 12,
+  "changed_source_files": 876,
+  "both_sides_touched_files": 284,
+  "source_diff_stat": "876 files changed, 47135 insertions(+), 3872 deletions(-)",
+  "area_counts": {
+    "(root)": 4,
+    "agent": 70,
+    "bridge": 2,
+    "channel": 98,
+    "cli": 9,
+    "common": 12,
+    "desktop": 56,
+    "docker": 1,
+    "docs": 263,
+    "models": 19,
+    "plugins": 8,
+    "scripts": 1,
+    "skills": 1,
+    "tests": 318,
+    "voice": 14
+  },
+  "scope": "planning-only; no merge rehearsal or implementation verification performed"
+}

@@ -483,6 +483,17 @@ export function checkBridgeCall(call: BridgeCall): Verdict {
       if (bytes > PROJECT_WRITE_MAX_BYTES) {
         return refuse('limit_exceeded', `the edited text exceeds ${PROJECT_WRITE_MAX_BYTES} bytes`)
       }
+      // Optional, but the helper refuses an overwrite that names no baseline, so a
+      // save without one cannot succeed. Checked for *shape* here rather than
+      // passed blindly: it reaches a native call that compares it against the file,
+      // and a page must not be able to hand that call something that is not a
+      // version at all. It is opaque, so only the prefix/length can be checked.
+      if (params.version !== undefined && params.version !== null) {
+        if (typeof params.version !== 'string'
+          || !/^fgv1:[0-9a-f]{16}$/.test(params.version)) {
+          return refuse('invalid_request', 'projectWrite.version is not a file version')
+        }
+      }
       return { ok: true }
     }
     case 'projectOpenFile':

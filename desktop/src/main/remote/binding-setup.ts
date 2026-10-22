@@ -64,6 +64,17 @@ export interface LocalContextSetupRequest {
   label: string
   /** Grant version the local picker minted. */
   grantVersion: number
+  /**
+   * The v3 operations this grant authorizes, as the contract names them (task 4.1/4.2).
+   *
+   * Sent with the binding so the *server* can record the same set the device will
+   * enforce locally. Without it the device would compute an authorization and the
+   * server would store an empty one, and the two ends would disagree about what the
+   * user confirmed -- the disagreement v3 exists to make impossible.
+   *
+   * Omitted keeps the historical v2 behaviour (nothing new authorized).
+   */
+  operations?: string[]
   agentId: string
   businessSessionId: string
   contextNonce: string
@@ -168,10 +179,22 @@ async function attachWorkspace(
   bindingId: string,
   workspaceId: string,
   grantVersion: number,
+  operations?: readonly string[],
 ): Promise<void> {
   const reply = await transport.native(
     `/api/desktop/bindings/${encodeURIComponent(bindingId)}/workspaces/${encodeURIComponent(workspaceId)}`,
-    { method: 'PUT', body: JSON.stringify({ grant_version: grantVersion }) },
+    {
+      method: 'PUT',
+      // The operations travel with the grant they belong to, in the same call that
+      // establishes it: a separate "now also authorize these" request could land
+      // without its grant, and an authorization that arrives alone is one this
+      // device never confirmed.
+      body: JSON.stringify(
+        operations && operations.length > 0
+          ? { grant_version: grantVersion, operations: [...operations] }
+          : { grant_version: grantVersion },
+      ),
+    },
   )
   readData(reply, 'the local directory could not be attached to the session')
 }
@@ -213,7 +236,8 @@ export function localSetupPoster(
       'the session could not be bound to the local directory',
     )
     const bindingId = readId(created, 'the server returned no binding id')
-    await attachWorkspace(transport, bindingId, workspaceId, request.grantVersion)
+    await attachWorkspace(
+      transport, bindingId, workspaceId, request.grantVersion, request.operations)
     // The device id travels back with the binding: the gateway connection needs
     // the *server's* id, and this is the call that just refreshed the row.
     return { id: bindingId, workspaceId, grantVersion: request.grantVersion, deviceId }

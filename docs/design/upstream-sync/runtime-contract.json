@@ -1,77 +1,106 @@
 {
   "required_assets": [
-    "js/fork/router.js",
-    "js/console.js",
     "js/doc-editor.js",
     "js/fork/views/memory.js",
     "js/views/tasks.js",
     "js/views/tasks-modal.js",
     "js/fork/tasks-console.js",
     "js/fork/scheduler-notifications.js",
-    "css/console.css",
-    "js/fork/source-update.js"
-  ],
-  "forbidden_parallel_assets": [
+    "js/fork/source-update.js",
     "js/core/router.js",
     "js/core/nav.js",
+    "js/core/menu.js",
     "js/chat/state.js",
+    "js/chat/send.js",
     "js/chat/scheduler-notify.js",
+    "js/views/artifacts.js",
+    "js/views/menu-editor.js",
+    "js/views/knowledge.js",
+    "js/fork/extensions.js",
+    "js/fork/bootstrap.js",
+    "js/fork/start.js",
+    "css/base.css",
+    "css/chat.css",
+    "css/artifacts.css",
+    "css/fork/extensions.css"
+  ],
+  "forbidden_parallel_assets": [
+    "js/fork/router.js",
+    "js/console.js",
+    "css/console.css",
     "js/boot.js",
     "js/core/version.js"
   ],
   "load_order": [
     [
       "js/doc-editor.js",
-      "js/fork/views/memory.js"
+      "js/views/knowledge.js"
     ],
     [
-      "js/fork/router.js",
-      "js/console.js"
+      "js/fork/extensions.js",
+      "js/core/auth.js"
+    ],
+    [
+      "js/core/nav.js",
+      "js/core/menu.js"
+    ],
+    [
+      "js/core/menu.js",
+      "js/core/router.js"
+    ],
+    [
+      "js/views/agents.js",
+      "js/chat/state.js"
     ],
     [
       "js/views/tasks.js",
       "js/fork/tasks-console.js"
     ],
     [
-      "js/console.js",
-      "js/fork/scheduler-notifications.js"
+      "js/core/auth.js",
+      "js/fork/bootstrap.js"
     ],
     [
-      "js/console.js",
+      "js/fork/bootstrap.js",
       "js/fork/source-update.js"
+    ],
+    [
+      "js/fork/source-update.js",
+      "js/fork/start.js"
     ]
   ],
   "implementation_contracts": {
-    "channel/web/static/js/console.js": [
-      "function isSchedulerRequest(",
-      "new Event('account-ready')",
-      "new Event('account-invalidated')",
-      "window.ConsoleRoutes.enter(",
-      "'/assets/js/external-connections.js'"
-    ],
     "channel/web/static/js/fork/scheduler-notifications.js": [
       "addEventListener('account-ready'",
       "addEventListener('account-invalidated'",
       "mode=notifications",
       "readwrite"
     ],
-    "channel/web/static/css/console.css": [
-      "overflow-wrap: anywhere"
-    ],
     "channel/web/templates/views/config.html": [
       "id=\"config-panel-catalog\"",
       "id=\"catalog-content\""
-    ],
-    "channel/web/static/js/fork/router.js": [
-      "!_accountAppVisible",
-      "page.tab_aliases",
-      "sequence"
     ],
     "channel/web/static/js/fork/source-update.js": [
       "addEventListener('account-ready'",
       "addEventListener('account-invalidated'",
       "check_id: checkId",
       "generation !== epoch"
+    ],
+    "channel/web/static/js/chat/scheduler-notify.js": [
+      "function isSchedulerRequest("
+    ],
+    "channel/web/static/js/fork/extensions.js": [
+      "new Event('account-ready')",
+      "new Event('account-invalidated')",
+      "'/assets/js/external-connections.js'"
+    ],
+    "channel/web/static/js/core/router.js": [
+      "page.tab_aliases",
+      "window.ConsoleRoutes",
+      "_accountAppVisible"
+    ],
+    "channel/web/static/css/markdown.css": [
+      "overflow-wrap: anywhere"
     ]
   }
 }

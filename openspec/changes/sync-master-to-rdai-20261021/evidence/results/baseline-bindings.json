@@ -1,0 +1,155 @@
+{
+  "target": "c9bd4942261156f56c02ffd65e4d81c6153e1594",
+  "files": [
+    {
+      "path": "channel/web/static/js/console.js",
+      "sha256": "7490fe7cdf81059c83635a3f1994384b015f79862d5ed54bb21f7b37f0eabdd9",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/chat.html",
+      "sha256": "e6fc7f42d51b0192eeb717db49258ea83ab0428f70067c9acffdcf75a73cc255",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "tests/test_agent_chat_launch_frontend.cjs",
+      "sha256": "2784faf210466537c049210a88c392d5d3bb3d48f8985a80cc852d64fd80442e",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "tests/test_workbench_menu_grant_frontend.cjs",
+      "sha256": "3de1e4f397f20e352d437af9b60f99baf6926ab4d56c4a9d47703045b8f3d5b9",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "tests/test_workbench_sidebar_launch_frontend.cjs",
+      "sha256": "20bb9caeb444c489542470bddf60a6bd243a668ef622eefba16c73fd93fe3746",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "auth/capability_matrix.py",
+      "sha256": "5f0286824a89ce6e33ca3fd4ce5dedbb44e0497a1e0b7f75563e983b00add06e",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "tests/test_capability_matrix.py",
+      "sha256": "ac8678f1e6c3d08e672923dcab3fffea7d25f7f740c1f758411f4f9bc6862810",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "tests/test_console_i18n_parity.cjs",
+      "sha256": "1474a01fc26c091731fbb78cf4e2f5718c584f30aa1914a3200ead8ec8325eab",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "tests/fixtures/console_i18n_snapshot.json",
+      "sha256": "51b2457e27cfd0924916f4ea9d01eeede45f77dd8d1edc1f518ef87505d0411d",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/external-connections.js",
+      "sha256": "b2a30a6e374402dbe3367c64710df095dad304f67dcdbe7928c02b507c1320a4",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/master-sync.js",
+      "sha256": "9cf6c383dc61cadc88e8bf06c09e0cbf3f76ddcda8cd3e2d6620e473a315fbdd",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/personal-console.js",
+      "sha256": "bf9d8d9ec172c56301c4e7d79960d131a13c14bf5f00d88f10755d20d667e01d",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/agents.js",
+      "sha256": "d5376ea9a0e64f8a312cb5a53f0db233dce6ca652721270c88c49a1ac73047c3",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/core.js",
+      "sha256": "936e293b85eb1399b671d139b12f1d959e92460810cfeee7c11fa8b33bcb4fc6",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/external-identity.js",
+      "sha256": "b800022f4597b4a2f671f12a97c1832308eba53961de7b6963b058a2f04262ee",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/home-scenes.js",
+      "sha256": "be25806e39a97c0fba64024b84b26bf89ea8d2afb8a90ddd046f16088bb7e6c8",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/identity-admin.js",
+      "sha256": "59d23582a03efebfdb4edf8d31aa320d2952e0327952118953574566206863f7",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/todos.js",
+      "sha256": "32ecdd4e9949db5896aad1e9e4e22bd9ab310a7d180df43554e4f0fb1e6dd9ea",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/coding.js",
+      "sha256": "a471a99a7c73dba9f77dcdc171e97b6e8ca2b284dd14cd3f822ea0132a75bfec",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/memory-account.js",
+      "sha256": "1874a9c5c4ba94fedadcebd7f5909eddd9ccf91bbbb8d3c9534782ceaaa5276e",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/branding.js",
+      "sha256": "3857dc77250ee737ac61ed61751855e5e8900ab251401cedc0a9ef263c8b96c1",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/navigation.js",
+      "sha256": "aecad2530107d6d613c206bf7553c5a3ab132123236ee797b161eec7917b9376",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/tenant-channel.js",
+      "sha256": "d96fae4d9aec91ed420379897bdc129db1ce73fc3119db84fd91077bc8784a83",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/appearance.js",
+      "sha256": "042e04a608dd1bf7e05eb96e577167f6cb97d8850e800aef138688a335f0f939",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/account.js",
+      "sha256": "ae8d5fc9628a736eb5254e3922975a645ce5cd666093a3106a7e3f01fdfff1c1",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/tasks-records.js",
+      "sha256": "dc98021250937f989e654ebef0fdaacc9d120b1a05d4f1a20297460fc3742062",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/models-config.js",
+      "sha256": "ade4cbcb1cea466316d186d330322db21df180e67bee194a15d1fd3f038bafc0",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/admin-console.js",
+      "sha256": "c3b5ff3594681b634742e3b39502917d4cc0d710abd88d2cb8eac10fb2fe7e77",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/resource-detail.js",
+      "sha256": "018dcd5fecbfb26ae3c24a0a6137b3a2a5b6a7abefdc1a333dfd0805a0eff000",
+      "matches_fixed_target": true
+    },
+    {
+      "path": "channel/web/static/js/i18n/audit-console.js",
+      "sha256": "564852c6de7c998f9e16a44fda730d75d7d21425134ca699270c3e981cca5500",
+      "matches_fixed_target": true
+    }
+  ]
+}

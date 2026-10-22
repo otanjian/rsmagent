@@ -1,0 +1,50 @@
+{
+  "command": "node --test tests/test_account_menu_no_personal_resources.cjs tests/test_sidebar_account_frontend.cjs",
+  "baseline_sha": "369a9ded089b3744d8c5d44c06fb38793540ecf5",
+  "scope": "Historical supplementary account tests; does not replace the required Web gate",
+  "unchanged_failures": true,
+  "runs": [
+    {
+      "label": "candidate",
+      "tests": 75,
+      "pass": 62,
+      "fail": 13,
+      "failed_cases": [
+        "the account panel hosts no 「我的资源」 group and no personal entry",
+        "the account panel keeps exactly the retained entries, in order",
+        "the account trigger describes account settings, not personal resources",
+        "preferences close cleanly at login and remain available in legacy and public modes",
+        "startup check failure stays neutral; a visible retry enters database mode and initializes only once",
+        "legacy responses distinguish password protection and explicit anonymous access",
+        "HTTP, business and incomplete check responses cannot masquerade as anonymous access",
+        "legacy login normalizes the status-only success contract and serializes repeated submissions",
+        "valid version survives invalid responses, and a brand repaint changes only the version label",
+        "chat initialization restores scoped selections and waits for the Agent catalog before session reads",
+        "the avatar file input lives outside the repainted disc in chat.html",
+        "the account panel keeps its region order and adds no personal page tab",
+        "the console top bar does not repeat the logout, appearance or language entries"
+      ]
+    },
+    {
+      "label": "baseline",
+      "tests": 75,
+      "pass": 62,
+      "fail": 13,
+      "failed_cases": [
+        "the account panel hosts no 「我的资源」 group and no personal entry",
+        "the account panel keeps exactly the retained entries, in order",
+        "the account trigger describes account settings, not personal resources",
+        "preferences close cleanly at login and remain available in legacy and public modes",
+        "startup check failure stays neutral; a visible retry enters database mode and initializes only once",
+        "legacy responses distinguish password protection and explicit anonymous access",
+        "HTTP, business and incomplete check responses cannot masquerade as anonymous access",
+        "legacy login normalizes the status-only success contract and serializes repeated submissions",
+        "valid version survives invalid responses, and a brand repaint changes only the version label",
+        "chat initialization restores scoped selections and waits for the Agent catalog before session reads",
+        "the avatar file input lives outside the repainted disc in chat.html",
+        "the account panel keeps its region order and adds no personal page tab",
+        "the console top bar does not repeat the logout, appearance or language entries"
+      ]
+    }
+  ]
+}

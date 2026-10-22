@@ -105,7 +105,7 @@ class KnowledgeScope:
         """Yield root-relative posix paths of the eligible knowledge documents."""
         managed = self._managed_realpaths()
         if self.root.is_dir():
-            for md in sorted(self.root.rglob("*.md")):
+            for md in sorted(self.root.rglob("*.[mM][dD]")):
                 rel = md.relative_to(self.root)
                 if any(part.startswith(".") for part in rel.parts):
                     continue
@@ -125,7 +125,7 @@ class KnowledgeScope:
         if not converted.is_dir():
             return
         prefix = catalog.relative(converted)
-        for md in sorted(converted.rglob("*.md")):
+        for md in sorted(converted.rglob("*.[mM][dD]")):
             rel = md.relative_to(converted)
             parts = rel.parts
             if any(part.startswith(".") for part in parts):

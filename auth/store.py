@@ -3024,6 +3024,78 @@ def _migration_49(con: sqlite3.Connection) -> None:
 _migrations.append(_migration_49)
 
 
+def _migration_50(con: sqlite3.Connection) -> None:
+    """The v3 ``operations`` authorization (change add-windows-local-project-access, task 3.3).
+
+    v2 decided "may this command run" from the tool allow-list alone, so a project
+    opened for *editing* and a project opened for *running code in* were the same
+    permission. v3 splits them into named operations (``files``, ``scripts``) and
+    the whole point is that the file one never opens the script one.
+
+    Two columns carry it, because the authorization has to survive from the grant
+    that was confirmed to the command that spends it:
+
+    * ``desktop_binding_workspaces.operations_json`` -- the set the user actually
+      confirmed, stored beside the ``grant_version`` it belongs to. This is the
+      authority; a claim that is not a subset of it is refused.
+    * ``desktop_commands.operations_json`` / ``runtime`` -- what *this command* was
+      authorized with, snapshotted at creation so a later grant change cannot
+      retroactively authorize an already-queued command. ``runtime`` is stored for
+      the same reason: "python verified, powershell not" has to be decided against
+      the runtime the command was created for.
+
+    Both are NULL for every existing row and stay NULL unless something writes
+    them. That is deliberate and is the requirement, not an oversight: a NULL
+    operations set is read as *the empty set*, so a grant or command created
+    before this migration authorizes no v3 operation at all. There is no backfill
+    and there must not be one -- "the old grant already allowed files" is exactly
+    the silent upgrade v3 exists to prevent.
+    """
+    _add_missing_column(con, "desktop_binding_workspaces", "operations_json", "TEXT")
+    _add_missing_column(con, "desktop_commands", "operations_json", "TEXT")
+    _add_missing_column(con, "desktop_commands", "runtime", "TEXT")
+
+
+_migrations.append(_migration_50)
+
+
+def _migration_51(con: sqlite3.Connection) -> None:
+    """IM guest accounts (change add-im-guest-accounts, task 1.2).
+
+    Five columns, all additive and all defaulted so every existing row keeps its
+    current meaning:
+
+    * ``users.account_type`` -- ``normal`` for every account created before this
+      change. ``im_guest`` marks an account a tenant's shared bot created for an
+      unbound IM sender. It is a *type*, not a status: an inactive guest is still
+      a guest, and ``active`` keeps meaning "may use the things its type allows".
+    * ``tenant_channel_instances.unbound_user_policy`` -- ``require_binding`` for
+      every existing instance, which is exactly the pre-change behaviour.
+    * ``tenant_channel_instances.guest_role_id`` -- empty unless the policy is
+      ``auto_guest``; the ordinary role the guest's current channel narrows the
+      member's authorization with.
+    * ``tenant_channel_instances.guest_group_ids_json`` -- ``[]`` (private chats
+      only). Kept on the instance because the provider adapters install a global
+      ``ALL_GROUP`` whitelist, which cannot express "this tenant's groups".
+    * ``external_identities.active`` -- ``1`` for every existing binding. Guest
+      unbinding stops the binding instead of deleting it, because deleting the
+      triple would let the next message provision a brand-new guest account.
+    """
+    _add_missing_column(con, "users", "account_type",
+                        "TEXT NOT NULL DEFAULT 'normal'")
+    _add_missing_column(con, "tenant_channel_instances", "unbound_user_policy",
+                        "TEXT NOT NULL DEFAULT 'require_binding'")
+    _add_missing_column(con, "tenant_channel_instances", "guest_role_id",
+                        "TEXT NOT NULL DEFAULT ''")
+    _add_missing_column(con, "tenant_channel_instances", "guest_group_ids_json",
+                        "TEXT NOT NULL DEFAULT '[]'")
+    _add_missing_column(con, "external_identities", "active",
+                        "INTEGER NOT NULL DEFAULT 1")
+
+
+_migrations.append(_migration_51)
+
+
 class IdentityStoreError(RuntimeError):
     """Raised when the identity store cannot be opened or migrated."""
 

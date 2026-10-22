@@ -18,6 +18,7 @@ from auth.policy import (
 #: consumer opens. The list mirrors the console-information-architecture commit.
 _SIGNED_CONSOLE_PAGES: Dict[str, Dict[str, object]] = {
     "workbench.chat": {"permission": "", "scope": "self", "label": "AI 对话"},
+    "workbench.artifacts": {"permission": "history.read", "scope": "self", "label": "产物中心"},
     "workbench.history": {"permission": "history.read", "scope": "self", "label": "历史对话"},
     "workbench.agents": {"permission": "agent.read", "scope": "tenant", "label": "智能体工作台"},
     "workbench.todos": {"permission": "todo.read", "scope": "self", "label": "我的待办"},
@@ -452,6 +453,11 @@ def console_pages_projection(identity, user, tenant, permissions, role_codes, is
         "reason": "" if catalog_readable else (
             "no_permission" if tools_consumer_open else "consumer_closed"),
         "actions": {},
+    }
+    artifact_read = bool(is_platform_admin or "history.read" in permissions)
+    result["workbench.artifacts"] = {
+        "available": artifact_read, "read_allowed": artifact_read,
+        "scope": "self", "reason": "" if artifact_read else "no_permission", "actions": {},
     }
     # Signed-but-not-yet-available pages (business consumers still closed).
     registry_pages = _registry_page_availability()

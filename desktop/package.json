@@ -1,6 +1,6 @@
 {
   "name": "cowagent-desktop",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "容大AI Desktop Client - AI Agent on your desktop",
   "main": "dist/main/index.js",
   "author": "RongAI",
@@ -65,10 +65,33 @@
         "from": "resources",
         "to": ".",
         "filter": [
-          "icon.png",
-          "app-config.json",
-          "themes/**"
+          "**/*",
+          "!*.exe"
         ]
+      },
+      {
+        "from": "resources/fs-guard",
+        "to": "fs-guard"
+      },
+      {
+        "from": "resources/fs-guard.exe",
+        "to": "fs-guard.exe"
+      },
+      {
+        "from": "resources/project-fs-guard",
+        "to": "project-fs-guard"
+      },
+      {
+        "from": "resources/project-fs-guard.exe",
+        "to": "project-fs-guard.exe"
+      },
+      {
+        "from": "resources/script-launcher",
+        "to": "script-launcher"
+      },
+      {
+        "from": "resources/script-launcher.exe",
+        "to": "script-launcher.exe"
       }
     ],
     "mac": {

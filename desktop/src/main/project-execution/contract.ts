@@ -23,6 +23,9 @@
 
 import { createHash } from 'node:crypto'
 
+import * as v2Contract from './generated-contract'
+import * as v3Contract from './generated-contract-v3'
+
 import {
     ARTIFACT_PROTOCOL,
     CANCELLING_OVERRIDES,
@@ -52,6 +55,74 @@ import {
     TERMINAL_PHASES,
     TOOL_SCHEMA_VERSION,
 } from './generated-contract'
+
+/**
+ * The generated contract for one protocol major, or ``null`` for one this build
+ * cannot serve.
+ *
+ * The single place the desktop side decides "which rules apply to this peer",
+ * mirroring ``execution_payload.contract_for_major`` on the server and
+ * ``contract_module_for`` on the remote-device path. Every reader that reaches for
+ * the v2 constants directly -- frame validation, negotiation, the tool set, the
+ * digest field list -- goes through here instead, because the failure mode of not
+ * doing so is exactly what happened: a v3 frame was judged by v2's rules and
+ * refused for naming a major this code had never been taught.
+ *
+ * ``null`` rather than a v2 default is deliberate. A peer this build cannot serve
+ * has to be told so; quietly judging it by the wrong table is how a
+ * version-awareness gap stays invisible, and it is also how two ends would come to
+ * disagree about a digest.
+ */
+export function contractForMajor(
+    major: unknown,
+): { readonly major: number; readonly mod: typeof v3Contract } | null {
+    const value = Number(major)
+    if (!Number.isInteger(value)) return null
+    if (value === v2Contract.PROJECT_EXECUTION_PROTOCOL.major) {
+        // Same shape by construction: one generator emits both modules.
+        return { major: value, mod: v2Contract as unknown as typeof v3Contract }
+    }
+    if (value === v3Contract.PROJECT_EXECUTION_PROTOCOL.major) {
+        return { major: value, mod: v3Contract }
+    }
+    return null
+}
+
+/** The majors this build can serve, highest first. */
+export const SUPPORTED_EXECUTION_MAJORS: readonly number[] = [
+    v3Contract.PROJECT_EXECUTION_PROTOCOL.major,
+    v2Contract.PROJECT_EXECUTION_PROTOCOL.major,
+]
+
+/**
+ * The v3 operation a tool spends, or ``undefined`` for a tool no contract knows.
+ *
+ * Generated from the contract's ``required_for`` table rather than restated, so
+ * the mapping cannot drift from the document both ends check against. It exists so
+ * a caller holding "this project is open" can ask the precise question -- *may
+ * this tool run here* -- instead of the approximate one ("is the purpose
+ * project-execution"), which cannot tell a file edit from running code.
+ */
+export function requiredOperationForTool(tool: unknown): string | undefined {
+    if (typeof tool !== 'string') return undefined
+    const table = v3Contract.TOOL_REQUIRED_OPERATION as Readonly<Record<string, string>>
+    return table[tool]
+}
+
+/**
+ * Whether an authorized operation set covers one tool.
+ *
+ * An empty/absent set covers nothing: the contract reads it as "no v3 operation
+ * was authorized", never as "unrestricted".
+ */
+export function coversTool(
+    operations: readonly string[] | undefined,
+    tool: unknown,
+): boolean {
+    const needed = requiredOperationForTool(tool)
+    if (!needed) return false
+    return Array.isArray(operations) && operations.includes(needed)
+}
 
 export {
     ARTIFACT_PROTOCOL,
@@ -126,20 +197,33 @@ export function effectsFor(phase: string, errorCode?: string | null): ExecutionE
 }
 
 /**
- * Whether a v2 server is reachable. `false` means the entry point is not
- * offered -- and the caller must say so rather than fall back to a v1 op.
+ * Whether a server's offered protocol is one this build can serve.
+ *
+ * ``false`` means the entry point is not offered -- and the caller must say so
+ * rather than fall back to a v1 op.
+ *
+ * Accepting more than one major is the change: previously only v2 was reachable,
+ * so a server that offered v3 was answered ``protocol_incompatible`` and the whole
+ * v3 mechanism (the generated contract, ``operations``, ``expected_version``) had
+ * no way in. ``contractForMajor`` is what decides, so the accepted set and the
+ * rules applied later cannot disagree -- a peer admitted here and then judged by
+ * another major's table is the specific bug this replaces.
+ *
+ * The chosen major is returned so a caller does not have to re-derive it: reading
+ * it twice is how the frame and the negotiation would drift apart.
  */
 export function negotiateProjectExecution(
     protocols: Record<string, { major?: number }> | null | undefined,
-): { available: boolean; reason: string } {
+): { available: boolean; reason: string; major?: number } {
     const offered = protocols ? protocols[PROJECT_EXECUTION_NAME] : undefined
     if (!offered || typeof offered.major !== 'number') {
         return { available: false, reason: 'not_implemented' }
     }
-    if (offered.major !== PROJECT_EXECUTION_PROTOCOL.major) {
+    const contract = contractForMajor(offered.major)
+    if (!contract) {
         return { available: false, reason: 'protocol_incompatible' }
     }
-    return { available: true, reason: 'available' }
+    return { available: true, reason: 'available', major: contract.major }
 }
 
 /** Read the optional capability block out of a meta/hello payload. */
@@ -262,17 +346,58 @@ function isPositiveInt(value: unknown): value is number {
     return typeof value === 'number' && Number.isInteger(value) && value > 0
 }
 
-/** The problems that make a frame unsendable, mirroring the server's checks. */
+/**
+ * The problems that make a frame unsendable, judged by the **negotiated** major.
+ *
+ * ``agreedMajor`` is what this connection settled on, not what the frame claims:
+ * a frame does not get to choose which rules judge it. Letting it would mean the
+ * looser contract could be selected by the frame itself -- a v3 frame sent over a
+ * v2 connection would be checked against v3 and pass, which is the whole class of
+ * mistake this pair of ends has already made once. The frame's own
+ * ``protocol_major`` is then required to *match* what was agreed, so a mismatch is
+ * reported rather than silently tolerated.
+ *
+ * Callers that have not negotiated pass nothing and keep v2, which is what every
+ * existing caller is.
+ */
 export function validateExecuteFrame(
     frame: unknown,
     platform: 'posix' | 'win32' = 'posix',
+    agreedMajor?: number,
 ): string[] {
-    const problems: string[] = []
     if (!frame || typeof frame !== 'object') return ['execute_tool frame is not an object']
     const f = frame as Record<string, unknown>
+    // ``undefined`` means v2, the protocol every existing caller speaks -- **not**
+    // "ask the frame". A frame choosing its own rules is the flaw this signature
+    // exists to remove, so it must not reappear as a default: a v3 frame on a v2
+    // connection would then be judged by v3 and pass. A caller that has negotiated
+    // a major passes it; one that has not gets v2, which is what it means.
+    const contract = contractForMajor(agreedMajor ?? 2)
+    if (!contract) {
+        return [`protocol_major must be one of ${SUPPORTED_EXECUTION_MAJORS.join(', ')}`
+            + ` (got ${JSON.stringify(agreedMajor ?? 2)})`]
+    }
+    return validateFrameAgainst(contract.mod, f, platform)
+}
+
+/**
+ * The shared frame check, parameterised by the generated contract.
+ *
+ * One implementation for both majors on purpose. The structural rules are the same
+ * shape in each contract -- required fields, forbidden fields, a tool allow-list,
+ * per-tool arguments -- so writing them twice would guarantee they drift, and drift
+ * is exactly how this pair of ends came to disagree about a digest before. What is
+ * *not* shared is the content: ``mod`` supplies every constant.
+ */
+function validateFrameAgainst(
+    mod: typeof v3Contract,
+    f: Record<string, unknown>,
+    platform: 'posix' | 'win32',
+): string[] {
+    const problems: string[] = []
     if (f.type !== 'execute_tool') problems.push("frame type is not 'execute_tool'")
-    if (f.protocol_major !== PROJECT_EXECUTION_PROTOCOL.major) {
-        problems.push(`protocol_major must be ${PROJECT_EXECUTION_PROTOCOL.major}`)
+    if (f.protocol_major !== mod.PROJECT_EXECUTION_PROTOCOL.major) {
+        problems.push(`protocol_major must be ${mod.PROJECT_EXECUTION_PROTOCOL.major}`)
     }
     // The numeric fields first: they have no non-empty-string shape to check.
     if (!isPositiveInt(f.grant_version)) {
@@ -282,10 +407,10 @@ export function validateExecuteFrame(
         || !Number.isInteger(f.selection_generation) || f.selection_generation < 0) {
         problems.push('selection_generation must be a non-negative integer')
     }
-    if (f.tool_schema_version !== TOOL_SCHEMA_VERSION) {
-        problems.push(`tool_schema_version must be ${TOOL_SCHEMA_VERSION}`)
+    if (f.tool_schema_version !== mod.TOOL_SCHEMA_VERSION) {
+        problems.push(`tool_schema_version must be ${mod.TOOL_SCHEMA_VERSION}`)
     }
-    for (const key of EXECUTE_TOOL_REQUIRED) {
+    for (const key of mod.EXECUTE_TOOL_REQUIRED) {
         if (key === 'type' || key === 'protocol_major' || key === 'grant_version'
             || key === 'selection_generation' || key === 'tool_schema_version') {
             continue
@@ -295,18 +420,30 @@ export function validateExecuteFrame(
             problems.push(`execute_tool is missing '${key}'`)
         }
     }
-    for (const key of FORBIDDEN_FRAME_FIELDS) {
+    for (const key of mod.FORBIDDEN_FRAME_FIELDS) {
         if (key in f) problems.push(`execute_tool must not carry '${key}'`)
     }
     const tool = f.tool
-    if (typeof tool !== 'string' || !(EXECUTION_TOOLS as readonly string[]).includes(tool)) {
+    if (typeof tool !== 'string'
+        || !(mod.EXECUTION_TOOLS as readonly string[]).includes(tool)) {
         problems.push(`unknown tool '${String(tool)}'`)
         return problems
     }
-    if (!PLATFORM_SUPPORT[platform]) {
+    if (!mod.PLATFORM_SUPPORT[platform]) {
         // No accepted launcher on this platform yet: refuse by name instead of
         // translating a POSIX command into a shell the user never approved.
         problems.push(`tool '${tool}' is unsupported on platform '${platform}'`)
+    } else {
+        // v3 admits win32 as a *platform* while offering it only some tools
+        // (``launcher_kinds.scripts`` is empty there), so platform admission is not
+        // enough: the tool has to be one this platform actually has. Without this,
+        // a v3 frame could name ``bash`` on Windows and pass -- the platform says
+        // yes and nothing asks about the tool. v2 has no per-platform tool table,
+        // so this is a no-op for it and its answers cannot change.
+        const offered = mod.PLATFORM_TOOLS[platform] as readonly string[] | undefined
+        if (Array.isArray(offered) && !offered.includes(tool)) {
+            problems.push(`tool '${tool}' is unsupported on platform '${platform}'`)
+        }
     }
     if (!looksLikeDigest(f.params_digest)) {
         problems.push('params_digest must be a sha256: prefixed digest')
@@ -316,21 +453,37 @@ export function validateExecuteFrame(
         problems.push('arguments must be an object')
     } else {
         const a = args as Record<string, unknown>
-        for (const key of FORBIDDEN_FRAME_FIELDS) {
+        for (const key of mod.FORBIDDEN_FRAME_FIELDS) {
             if (key in a) problems.push(`execute_tool.arguments must not carry '${key}'`)
         }
-        if ((SCRIPT_TOOLS as readonly string[]).includes(tool)) {
-            if (typeof a.command !== 'string' || a.command.trim() === '') {
-                problems.push(`${tool}.arguments.command must be a non-empty string`)
-            }
-            if (a.timeout !== undefined) {
-                if (!isPositiveInt(a.timeout)) {
-                    problems.push(`${tool}.arguments.timeout must be a positive integer`)
-                } else if (a.timeout > EXECUTION_LIMITS.script_timeout_max_seconds) {
-                    problems.push(
-                        `${tool}.arguments.timeout must be <= ${EXECUTION_LIMITS.script_timeout_max_seconds} seconds`,
-                    )
+        if ((mod.SCRIPT_TOOLS as readonly string[]).includes(tool)) {
+            // The two contracts spell a script differently and this asks which,
+            // rather than assuming v2's shape:
+            //
+            // * ``bash`` keeps ``command`` (a POSIX shell string) in both;
+            // * ``run_script`` -- v3 only -- splits that into ``language`` and
+            //   ``script``, precisely so the runtime is a declared fact rather than
+            //   something inferred from the text.
+            //
+            // v2's path is byte-for-byte what it was: same field, same message.
+            const required: readonly string[] = tool === 'run_script'
+                ? ['language', 'script']
+                : ['command']
+            for (const key of required) {
+                const value = a[key]
+                if (typeof value !== 'string' || value.trim() === '') {
+                    problems.push(`${tool}.arguments.${key} must be a non-empty string`)
                 }
+            }
+        }
+        if (a.timeout !== undefined) {
+            if (!isPositiveInt(a.timeout)) {
+                problems.push(`${tool}.arguments.timeout must be a positive integer`)
+            } else if (a.timeout > mod.EXECUTION_LIMITS.script_timeout_max_seconds) {
+                problems.push(
+                    `${tool}.arguments.timeout must be <= `
+                    + `${mod.EXECUTION_LIMITS.script_timeout_max_seconds} seconds`,
+                )
             }
         }
     }

@@ -4,6 +4,7 @@ Supports text files, images (jpg, png, gif, webp), and PDF files
 """
 
 import os
+import stat
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
@@ -150,14 +151,24 @@ class Read(BaseTool):
         absolute_path = self._resolve_path(path)
         # Personal memory uses the same anchored owner access as the console;
         # evolution sees its staged edits without exposing them before commit.
-        try:
+        #
+        # Gated on ``personal_memory``. The desktop local worker turns it off: its
+        # `read` is scoped to the project the user opened, where a personal-memory
+        # path cannot resolve, so the probe can only ever answer "no" -- and the
+        # import it needs drags in the whole memory stack. Inside the worker that
+        # import deadlocked against the worker's own threads: every local `read`
+        # hung with no reply and no stderr, which is indistinguishable from a
+        # crashed worker. Server-side reads keep the default, so their behaviour is
+        # unchanged.
+        if self.config.get("personal_memory", True):
+          try:
             from agent.memory.personal import personal_file, read_personal_file
             personal = personal_file(absolute_path)
             if personal:
                 content = read_personal_file(personal)
                 result, error = self._paginate(split_lines(content), offset, limit, path)
                 return ToolResult.fail(error) if error else ToolResult.success(result)
-        except Exception as error:
+          except Exception as error:
             return ToolResult.fail(f'Error reading personal memory: {error}')
 
         # Reached only once the path already missed, so nothing that resolves
@@ -195,6 +206,15 @@ class Read(BaseTool):
                 f"Use the ls tool to list what is inside it."
             )
         
+        # A FIFO has size zero yet open/read waits indefinitely for a writer.
+        # Inspect the resolved target before dispatching to any content parser.
+        try:
+            mode = os.stat(absolute_path).st_mode
+        except OSError as exc:
+            return ToolResult.fail(f"Error inspecting file: {exc}")
+        if not stat.S_ISREG(mode):
+            return ToolResult.fail(f"Error: {path} is not a regular file")
+
         # Check if readable
         if not os.access(absolute_path, os.R_OK):
             return ToolResult.fail(f"Error: File is not readable: {path}")
@@ -304,6 +324,13 @@ class Read(BaseTool):
         end_line = total_lines
         user_limited = False
         if limit is not None:
+            # limit=0 used to return an empty page with a "continue" hint that
+            # pointed back at the same line; a negative one sliced from the end.
+            if limit <= 0:
+                return None, (
+                    f"Error: limit must be a positive number of lines (got {limit}). "
+                    f"Omit limit to read the whole file, or pass limit=20 to read 20 lines."
+                )
             end_line = min(start_line + limit, total_lines)
             user_limited = True
 
@@ -537,16 +564,12 @@ class Read(BaseTool):
                 from pptx import Presentation
             except ImportError:
                 raise ImportError("Error: python-pptx library not installed. Install with: pip install python-pptx")
+            from common.office_text import iter_pptx_shape_text
             prs = Presentation(absolute_path)
             parts = []
             for i, slide in enumerate(prs.slides, 1):
                 parts.append(f"--- Slide {i} ---")
-                for shape in slide.shapes:
-                    if shape.has_text_frame:
-                        for para in shape.text_frame.paragraphs:
-                            text = para.text.strip()
-                            if text:
-                                parts.append(text)
+                parts.extend(iter_pptx_shape_text(slide.shapes))
             return '\n'.join(parts)
 
         return ""

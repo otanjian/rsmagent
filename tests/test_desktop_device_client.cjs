@@ -37,7 +37,7 @@ function needsBuild() {
 
 before(() => {
   if (needsBuild()) {
-    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe' });
+    execFileSync('npx', ['tsc', '-p', 'tsconfig.main.json'], { cwd: desktop, stdio: 'pipe', shell: process.platform === 'win32',});
   }
   clientMod = require(path.join(dist, 'remote', 'device-client.js'));
 });

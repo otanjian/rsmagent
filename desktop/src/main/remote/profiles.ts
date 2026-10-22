@@ -56,7 +56,11 @@ export type OriginResult =
   | { ok: false; reason: string }
 
 /** Schemes that may never become a stored remote server. */
-const FORBIDDEN_SCHEMES = new Set(['http:', 'ftp:', 'file:', 'ws:', 'wss:', 'javascript:'])
+// `http:` is deliberately NOT here. It was, and that check runs before the scheme
+// rule below -- so the loopback exception added there was unreachable, and a local
+// backend on plain HTTP was rejected with "https required" however it was typed.
+// The scheme rule below decides now, and admits http only for a loopback host.
+const FORBIDDEN_SCHEMES = new Set(['ftp:', 'file:', 'ws:', 'wss:', 'javascript:'])
 
 /**
  * Validate and normalize a user-entered server address to an exact HTTPS origin.
@@ -79,7 +83,21 @@ export function parseServerOrigin(raw: unknown): OriginResult {
   if (FORBIDDEN_SCHEMES.has(url.protocol)) {
     return { ok: false, reason: 'scheme_not_https' }
   }
-  if (url.protocol !== 'https:') {
+  // Loopback is the one exception, and it is a deliberate one: a backend the user
+  // runs on their own machine normally speaks plain HTTP (the bundled console binds
+  // http://127.0.0.1:9899), and requiring a certificate there means every such
+  // deployment is unusable from this screen -- which is exactly what happened: the
+  // typed `http://localhost:9899` was rewritten to `https://localhost:9899` and then
+  // could not connect, because that port only speaks HTTP.
+  //
+  // The exception is narrow on purpose. It admits `http` only for a host that cannot
+  // leave the machine, so an ordinary remote deployment still has to be HTTPS -- the
+  // rule that matters is unchanged, and the gateway's own origin check rejects a
+  // non-loopback http origin anyway.
+  const loopback = url.hostname === 'localhost'
+    || url.hostname === '[::1]'
+    || url.hostname.startsWith('127.');
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
     return { ok: false, reason: 'scheme_not_https' }
   }
   // ``user:pass@host`` would be logged and would not be an origin. Never store it.
@@ -98,7 +116,15 @@ export function parseServerOrigin(raw: unknown): OriginResult {
   if (!host) {
     return { ok: false, reason: 'invalid_url' }
   }
-  const origin = url.port ? `https://${host}:${url.port}` : `https://${host}`
+    // The scheme comes from what was parsed, not re-imposed. It used to be spelled
+    // `https://` here, which silently discarded the http of a loopback address the
+    // rule above had just accepted: the profile was stored as https, the authorize
+    // URL was built from it, and the browser reached a plain-HTTP backend as https
+    // (ERR_SSL_PROTOCOL_ERROR, then a generic "authorization did not complete").
+    // Editing the config by hand could not fix it either, because the next save
+    // rewrote it again.
+    const scheme = url.protocol === 'http:' ? 'http' : 'https'
+    const origin = url.port ? `${scheme}://${host}:${url.port}` : `${scheme}://${host}`
   return { ok: true, origin }
 }
 

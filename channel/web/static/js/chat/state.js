@@ -27,11 +27,11 @@ function updateEditButtonsState() {
     document.querySelectorAll('.edit-msg-btn, .delete-msg-btn').forEach(btn => {
         btn.disabled = active;
         if (btn.classList.contains('edit-msg-btn')) {
-            btn.title = active
+            btn.dataset.tooltip = active
                 ? t('edit_disabled_reply_active')
                 : t('edit_message');
         } else {
-            btn.title = active
+            btn.dataset.tooltip = active
                 ? t('delete_disabled_reply_active')
                 : t('delete_message_title');
         }
@@ -53,39 +53,8 @@ function activeSessionStorageKey() {
 
 // Carry the selected Agent through existing console requests without forcing
 // every feature panel to implement its own routing glue.
-const _nativeFetch = window.fetch.bind(window);
-window.fetch = function(input, init) {
-    init = init ? { ...init } : {};
-    let url = typeof input === 'string' ? input : input.url;
-    if (activeAgentId && typeof url === 'string' && url.startsWith('/')) {
-        if (!/[?&]agent_id=/.test(url)) {
-        const joiner = url.includes('?') ? '&' : '?';
-        url = `${url}${joiner}agent_id=${encodeURIComponent(activeAgentId)}`;
-        }
-        if (typeof input !== 'string') input = new Request(url, input);
-        else input = url;
 
-        // JSON bodies read agent_id from the payload, so inject it there too.
-        // Multipart (FormData) uploads must NOT get a body copy: the query
-        // string above already carries it, and web.py merges query + body,
-        // collapsing the duplicate into a list (agent_id=['x','x']). That list
-        // then reaches handlers expecting a plain string and raises
-        // "unhashable type: 'list'", silently killing every file upload.
-        if (typeof init.body === 'string') {
-            const contentType = new Headers(init.headers || {}).get('Content-Type') || '';
-            if (contentType.includes('application/json')) {
-                try {
-                    const body = JSON.parse(init.body);
-                    if (body && typeof body === 'object' && !Array.isArray(body) && !body.agent_id) {
-                        body.agent_id = activeAgentId;
-                        init.body = JSON.stringify(body);
-                    }
-                } catch (_) {}
-            }
-        }
-    }
-    return _nativeFetch(input, init);
-};
+
 
 function generateSessionId() {
     return 'session_' + ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
@@ -96,10 +65,10 @@ function generateSessionId() {
 // Restore session_id from localStorage so conversation history survives page refresh.
 // A new id is only generated when the user explicitly starts a new chat.
 function loadOrCreateSessionId() {
-    const stored = localStorage.getItem(activeSessionStorageKey());
+    const stored = readScopedPreference(activeSessionStorageKey());
     if (stored) return stored;
     const fresh = generateSessionId();
-    localStorage.setItem(activeSessionStorageKey(), fresh);
+    writeScopedPreference(activeSessionStorageKey(), fresh);
     return fresh;
 }
 
@@ -449,27 +418,111 @@ function resetComposerHeight() {
 // feels like the list "fighting" the user and snapping to the bottom.
 let _autoScrollEnabled = true;
 const _SCROLL_THRESHOLD = 80; // px from bottom to re-enable auto-scroll
-let _programmaticScroll = false; // set while scrollChatToBottom() adjusts scrollTop
+let _programmaticScroll = false;
+let _programmaticScrollTop = null;
 let _lastScrollTop = 0;
+let _userScrollIntent = null;
+let _touchScrollStartY = null;
+const _HISTORY_PREFETCH_PX = 200;
+
+// Only user gestures trigger it, so the first-load bottom pins and message
+// navigator jumps never pull in pages on their own. Wheel and touch also call
+// it directly because a first page shorter than the viewport cannot scroll.
+function _maybeLoadEarlierHistory() {
+    if (!historyHasMore || historyLoading || !historyPage) return;
+    if (messagesDiv.scrollTop > _HISTORY_PREFETCH_PX) return;
+    if (typeof loadHistory === 'function') loadHistory(historyPage + 1);
+}
+
+messagesDiv.addEventListener('wheel', event => {
+    if (event.deltaY < 0) {
+        _userScrollIntent = 'up';
+        _maybeLoadEarlierHistory();
+    } else if (event.deltaY > 0) _userScrollIntent = 'down';
+}, { passive: true });
+messagesDiv.addEventListener('touchstart', event => {
+    _touchScrollStartY = event.touches[0]?.clientY ?? null;
+}, { passive: true });
+messagesDiv.addEventListener('touchmove', event => {
+    const currentY = event.touches[0]?.clientY;
+    if (_touchScrollStartY === null || currentY === undefined) return;
+    const delta = currentY - _touchScrollStartY;
+    if (delta > 2) {
+        _userScrollIntent = 'up';
+        // Pause before the next stream frame can enqueue another bottom snap.
+        _autoScrollEnabled = false;
+        if (typeof cancelHistoryBottomPins === 'function') cancelHistoryBottomPins();
+        if (typeof cancelQueuedChatScroll === 'function') cancelQueuedChatScroll();
+        _maybeLoadEarlierHistory();
+    } else if (delta < -2) {
+        _userScrollIntent = 'down';
+    }
+}, { passive: true });
+const clearTouchScroll = () => { _touchScrollStartY = null; };
+messagesDiv.addEventListener('touchend', clearTouchScroll, { passive: true });
+messagesDiv.addEventListener('touchcancel', clearTouchScroll, { passive: true });
+messagesDiv.addEventListener('keydown', event => {
+    if (event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    if (['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey)) _userScrollIntent = 'up';
+    else if (['ArrowDown', 'PageDown', 'End'].includes(event.key) || (event.key === ' ' && !event.shiftKey)) _userScrollIntent = 'down';
+});
+messagesDiv.addEventListener('pointerdown', event => {
+    const rect = messagesDiv.getBoundingClientRect();
+    if (event.target === messagesDiv && event.clientX >= rect.right - 16) _userScrollIntent = 'scrollbar';
+}, { passive: true });
 
 messagesDiv.addEventListener('scroll', () => {
     const scrollTop = messagesDiv.scrollTop;
     const distFromBottom = messagesDiv.scrollHeight - scrollTop - messagesDiv.clientHeight;
-
-    if (_programmaticScroll) {
-        // Our own scroll-to-bottom; don't reinterpret it as user intent.
+    if (_userScrollIntent !== null) {
+        const intent = _userScrollIntent === 'scrollbar'
+            ? (scrollTop < _lastScrollTop - 1 ? 'up' : scrollTop > _lastScrollTop + 1 ? 'down' : null)
+            : _userScrollIntent;
+        if (intent === 'up') {
+            _autoScrollEnabled = false;
+            if (typeof cancelHistoryBottomPins === 'function') cancelHistoryBottomPins();
+            _maybeLoadEarlierHistory();
+        } else if (intent === 'down' && distFromBottom <= _SCROLL_THRESHOLD) {
+            _autoScrollEnabled = true;
+        }
         _programmaticScroll = false;
-    } else if (scrollTop < _lastScrollTop - 1) {
-        // User scrolled up (any amount) -> stop following the stream.
-        _autoScrollEnabled = false;
-    } else if (distFromBottom <= _SCROLL_THRESHOLD) {
-        // User is back near the bottom -> resume auto-scroll.
-        _autoScrollEnabled = true;
+        _programmaticScrollTop = null;
     }
-
+    _userScrollIntent = null;
+    _programmaticScroll = false;
+    _programmaticScrollTop = null;
     _lastScrollTop = scrollTop;
     _updateScrollToBottomBtn();
 });
+
+// Composer resizing changes the viewport, not the user's intent.
+// Observe the viewport rather than each message so long conversations stay cheap.
+// Register observers only after the chat DOM and scroll state exist.
+if (typeof ResizeObserver !== 'undefined') {
+    const composer = document.getElementById('chat-composer');
+    if (composer) {
+        new ResizeObserver(() => {
+            const rect = composer.getBoundingClientRect();
+            const chatMain = document.getElementById('chat-main');
+            if (chatMain) chatMain.style.setProperty('--chat-composer-height', `${Math.ceil(rect.height)}px`);
+            refreshChatScrollControls();
+        }).observe(composer);
+    }
+}
+
+if (typeof ResizeObserver !== 'undefined') {
+    let previousWidth = messagesDiv.clientWidth;
+    let previousHeight = messagesDiv.clientHeight;
+    const chatViewportObserver = new ResizeObserver(() => {
+        const width = messagesDiv.clientWidth;
+        const height = messagesDiv.clientHeight;
+        if (width === previousWidth && height === previousHeight) return;
+        previousWidth = width;
+        previousHeight = height;
+        refreshChatScrollControls();
+    });
+    chatViewportObserver.observe(messagesDiv);
+}
 
 // Intercept internal navigation links in chat messages
 messagesDiv.addEventListener('click', (e) => {
@@ -660,12 +713,12 @@ function steerActiveTask() {
             lang: currentLang,
         }),
     })
-    .then(r => r.json())
+    .then(readMessageResponse)
     .then(data => {
         if (data.status === 'success' && data.inline_reply) {
             addBotMessage(data.inline_reply, new Date());
         } else {
-            addBotMessage(t('error_send'), new Date());
+            addMessageError(data);
         }
     })
     .catch(err => {
@@ -718,6 +771,9 @@ function updateSendBtnState() {
     }
     sendBtn.disabled = uploadingCount > 0 || (!chatInput.value.trim() && pendingAttachments.length === 0);
     updateSteerBtnState();
+    // The suggested-question entry follows the composer: a draft, an attachment
+    // or an upload in progress disables it with a reason.
+    if (typeof syncAgentQuestionState === 'function') syncAgentQuestionState();
 }
 
 function renderAttachmentPreview() {
@@ -736,6 +792,20 @@ function renderAttachmentPreview() {
             return `<div class="att-chip att-uploading" data-idx="${idx}">
                 <i class="fas fa-spinner fa-spin"></i>
                 <span class="att-name">${escapeHtml(att.file_name)}${suffix}</span>
+            </div>`;
+        }
+        if (att._failed) {
+            // A failed upload stays on screen: dropping it silently would let
+            // the next send go out without the file the user chose. It blocks
+            // sending until it is retried (same stable attachment id) or
+            // removed.
+            return `<div class="att-chip att-failed" data-idx="${idx}" title="${escapeHtml(att._error || '')}">
+                <i class="fas fa-triangle-exclamation"></i>
+                <span class="att-name">${escapeHtml(att.file_name)}</span>
+                <button class="att-retry" onclick="retryAttachment(${idx})" title="${escapeHtml(t('attachment_retry'))}">
+                    <i class="fas fa-rotate-right"></i>
+                </button>
+                <button class="att-remove" onclick="removeAttachment(${idx})">&times;</button>
             </div>`;
         }
         if (att.file_type === 'image') {
@@ -798,36 +868,15 @@ async function handleFileSelect(files) {
     if (!files || files.length === 0) return;
     const tasks = [];
     for (const file of files) {
-        const placeholder = { file_name: file.name, file_type: 'file', _uploading: true };
+        const placeholder = {
+            file_name: file.name,
+            file_type: 'file',
+            _file: file,
+            _attachment_id: _makeAttachmentId(),
+            _uploading: true,
+        };
         pendingAttachments.push(placeholder);
-        uploadingCount++;
-        renderAttachmentPreview();
-
-        tasks.push((async () => {
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('session_id', sessionId);
-            try {
-                const resp = await fetch('/upload', { method: 'POST', body: formData });
-                const data = await resp.json();
-                if (data.status === 'success') {
-                    placeholder.file_path = data.file_path;
-                    placeholder.file_name = data.file_name;
-                    placeholder.file_type = data.file_type;
-                    placeholder.preview_url = data.preview_url;
-                    delete placeholder._uploading;
-                } else {
-                    const i = pendingAttachments.indexOf(placeholder);
-                    if (i !== -1) pendingAttachments.splice(i, 1);
-                }
-            } catch (e) {
-                console.error('Upload failed:', e);
-                const i = pendingAttachments.indexOf(placeholder);
-                if (i !== -1) pendingAttachments.splice(i, 1);
-            }
-            uploadingCount--;
-            renderAttachmentPreview();
-        })());
+        tasks.push(_runAttachmentUpload(placeholder));
     }
     await Promise.all(tasks);
 }
@@ -858,43 +907,12 @@ async function handleFolderSelect(files) {
             file_name: rootName,
             file_type: 'directory',
             file_count: entries.length,
+            _files: entries,
+            _attachment_id: _makeAttachmentId(),
             _uploading: true,
         };
         pendingAttachments.push(placeholder);
-        uploadingCount++;
-        renderAttachmentPreview();
-
-        const uploadId = _makeUploadId();
-        groupTasks.push((async () => {
-            try {
-                const formData = new FormData();
-                formData.append('session_id', sessionId);
-                formData.append('upload_id', uploadId);
-                for (const { file, relPath } of entries) {
-                    formData.append('files', file);
-                    formData.append('relative_paths', relPath);
-                }
-
-                const resp = await fetch('/upload', { method: 'POST', body: formData });
-                const data = await resp.json();
-                if (data.status !== 'success') {
-                    throw new Error(data.message || 'Upload failed');
-                }
-                if (!data.root_path) {
-                    throw new Error('Directory root path missing');
-                }
-                placeholder.file_path = data.root_path;
-                placeholder.file_name = data.root_name || rootName;
-                delete placeholder._uploading;
-            } catch (e) {
-                console.error('Directory upload failed:', e);
-                const i = pendingAttachments.indexOf(placeholder);
-                if (i !== -1) pendingAttachments.splice(i, 1);
-            } finally {
-                uploadingCount--;
-            }
-            renderAttachmentPreview();
-        })());
+        groupTasks.push(_runAttachmentUpload(placeholder));
     }
 
     await Promise.all(groupTasks);
