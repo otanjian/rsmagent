@@ -126,6 +126,13 @@ async function main() {
             await entry.locator('#sidebar-new-chat').click();
             await entry.waitForFunction(previous=>sessionId!==previous,initialSession);
             assert.equal(await entry.locator('#chat-input').evaluate(el=>el===document.activeElement),true);
+            await entry.locator('#sidebar-new-chat-caret').click();
+            await entry.locator('#sidebar-new-chat-menu').waitFor({state:'visible'});
+            await entry.screenshot({path:path.join(output,'sidebar-agent-picker.png')});
+            const pickedSession=await entry.evaluate(()=>sessionId);
+            await entry.locator('#sidebar-new-chat-menu [onclick="startSoloChat(\'secondary\')"]').click();
+            await entry.waitForFunction(previous=>sessionId!==previous && activeAgentId==='secondary',pickedSession);
+            assert.equal(await entry.locator('#sidebar-new-chat-menu').isVisible(),false);
             await entry.locator('#sidebar-nav [data-view="agent-workbench"]').click();
             await entry.locator('#agent-workbench-grid [data-agent-id="secondary"]').click();
             await entry.waitForFunction(()=>currentView==='chat' && activeAgentId==='secondary');
@@ -155,6 +162,13 @@ async function main() {
             const mobileSession=await entry.evaluate(()=>sessionId);
             await entry.locator('#sidebar-new-chat').click();
             await entry.waitForFunction(previous=>sessionId!==previous,mobileSession);
+            assert.equal(await entry.locator('#menu-toggle').getAttribute('aria-expanded'),'false');
+            await checkLayout();
+            await entry.locator('#menu-toggle').click();
+            await entry.locator('#sidebar-new-chat-caret').click();
+            const mobilePick=await entry.evaluate(()=>sessionId);
+            await entry.locator('#sidebar-new-chat-menu [onclick="startSoloChat(\'primary\')"]').click();
+            await entry.waitForFunction(previous=>sessionId!==previous && activeAgentId==='primary',mobilePick);
             assert.equal(await entry.locator('#menu-toggle').getAttribute('aria-expanded'),'false');
             await checkLayout();
             await entry.context().close();
@@ -387,6 +401,11 @@ async function main() {
             const collapsedSession=await manager.evaluate(()=>sessionId);
             await manager.locator('#sidebar-new-chat').press('Enter');
             await manager.waitForFunction(previous=>sessionId!==previous,collapsedSession);
+            await manager.locator('#sidebar-new-chat-caret').click();
+            await manager.screenshot({path:path.join(output,'sidebar-agent-picker-collapsed.png')});
+            const collapsedPick=await manager.evaluate(()=>sessionId);
+            await manager.locator('#sidebar-new-chat-menu [onclick="startSoloChat(\'secondary\')"]').click();
+            await manager.waitForFunction(previous=>sessionId!==previous && activeAgentId==='secondary',collapsedPick);
             await manager.locator('#sidebar-collapse-btn').press('Enter');
         });
         await scenario('sync: skill creation uses the rendered form and persists an authorized resource',async()=>{

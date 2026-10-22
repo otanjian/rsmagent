@@ -3831,6 +3831,8 @@ function commitPreparedSession(preparedSessionId, { optimistic = true, inherit =
     // A fresh session has no server-side context row yet: keep the usage entry
     // quiet until the first turn persists it.
     if (typeof _contextAfterSessionChange === 'function') _contextAfterSessionChange(false);
+    if (window.innerWidth < 1024) closeSidebar();
+    focusChatComposer();
     return true;
 }
 

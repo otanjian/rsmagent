@@ -1,7 +1,7 @@
 {
   "scope": "required-local-behavior",
   "production_acceptance": false,
-  "candidate_digest": "02b4e8661832be68b9745773d3d60a06af85cb1fa29315e379a6cf5e9d6ebbdd",
+  "candidate_digest": "9e42c8b61812f3d74be56353fd9810bf147bdfd01cd6f2f138649f3e2e3bc512",
   "source_sha": "ee2dc0521714fc144e0c9923f363147fe865ad2f",
   "layers": {
     "ledger": [],
@@ -13,7 +13,7 @@
     "required-cases": [],
     "candidate-stability": []
   },
-  "ending_digest": "02b4e8661832be68b9745773d3d60a06af85cb1fa29315e379a6cf5e9d6ebbdd",
+  "ending_digest": "9e42c8b61812f3d74be56353fd9810bf147bdfd01cd6f2f138649f3e2e3bc512",
   "unaccepted_capabilities": [
     "GAP-001",
     "GAP-002",

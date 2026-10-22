@@ -3,17 +3,17 @@
     {
       "name": "parity: SAP iframe navigation preserves deep shell and identity teardown",
       "passed": true,
-      "durationMs": 2105
+      "durationMs": 2305
     },
     {
       "name": "parity: deep route survives login and explicit tenant selection",
       "passed": true,
-      "durationMs": 1881
+      "durationMs": 1902
     },
     {
       "name": "parity: hidden source update entry retains confirmation and identity guards",
       "passed": true,
-      "durationMs": 1606
+      "durationMs": 1151
     },
     {
       "name": "parity: denied deep route preserves address (classic)",
@@ -23,62 +23,62 @@
     {
       "name": "parity: denied deep route preserves address (split)",
       "passed": true,
-      "durationMs": 916
+      "durationMs": 925
     },
     {
       "name": "parity: denied admin entry keeps registered deep routes (classic)",
       "passed": true,
-      "durationMs": 1740
+      "durationMs": 1732
     },
     {
       "name": "parity: denied admin landing returns to the conversation (classic)",
       "passed": true,
-      "durationMs": 1149
+      "durationMs": 1163
     },
     {
       "name": "parity: denied admin entry keeps registered deep routes (split)",
       "passed": true,
-      "durationMs": 1745
+      "durationMs": 1750
     },
     {
       "name": "parity: denied admin landing returns to the conversation (split)",
       "passed": true,
-      "durationMs": 1149
+      "durationMs": 1171
     },
     {
       "name": "parity: scheduler observer honors identity preferences and authorized clicks",
       "passed": true,
-      "durationMs": 966
+      "durationMs": 986
     },
     {
       "name": "parity: two browser windows atomically claim one terminal run",
       "passed": true,
-      "durationMs": 1775
+      "durationMs": 1809
     },
     {
       "name": "parity: member model route renders the granted catalog",
       "passed": true,
-      "durationMs": 894
+      "durationMs": 908
     },
     {
       "name": "parity: revoked model management restores only the member catalog",
       "passed": true,
-      "durationMs": 1696
+      "durationMs": 1700
     },
     {
       "name": "parity: deep paths survive refresh and back",
       "passed": true,
-      "durationMs": 1789
+      "durationMs": 1796
     },
     {
       "name": "parity: legacy links and cancelled leave preserve the target",
       "passed": true,
-      "durationMs": 941
+      "durationMs": 951
     },
     {
       "name": "parity: empty docs/graph and independent sources",
       "passed": true,
-      "durationMs": 1059
+      "durationMs": 1081
     },
     {
       "name": "parity: delayed lists preserve graph and sources selection",
@@ -93,17 +93,17 @@
     {
       "name": "parity: slight upward scroll pauses streaming and explicit bottom resumes",
       "passed": true,
-      "durationMs": 1081
+      "durationMs": 1093
     },
     {
       "name": "parity: message wrapping and local overflow (light)",
       "passed": true,
-      "durationMs": 919
+      "durationMs": 929
     },
     {
       "name": "parity: message wrapping and local overflow (dark)",
       "passed": true,
-      "durationMs": 923
+      "durationMs": 924
     },
     {
       "name": "http: console-created tasks dispatch into two owned sessions",
@@ -188,22 +188,22 @@
     {
       "name": "desktop: the Agent search filters its own menu, not the document search",
       "passed": true,
-      "durationMs": 1014
+      "durationMs": 1017
     },
     {
       "name": "desktop, dark: a CJK query with no match says so instead of an empty menu",
       "passed": true,
-      "durationMs": 1027
+      "durationMs": 994
     },
     {
       "name": "desktop: the sources tab is a closed loop of list, detail and upload",
       "passed": true,
-      "durationMs": 1135
+      "durationMs": 1136
     },
     {
       "name": "narrow: the sources loop still works on a phone-width viewport",
       "passed": true,
-      "durationMs": 1080
+      "durationMs": 1095
     }
   ],
   "pageErrors": [],
