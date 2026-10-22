@@ -54,6 +54,13 @@ async function main() {
         }
         const alice=await login('alice'), second=await login('alice'), bob=await login('bob');
         const readMenu=p=>p.evaluate(async()=>{const r=await fetch('/api/menu');return r.json();});
+        async function assertHeaderShortcutsHidden(page) {
+            for (const selector of ['#docs-link', 'a[title="Website"]', 'a[title="GitHub"]']) {
+                assert.equal(await page.locator(selector).isVisible(),false);
+            }
+            assert.equal(await page.locator('#lang-selector').isVisible(),true);
+            assert.equal(await page.locator('#theme-toggle').isVisible(),true);
+        }
         async function openPersonalMenu(page) {
             await page.locator('#sidebar-account-toggle').click();
             await page.locator('#account-menu-customize').click();
@@ -78,16 +85,20 @@ async function main() {
             const observe=r=>{if(new URL(r.url()).pathname==='/config'&&r.method()==='POST')globalWrites++;};
             alice.on('request',observe);
             assert.equal(await alice.locator('#lang-label').innerText(),'简');
+            await assertHeaderShortcutsHidden(alice);
             await alice.locator('#lang-selector > button').click();
             await alice.locator('#lang-menu [data-lang="en"]').click();
             await alice.waitForFunction(()=>document.getElementById('lang-label').textContent==='EN');
+            await assertHeaderShortcutsHidden(alice);
             assert.equal(await alice.locator('#sidebar-brand-caption').innerText(),'Business Workspace');
             await alice.locator('#lang-selector > button').click();
             await alice.locator('#lang-menu [data-lang="zh-Hant"]').click();
             await alice.waitForFunction(()=>document.getElementById('lang-label').textContent==='繁');
+            await assertHeaderShortcutsHidden(alice);
             await alice.locator('#lang-selector > button').click();
             await alice.locator('#lang-menu [data-lang="zh"]').click();
             await alice.waitForFunction(()=>document.getElementById('lang-label').textContent==='简');
+            await assertHeaderShortcutsHidden(alice);
             assert.equal(globalWrites,0);alice.off('request',observe);
         });
         await scenario('sync: personal menu saves, reloads and isolates two browser identities',async()=>{
@@ -263,6 +274,7 @@ async function main() {
             await manager.locator('#menu-toggle').click();
             await manager.waitForFunction(()=>document.getElementById('sidebar').getBoundingClientRect().left>=0);
             assert.equal(await manager.locator('#sidebar-collapse-btn').isVisible(),false);
+            await assertHeaderShortcutsHidden(manager);
             await manager.screenshot({path:path.join(output,'navigation-mobile.png')});
             await openPersonalMenu(manager);
             assert.equal(await manager.locator('.menu-editor-foot > button').evaluateAll(buttons => buttons.every(button => {
@@ -296,6 +308,7 @@ async function main() {
             assert.equal(await manager.locator('#sidebar-account-toggle').evaluate(el=>el===document.activeElement),true);
             await manager.reload();
             await manager.locator('#sidebar-nav [data-view="chat"]').waitFor({state:'visible'});
+            await assertHeaderShortcutsHidden(manager);
             await manager.waitForFunction(()=>document.getElementById('sidebar').getBoundingClientRect().width<=72);
             await manager.screenshot({path:path.join(output,'sidebar-account-collapsed.png')});
             await manager.locator('#sidebar-account-toggle').click();

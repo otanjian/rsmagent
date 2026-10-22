@@ -2655,7 +2655,8 @@
       "classification": "behavior",
       "owner": "rdai-maintainers",
       "evidence": [
-        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md"
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/implementation-review.md",
+        "openspec/changes/sync-master-to-rdai-20261021/evidence/header-shortcuts.md"
       ]
     },
     {
