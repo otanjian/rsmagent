@@ -18516,14 +18516,36 @@ function tenantChannelAppearance(channelType) {
 // Guest access on a shared instance (change add-im-guest-accounts). Only an
 // existing tenant-scoped instance shows it: a personal connection is answered by
 // its owner and can never open itself to strangers.
+// Mirrors the server's guest-role rule: chat.use is required, tenant_admin and
+// the management/configuration capabilities are refused. Kept as a predicate so
+// the picker can explain an unusable role instead of only failing on save.
+const TENANT_GUEST_FORBIDDEN_PERMISSIONS = [
+    'agent.edit', 'agent.enable', 'tool.configure', 'skill.edit',
+    'external.connections.manage', 'external.connections.test',
+];
+
+function guestRoleEligible(role) {
+    if (!role || role.code === 'tenant_admin') return false;
+    const permissions = role.permissions || [];
+    if (!permissions.includes('chat.use')) return false;
+    return !permissions.some(p => TENANT_GUEST_FORBIDDEN_PERMISSIONS.includes(p));
+}
+
 function tenantGuestSection(inst, editing) {
     if (!editing || !inst || inst.scope !== 'tenant') return '';
     const policy = inst.unbound_user_policy || 'require_binding';
     const roleId = inst.guest_role_id || '';
     const groups = (inst.guest_group_ids || []).join('\n');
     const roleOptions = tenantGuestRoles
-        .filter(r => r && r.code !== 'tenant_admin')
-        .map(r => `<option value="${escapeHtml(r.id)}"${r.id === roleId ? ' selected' : ''}>${escapeHtml(r.name)}</option>`)
+        .filter(r => r && r.id)
+        .map(r => {
+            const eligible = guestRoleEligible(r);
+            const selected = r.id === roleId ? ' selected' : '';
+            const suffix = eligible ? ''
+                : `（${t('tenant_channel_guest_role_ineligible')}）`;
+            return `<option value="${escapeHtml(r.id)}"${selected}${eligible ? '' : ' disabled'}>`
+                + `${escapeHtml(r.name)}${escapeHtml(suffix)}</option>`;
+        })
         .join('');
     return `
         <div class="rounded-lg border border-slate-200 dark:border-white/10 p-3 space-y-3"
@@ -18739,6 +18761,7 @@ function tenantChannelWriteErrorKey(status, code) {
     // A misconfigured deployment is not something "you got wrong": the
     // operator can retry forever and never succeed, so it must say so.
     if (code_text === 'credential_crypto') return 'tenant_channel_error_crypto';
+    if (code_text === 'invalid_role') return 'tenant_channel_error_role';
     if (Number(status) === 409) return 'tenant_channel_error_conflict';
     if (code_text === 'forbidden' || Number(status) === 403) return 'tenant_channel_error_agent';
     if (Number(status) === 404) return 'tenant_channel_error_missing';
